@@ -123,7 +123,11 @@ Workflows are **declarative, not procedural**: each stage defines what must be t
 
 **Solo first, grow with the customer (locked 2026-10-07).** The first user is a solo developer. They have no alignment pain; they have a product-context problem — every agent session starts from nothing, decisions evaporate, and nobody remembers why the product is shaped the way it is. For them pjman is *the product context your agents work from, in a shape you grow into an organisation.* The same graph carries them from one person to a team to an org; larger companies join through ingestion (the derived half — feature map and architecture from code) plus declaring the authored half (owners, authorities, rubrics, claims) subtree by subtree, which is the same path as team adoption.
 
-**Pay per signer.** Owners and authorities — the people who sign — are the seats; requesters and viewers are free. A solo developer has no second signer and is free without a separate tier; the first time someone else's signature is needed, they are a customer. Monetisation triggers at the exact moment the thesis says value appears. The free, single-signer product is also the demo.
+**The customer's question** is *"how do I build and maintain my software at various scales?"* That is what they recognise; "alignment is hard, execution is easy" is why pjman answers it.
+
+**Pricing.** A solo developer pays a low flat rate (about $10/month) for the hosted service — the graph persisting across machines and sessions, the web agent, the history; the local core is what the open-core question decides. Teams pay per signer: owners and authorities are the seats, requesters and viewers are free. A thousand solo developers still paying in month four is the product-market-fit signal (signups measure the pitch; retention measures the product) and real money for a solo founder.
+
+**Views over one graph.** The neighbours are undercut by rendering, not rebuilding: a board is a view over changes, a roadmap a view over requests, a catalog a view over the tree with maturity. Each is cheap to add because the data is there and hard for a specialist to match because the graph is not. This is what bundling means here, and it is the opposite of all-in-one (building N products and losing N feature fights). Integrations have a lifecycle: for a team arriving with an ecosystem they start as bidirectional sync (Linear issues ↔ changes) so nobody switches on day one, and the view replaces the tool when the team is ready — the integration is the on-ramp, not the destination.
 
 **Against the neighbours.** Linear and Jira track work (authored state); Productboard and Aha hold requests and roadmaps (PM-centric, no code grounding); Backstage, Cortex and OpsLevel are service catalogs with ownership and scorecards — the closest analog, proving the shape gets adopted and showing the failure mode (hand-maintained catalogs go stale; derived state is the answer). These three exist as separate products because each serves a different role's handoff artefact; when handoffs go, the reason for three products goes. Sequencing: never a head-on feature fight — the growth path displaces them in order (nothing at solo; ownership and changes at team scale; intake and roadmaps at org scale). The harnesses (Claude Code, Codex, Cursor) are consumed, not competed with; pjman is the agent-agnostic layer across them.
 
@@ -148,8 +152,9 @@ Workflows are **declarative, not procedural**: each stage defines what must be t
 15. Surfaces: local MCP, web agent, merge check; agent-agnostic.
 16. No special paths per discipline for the scaffolding; the general derived-approver mechanism must cover them.
 17. Solo developers first; the same graph grows with the customer to team and org scale; larger companies join by ingestion plus declaring their authored half.
-18. Pay per signer; requesters and viewers free; a single-signer product is free and is the demo.
+18. *(revised 2026-10-07)* Solo developers pay a low flat rate for the hosted service; teams pay per signer; requesters and viewers free. Retention, not signups, is the fit signal.
 19. The three neighbouring markets are displaced along the growth path, never in a head-on feature fight; harnesses are consumed, not competed with.
+20. Neighbours are undercut as views over one graph, never as rebuilt products; integrations begin as bidirectional sync and end as views.
 
 ## Open questions
 
