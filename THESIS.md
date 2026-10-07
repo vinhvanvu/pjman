@@ -117,9 +117,17 @@ Workflows are **declarative, not procedural**: each stage defines what must be t
 - **A team:** adopts its own subtree without the rest of the organisation (an observability team owns all things observability). Alone it gets declared-versus-observed for its domain, a graph its agents can read, and a structured intake replacing chat. Every team that petitions it sees the product. Nodes come online as owners buy in.
 - **Brownfield:** agents derive the feature map and architecture from an existing codebase and its history. Greenfield is the easier first wedge; brownfield is where the money is.
 
-## Positioning (open)
+## Positioning
 
-The gap: the labs and harnesses own execution; the trackers own tickets; nobody owns the model of what the product is, its state, its maturity and why. Acquirers in this space pay for a team, a product a segment depends on daily, or a data position they cannot rebuild — the last two are also what make a standalone business, so the plan is the same either way: a handful of real teams depending on it.
+**The gap:** the labs and harnesses own execution; the trackers own tickets; nobody owns the model of what the product is, its state, its maturity and why.
+
+**Solo first, grow with the customer (locked 2026-10-07).** The first user is a solo developer. They have no alignment pain; they have a product-context problem — every agent session starts from nothing, decisions evaporate, and nobody remembers why the product is shaped the way it is. For them pjman is *the product context your agents work from, in a shape you grow into an organisation.* The same graph carries them from one person to a team to an org; larger companies join through ingestion (the derived half — feature map and architecture from code) plus declaring the authored half (owners, authorities, rubrics, claims) subtree by subtree, which is the same path as team adoption.
+
+**Pay per signer.** Owners and authorities — the people who sign — are the seats; requesters and viewers are free. A solo developer has no second signer and is free without a separate tier; the first time someone else's signature is needed, they are a customer. Monetisation triggers at the exact moment the thesis says value appears. The free, single-signer product is also the demo.
+
+**Against the neighbours.** Linear and Jira track work (authored state); Productboard and Aha hold requests and roadmaps (PM-centric, no code grounding); Backstage, Cortex and OpsLevel are service catalogs with ownership and scorecards — the closest analog, proving the shape gets adopted and showing the failure mode (hand-maintained catalogs go stale; derived state is the answer). These three exist as separate products because each serves a different role's handoff artefact; when handoffs go, the reason for three products goes. Sequencing: never a head-on feature fight — the growth path displaces them in order (nothing at solo; ownership and changes at team scale; intake and roadmaps at org scale). The harnesses (Claude Code, Codex, Cursor) are consumed, not competed with; pjman is the agent-agnostic layer across them.
+
+**Acquisition** is plausible (trackers, code hosts, labs, platforms) but the plan is the same as for a standalone business: real teams depending on it daily and a graph they cannot rebuild elsewhere.
 
 ## Decisions locked (2026-10-05 → 2026-10-07)
 
@@ -139,11 +147,14 @@ The gap: the labs and harnesses own execution; the trackers own tickets; nobody 
 14. Intake buckets: add, update, fix, retire; questions are answered, not queued.
 15. Surfaces: local MCP, web agent, merge check; agent-agnostic.
 16. No special paths per discipline for the scaffolding; the general derived-approver mechanism must cover them.
+17. Solo developers first; the same graph grows with the customer to team and org scale; larger companies join by ingestion plus declaring their authored half.
+18. Pay per signer; requesters and viewers free; a single-signer product is free and is the demo.
+19. The three neighbouring markets are displaced along the growth path, never in a head-on feature fight; harnesses are consumed, not competed with.
 
 ## Open questions
 
 - What exactly a "feature" is — the core opinion of the product, and not obvious; product, design and engineering mean different things by the word.
 - The minimum a human must see to sign — the brief's fields, to be refined against real sign-offs.
 - Where declared state lives first (files in the repo versus a service) — deliberately not decided; implementation has not started.
-- Positioning: the first customer, what they pay for, how it reads next to Linear and the harnesses.
-- The name.
+- Open-core: the local core (schema, MCP server, merge check, CLI) open, the hosted multi-signer service paid. Argued as necessary rather than altruistic — nobody puts their product's declared state in a proprietary silo, and an open format is the distribution into every harness. Licence undecided. Still to be discussed.
+- The name (it should not say "project management").
