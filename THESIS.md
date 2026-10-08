@@ -30,6 +30,13 @@ The person who does the aligning today (a staff engineer, a technical owner of a
 3. **Incumbents cannot pivot here.** Linear beat Jira and GitHub Projects by being narrower and more opinionated for new companies; Notion won with a new primitive. pjman's primitive is the product model.
 4. **Build only what gets more valuable as models improve.** See *The durability test*.
 
+## Tenets
+
+- **The free framework is complete on its own.** Never crippled to push the hosted tier. If people trust what is free, they will trust what they pay for; the reverse is also true.
+- **Build the tool its builder wants to use.** The founder is the first user — a technical owner using agents daily — and dogfooding at real work is the foundation. The caveat: this holds while the builder is representative of the market; later users will be less sophisticated, and conversations with them are the correction.
+- **Humans author decisions; agents do everything else.**
+- **Drift is surfaced, never hidden.**
+
 ## Two truths
 
 | | Owned by | Examples |
