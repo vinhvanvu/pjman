@@ -124,6 +124,14 @@ Workflows are **declarative, not procedural**: each stage defines what must be t
 - **A team:** adopts its own subtree without the rest of the organisation (an observability team owns all things observability). Alone it gets declared-versus-observed for its domain, a graph its agents can read, and a structured intake replacing chat. Every team that petitions it sees the product. Nodes come online as owners buy in.
 - **Brownfield:** agents derive the feature map and architecture from an existing codebase and its history. Greenfield is the easier first wedge; brownfield is where the money is.
 
+## Phases
+
+**Phase 1 — the open-source framework.** The complete single-player product: the declared-state format, the CLI and skills, the MCP server, the merge check, schema and export. Built by one person, used at real work, dogfooded on itself. Everything in this phase runs on the user's machine and is free. The door to Phase 2 stays open by design — the format is the contract, and nothing in Phase 1 assumes there is no server — but Phase 2 is not designed in detail or built during Phase 1.
+
+**Phase 2 — the hosted, paid product.** The graph held for more than one person and machine, webhooks, bounded asks, the web agent, history, connectors, sync, views; the solo tier and per-signer teams. Started when Phase 1 is in daily use and has users beyond its builder.
+
+Focusing on Phase 1 and leaving the door open is what makes the project tractable for one person.
+
 ## Positioning
 
 **The gap:** the labs and harnesses own execution; the trackers own tickets; nobody owns the model of what the product is, its state, its maturity and why.
@@ -168,7 +176,8 @@ Workflows are **declarative, not procedural**: each stage defines what must be t
 20. Neighbours are undercut as views over one graph, never as rebuilt products; integrations begin as bidirectional sync and end as views.
 21. The shape is a free framework plus a hosted collaboration service (Vercel/Next.js, not acme/Airflow).
 22. The core entities stay domain-agnostic; software-specific concepts live at the edges as evidence and integrations; software is built first because its observed state is machine-readable.
-23. The framework is open source (permissive licence, TBD); the hosted service is proprietary; both are built in parallel from day one. The free framework must be complete on its own — never crippled to push the hosted tier. The hosted service is what sustains the open framework, not what is extracted from it.
+23. The framework is open source (permissive licence, TBD); the hosted service is proprietary. The free framework must be complete on its own — never crippled to push the hosted tier. The hosted service is what sustains the open framework, not what is extracted from it. *(revised 2026-10-07: sequenced, not parallel — see Phases.)*
+24. Two phases: Phase 1 is the open-source framework, built and dogfooded first; Phase 2 is the hosted paid product, started once Phase 1 is in daily use beyond its builder. Phase 1 keeps the door open (the format is the contract) without designing Phase 2.
 
 ## Open questions
 
