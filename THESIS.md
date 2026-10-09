@@ -39,8 +39,9 @@ The customer's question is *"how do I build and maintain my software at various 
 
 - **The free framework is complete on its own.** Never crippled to push the hosted tier. If people trust what is free, they will trust what they pay for.
 - **Build the tool its builder wants to use.** The founder is the first user, dogfooding at real work. This holds while the builder is representative of the market; later users will be less sophisticated, and conversations with them are the correction.
-- **Humans author decisions; agents do everything else.**
+- **A decision is authored by a principal with authority for its scope, and humans set which scopes require a human.** Day one, every scope does. Agents do everything else.
 - **Drift is surfaced, never hidden.**
+- **Humans and agents are the same kind of participant.** A principal is a person or an agent; every record carries its writer; where a human is required is a policy on the tree, not a property of the system.
 - **Prescribe what gets recorded, never how the work is done.**
 
 ---
@@ -134,7 +135,7 @@ The **local MCP** in whatever harness the developer uses; the **web agent** for 
 
 ### Software factories
 
-If agentic development becomes a factory, pjman is not the line — agents are the machines and CI/CD the conveyor — but the systems around it that manufacturing solved decades ago: PLM (the tree and declared state), the bill of materials (the feature tree), the engineering change order (a change with its design record), sign-off by affected functions (derived approvers), the traveler (the record moving with the work), release gates (maturity), inspection criteria and records (rubrics, evidence), the nonconformance report (drift). A factory of agents without a change process produces the wrong things faster. pjman sits at the front of the line and the back, and keeps the door open to whatever factory an organisation assembles in between.
+If agentic development becomes a factory, pjman is not the line — agents are the machines and CI/CD the conveyor — but the systems around it that manufacturing solved decades ago: PLM (the tree and declared state), the bill of materials (the feature tree), the engineering change order (a change with its design record), sign-off by affected functions (derived approvers), the traveler (the record moving with the work), release gates (maturity), inspection criteria and records (rubrics, evidence), the nonconformance report (drift). A factory of agents without a change process produces the wrong things faster. pjman sits at the front of the line and the back, and keeps the door open to whatever factory an organisation assembles in between. When agents coordinate among themselves, they do it through the record — the blackboard — never through messages, so every action is a record with provenance; and because a principal may be a person or an agent, the human line moves up the maturity axis as autonomy grows without the model changing.
 
 ---
 
@@ -186,6 +187,7 @@ Each costs nearly nothing in Phase 1 and a rewrite if ignored.
 - **One writer per layer**, even while the only writer is one person.
 - **Changes point at features; features have parents.** Both fields exist from day one even if unused; the product tree arrives without a migration.
 - **An owner exists from day one**, defaulting to the single user. The field, not the feature.
+- **Every record carries its writer, and a principal may be an agent.** Owners and authorities accept agents from day one, so a factory of agents coordinates through the record without a schema change.
 - **The status vocabulary is data**, with the current one as default, mapped to the org's tool by configuration.
 - **Location is a choice**, resolved per product.
 - **Derivation is code where it can be and the model only where it must be.**
