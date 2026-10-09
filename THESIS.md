@@ -10,6 +10,10 @@ AI agents made execution cheap and competent. They did not make alignment cheap.
 
 pjman is a system of record for a product's **declared state** — what the product is supposed to be, who owns each part, how mature it must be, and why — reconciled continuously against its **observed state** in code and production. Humans author decisions. Agents do everything else.
 
+## How to read this document (2026-10-10)
+
+The substrate is a **context graph**: typed records (changes, features, decisions, sources) with typed edges, under one schema, authored and observed kept apart. It runs in two places without changing shape — as files in git on one person's machine, and as a hosted database for an organisation. The founder's session board is its first instance; the framework (Phase 1) is that graph made instantiable; the hosted product (Phase 2) is that graph made shared. Everything below about ownership, authorities, rubrics, maturity, approvals and the brief is **a layer on the same graph**: more entity and edge types, more readers and writers, on the substrate that already exists. The three distances, precisely: the local graph, the shared graph, the alignment layer over the shared graph. The substrate may eventually carry its own name, separate from the alignment product.
+
 ## The problem it solves
 
 Today, AI tooling is bolted onto processes designed for human-to-human handoffs. Tickets, PRDs and design specs exist because people have limited context and need handoff artefacts. Agents consume context cheaply, but the context is scattered across trackers, design tools, docs, chat and people's heads — and none of it carries authority.
