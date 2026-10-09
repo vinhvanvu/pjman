@@ -33,4 +33,6 @@ Each costs nearly nothing in Phase 1 and a rewrite if ignored.
 - **An owner exists from day one**, defaulting to the single user. The field, not the feature.
 - **The status vocabulary is data**, with the current one as the default, mapped to the org's tool by configuration.
 - **Location is a choice** — in the repository or in user space — resolved per project, with the same record shape in either.
+- **Records are strictly parseable.** Every field and edge a tool reads is in frontmatter; nothing structural lives in prose, so the index can be rebuilt by a scan and the validator can check cross-record rules.
+- **The schema is independent of storage.** Entities, fields, edge types and validation are a spec; Phase 1 implements it over files with an embedded index, Phase 2 over a hosted database, and the library's API is the same against both.
 - **Derivation is code where it can be and the model only where it must be.** Code decides whether a turn took action; the model writes the sentence.
