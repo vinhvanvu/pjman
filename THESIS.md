@@ -149,7 +149,8 @@ Workflows are **declarative, not procedural**: each stage defines what must be t
 
 ## Phases
 
-**Phase 1 — the open-source framework.** The complete single-player product: the declared-state format, the CLI and skills, the MCP server, the merge check, schema and export. Built by one person, used at real work, dogfooded on itself. Everything in this phase runs on the user's machine and is free. The door to Phase 2 stays open by design — the format is the contract, and nothing in Phase 1 assumes there is no server — but Phase 2 is not designed in detail or built during Phase 1.
+
+**The three distances.** The work tool, the framework and the business are one object at three distances: one person's unit-of-work records; the same records instantiable by anyone; the same records shared across people with ownership and authority on top. Project management is not a layer over the developer tool — it is the same record with more readers (a board, a manager, a teammate) and more writers (requests, approvals, a second session) and one more field family (who owns, who signs). The status vocabulary already mirrors Linear's; the "fields other tools read" are already the API between the developer's world and everyone else's.
 
 **Phase 2 — the hosted, paid product.** The graph held for more than one person and machine, webhooks, bounded asks, the web agent, history, connectors, sync, views; the solo tier and per-signer teams. Started when Phase 1 is in daily use and has users beyond its builder.
 
