@@ -96,6 +96,29 @@ Scale is the first axis. Correctness, operability and security are further evide
 6. **Acceptance.** The owner signs a **brief**, not a diff: intent, scope and blast radius, **deviations** from the approved design and the choices the agent made on its own, evidence against the rubric, fitness for the target maturity. The diff is an appendix. The brief is written by a different agent than the one that did the work — separation of duties. Results go back to every authority as *what shipped against what you approved*.
 7. **Sustain.** Drift detection, evidence upkeep, retirement. The maintainer mode, and the most automatable of the four — most of what pjman does on its own.
 
+## Software factories
+
+*(2026-10-08.)* "Software factories" — model the product, generate the code — was a mid-2000s idea that failed because maintaining the models cost more than writing the code. Agents reverse that economics, which is why the idea is back. The lesson survives: the models (declared state) must be cheap to keep true, or the factory stops. Authored-versus-derived is the answer.
+
+pjman is not the factory floor. Agents and harnesses are the machines; CI/CD is the conveyor; the labs build those. pjman is the systems around the line — the ones manufacturing solved decades ago and nobody is building for software:
+
+| Manufacturing | pjman |
+|---|---|
+| PLM (what the product is; revisions) | The tree and the declared state |
+| Bill of materials | The feature tree |
+| Engineering change order (ECO) | A Change with its design record |
+| Sign-off by affected functions on an ECO | Approvers derived from the record's deltas |
+| Traveler (routing sheet moving with the part, signed at each station) | The design record and brief, moving with the change |
+| Stations | Prototyper, developer, scaler, maintainer |
+| Release gates (prototype, pilot, production) | Maturity levels |
+| Inspection criteria | Rubrics |
+| Inspection records | Evidence |
+| Nonconformance report | Drift |
+
+The ECO is pjman's unit of work, and the traveler is what makes stations work without work-in-progress piling up between them — which is why the role split into stations can hold without the prototype-to-production rewrite.
+
+Where the metaphor misleads: factories optimise throughput of a known product, and software produces each feature once. The relevant part of the factory is the engineering department, not the plant. A factory of agents without a change process produces the wrong things faster. pjman sits at the front of the line (what to build, approved) and the back (was it built, accepted); the design keeps the door open to any factory an organisation assembles from harnesses and pipelines in between.
+
 ## Surfaces
 
 - **Local MCP** — the graph where the work happens, in whatever agent the developer uses. Agent-agnostic by design.
