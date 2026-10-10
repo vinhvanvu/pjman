@@ -82,7 +82,7 @@ A *store* is a directory holding `pjman.yaml` plus the enabled layers' folders.
 
 ### Source — `sources/<kind>/<key-slug>.md`
 
-An external thing: a ticket, an issue, a PR, a branch, a repo, a doc, a thread, a design, another graph's node. Created on first mention. Holds what was last *observed* about it.
+A thing outside the store: a ticket, an issue, a PR, a branch, a repo, a doc, a thread, a design, a file in the repository, another graph's node. Created on first mention. Holds what was last *observed* about it.
 
 | Field | A/D | Type | Notes |
 |---|---|---|---|
@@ -94,7 +94,7 @@ An external thing: a ticket, an issue, a PR, a branch, a repo, a doc, a thread, 
 | `observed` | D | map | What the external system last showed. Written only by a sync adapter |
 | `observed_at` | D | timestamp | |
 
-Filename: `key` slugified; long keys (URLs) hashed to a short stable token. The real `key` is in frontmatter.
+Filename: `key` slugified (lower-case; dots, slashes and spaces become hyphens: `THESIS.md` → `thesis-md.md`); long keys (URLs) hashed to a short stable token. The real `key` is in frontmatter.
 
 ### Session — `sessions/<yyyy-mm-dd>-<id8>.md`
 
@@ -110,7 +110,7 @@ A run. Derived, one writer (the adapter that produced it), append-only. Exists a
 Body: free (a log, links).
 
 **Edges:** `links` (source → source); observed edges (session → any edge type, with provenance).
-**Rules:** `(kind, key)` unique among sources; `kind` is in configuration; a session is never hand-edited.
+**Rules:** `(kind, key)` unique among sources; `kind` is in configuration; a session is never hand-edited — with one exception: a store's bootstrap session, written before any adapter exists, marked `ext.bootstrap: true`.
 
 ---
 
@@ -125,7 +125,7 @@ A unit of work. The slug is the bound external key or a short slug; renameable.
 | `title` | A | string | |
 | `status` | A | enum | From the vocabulary |
 | `owner` | A | principal ref | Optional; defaults to `writer`. Layer 4 gives it meaning |
-| `binds` | A | [source id] | Identity: *this change is that ticket*. A source binds at most once |
+| `binds` | A | [source id] | Optional, default empty. Identity: *this change is that ticket*. A source binds at most once |
 | `links` | A | [source id] | Everything else related: docs, threads, PRs, branches. The source's `kind` says what it is |
 
 Body: `## Summary` required (what and why). Everything else — a plan, feedback, notes — is free.
@@ -215,4 +215,8 @@ Not specified. What it will add, so lower layers leave room: `owner` acquires me
 
 ## Counts
 
-Seven record types. Required fields beyond the envelope: principal 2, source 2, session 2, change 3, decision 2 (+2 when decided), product 1, feature 1. One vocabulary. One exception (principal refs by handle). One extension rule.
+Seven record types. Required fields beyond the envelope: principal 2, source 2, session 2, change 2, decision 2 (+2 when decided), product 1, feature 1.
+
+## Walk-through (2026-10-10)
+
+The store at `.pjman/` in this repository is v2 written by hand: twenty-two records. It surfaced four amendments, folded in above (sources are things outside the store, not only external; the slug rule handles dots; `binds` is optional; the bootstrap session exception), and one consequence: `DECISIONS.md` duplicates decision records and should become a view rendered from them. One vocabulary. One exception (principal refs by handle). One extension rule.
