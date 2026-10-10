@@ -1,0 +1,10 @@
+# pjman store configuration
+product: 01a127d2-7897-71a7-b560-d06271b2769d
+layers: [core, sources, work, product]
+source_kinds: [git-repo, file, doc, url, github-pr, github-issue, linear-issue]
+vocabulary:
+  # organisation word -> canonical status
+  implementing: active
+  merged: done
+  closed: dropped
+adapters: []
