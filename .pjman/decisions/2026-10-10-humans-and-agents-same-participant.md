@@ -12,6 +12,6 @@ decided_on: 2026-10-10
 ---
 
 ## Decision
-A principal is a person or an agent; every record carries its writer; owners and authorities may be either. Where a human is required is policy on the tree. Agents coordinate through the record, never through messages. A decision is authored by a principal with authority for its scope, and humans set which scopes require a human.
+A actor is a person or an agent; every record carries its writer; owners and authorities may be either. Where a human is required is policy on the tree. Agents coordinate through the record, never through messages. A decision is authored by a actor with authority for its scope, and humans set which scopes require a human.
 ## Why
 A factory of agents needs accountability per actor without inventing identities; the human line moves up the maturity axis as autonomy grows and the model does not change. (DECISIONS.md 30.)

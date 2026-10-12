@@ -1,6 +1,6 @@
 ---
 id: 01a127d2-7897-76fa-b99c-eda601eb3f77
-type: principal
+type: actor
 writer: person:vinh
 created: 2026-10-10T18:00:00-07:00
 updated: 2026-10-10T18:00:00-07:00
@@ -12,4 +12,4 @@ ext:
   model: claude-fable-5-1
 ---
 
-The harness this store is being built in. A principal is a definition; each run is a session.
+The harness this store is being built in. A actor is a definition; each run is a session.

@@ -15,6 +15,6 @@ links:
 ---
 
 ## Decision
-Five layers (core, sources, work, product, authority), each depending only on those below. The foundation fixes structure only: ids, types, provenance, edges, status, the decided fields. `next`, `goal`, `parent` on change, `evidence` as a field, `claim`, Plan and Feedback sections are pruned to `ext:` or the body. Principals are records; a spawn is a session, never a principal; every write has provenance.
+Five layers (core, sources, work, product, authority), each depending only on those below. The foundation fixes structure only: ids, types, provenance, edges, status, the decided fields. `next`, `goal`, `parent` on change, `evidence` as a field, `claim`, Plan and Feedback sections are pruned to `ext:` or the body. Actors are records; a spawn is a session, never a actor; every write has provenance.
 ## Why
 A foundation others build experiences on (a client, cmux, mods, a custom app) must not pre-decide their content. The extension rule lets core fields grow without collisions. Layering lets a store adopt complexity optionally and keeps the code compartmentalised. (Conversation, 2026-10-10.)

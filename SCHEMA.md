@@ -1,13 +1,13 @@
 # pjman — schema (draft v2, minimal)
 
-*2026-10-10. The record contract at its bare minimum: the structure a foundation must fix, and nothing that is content. Organised in layers; each depends only on the ones below (upper layers reference lower, never the reverse — the edge rule guarantees it). Storage-independent (thesis decision 28). **A** = authored by a principal; **D** = derived, written only by the tool that derives it. Everything not listed here is content and belongs in a record's body or under `ext:`. Draft until walked through on a real change.*
+*2026-10-10. The record contract at its bare minimum: the structure a foundation must fix, and nothing that is content. Organised in layers; each depends only on the ones below (upper layers reference lower, never the reverse — the edge rule guarantees it). Storage-independent (thesis decision 28). **A** = authored by a actor; **D** = derived, written only by the tool that derives it. Everything not listed here is content and belongs in a record's body or under `ext:`. Draft until walked through on a real change.*
 
 ```
 4 · Authority   owners with meaning, authorities, rubrics, bounded asks, maturity grades   (Phase 3 — not specified here)
 3 · Product     product, feature, parents, affects, touches                                (Phase 1: present, optional)
 2 · Work        change, decision, binds, the status vocabulary, drift                      (Phase 1: the product)
 1 · Sources     source, session, links, observed edges                                     (Phase 1: the foundation)
-0 · Core        envelope, principals, provenance, extension rule, index, validation, location
+0 · Core        envelope, actors, provenance, extension rule, index, validation, location
 ```
 
 ---
@@ -19,17 +19,17 @@
 | Field | A/D | Type | Notes |
 |---|---|---|---|
 | `id` | D | uuid v7 | Generated at creation, immutable; what references point at |
-| `type` | D | enum | `principal` · `source` · `session` · `change` · `decision` · `product` · `feature`. Self-describing when a file moves |
-| `writer` | D | principal ref | The actor that created the record |
+| `type` | D | enum | `actor` · `source` · `session` · `change` · `decision` · `product` · `feature`. Self-describing when a file moves |
+| `writer` | D | actor ref | The actor that created the record |
 | `session` | D | session id | Optional: the run that created it. Absent on a hand-written record |
 | `created`, `updated` | D | timestamp | ISO 8601 |
 | `ext` | — | map | The extension namespace (below) |
 
 Every record is a file: YAML frontmatter, Markdown body.
 
-### Principal — `principals/<handle>.md`
+### Actor — `actors/<handle>.md`
 
-An actor: a person or an agent. Created on first mention. **A principal is a definition; a session is a run; a spawn is a session, never a principal.** `agent:claude-code` is a harness; `agent:code-reviewer` is a named agent definition that recurs; a subagent spawned for one task is a session with a `parent`.
+An actor: a person or an agent. Created on first mention. **A actor is a definition; a session is a run; a spawn is a session, never a actor.** `agent:claude-code` is a harness; `agent:code-reviewer` is a named agent definition that recurs; a subagent spawned for one task is a session with a `parent`.
 
 | Field | A/D | Type | Notes |
 |---|---|---|---|
@@ -39,7 +39,7 @@ An actor: a person or an agent. Created on first mention. **A principal is a def
 | `aliases` | A | [string] | Optional former handles, so a rename orphans nothing |
 | `links` | A | [source id] | Optional: a profile, an email, an agent's definition file |
 
-**Reference form.** Principals are referenced by `person:<handle>` / `agent:<handle>`, not by id — the one deliberate exception to id-only references, so `writer: person:vinh` is readable in every file. `aliases` resolves renames.
+**Reference form.** Actors are referenced by `person:<handle>` / `agent:<handle>`, not by id — the one deliberate exception to id-only references, so `writer: person:vinh` is readable in every file. `aliases` resolves renames.
 
 ### Provenance
 
@@ -55,7 +55,7 @@ Folders are named by handle, slug or external key and may be moved or renamed; t
 
 ### Edges
 
-Declared in the frontmatter of the record that made them, as lists of ids (principals by handle ref). Reverse edges are derived and never written. The set of edge types is data; each layer adds its own.
+Declared in the frontmatter of the record that made them, as lists of ids (actors by handle ref). Reverse edges are derived and never written. The set of edge types is data; each layer adds its own.
 
 ### Index
 
@@ -102,7 +102,7 @@ A run. Derived, one writer (the adapter that produced it), append-only. Exists a
 
 | Field | A/D | Type | Notes |
 |---|---|---|---|
-| `agent` | D | principal ref | |
+| `agent` | D | actor ref | |
 | `started` | D | timestamp | |
 | `parent` | D | session id | Optional: the session that spawned this one. A fan-out is a tree |
 | `observed` | D | [edge] | `{edge, from, to, at}` — what this run noticed related to what |
@@ -124,7 +124,7 @@ A unit of work. The slug is the bound external key or a short slug; renameable.
 |---|---|---|---|
 | `title` | A | string | |
 | `status` | A | enum | From the vocabulary |
-| `owner` | A | principal ref | Optional; defaults to `writer`. Layer 4 gives it meaning |
+| `owner` | A | actor ref | Optional; defaults to `writer`. Layer 4 gives it meaning |
 | `binds` | A | [source id] | Optional, default empty. Identity: *this change is that ticket*. A source binds at most once |
 | `links` | A | [source id] | Everything else related: docs, threads, PRs, branches. The source's `kind` says what it is |
 
@@ -134,13 +134,13 @@ Decisions made in the course of the change live in `changes/<slug>/decisions/`.
 
 ### Decision — `changes/<slug>/decisions/<yyyy-mm-dd>-<slug>.md`, or `decisions/` at the store root
 
-The only record a person is expected to write. Opened `proposed`; `decided` when a principal sets it.
+The only record a person is expected to write. Opened `proposed`; `decided` when a actor sets it.
 
 | Field | A/D | Type | Notes |
 |---|---|---|---|
 | `title` | A | string | The decision in one line |
 | `status` | A | enum | `proposed` · `decided` · `superseded` · `reverted` |
-| `decided_by` | A | principal ref | Required when `decided` |
+| `decided_by` | A | actor ref | Required when `decided` |
 | `decided_on` | A | date | Required when `decided` |
 | `change` | A | change id | Optional (absent for product-level decisions) |
 | `supersedes` | A | decision id | Optional |
@@ -181,7 +181,7 @@ Present so `touches` has a target and the tree arrives without a migration. Opti
 | Field | A/D | Type | Notes |
 |---|---|---|---|
 | `title` | A | string | |
-| `owner` | A | principal ref | Optional |
+| `owner` | A | actor ref | Optional |
 
 ### Feature — `features/<slug>/feature.md`
 
@@ -191,7 +191,7 @@ Not defined; only its contract is (decision 25). No `kind`, no typed hierarchy, 
 |---|---|---|---|
 | `title` | A | string | |
 | `parents` | A | [feature id] | Zero or more |
-| `owner` | A | principal ref | Optional; inherits along a single parent line; required with several parents |
+| `owner` | A | actor ref | Optional; inherits along a single parent line; required with several parents |
 | `affects` | A | [feature id] | Optional |
 | `links` | A | [source id] | Optional |
 
@@ -211,26 +211,26 @@ Not specified. What it will add, so lower layers leave room: `owner` acquires me
 
 ## The graph, as a diagram
 
-A view of the records and the edges between them, kept beside the tables so they change together. Every record also carries the envelope (`id`, `type`, `writer → principal`, `session → session`, `created`, `updated`, `ext`), shown once.
+A view of the records and the edges between them, kept beside the tables so they change together. Every record also carries the envelope (`id`, `type`, `writer → actor`, `session → session`, `created`, `updated`, `ext`), shown once.
 
 ```mermaid
 erDiagram
-  ENVELOPE ||--o{ PRINCIPAL : "writer"
+  ENVELOPE ||--o{ ACTOR : "writer"
   ENVELOPE ||--o{ SESSION : "session"
-  SESSION }o--|| PRINCIPAL : "agent"
+  SESSION }o--|| ACTOR : "agent"
   SESSION }o--o| SESSION : "parent"
-  CHANGE }o--|| PRINCIPAL : "owner"
+  CHANGE }o--|| ACTOR : "owner"
   CHANGE }o--o{ SOURCE : "binds (once), links"
   SOURCE }o--o{ SOURCE : "links"
   DECISION }o--o| CHANGE : "change"
-  DECISION }o--|| PRINCIPAL : "decided_by"
+  DECISION }o--|| ACTOR : "decided_by"
   DECISION }o--o| DECISION : "supersedes"
   CHANGE }o--o{ FEATURE : "touches"
   DECISION }o--o{ FEATURE : "touches"
   FEATURE }o--o{ FEATURE : "parents, affects"
-  FEATURE }o--o| PRINCIPAL : "owner"
+  FEATURE }o--o| ACTOR : "owner"
   PRODUCT ||--o{ FEATURE : "contains"
-  PRODUCT }o--o| PRINCIPAL : "owner"
+  PRODUCT }o--o| ACTOR : "owner"
 
   ENVELOPE {
     uuid id
@@ -241,7 +241,7 @@ erDiagram
     time updated
     map ext
   }
-  PRINCIPAL {
+  ACTOR {
     enum kind
     string handle
     string name
@@ -292,7 +292,7 @@ erDiagram
   }
 ```
 
-Layering, for the same records: layer 0 is the envelope and `PRINCIPAL`; layer 1 is `SOURCE` and `SESSION`; layer 2 is `CHANGE` and `DECISION`; layer 3 is `PRODUCT` and `FEATURE`. Every arrow points from a higher layer to the same or a lower one.
+Layering, for the same records: layer 0 is the envelope and `ACTOR`; layer 1 is `SOURCE` and `SESSION`; layer 2 is `CHANGE` and `DECISION`; layer 3 is `PRODUCT` and `FEATURE`. Every arrow points from a higher layer to the same or a lower one.
 
 ## What was pruned from v1, and why
 
@@ -300,8 +300,8 @@ Layering, for the same records: layer 0 is the envelope and `PRINCIPAL`; layer 1
 
 ## Counts
 
-Seven record types. Required fields beyond the envelope: principal 2, source 2, session 2, change 2, decision 2 (+2 when decided), product 1, feature 1.
+Seven record types. Required fields beyond the envelope: actor 2, source 2, session 2, change 2, decision 2 (+2 when decided), product 1, feature 1.
 
 ## Walk-through (2026-10-10)
 
-The store at `.pjman/` in this repository is v2 written by hand: twenty-two records. It surfaced four amendments, folded in above (sources are things outside the store, not only external; the slug rule handles dots; `binds` is optional; the bootstrap session exception), and one consequence: `DECISIONS.md` duplicates decision records and should become a view rendered from them. One vocabulary. One exception (principal refs by handle). One extension rule.
+The store at `.pjman/` in this repository is v2 written by hand: twenty-two records. It surfaced four amendments, folded in above (sources are things outside the store, not only external; the slug rule handles dots; `binds` is optional; the bootstrap session exception), and one consequence: `DECISIONS.md` duplicates decision records and should become a view rendered from them. One vocabulary. One exception (actor refs by handle). One extension rule.
