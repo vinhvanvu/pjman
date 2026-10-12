@@ -209,6 +209,91 @@ Not specified. What it will add, so lower layers leave room: `owner` acquires me
 
 ---
 
+## The graph, as a diagram
+
+A view of the records and the edges between them, kept beside the tables so they change together. Every record also carries the envelope (`id`, `type`, `writer → principal`, `session → session`, `created`, `updated`, `ext`), shown once.
+
+```mermaid
+erDiagram
+  ENVELOPE ||--o{ PRINCIPAL : "writer"
+  ENVELOPE ||--o{ SESSION : "session"
+  SESSION }o--|| PRINCIPAL : "agent"
+  SESSION }o--o| SESSION : "parent"
+  CHANGE }o--|| PRINCIPAL : "owner"
+  CHANGE }o--o{ SOURCE : "binds (once), links"
+  SOURCE }o--o{ SOURCE : "links"
+  DECISION }o--o| CHANGE : "change"
+  DECISION }o--|| PRINCIPAL : "decided_by"
+  DECISION }o--o| DECISION : "supersedes"
+  CHANGE }o--o{ FEATURE : "touches"
+  DECISION }o--o{ FEATURE : "touches"
+  FEATURE }o--o{ FEATURE : "parents, affects"
+  FEATURE }o--o| PRINCIPAL : "owner"
+  PRODUCT ||--o{ FEATURE : "contains"
+  PRODUCT }o--o| PRINCIPAL : "owner"
+
+  ENVELOPE {
+    uuid id
+    enum type
+    ref writer
+    uuid session
+    time created
+    time updated
+    map ext
+  }
+  PRINCIPAL {
+    enum kind
+    string handle
+    string name
+    list aliases
+    list links
+  }
+  SESSION {
+    ref agent
+    time started
+    uuid parent
+    list observed
+  }
+  SOURCE {
+    string kind
+    string key
+    string url
+    string title
+    list links
+    map observed
+    time observed_at
+  }
+  CHANGE {
+    string title
+    enum status
+    ref owner
+    list binds
+    list links
+  }
+  DECISION {
+    string title
+    enum status
+    ref decided_by
+    date decided_on
+    uuid change
+    uuid supersedes
+    list links
+  }
+  PRODUCT {
+    string title
+    ref owner
+  }
+  FEATURE {
+    string title
+    list parents
+    ref owner
+    list affects
+    list links
+  }
+```
+
+Layering, for the same records: layer 0 is the envelope and `PRINCIPAL`; layer 1 is `SOURCE` and `SESSION`; layer 2 is `CHANGE` and `DECISION`; layer 3 is `PRODUCT` and `FEATURE`. Every arrow points from a higher layer to the same or a lower one.
+
 ## What was pruned from v1, and why
 
 `next`, `goal`, `on_behalf_of`, `parent` on change, `evidence` as a field, `claim`, Plan and Feedback as contract sections, observed-edge confidence. All content, or layer 4. Each lives in a body or under `ext:` until a layer needs it as structure.
