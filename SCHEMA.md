@@ -180,7 +180,3 @@ Reverse edges (a change's decisions, a source's change, a change's sessions, a d
 ## Backends
 
 Phase 1 has one backend: files in git, as above. A later backend (a hosted database) must provide the same operations — read, write, validate, query, reconcile — and will have to supply what git supplies here: history, provenance, and merge with typed conflicts. That is a Phase 2 design, not a layer-0 claim.
-
-## What changed from v2, and why
-
-Ids left the files (tokens, readability, agent error rate; reports 01–04). `updated` and the derived-field drift rule were deleted (unimplementable without a baseline; merge conflicts; 01, 02). The layer rule was restated with the envelope exempt and observed edges as evidence (01). `type` and `id` left the envelope (the folder is the type; the index holds ids). Sources became optional records that may exist as keys only (03). `next` returned; `owner`, actors' `aliases` and `links`, layer 3 and 4, two storage locations and "schema independent of storage" moved to Phase 2 (05, 06). `on_behalf_of` returned (06). Session filenames use the harness's id (01, 02). The YAML quoting rule and `pjman fmt` were added (03). The index became a stated SQLite backend with conflict records (02). After review of v3: `aliases` and `pjman mv` were added so keys survive renames; the store became a git repository in either of two modes, in-project or standalone, since a standalone store is what the founder's job requires and what Phase 2 syncs with.
