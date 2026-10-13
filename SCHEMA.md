@@ -68,7 +68,8 @@ Body: `## Log`, append-only, one entry per turn that took action. Code decides w
 
 - Frontmatter parses under the YAML rule: any scalar containing `: `, `#`, or starting with a special character is quoted. `pjman fmt` normalises; `pjman validate` reports.
 - Required fields present; enums in range; every referenced key resolves (sources exempt); a `superseded` decision is pointed at by a newer decision's `supersedes`; a `decided` decision has `decided_by` and `decided_on`.
-- Uniqueness: one folder per change slug; one source per canonical key (kind lower-cased; URL keys normalised; ticket keys verbatim).
+- Uniqueness: one folder per change slug (the tool refuses a second; two machines creating the same slug meet a git add/add conflict at merge, visible, never silent); one decision slug per change folder; one source per canonical key (kind lower-cased; URL keys normalised; ticket keys verbatim); one actor record per handle.
+- Renames go through `pjman mv <old> <new>`: the folder moves, the old slug is appended to `aliases`, and every reference in the store is rewritten in one commit. Keys make renames a tool operation where ids made them free; `aliases` keeps stale references resolvable in between.
 - An invalid record is reported with its path and reason, never dropped silently; a reference to a record that exists but fails to parse is "resolved, invalid", not "missing".
 - Nothing in `ext` is validated.
 
@@ -82,7 +83,16 @@ SQLite, in `.pjman/index.db`, git-ignored, rebuilt from the records by `pjman in
 
 ### Location and configuration
 
-Phase 1: `.pjman/` at the repository root, holding `pjman.yaml`, `changes/`, `decisions/`, `sources/`, `sessions/`, `actors/`, and `index.db` (ignored). `pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`. Configuration is never in a record. Other locations are a Phase 2 question.
+A **store** is a git repository (or a tracked directory within one) holding `pjman.yaml`, `changes/`, `decisions/`, `sources/`, `sessions/`, `actors/`, and `index.db` (ignored). Which repository is a choice made at `pjman init`:
+
+| Mode | Where | History |
+|---|---|---|
+| **In-project** | `<repo>/.pjman/`, tracked | The project's commits; a decision can be reviewed in the same PR as the work |
+| **Standalone** | `~/.pjman/stores/<name>/`, its own repository, bound to one or more project paths in `~/.pjman/config.yaml` | Its own; pushed to its own private remote or not at all. The project repository is untouched; sessions never appear in product PRs |
+
+Resolution: walk up from the working directory for a tracked `.pjman/`; else the user map; else none. The record shape is identical in both modes. Everything this schema says about provenance, history and merge holds in either; only whose history differs.
+
+`pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`. Configuration is never in a record.
 
 ---
 
@@ -115,6 +125,7 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
 | `next` | A | The handoff: the next action. What resume reads first |
+| `aliases` | A | Former slugs, appended by `pjman mv`. A reference to an alias resolves and is reported as "resolves via alias" |
 
 Body: `## Summary` (required), `## Plan` (optional; or `plan.md` beside it), anything else free. Decisions made in the course of the change live in `changes/<slug>/decisions/`.
 
@@ -168,4 +179,4 @@ Phase 1 has one backend: files in git, as above. A later backend (a hosted datab
 
 ## What changed from v2, and why
 
-Ids left the files (tokens, readability, agent error rate; reports 01–04). `updated` and the derived-field drift rule were deleted (unimplementable without a baseline; merge conflicts; 01, 02). The layer rule was restated with the envelope exempt and observed edges as evidence (01). `type` and `id` left the envelope (the folder is the type; the index holds ids). Sources became optional records that may exist as keys only (03). `next` returned; `owner`, actors' `aliases` and `links`, layer 3 and 4, two storage locations and "schema independent of storage" moved to Phase 2 (05, 06). `on_behalf_of` returned (06). Session filenames use the harness's id (01, 02). The YAML quoting rule and `pjman fmt` were added (03). The index became a stated SQLite backend with conflict records (02).
+Ids left the files (tokens, readability, agent error rate; reports 01–04). `updated` and the derived-field drift rule were deleted (unimplementable without a baseline; merge conflicts; 01, 02). The layer rule was restated with the envelope exempt and observed edges as evidence (01). `type` and `id` left the envelope (the folder is the type; the index holds ids). Sources became optional records that may exist as keys only (03). `next` returned; `owner`, actors' `aliases` and `links`, layer 3 and 4, two storage locations and "schema independent of storage" moved to Phase 2 (05, 06). `on_behalf_of` returned (06). Session filenames use the harness's id (01, 02). The YAML quoting rule and `pjman fmt` were added (03). The index became a stated SQLite backend with conflict records (02). After review of v3: `aliases` and `pjman mv` were added so keys survive renames; the store became a git repository in either of two modes, in-project or standalone, since a standalone store is what the founder's job requires and what Phase 2 syncs with.
