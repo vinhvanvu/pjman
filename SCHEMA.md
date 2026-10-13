@@ -1,116 +1,106 @@
-# pjman — schema (draft v2, minimal)
+# pjman — schema v3 (Phase 1)
 
-*2026-10-10. The record contract at its bare minimum: the structure a foundation must fix, and nothing that is content. Organised in layers; each depends only on the ones below (upper layers reference lower, never the reverse — the edge rule guarantees it). Storage-independent (thesis decision 28). **A** = authored by a actor; **D** = derived, written only by the tool that derives it. Everything not listed here is content and belongs in a record's body or under `ext:`. Draft until walked through on a real change.*
+*2026-10-12. The record contract for Phase 1, after adversarial round 1 (`reviews/2026-10-11-schema-adversarial/`). Phase 1 is layers 0–2: core, sources, work. Layer 3 (product, features) and layer 4 (authority) are not specified here; the Phase 2 target that includes them is `SCHEMA-PHASE2.md` when it is written. Fields are marked **A** (authored by an actor on intent; may be hand-edited) or **M** (maintained by one named writer — an adapter or the tool; hand edits are reported, not forbidden). There is no "derived and checked" class: nothing in a record is verified against what a tool previously wrote.*
 
 ```
-4 · Authority   owners with meaning, authorities, rubrics, bounded asks, maturity grades   (Phase 3 — not specified here)
-3 · Product     product, feature, parents, affects, touches                                (Phase 1: present, optional)
-2 · Work        change, decision, binds, the status vocabulary, drift                      (Phase 1: the product)
-1 · Sources     source, session, links, observed edges                                     (Phase 1: the foundation)
-0 · Core        envelope, actors, provenance, extension rule, index, validation, location
+2 · Work      change, decision, the status vocabulary
+1 · Sources   source
+0 · Core      references, actors, sessions, the envelope, validation, the index, location, configuration
 ```
+
+A record may reference records of its own layer or a lower one. The envelope's `writer` and `session` are provenance, not domain edges, and are exempt. An observed edge is a record *of* an edge between two other records; it must be a valid edge type between its endpoints' layers, and it is evidence, never truth.
 
 ---
 
 ## Layer 0 · Core
 
+### References are keys, not ids
+
+Inside records, every reference is a human-readable key. Ids exist only in the index.
+
+| Kind | Key form | Example |
+|---|---|---|
+| actor | `person:<handle>` · `agent:<handle>` | `person:vinh`, `agent:claude-code` |
+| change | `change:<slug>` | `change:schema` |
+| decision | `decision:<change-slug>/<decision-slug>` · `decision:/<slug>` for store-level | `decision:schema/layered-minimal` |
+| source | `<kind>:<key>` | `linear:ABC-1234`, `github-pr:acme/app#123`, `file:THESIS.md`, `url:https://…` |
+| session | `session:<harness-session-id>` | `session:8b4adf71-…` |
+
+A key is resolved by the tool; a reference to a record that does not exist is a validation error — except a **source**, which may exist only as a key (see layer 1).
+
 ### The envelope — every record
 
-| Field | A/D | Type | Notes |
-|---|---|---|---|
-| `id` | D | uuid v7 | Generated at creation, immutable; what references point at |
-| `type` | D | enum | `actor` · `source` · `session` · `change` · `decision` · `product` · `feature`. Self-describing when a file moves |
-| `writer` | D | actor ref | The actor that created the record |
-| `session` | D | session id | Optional: the run that created it. Absent on a hand-written record |
-| `created`, `updated` | D | timestamp | ISO 8601 |
-| `ext` | — | map | The extension namespace (below) |
+| Field | A/M | Notes |
+|---|---|---|
+| `writer` | M | The actor that created the record, when a tool or adapter created it. Absent on a hand-written record |
+| `session` | M | The session that created it, when an adapter created it. Absent otherwise |
+| `created` | M | Date. Set by the tool at creation; a hand-written record may set it |
+| `ext` | — | Extension namespace, `ext.<owner>.<field>`, one writer per `<owner>` subtree. Preserved structurally (a YAML round-trip may reformat it); never validated |
 
-Every record is a file: YAML frontmatter, Markdown body.
+No `id`, no `type` (the folder is the type), no `updated` (git has it).
 
-### Actor — `actors/<handle>.md`
+### Actor — `actors/<handle>.md`, optional
 
-An actor: a person or an agent. Created on first mention. **A actor is a definition; a session is a run; a spawn is a session, never a actor.** `agent:claude-code` is a harness; `agent:code-reviewer` is a named agent definition that recurs; a subagent spawned for one task is a session with a `parent`.
+A record for an actor exists only when there is something to say about one. References to `person:x` / `agent:x` do not require a record. **An actor is a definition; a session is a run; a spawn is a session, never an actor.**
 
-| Field | A/D | Type | Notes |
-|---|---|---|---|
-| `kind` | A | enum | `person` · `agent` |
-| `handle` | A | string | The key: `vinh`, `claude-code`, `code-reviewer` |
-| `name` | A | string | Optional display name |
-| `aliases` | A | [string] | Optional former handles, so a rename orphans nothing |
-| `links` | A | [source id] | Optional: a profile, an email, an agent's definition file |
+| Field | A/M | Notes |
+|---|---|---|
+| `kind` | A | `person` · `agent` |
+| `name` | A | Optional |
+| `url` | A | Optional: a profile, an agent's definition. A scalar, not an edge |
 
-**Reference form.** Actors are referenced by `person:<handle>` / `agent:<handle>`, not by id — the one deliberate exception to id-only references, so `writer: person:vinh` is readable in every file. `aliases` resolves renames.
+### Session — `sessions/<yyyy-mm-dd>-<harness-session-id>.md`
+
+A run. Written by one adapter; append-only; never hand-edited (a store's bootstrap session, if any, says so in its body).
+
+| Field | A/M | Notes |
+|---|---|---|
+| `agent` | M | Actor key |
+| `on_behalf_of` | M | Actor key: the person the run worked for |
+| `started` | M | Timestamp |
+| `parent` | M | Session key, optional: the run that spawned this one |
+| `changes` | M | Change keys bound during the run, in order |
+| `observed` | M | List of `{edge, from, to, at}` — edges the run noticed; keys, not ids |
+
+Body: `## Log`, append-only, one entry per turn that took action. Code decides whether a turn took action; a model may write the sentence.
+
+### Validation — the tool is the schema
+
+- Frontmatter parses under the YAML rule: any scalar containing `: `, `#`, or starting with a special character is quoted. `pjman fmt` normalises; `pjman validate` reports.
+- Required fields present; enums in range; every referenced key resolves (sources exempt); a `superseded` decision is pointed at by a newer decision's `supersedes`; a `decided` decision has `decided_by` and `decided_on`.
+- Uniqueness: one folder per change slug; one source per canonical key (kind lower-cased; URL keys normalised; ticket keys verbatim).
+- An invalid record is reported with its path and reason, never dropped silently; a reference to a record that exists but fails to parse is "resolved, invalid", not "missing".
+- Nothing in `ext` is validated.
+
+### The index
+
+SQLite, in `.pjman/index.db`, git-ignored, rebuilt from the records by `pjman index`, disposable. It mints and holds ids (UUID v7) for every record and maps keys to them; it holds reverse edges and the query surface. If two changes bind one source, or two records resolve to one key, the index records a **conflict** and reports it; nothing wins silently.
 
 ### Provenance
 
-**Every write has provenance.** A record knows its `writer` and `session`; a session knows its `parent` and its `agent`. In Phase 1 git provides the rest for free: `git blame` gives field-level history, and an adapter that commits records writes a `Pjman-Session: <id>` trailer on the commit. A hosted implementation must provide the same through an audit log. This is a layer-0 requirement, not a feature.
+`writer` and `session` on records that adapters write; `parent`, `agent`, `on_behalf_of` on sessions; git for the rest. An adapter that commits records adds a `Pjman-Session: <id>` trailer. Provenance is a property of the Phase 1 backend (files in git), not a claim about every backend.
 
-### The extension rule
+### Location and configuration
 
-Any frontmatter key the schema does not define is allowed, preserved byte-for-byte, ignored by validation, and readable through the index, under one namespace: `ext:`. Adapters and views keep their fields there (`ext.next`, `ext.branch`, `ext.cmux_workspace`, `ext.model`). Core fields can grow later without colliding. The foundation never needs to know what a sidebar wants.
-
-### Identity
-
-Folders are named by handle, slug or external key and may be moved or renamed; the index re-resolves by `id`. The CLI accepts a full id, a unique prefix, a slug, a handle, or a bound external key. Humans never type a UUID.
-
-### Edges
-
-Declared in the frontmatter of the record that made them, as lists of ids (actors by handle ref). Reverse edges are derived and never written. The set of edge types is data; each layer adds its own.
-
-### Index
-
-Rebuilt from the records; disposable; the only thing queries hit.
-
-### Validation — the CLI is the schema
-
-Frontmatter parses; required fields present; enums in range; ids well-formed; every referenced id or handle exists; derived fields match what their deriver last wrote (a hand edit to a derived field is drift); `ext:` is never validated; invalid records are reported, never silently skipped. Each layer adds rules.
-
-### Location
-
-A *store* is a directory holding `pjman.yaml` plus the enabled layers' folders.
-- In the repository: `.pjman/` at the repository root.
-- In user space: `~/.pjman/stores/<slug>/`, with `~/.pjman/config.yaml` mapping paths or repositories to stores.
-- Resolution: walk up from the working directory for `.pjman/`; else the user map; else none. The same shape in either.
-
-### Configuration — `pjman.yaml`
-
-`layers:` enabled · `vocabulary:` the status map (layer 2) · `source_kinds:` (layer 1) · adapters. Configuration is never in a record.
+Phase 1: `.pjman/` at the repository root, holding `pjman.yaml`, `changes/`, `decisions/`, `sources/`, `sessions/`, `actors/`, and `index.db` (ignored). `pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`. Configuration is never in a record. Other locations are a Phase 2 question.
 
 ---
 
 ## Layer 1 · Sources
 
-### Source — `sources/<kind>/<key-slug>.md`
+### Source — `sources/<kind>/<key-slug>.md`, optional per source
 
-A thing outside the store: a ticket, an issue, a PR, a branch, a repo, a doc, a thread, a design, a file in the repository, another graph's node. Created on first mention. Holds what was last *observed* about it.
+A thing outside the store: a ticket, a PR, a branch, a repo, a doc, a thread, a file in the repository. **A source may exist only as a key** — `links: [github-pr:acme/app#123]` is complete without a file. A record is created when there is something to say about the source, or when a sync adapter (Phase 2) has observed it.
 
-| Field | A/D | Type | Notes |
-|---|---|---|---|
-| `kind` | A | string | From `source_kinds` in configuration |
-| `key` | A | string | The external identifier: `ABC-1234`, `org/repo#123`, a URL |
-| `url` | A | string | Optional |
-| `title` | A/D | string | Optional; authored on creation, refreshed by sync |
-| `links` | A | [source id] | Optional: sources this one refers to |
-| `observed` | D | map | What the external system last showed. Written only by a sync adapter |
-| `observed_at` | D | timestamp | |
+| Field | A/M | Notes |
+|---|---|---|
+| `kind` | A | From `source_kinds` |
+| `key` | A | Verbatim external identifier |
+| `title` | A | Optional |
+| `url` | A | Optional |
+| `links` | A | Optional: source keys this source refers to |
 
-Filename: `key` slugified (lower-case; dots, slashes and spaces become hyphens: `THESIS.md` → `thesis-md.md`); long keys (URLs) hashed to a short stable token. The real `key` is in frontmatter.
-
-### Session — `sessions/<yyyy-mm-dd>-<id8>.md`
-
-A run. Derived, one writer (the adapter that produced it), append-only. Exists as the home for observed edges with provenance; everything else a run wants to record is `ext:` or body.
-
-| Field | A/D | Type | Notes |
-|---|---|---|---|
-| `agent` | D | actor ref | |
-| `started` | D | timestamp | |
-| `parent` | D | session id | Optional: the session that spawned this one. A fan-out is a tree |
-| `observed` | D | [edge] | `{edge, from, to, at}` — what this run noticed related to what |
-
-Body: free (a log, links).
-
-**Edges:** `links` (source → source); observed edges (session → any edge type, with provenance).
-**Rules:** `(kind, key)` unique among sources; `kind` is in configuration; a session is never hand-edited — with one exception: a store's bootstrap session, written before any adapter exists, marked `ext.bootstrap: true`.
+Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. Observed state (`observed`, `observed_at`) is Phase 2, with the first sync adapter; until then a source holds nothing an adapter wrote.
 
 ---
 
@@ -118,190 +108,64 @@ Body: free (a log, links).
 
 ### Change — `changes/<slug>/change.md`
 
-A unit of work. The slug is the bound external key or a short slug; renameable.
+| Field | A/M | Notes |
+|---|---|---|
+| `title` | A | |
+| `status` | A | One canonical word from the vocabulary |
+| `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
+| `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
+| `next` | A | The handoff: the next action. What resume reads first |
 
-| Field | A/D | Type | Notes |
-|---|---|---|---|
-| `title` | A | string | |
-| `status` | A | enum | From the vocabulary |
-| `owner` | A | actor ref | Optional; defaults to `writer`. Layer 4 gives it meaning |
-| `binds` | A | [source id] | Optional, default empty. Identity: *this change is that ticket*. A source binds at most once |
-| `links` | A | [source id] | Everything else related: docs, threads, PRs, branches. The source's `kind` says what it is |
+Body: `## Summary` (required), `## Plan` (optional; or `plan.md` beside it), anything else free. Decisions made in the course of the change live in `changes/<slug>/decisions/`.
 
-Body: `## Summary` required (what and why). Everything else — a plan, feedback, notes — is free.
+### Decision — `changes/<slug>/decisions/<yyyy-mm-dd>-<slug>.md`, or `decisions/<yyyy-mm-dd>-<slug>.md` at the store root
 
-Decisions made in the course of the change live in `changes/<slug>/decisions/`.
+Opened `proposed` before the work it governs; `decided` when an actor sets it. A decision written after the fact is allowed and is the pattern the test tallies against.
 
-### Decision — `changes/<slug>/decisions/<yyyy-mm-dd>-<slug>.md`, or `decisions/` at the store root
+| Field | A/M | Notes |
+|---|---|---|
+| `title` | A | |
+| `status` | A | `proposed` · `decided` · `superseded` · `reverted` |
+| `decided_by` | A | Actor key; required when `decided` |
+| `decided_on` | A | Date; required when `decided` |
+| `supersedes` | A | Optional decision key |
+| `links` | A | Optional source keys |
 
-The only record a person is expected to write. Opened `proposed`; `decided` when a actor sets it.
+Body: `## Decision`, `## Why`; anything else free.
 
-| Field | A/D | Type | Notes |
-|---|---|---|---|
-| `title` | A | string | The decision in one line |
-| `status` | A | enum | `proposed` · `decided` · `superseded` · `reverted` |
-| `decided_by` | A | actor ref | Required when `decided` |
-| `decided_on` | A | date | Required when `decided` |
-| `change` | A | change id | Optional (absent for product-level decisions) |
-| `supersedes` | A | decision id | Optional |
-| `links` | A | [source id] | Optional |
-
-Body: `## Decision` (what), `## Why` (rationale). Anything else is free.
-
-### Status vocabulary — default, mapped in configuration
+### Status vocabulary
 
 | Status | Meaning |
 |---|---|
 | `open` | Declared; nobody working on it |
 | `planning` | Being shaped |
 | `active` | Work underway |
-| `blocked` | Waiting on something |
+| `blocked` | Waiting on something named in `next` |
 | `review` | Work complete, awaiting acceptance |
 | `done` | Accepted |
 | `dropped` | Closed without acceptance |
 
-`vocabulary:` in `pjman.yaml` maps an organisation's words onto these (`implementing: active`, `merged: done`, a tracker's state names). Views read the canonical set.
-
-### Drift
-
-A bound source's `observed.status`, mapped through the vocabulary, disagreeing with the change's `status` is drift. The index reports it; nothing resolves it silently.
-
-**Edges:** `binds` (change → source), `links` (change · decision → source), `change` (decision → change), `supersedes` (decision → decision). Session `observed` edges may have a change as `from`.
-**Derived:** a change's decisions; a source's change; a change's sessions; a decision's superseded-by.
-**Rules:** a source binds at most once; `status` in the vocabulary; a `decided` decision has `decided_by` and `decided_on`; a `superseded` decision is pointed at by a newer one's `supersedes`.
+The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names) onto it for adapters and views. Approval and in-effect states are Phase 3's.
 
 ---
 
-## Layer 3 · Product
+## Edges, in one place
 
-Present so `touches` has a target and the tree arrives without a migration. Optional until a feature is declared.
-
-### Product — `product.md` (one per store)
-
-| Field | A/D | Type | Notes |
+| Edge | From → To | Declared on | Rule |
 |---|---|---|---|
-| `title` | A | string | |
-| `owner` | A | actor ref | Optional |
+| `binds` | change → source | change | a source binds at most one change |
+| `links` | change · decision · source → source | the referrer | — |
+| `supersedes` | decision → decision | decision | the target becomes `superseded`; no cycles |
+| `parent` | session → session | session | — |
+| `changes` | session → change | session | — |
+| observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule |
 
-### Feature — `features/<slug>/feature.md`
+Reverse edges (a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
 
-Not defined; only its contract is (decision 25). No `kind`, no typed hierarchy, unlimited depth.
+## Backends
 
-| Field | A/D | Type | Notes |
-|---|---|---|---|
-| `title` | A | string | |
-| `parents` | A | [feature id] | Zero or more |
-| `owner` | A | actor ref | Optional; inherits along a single parent line; required with several parents |
-| `affects` | A | [feature id] | Optional |
-| `links` | A | [source id] | Optional |
+Phase 1 has one backend: files in git, as above. A later backend (a hosted database) must provide the same operations — read, write, validate, query, reconcile — and will have to supply what git supplies here: history, provenance, and merge with typed conflicts. That is a Phase 2 design, not a layer-0 claim.
 
-Body: `## Summary`.
+## What changed from v2, and why
 
-**Edges:** `touches` (change · decision → feature), `parents`, `affects` (feature → feature).
-**Derived:** children; where-used; a feature's changes and decisions.
-**Rules:** no cycle in `parents`; several `parents` ⇒ own `owner`; mappings to code are derived and never create features.
-
----
-
-## Layer 4 · Authority — Phase 3
-
-Not specified. What it will add, so lower layers leave room: `owner` acquires meaning (whose signature); authority records with scopes; approvers derived from `touches` and `affects`; `default` and `due` on a decision (the bounded ask); rubric records; `evidence` as a distinct edge that acceptance reads; `claim` on a feature graded against evidence; which scopes require a human as policy on the tree (decision 30).
-
----
-
-## The graph, as a diagram
-
-A view of the records and the edges between them, kept beside the tables so they change together. Every record also carries the envelope (`id`, `type`, `writer → actor`, `session → session`, `created`, `updated`, `ext`), shown once.
-
-```mermaid
-erDiagram
-  ENVELOPE ||--o{ ACTOR : "writer"
-  ENVELOPE ||--o{ SESSION : "session"
-  SESSION }o--|| ACTOR : "agent"
-  SESSION }o--o| SESSION : "parent"
-  CHANGE }o--|| ACTOR : "owner"
-  CHANGE }o--o{ SOURCE : "binds (once), links"
-  SOURCE }o--o{ SOURCE : "links"
-  DECISION }o--o| CHANGE : "change"
-  DECISION }o--|| ACTOR : "decided_by"
-  DECISION }o--o| DECISION : "supersedes"
-  CHANGE }o--o{ FEATURE : "touches"
-  DECISION }o--o{ FEATURE : "touches"
-  FEATURE }o--o{ FEATURE : "parents, affects"
-  FEATURE }o--o| ACTOR : "owner"
-  PRODUCT ||--o{ FEATURE : "contains"
-  PRODUCT }o--o| ACTOR : "owner"
-
-  ENVELOPE {
-    uuid id
-    enum type
-    ref writer
-    uuid session
-    time created
-    time updated
-    map ext
-  }
-  ACTOR {
-    enum kind
-    string handle
-    string name
-    list aliases
-    list links
-  }
-  SESSION {
-    ref agent
-    time started
-    uuid parent
-    list observed
-  }
-  SOURCE {
-    string kind
-    string key
-    string url
-    string title
-    list links
-    map observed
-    time observed_at
-  }
-  CHANGE {
-    string title
-    enum status
-    ref owner
-    list binds
-    list links
-  }
-  DECISION {
-    string title
-    enum status
-    ref decided_by
-    date decided_on
-    uuid change
-    uuid supersedes
-    list links
-  }
-  PRODUCT {
-    string title
-    ref owner
-  }
-  FEATURE {
-    string title
-    list parents
-    ref owner
-    list affects
-    list links
-  }
-```
-
-Layering, for the same records: layer 0 is the envelope and `ACTOR`; layer 1 is `SOURCE` and `SESSION`; layer 2 is `CHANGE` and `DECISION`; layer 3 is `PRODUCT` and `FEATURE`. Every arrow points from a higher layer to the same or a lower one.
-
-## What was pruned from v1, and why
-
-`next`, `goal`, `on_behalf_of`, `parent` on change, `evidence` as a field, `claim`, Plan and Feedback as contract sections, observed-edge confidence. All content, or layer 4. Each lives in a body or under `ext:` until a layer needs it as structure.
-
-## Counts
-
-Seven record types. Required fields beyond the envelope: actor 2, source 2, session 2, change 2, decision 2 (+2 when decided), product 1, feature 1.
-
-## Walk-through (2026-10-10)
-
-The store at `.pjman/` in this repository is v2 written by hand: twenty-two records. It surfaced four amendments, folded in above (sources are things outside the store, not only external; the slug rule handles dots; `binds` is optional; the bootstrap session exception), and one consequence: `DECISIONS.md` duplicates decision records and should become a view rendered from them. One vocabulary. One exception (actor refs by handle). One extension rule.
+Ids left the files (tokens, readability, agent error rate; reports 01–04). `updated` and the derived-field drift rule were deleted (unimplementable without a baseline; merge conflicts; 01, 02). The layer rule was restated with the envelope exempt and observed edges as evidence (01). `type` and `id` left the envelope (the folder is the type; the index holds ids). Sources became optional records that may exist as keys only (03). `next` returned; `owner`, actors' `aliases` and `links`, layer 3 and 4, two storage locations and "schema independent of storage" moved to Phase 2 (05, 06). `on_behalf_of` returned (06). Session filenames use the harness's id (01, 02). The YAML quoting rule and `pjman fmt` were added (03). The index became a stated SQLite backend with conflict records (02).
