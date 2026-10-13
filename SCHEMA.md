@@ -90,7 +90,11 @@ A **store** is a git repository (or a tracked directory within one) holding `pjm
 | **In-project** | `<repo>/.pjman/`, tracked | The project's commits; a decision can be reviewed in the same PR as the work |
 | **Standalone** | `~/.pjman/stores/<name>/`, its own repository, bound to one or more project paths in `~/.pjman/config.yaml` | Its own; pushed to its own private remote or not at all. The project repository is untouched; sessions never appear in product PRs |
 
+`pjman init` defaults to **standalone** (the tool never touches a project's repository unless asked); `--in-project` opts in; `--dir` chooses the standalone location; the store's name defaults to the project folder's.
+
 Resolution: walk up from the working directory for a tracked `.pjman/`; else the user map; else none. The record shape is identical in both modes. Everything this schema says about provenance, history and merge holds in either; only whose history differs.
+
+**Git policy.** The tool shells out to git for four things and wraps nothing else: `init` (initialise a standalone store; ignore `index.db`), `mv` (stage the rename so history follows), reading history for views and provenance, and committing — in **standalone** mode the tool commits after every write it makes, with a `Pjman-Session:` trailer when a session is known; in **in-project** mode it never commits, the project's own workflow does. Branches, remotes, push and merge are the user's. Git on `PATH` is the only dependency.
 
 `pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`. Configuration is never in a record.
 
