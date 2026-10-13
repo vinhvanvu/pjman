@@ -9,8 +9,9 @@ import { init } from '../commands/init.js';
 import { mv } from '../commands/mv.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
+import { set } from '../commands/set.js';
 import { changeContext } from '../commands/view.js';
-import { findStore, type Store } from '../config.js';
+import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
 import { validate } from '../validate.js';
@@ -41,6 +42,8 @@ test('init standalone creates its own repository and binds the project', () => {
   assert.ok(found);
   store = found;
   assert.equal(store.mode, 'standalone');
+  writeStoreConfig(store.root, { ...store.config, vocabulary: { merged: 'done' } });
+  store = findStore(project)!;
   assert.equal(git(store.root, 'log', '--format=%s'), 'pjman: init store project');
   assert.ok(fs.existsSync(path.join(store.root, '.gitignore')));
 });
@@ -103,6 +106,18 @@ test('validate reports hand-written faults by path and reason, never drops', () 
   const after = validate(loadStore(store)).filter((p) => p.path === 'changes/hand/change.md').map((p) => p.message);
   assert.deepEqual(after, ["body is missing the '## Summary' section"]);
   fs.rmSync(path.join(store.root, 'changes/hand'), { recursive: true });
+});
+
+test('set changes authored fields and refuses what would not validate', () => {
+  const r = set(store, 'change:alpha', ['status=active', 'next=write the plan: soon', 'links=file:A.md,file:B.md'], {});
+  assert.deepEqual(r.changed, ['status', 'next', 'links']);
+  const rec = loadStore(store).byKey.get('change:alpha')![0];
+  assert.equal(rec.data.status, 'active');
+  assert.deepEqual(rec.data.links, ['file:A.md', 'file:B.md']);
+  assert.match(fs.readFileSync(rec.abs, 'utf8'), /^next: "write the plan: soon"$/m);
+  assert.throws(() => set(store, 'change:alpha', ['status=merged'], {}), /maps it to 'done'/);
+  assert.equal(loadStore(store).byKey.get('change:alpha')![0].data.status, 'active');
+  assert.throws(() => set(store, 'session:sess-1', ['agent=agent:x'], {}), /append-only/);
 });
 
 test('mv renames the folder, leaves an alias, rewrites references', () => {

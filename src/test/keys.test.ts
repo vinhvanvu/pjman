@@ -7,6 +7,8 @@ test('keys split at the first colon', () => {
   assert.equal(parseKey('nokey'), null);
   assert.equal(parseKey(':x'), null);
   assert.equal(parseKey('a b:c'), null);
+  assert.equal(parseKey('file: x'), null);
+  assert.equal(parseKey('file:reports/a b.md')?.rest, 'reports/a b.md');
   assert.equal(parseKey(42), null);
 });
 

@@ -1,13 +1,10 @@
 ---
-id: 01a127d2-7897-7916-a2eb-ad739faa5273
-type: source
-writer: person:vinh
-session: 01a127d2-7897-7590-bf0f-b16c7d82fc78
-created: 2026-10-10T18:00:00-07:00
-updated: 2026-10-10T18:00:00-07:00
 kind: git-repo
 key: vinhvanvu/pjman
 title: The pjman repository
+writer: agent:claude-code
+session: session:8b4adf71-3b40-4665-956a-d2abae55f01c
+created: 2026-10-05
 ---
 
-Local for now; the private GitHub repository when it is created.
+Local only; private until the public step.

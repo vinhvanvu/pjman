@@ -1,13 +1,8 @@
 ---
-id: 01a127d2-7897-7129-a403-ca886307e862
-type: source
-writer: person:vinh
-session: 01a127d2-7897-7590-bf0f-b16c7d82fc78
-created: 2026-10-10T18:00:00-07:00
-updated: 2026-10-10T18:00:00-07:00
 kind: file
 key: LAYERS.md
-title: Layers catalog
+title: "Layers catalog: the most popular technology at each layer"
+writer: agent:claude-code
+session: session:8b4adf71-3b40-4665-956a-d2abae55f01c
+created: 2026-10-09
 ---
-
-Layers catalog

@@ -18,7 +18,8 @@ export function parseKey(raw: unknown): Key | null {
   if (i <= 0) return null;
   const kind = raw.slice(0, i);
   const rest = raw.slice(i + 1);
-  if (!/^[a-z][a-z0-9-]*$/.test(kind) || rest.length === 0 || /\s/.test(rest)) return null;
+  // interior spaces are allowed (file paths have them); leading/trailing whitespace and line breaks are not
+  if (!/^[a-z][a-z0-9-]*$/.test(kind) || !/^\S(.*\S)?$/.test(rest) || /[\t\r\n]/.test(rest)) return null;
   return { kind, rest, raw };
 }
 

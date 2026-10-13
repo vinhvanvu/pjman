@@ -1,26 +1,15 @@
 ---
-id: 01a127d2-7897-731b-a4f0-670b9078ddd0
-type: change
-writer: person:vinh
-session: 01a127d2-7897-7590-bf0f-b16c7d82fc78
-created: 2026-10-10T18:00:00-07:00
-updated: 2026-10-10T18:00:00-07:00
-title: The schema — the record contract as a spec
-status: active
-owner: person:vinh
-binds: []
+title: "The schema: the record contract"
+status: done
 links:
-  - 01a127d2-7897-76b9-a84f-817c3d0667d9
-  - 01a127d2-7897-7374-972d-c956cffd0735
-  - 01a127d2-7897-7129-a403-ca886307e862
-  - 01a127d2-7897-780b-a235-13f2b0df024e
+  - file:SCHEMA.md
+  - file:reviews/2026-10-11-schema-adversarial/00-verdict.md
+  - doc:claude-session-board
+writer: agent:claude-code
+session: session:8b4adf71-3b40-4665-956a-d2abae55f01c
+created: 2026-10-09
 ---
 
 ## Summary
-Phase 1, step 1. Generalise the idea of a per-unit context layer into a storage-independent record contract: layers, record types, edges, vocabulary, identity, provenance, validation, location. Capped at one week by the research report's gate.
 
-## Plan
-v0 (flat) → v1 (layered) → v2 (minimal) → walk-through on this store → lock.
-
-## Notes
-This store is the walk-through.
+Generalise the per-ticket context layer of the work tool into a record contract: layers, record types, keys, edges, vocabulary, provenance, validation, location. v0 flat, v1 layered, v2 minimal with a hand-bootstrapped store, adversarial round 1, v3. Done when the tool embodies it; the tool is now the schema.

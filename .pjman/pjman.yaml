@@ -1,10 +1,20 @@
-# pjman store configuration
-product: 01a127d2-7897-71a7-b560-d06271b2769d
-layers: [core, sources, work, product]
-source_kinds: [git-repo, file, doc, url, github-pr, github-issue, linear-issue]
+name: pjman
+layers:
+  - core
+  - sources
+  - work
+# an organisation's words -> the canonical status (the work tool's lane names)
 vocabulary:
-  # organisation word -> canonical status
   implementing: active
   merged: done
   closed: dropped
-adapters: []
+source_kinds:
+  - file
+  - url
+  - doc
+  - git-repo
+  - branch
+  - github-pr
+  - github-issue
+  - linear
+  - thread

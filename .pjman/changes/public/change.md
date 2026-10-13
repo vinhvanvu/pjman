@@ -1,16 +1,11 @@
 ---
-id: 01a127d2-7897-7157-8c7c-473f8255aa8a
-type: change
-writer: person:vinh
-session: 01a127d2-7897-7590-bf0f-b16c7d82fc78
-created: 2026-10-10T18:00:00-07:00
-updated: 2026-10-10T18:00:00-07:00
-title: Public release — licence, repository, name
+title: "Public: licence, repository, name"
 status: open
-owner: person:vinh
-binds: []
-links:
-  - 01a127d2-7897-7916-a2eb-ad739faa5273
+writer: agent:claude-code
+session: session:8b4adf71-3b40-4665-956a-d2abae55f01c
+created: 2026-10-10
 ---
 
 ## Summary
+
+Phase 1 step 6. The repository is local and private until then.

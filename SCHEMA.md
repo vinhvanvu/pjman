@@ -1,6 +1,6 @@
 # pjman — schema v3 (Phase 1)
 
-*2026-10-12. The record contract for Phase 1, after adversarial round 1 (`reviews/2026-10-11-schema-adversarial/`). Phase 1 is layers 0–2: core, sources, work. Layer 3 (product, features) and layer 4 (authority) are not specified here; the Phase 2 target that includes them is `SCHEMA-PHASE2.md` when it is written. Fields are marked **A** (authored by an actor on intent; may be hand-edited) or **M** (maintained by one named writer — an adapter or the tool; hand edits are reported, not forbidden). There is no "derived and checked" class: nothing in a record is verified against what a tool previously wrote.*
+*The record contract for Phase 1: layers 0–2, core, sources, work. Layer 3 (product, features) and layer 4 (authority) are Phase 2 and 3 and are not specified here. The tool (`README.md`) implements this contract; where the two disagree, the tool is wrong. Fields are marked **A** (authored by an actor on intent; may be hand-edited) or **M** (maintained by one named writer — an adapter or the tool; hand edits are reported, not forbidden). There is no "derived and checked" class: nothing in a record is verified against what a tool previously wrote.*
 
 ```
 2 · Work      change, decision, the status vocabulary
@@ -66,16 +66,16 @@ Body: `## Log`, append-only, one entry per turn that took action. Code decides w
 
 ### Validation — the tool is the schema
 
-- Frontmatter parses under the YAML rule: any scalar containing `: `, `#`, or starting with a special character is quoted. `pjman fmt` normalises; `pjman validate` reports.
+- Frontmatter parses under the YAML rule: any scalar containing `: `, `#`, or starting with a special character is quoted. `pjman fmt` normalises, and repairs a record whose only fault is an unquoted scalar; `pjman validate` reports.
 - Required fields present; enums in range; every referenced key resolves (sources exempt); a `superseded` decision is pointed at by a newer decision's `supersedes`; a `decided` decision has `decided_by` and `decided_on`.
 - Uniqueness: one folder per change slug (the tool refuses a second; two machines creating the same slug meet a git add/add conflict at merge, visible, never silent); one decision slug per change folder; one source per canonical key (kind lower-cased; URL keys normalised; ticket keys verbatim); one actor record per handle.
-- Renames go through `pjman mv <old> <new>`: the folder moves, the old slug is appended to `aliases`, and every reference in the store is rewritten in one commit. Keys make renames a tool operation where ids made them free; `aliases` keeps stale references resolvable in between.
+- Renames go through `pjman mv change:<old> change:<new>`: the folder moves, the old slug is appended to `aliases`, and every reference in the store is rewritten in one commit. Keys make renames a tool operation where ids made them free; `aliases` keeps stale references resolvable in between.
 - An invalid record is reported with its path and reason, never dropped silently; a reference to a record that exists but fails to parse is "resolved, invalid", not "missing".
 - Nothing in `ext` is validated.
 
 ### The index
 
-SQLite, in `.pjman/index.db`, git-ignored, rebuilt from the records by `pjman index`, disposable. It mints and holds ids (UUID v7) for every record and maps keys to them; it holds reverse edges and the query surface. If two changes bind one source, or two records resolve to one key, the index records a **conflict** and reports it; nothing wins silently.
+SQLite, in `index.db` at the store root, git-ignored, rebuilt from the records by `pjman index`, disposable. It mints and holds ids (UUID v7) for every record and maps keys to them; it holds reverse edges and the query surface. If two changes bind one source, or two records resolve to one key, the index records a **conflict** and reports it; nothing wins silently.
 
 ### Provenance
 
@@ -141,7 +141,7 @@ Opened `proposed` before the work it governs; `decided` when an actor sets it. A
 |---|---|---|
 | `title` | A | |
 | `status` | A | `proposed` · `decided` · `superseded` · `reverted` |
-| `decided_by` | A | Actor key; required when `decided` |
+| `decided_by` | A | Actor key; required when `decided`. The tool defaults it to the writer only when the writer is a person; an agent is never the decider by default |
 | `decided_on` | A | Date; required when `decided` |
 | `supersedes` | A | Optional decision key |
 | `links` | A | Optional source keys |

@@ -1,6 +1,6 @@
 # pjman — layers and the most popular technology at each
 
-*2026-10-10. The rule: at every layer, default to the most popular technology in the market and integrate with it; roll our own only where the most popular does not satisfy what the record needs. "Build" below means pjman owns it; everything else is consumed, bound, imported or ingested. Figures are from the research notes under `research_notes/` and three spot checks dated 2026-10-10.*
+*The rule: at every layer, default to the most popular technology in the market and integrate with it; roll our own only where the most popular does not satisfy what the record needs. "Build" below means pjman owns it; everything else is consumed, bound, imported or ingested. Figures are from the research notes under `research_notes/` and three spot checks dated 2026-10-10.*
 
 ## The rule applied
 

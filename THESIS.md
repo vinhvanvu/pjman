@@ -1,6 +1,6 @@
 # pjman — thesis and roadmap
 
-*Working name. The pitch and the plan. The decision log is `DECISIONS.md`; the Phase 1 record contract is `SCHEMA.md`; the layer catalog is `LAYERS.md`; the research is under `reports/`; adversarial reviews under `reviews/`. This document states what is true now; history lives in the decision log and in git.*
+*Working name. The pitch and the plan. The decisions are records in the store (`.pjman/`; `pjman ls decision`, `pjman show <key>`); the Phase 1 record contract is `SCHEMA.md`; the tool is documented in `README.md`; the layer catalog is `LAYERS.md`; the research is under `reports/`; adversarial reviews under `reviews/`. This document states what is true now; history lives in the decision records and in git.*
 
 ---
 
@@ -41,7 +41,7 @@ One object at three distances: the local graph, the shared graph, the alignment 
 - **Humans and agents are the same kind of participant.** An actor is a person or an agent; every record an adapter writes carries its writer and its session; where a human is required is policy, not a property of the system.
 - **Drift is surfaced, never hidden.**
 - **Prescribe what gets recorded, never how the work is done.**
-- **Documents state what is true now.** History lives in decision records and in git.
+- **Documents state what is true now.** History lives in decision records and in git. The store is the source of truth; a document is a synthesis of it.
 
 ---
 
@@ -132,7 +132,7 @@ More record types, more readers and more writers on the same graph.
 
 ### Phase 1, in order
 
-1. **The tool.** TypeScript, one package: `init` (standalone by default, `--in-project` by flag), `new`, `validate`, `fmt`, `ls --json`, `context <change>`, `mv`, `index`. Keys in files, ids in the index. The YAML rule enforced.
+1. **The tool.** TypeScript, one package: `init` (standalone by default, `--in-project` by flag), `new`, `set`, `session`, `validate`, `fmt`, `ls --json`, `context <change>`, `show`, `mv`, `index`, `query`. Keys in files, ids in the index. The YAML rule enforced.
 2. **The store, rebuilt through the tool,** on pjman's own development, with decisions opened `proposed` before the work. The existing documents backfilled as records, and cleaned so that every document states only what is true now.
 3. **The Claude Code adapter.** A hook that injects `context` at session start and writes session records; a skill rule that opens a decision `proposed` before acting; a bridge that emits the work tool's `summary.md` so the existing sidebar keeps working.
 4. **The test, defined before the first real session.** Eight weeks on pjman's own development, tallying: E1 a superseded decision honoured; E2 a decision not found when needed; E3 a write the validator refused; E4 a decision proposed before the work. The build-or-kill rule written down in advance.

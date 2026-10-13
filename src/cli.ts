@@ -10,6 +10,7 @@ import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
+import { set } from './commands/set.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
 
 const USAGE = `pjman — a context graph for product development
@@ -30,6 +31,7 @@ usage:
   pjman ls [change|decision|source|session|actor] [--status <s>] [--json]
   pjman context [<change>] [--json]
   pjman show <key>
+  pjman set <key> <field>=<value>...   (authored fields: title, status, next, links, binds, …)
   pjman mv change:<old> change:<new>
   pjman index [--json]
   pjman query <sql>
@@ -38,7 +40,9 @@ global: --store <path>   --writer <actor>   --session <session>   --created <dat
         PJMAN_STORE, PJMAN_WRITER, PJMAN_SESSION, PJMAN_HOME are the environment equivalents
 `;
 
-const { values: v, positionals: pos } = parseArgs({
+function parse() {
+  try {
+    return parseArgs({
   args: process.argv.slice(2),
   allowPositionals: true,
   strict: true,
@@ -72,7 +76,14 @@ const { values: v, positionals: pos } = parseArgs({
     body: { type: 'string' },
     check: { type: 'boolean' },
   },
-});
+    });
+  } catch (e) {
+    process.stderr.write(`pjman: ${(e as Error).message.split('\n')[0]}\n(a value that starts with a dash is passed as --flag=value)\n`);
+    process.exit(2);
+  }
+}
+
+const { values: v, positionals: pos } = parse();
 
 const out = (s: string) => process.stdout.write(s.endsWith('\n') ? s : s + '\n');
 const json = (x: unknown) => out(JSON.stringify(x, null, 2));
@@ -171,6 +182,13 @@ function main(): number {
       if (!pos[1]) throw new CliError('usage: pjman show <key>');
       const r = show(store, pos[1]);
       v.json ? json({ key: r.rec.key, path: r.rec.path, data: r.rec.data, body: r.rec.body }) : out(`# ${r.rec.path}\n${r.text}`);
+      return 0;
+    }
+    case 'set': {
+      const store = requireStore(cwd, v.store);
+      if (!pos[1] || !pos[2]) throw new CliError('usage: pjman set <key> <field>=<value>...');
+      const r = set(store, pos[1], pos.slice(2), { session: v.session });
+      v.json ? json(r) : out(`set ${r.changed.join(', ')} on ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'mv': {
