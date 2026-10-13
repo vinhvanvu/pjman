@@ -1,0 +1,59 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { readUserConfig, type Store } from './config.js';
+import { stringifyRecord } from './frontmatter.js';
+import { commitAll } from './git.js';
+import { FIELD_ORDER, loadStore, type Problem, type RecordType } from './records.js';
+import { CliError } from './util.js';
+import { formatProblems, validate } from './validate.js';
+
+export interface Envelope {
+  writer?: string;
+  session?: string;
+}
+
+/** The writer and session the tool stamps on records it creates: flags, then environment, then the user config. */
+export function envelope(flags: { writer?: string; session?: string }): Envelope {
+  const writer = flags.writer || process.env.PJMAN_WRITER || readUserConfig().actor;
+  const session = flags.session || process.env.PJMAN_SESSION;
+  return { writer: writer || undefined, session: session || undefined };
+}
+
+export function render(type: RecordType, data: Record<string, unknown>, body: string): string {
+  return stringifyRecord(data, body, FIELD_ORDER[type]);
+}
+
+export function writeFile(store: Store, rel: string, text: string): void {
+  const abs = path.join(store.root, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, text);
+}
+
+/** Validate the whole store and return the errors that touch the given paths. */
+export function errorsAt(store: Store, rels: string[]): Problem[] {
+  const loaded = loadStore(store);
+  const set = new Set(rels);
+  return validate(loaded).filter((p) => p.level === 'error' && set.has(p.path));
+}
+
+/** Validate after a write; on errors undo the listed new paths and throw. */
+export function validateOrUndo(store: Store, rels: string[], created: string[]): void {
+  const errors = errorsAt(store, rels);
+  if (errors.length === 0) return;
+  for (const rel of created) {
+    const abs = path.join(store.root, rel);
+    fs.rmSync(abs, { force: true });
+    let dir = path.dirname(abs);
+    while (dir !== store.root && fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+      fs.rmdirSync(dir);
+      dir = path.dirname(dir);
+    }
+  }
+  throw new CliError(`refused: the record would not validate\n${formatProblems(errors)}`);
+}
+
+/** In standalone mode the tool commits after every write it makes; in-project, the project's workflow does. */
+export function commitIfStandalone(store: Store, message: string, session?: string): string | null {
+  if (store.mode !== 'standalone') return null;
+  return commitAll(store.root, message, session);
+}
