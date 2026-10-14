@@ -1,7 +1,7 @@
 ---
 title: The Claude Code adapter
-status: planning
-next: Vinh sets the three proposed decisions decided or sends them back; then the plugin is built and tested on a real session.
+status: active
+next: Build the plugin (hooks + skill) under adapters/claude-code and test it on a real session; then install it for daily use.
 writer: agent:claude-code
 session: session:8b4adf71-3b40-4665-956a-d2abae55f01c
 created: 2026-10-13
