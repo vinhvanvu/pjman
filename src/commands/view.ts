@@ -39,7 +39,11 @@ export function ls(store: Store, opts: { type?: string; status?: string }): Row[
     recs = recs.filter((r) => r.type === t);
   }
   if (opts.status) recs = recs.filter((r) => r.data.status === opts.status);
-  return recs.map(row);
+  const typeOrder: RecordType[] = ['change', 'decision', 'source', 'session', 'actor'];
+  const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
+  return [...recs]
+    .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))
+    .map(row);
 }
 
 export function formatLs(rows: Row[]): string {
@@ -67,7 +71,7 @@ export interface ChangeContext {
   summary?: string;
   plan?: string;
   sections: Record<string, string>;
-  decisions: (Row & { decision?: string; why?: string })[];
+  decisions: (Row & { decision?: string; why?: string; supersededBy?: string })[];
   sources: { key: string; record?: Row; via: 'binds' | 'links' }[];
   sessions: (Row & { last?: string })[];
 }
@@ -101,10 +105,16 @@ export function changeContext(store: Store, key: string): ChangeContext {
   const planFile = rec.abs.replace(/change\.md$/, 'plan.md');
   if (!plan && fs.existsSync(planFile)) plan = fs.readFileSync(planFile, 'utf8').trim();
 
+  const supersededBy = new Map<string, string>();
+  for (const r of loaded.records) {
+    if (r.type !== 'decision' || typeof r.data.supersedes !== 'string') continue;
+    const t = resolve(loaded, r.data.supersedes);
+    if (t.status === 'ok' || t.status === 'alias') supersededBy.set(t.rec.key, r.key);
+  }
   const decisions = loaded.records
     .filter((r) => r.type === 'decision' && r.changeSlug === rec.changeSlug)
     .sort((a, b) => (a.fileDate! + a.path).localeCompare(b.fileDate! + b.path))
-    .map((r) => ({ ...row(r), decision: r.sections.get('Decision'), why: r.sections.get('Why') }));
+    .map((r) => ({ ...row(r), decision: r.sections.get('Decision'), why: r.sections.get('Why'), supersededBy: supersededBy.get(r.key) }));
 
   const sources: ChangeContext['sources'] = [];
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -122,6 +132,18 @@ export function changeContext(store: Store, key: string): ChangeContext {
   return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions };
 }
 
+/** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
+export function decisionLine(dec: Row & { supersededBy?: string }): string {
+  const by = dec.data.decided_by ? `decided by ${String(dec.data.decided_by)}${dec.data.decided_on ? ` on ${String(dec.data.decided_on)}` : ''}` : '';
+  const parts: string[] = [];
+  if (dec.status === 'decided') parts.push(by || 'decided');
+  else if (dec.status === 'superseded') parts.push(`superseded${dec.supersededBy ? ` by ${dec.supersededBy}` : ''}${by ? ` (${by})` : ''}`);
+  else if (dec.status === 'reverted') parts.push(`reverted${by ? ` (${by})` : ''}`);
+  else parts.push(dec.status ?? '?');
+  if (dec.data.supersedes) parts.push(`supersedes ${String(dec.data.supersedes)}`);
+  return parts.join('; ');
+}
+
 export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
@@ -133,9 +155,7 @@ export function formatChangeContext(c: ChangeContext): string {
   if (c.decisions.length) {
     out.push('\n## Decisions');
     for (const dec of c.decisions) {
-      const who = dec.data.decided_by ? ` by ${String(dec.data.decided_by)}` : '';
-      const when = dec.data.decided_on ? ` on ${String(dec.data.decided_on)}` : '';
-      out.push(`\n### ${dec.key} — ${dec.title ?? ''}\n${dec.status}${who}${when}${dec.data.supersedes ? `; supersedes ${String(dec.data.supersedes)}` : ''}`);
+      out.push(`\n### ${dec.key} — ${dec.title ?? ''}\n${decisionLine(dec)}`);
       if (dec.decision) out.push(`\n${dec.decision}`);
       if (dec.why) out.push(`\nWhy: ${dec.why}`);
     }

@@ -10,7 +10,7 @@ import { mv } from '../commands/mv.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
 import { set } from '../commands/set.js';
-import { changeContext } from '../commands/view.js';
+import { changeContext, decisionLine, ls } from '../commands/view.js';
 import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
@@ -134,6 +134,10 @@ test('mv renames the folder, leaves an alias, rewrites references', () => {
   assert.equal(ctx.change.key, 'change:contract');
   assert.equal(ctx.decisions.length, 2);
   assert.equal(ctx.sessions.length, 1);
+  const old = ctx.decisions.find((d) => d.key === 'decision:contract/keys')!;
+  assert.equal(decisionLine(old), 'superseded by decision:contract/keys-and-aliases');
+  const dated = ls(store, { type: 'decision' }).map((r) => r.path);
+  assert.deepEqual(dated, [...dated].sort((a, b) => a.localeCompare(b)));
 });
 
 test('index mints stable ids, derives reverse edges, records conflicts', async () => {
