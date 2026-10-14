@@ -13,32 +13,52 @@ import { mv } from './commands/mv.js';
 import { set } from './commands/set.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
 
-const USAGE = `pjman — a context graph for product development
+import { createRequire } from 'node:module';
 
-usage:
-  pjman init [--in-project] [--dir <path>] [--name <name>]
-  pjman new change <slug> --title <t> [--status open] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...
-  pjman new decision <change>/<slug> | /<slug> --title <t> [--status proposed|decided] [--decided-by <actor>] [--decided-on <date>]
-                                               [--supersedes <decision>] [--decision <text>] [--why <text>] [--links <key>]...
-  pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...
-  pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>]
-  pjman new session <id> --agent <actor> --on-behalf-of <actor> [--parent <session>] [--started <ts>]
-  pjman session log <id> <text>
-  pjman session bind <id> <change>
-  pjman session observe <id> <edge> <from> <to>
-  pjman validate [--json]
-  pjman fmt [--check]
-  pjman ls [change|decision|source|session|actor] [--status <s>] [--json]
-  pjman context [<change>] [--json]
-  pjman show <key>
-  pjman set <key> <field>=<value>...   (authored fields: title, status, next, links, binds, …)
-  pjman mv change:<old> change:<new>
-  pjman index [--json]
-  pjman query <sql>
+const VERSION = (createRequire(import.meta.url)('../package.json') as { version: string }).version;
 
-global: --store <path>   --writer <actor>   --session <session>   --created <date>   --json
-        PJMAN_STORE, PJMAN_WRITER, PJMAN_SESSION, PJMAN_HOME are the environment equivalents
-`;
+/** One entry per command: the usage lines and a one-line purpose. `pjman <cmd> --help` prints one; `pjman --help` prints all. */
+const COMMANDS: { name: string; usage: string[]; about: string }[] = [
+  { name: 'init', about: 'create a store: standalone (its own git repository, bound to this project) or in-project (<repo>/.pjman/)',
+    usage: ['pjman init [--in-project] [--dir <path>] [--name <name>]'] },
+  { name: 'new', about: 'create a record; refused if it would not validate',
+    usage: [
+      'pjman new change <slug> --title <t> [--status open] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
+      'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
+      '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
+      'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
+      'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>]',
+      'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
+    ] },
+  { name: 'set', about: 'change authored fields on a record (a list is comma-separated; an empty value removes the field)',
+    usage: ['pjman set <key> <field>=<value>...'] },
+  { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge',
+    usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },
+  { name: 'context', about: 'what an agent reads first: the open changes, or one change with its decisions, sources and sessions',
+    usage: ['pjman context [<change>] [--json]'] },
+  { name: 'ls', about: 'list records, by type and status', usage: ['pjman ls [change|decision|source|session|actor] [--status <s>] [--json]'] },
+  { name: 'show', about: 'print one record by key', usage: ['pjman show <key> [--json]'] },
+  { name: 'validate', about: 'check every record and every reference; errors are reported, never dropped (exit 1 on errors)',
+    usage: ['pjman validate [--json]'] },
+  { name: 'fmt', about: 'rewrite records in canonical form: field order, the YAML rule, repaired quoting (--check reports only)',
+    usage: ['pjman fmt [--check]'] },
+  { name: 'mv', about: 'rename a change: move the folder, leave an alias, rewrite every reference',
+    usage: ['pjman mv change:<old> change:<new>'] },
+  { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
+  { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
+  { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },
+];
+
+const GLOBAL = `global flags: --store <path>  --writer <actor>  --session <session>  --created <date>  --json  --help  --version
+environment:  PJMAN_STORE  PJMAN_WRITER  PJMAN_SESSION  PJMAN_HOME`;
+
+function usage(name?: string): string {
+  const cmds = name ? COMMANDS.filter((c) => c.name === name) : COMMANDS;
+  if (cmds.length === 0) return usage();
+  const body = cmds.map((c) => `${c.usage.map((u) => '  ' + u).join('\n')}\n      ${c.about}`).join('\n\n');
+  const head = name ? '' : 'pjman — a context graph for product development\n\n';
+  return `${head}usage:\n${body}\n\n${GLOBAL}\n`;
+}
 
 function parse() {
   try {
@@ -48,6 +68,7 @@ function parse() {
   strict: true,
   options: {
     help: { type: 'boolean', short: 'h' },
+    version: { type: 'boolean', short: 'V' },
     json: { type: 'boolean' },
     store: { type: 'string' },
     writer: { type: 'string' },
@@ -90,9 +111,17 @@ const json = (x: unknown) => out(JSON.stringify(x, null, 2));
 
 function main(): number {
   const cmd = pos[0];
-  if (!cmd || v.help) {
-    out(USAGE);
-    return cmd ? 0 : 1;
+  if (v.version) {
+    out(`pjman ${VERSION}`);
+    return 0;
+  }
+  if (v.help || cmd === 'help') {
+    out(usage(cmd === 'help' ? pos[1] : cmd));
+    return 0;
+  }
+  if (!cmd) {
+    out(usage());
+    return 1;
   }
   const cwd = process.cwd();
   switch (cmd) {
@@ -226,7 +255,7 @@ function main(): number {
       return 0;
     }
     default:
-      throw new CliError(`unknown command '${cmd}'\n\n${USAGE}`);
+      throw new CliError(`unknown command '${cmd}'; run pjman --help`);
   }
 }
 
