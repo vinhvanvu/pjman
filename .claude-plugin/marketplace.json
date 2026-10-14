@@ -1,0 +1,14 @@
+{
+  "name": "pjman",
+  "owner": {
+    "name": "Vinh Van Vu"
+  },
+  "description": "The pjman adapter for Claude Code, loaded in place from this repository",
+  "plugins": [
+    {
+      "name": "pjman",
+      "source": "./adapters/claude-code",
+      "description": "Session records, context injection and observed edges for a pjman store"
+    }
+  ]
+}

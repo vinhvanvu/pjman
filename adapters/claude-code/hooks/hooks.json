@@ -1,0 +1,27 @@
+{
+  "description": "pjman: the session record, context at start, binding by prompt, observed edges on writes, a log line per turn that acted",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "SessionStart"], "timeout": 20 } ] }
+    ],
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "UserPromptSubmit"], "timeout": 20 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "PostToolUse"], "timeout": 20 } ] }
+    ],
+    "Stop": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "Stop"], "timeout": 20 } ] }
+    ],
+    "SubagentStart": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "SubagentStart"], "timeout": 20 } ] }
+    ],
+    "SubagentStop": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "SubagentStop"], "timeout": 20 } ] }
+    ],
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "SessionEnd"], "timeout": 10 } ] }
+    ]
+  }
+}

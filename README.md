@@ -67,6 +67,14 @@ Global flags: `--store`, `--writer <actor>`, `--session <session>`, `--created <
 - **Nothing is dropped.** An invalid record is reported with its path and reason; a reference to it is "resolved, invalid", not "missing".
 - **Extensions** go under `ext.<owner>.<field>` and are never validated.
 
+## The Claude Code adapter
+
+`adapters/claude-code/` is a plugin: seven hooks and one skill. Every session starts from `pjman context`, binds to the change the prompt names, records observed edges for the files it writes, and leaves a log line per turn that acted. See [adapters/claude-code/README.md](adapters/claude-code/README.md).
+
+```bash
+claude --plugin-dir /path/to/pjman/adapters/claude-code
+```
+
 ## Development
 
 ```bash

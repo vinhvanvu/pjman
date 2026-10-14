@@ -1,6 +1,6 @@
 import './quiet.js';
 import { parseArgs } from 'node:util';
-import { findStore, requireStore } from './config.js';
+import { findStore, readUserConfig, requireStore } from './config.js';
 import { buildIndex, query } from './indexdb.js';
 import { loadStore } from './records.js';
 import { CliError, plural } from './util.js';
@@ -251,7 +251,9 @@ function main(): number {
     case 'where': {
       const store = findStore(cwd, v.store);
       if (!store) throw new CliError('no store found');
-      v.json ? json({ root: store.root, mode: store.mode, name: store.config.name }) : out(`${store.root} (${store.mode})`);
+      v.json
+        ? json({ root: store.root, mode: store.mode, name: store.config.name, actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
+        : out(`${store.root} (${store.mode})`);
       return 0;
     }
     default:

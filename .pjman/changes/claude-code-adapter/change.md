@@ -1,7 +1,9 @@
 ---
 title: The Claude Code adapter
-status: active
-next: Build the plugin (hooks + skill) under adapters/claude-code and test it on a real session; then install it for daily use.
+status: review
+next: Vinh installs the plugin (claude --plugin-dir, or the local marketplace) and runs a real session on pjman; then the eight-week test rule.
+links:
+  - file:adapters/claude-code/README.md
 writer: agent:claude-code
 session: session:8b4adf71-3b40-4665-956a-d2abae55f01c
 created: 2026-10-13
