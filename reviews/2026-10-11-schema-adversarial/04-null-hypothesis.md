@@ -92,6 +92,7 @@ Ids other than the folder name. A tool. An index. A session record type in the r
 
 ---
 
+That is the alternative. It is adoptable in an afternoon, it runs on every harness, and the second-user-on-a-different-stack test in Phase 1 step 4 is *easier* with it than with a CLI, because `AGENTS.md` is already the cross-harness contract and a CLI is one more thing each harness has to be taught to call.
 
 ## Claim-by-claim comparison
 

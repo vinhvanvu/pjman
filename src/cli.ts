@@ -30,7 +30,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>]',
       'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
     ] },
-  { name: 'set', about: 'change authored fields on a record (a list is comma-separated; an empty value removes the field)',
+  { name: 'set', about: 'change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section)',
     usage: ['pjman set <key> <field>=<value>...'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge',
     usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },

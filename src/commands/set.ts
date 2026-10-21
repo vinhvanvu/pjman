@@ -1,18 +1,20 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
+import { replaceSection } from '../frontmatter.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
 import { CliError } from '../util.js';
 import { commitIfStandalone, render, validateOrUndo } from '../write.js';
 
-/** Authored scalar and list fields a person may set through the tool, per record type. */
+/** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
-  change: ['title', 'status', 'next', 'binds', 'links'],
+  change: ['title', 'status', 'next', 'binds', 'links', 'summary', 'plan'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'links'],
   source: ['title', 'url', 'links'],
   actor: ['name', 'url'],
   session: [],
 };
 const LISTS = new Set(['binds', 'links']);
+const SECTIONS: Record<string, string> = { summary: 'Summary', plan: 'Plan' };
 
 export interface SetResult {
   key: string;
@@ -33,6 +35,7 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
   const allowed = SETTABLE[rec.type];
   if (allowed.length === 0) throw new CliError(`a ${rec.type} is append-only; use \`pjman session log|bind|observe\``);
   const data: Record<string, unknown> = { ...rec.data };
+  let body = rec.body;
   const changed: string[] = [];
   for (const pair of pairs) {
     const i = pair.indexOf('=');
@@ -40,11 +43,12 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     const field = pair.slice(0, i);
     const value = pair.slice(i + 1);
     if (!allowed.includes(field)) throw new CliError(`'${field}' cannot be set on a ${rec.type} (${allowed.join(', ')})`);
-    if (value === '') delete data[field];
+    if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
+    else if (value === '') delete data[field];
     else data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean) : value;
     changed.push(field);
   }
-  const text = render(rec.type, data, rec.body);
+  const text = render(rec.type, data, body);
   const before = fs.readFileSync(rec.abs, 'utf8');
   fs.writeFileSync(rec.abs, text);
   try {

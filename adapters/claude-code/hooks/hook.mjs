@@ -4,7 +4,7 @@
 //
 //   SessionStart      create the session record if needed; inject `pjman context` (and the bound change's context on resume/compact)
 //   UserPromptSubmit  a prompt naming change:<slug> binds it; its context is injected the first time
-//   PostToolUse       a write marks the turn as having acted; a file write records an observed `links` edge from the bound change
+//   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
 //   Stop              a turn that acted appends one log line, from the harness's last message
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
@@ -170,7 +170,9 @@ function main() {
       return;
     }
     case 'PostToolUse': {
-      st.acted += 1;
+      // a shell call counts only when it writes the store; reads, builds and tests leave no log line
+      const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|session|mv|fmt)\b/;
+      if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
       const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
       if (file && st.bound) {
         // real path of p, or of its nearest existing ancestor (a file may not exist yet)

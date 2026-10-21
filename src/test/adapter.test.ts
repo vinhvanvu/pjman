@@ -56,6 +56,8 @@ test('a prompt naming a change binds it and injects its context once', () => {
 });
 
 test('a file write records an observed edge; a store write does not; a turn that acted gets a log line', () => {
+  hook('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'cat README.md && npm test' } });
+  hook('Stop', { last_assistant_message: 'Read only.' });
   hook('PostToolUse', { tool_name: 'Write', tool_input: { file_path: path.join(project, 'src/a.ts') } });
   hook('PostToolUse', { tool_name: 'Edit', tool_input: { file_path: path.join(store.root, 'changes/eight-week-test/change.md') } });
   hook('Stop', { last_assistant_message: '## Done\n\n**Wrote** the rule: E1 to E4 tallied weekly.\nMore.' });
@@ -65,11 +67,12 @@ test('a file write records an observed edge; a store write does not; a turn that
   const log = rec.sections.get('Log')!;
   assert.match(log, /Wrote the rule: E1 to E4 tallied weekly\./);
   assert.ok(!/nothing happened/.test(log));
+  assert.ok(!/Read only/.test(log));
 });
 
 test('a subagent is a child session with parent', () => {
   hook('SubagentStart', { agent_id: 'agent-x', agent_type: 'Explore' });
-  hook('PostToolUse', { agent_id: 'agent-x', tool_name: 'Bash', tool_input: { command: 'ls' } });
+  hook('PostToolUse', { agent_id: 'agent-x', tool_name: 'Bash', tool_input: { command: 'pjman session log agent-x "looked"' } });
   hook('SubagentStop', { agent_id: 'agent-x', last_assistant_message: 'Found three files.' });
   const child = loadStore(store).byKey.get('session:agent-x')![0];
   assert.equal(child.data.parent, 'session:sess-a');

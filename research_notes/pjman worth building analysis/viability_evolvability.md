@@ -97,6 +97,7 @@ Developer-tool freemium converts at roughly 1–3%, open-source-to-paid at 0.5�
 ### Inferences
 - Arithmetic on pjman's solo tier: at $10/mo and a 1–3% conversion, 10,000 active free users yields 100–300 paying solo users ≈ $12k–$36k/yr. The solo tier cannot be the business; the team per-signer tier must be, and that tier requires Phase 3 (alignment) which THESIS says needs "a team with real approvals" — i.e., revenue depends on the part furthest from what exists.
 - A founder with a full-time job sits well below the "full-time founder" assumptions of every benchmark above; the realistic Phase 1 outcome is an open-source project whose maintenance load (issues, AI-slop PRs, harness churn) competes with the day job, which is the exact profile Tidelift's 54% "competing life demands" quitters describe.
+- The Phase 1 success criterion in THESIS ("one second user installs it from the README") is a reasonable, cheap validation gate precisely because the downstream economics are weak.
 
 ### Gaps
 - No primary OpenView benchmark document was fetched; conversion numbers are via Monetizely's secondary articles.
@@ -178,6 +179,7 @@ MCP is real as a protocol (97M monthly SDK downloads, first-class client support
 - Cal.com's and Plausible's experience is irrelevant here, but a related signal: third-party memory tools (Supermemory) distribute as native plugins per harness *and* MCP, not MCP alone — [Supermemory changelog](https://supermemory.ai/changelog/plugins/codex.md)
 
 ### Inferences
+- MCP solves *interoperability* (one server, every harness), which is exactly what pjman's harness-agnostic bet needs; it does not solve *discovery* or *adoption*. The registry's long tail (16k single-server publishers, a third stale) means a listing is noise. Daily use will come from the same places it always has: a README, a Show HN, word of mouth, and being bundled in a harness's plugin marketplace.
 - The 10,000 "active servers" claimed by the AAIF (Dec 2025) versus 30,375 listed (Sept 2026) implies at most a third of listed servers see activity, consistent with the staleness figures.
 - Anthropic's zero registry servers and reliance on its own connector directory suggest the labs treat their own first-party integrations as the real channel; a third-party MCP server competes with the harness's native tools for the same tool-call budget.
 - Practical consequence for pjman: MCP is table stakes for Phase 1, not a growth engine; the per-harness adapters (skill, plugin, extension) are the actual distribution and each one is a maintenance surface that churns with the harness.
@@ -232,6 +234,7 @@ The best-documented argument is Paul Graham's "organic" ideas essay (2010) with 
 - Octoverse 2025: ~80% of new developers use Copilot in their first week — the market pjman eventually needs is less sophisticated than its founder — [GitHub Octoverse 2025](https://github.blog/news-insights/octoverse/octoverse-a-new-developer-joins-github-every-second-as-ai-leads-typescript-to-1/)
 
 ### Inferences
+- THESIS's own tenet ("This holds while the builder is representative of the market; later users will be less sophisticated") matches the literature's caveat. The specific risk for pjman is that the founder is unusually representative of a *small* market (staff engineers running Linear-bound, multi-session, multi-harness agent workflows with the discipline to keep records) and that the Phase 3 buyer (a manager with approval authority) is not the founder at all. The second user tests generalisation across tools, not across roles.
 - Dogfooding at real work produces a tool shaped by one organisation's process (Linear, cmux, Claude Code). THESIS's constraints (nothing harness/vendor-specific in a record) are the correct hedge; whether they hold is only testable when a user with a different stack installs it.
 - The comparables suggest the founder-as-user strategy fails less from wrong taste than from the founder's attention moving to architecture (Logseq) — a risk for a project whose Phase 1 is "the schema as a spec" and whose author is an architecture-first engineer.
 
@@ -246,3 +249,5 @@ The best-documented argument is Paul Graham's "organic" ideas essay (2010) with 
 2. **Phase 2 is where the labs are heading.** Per-user/per-repo memory was absorbed by all four harness vendors within ten months (June 2025–April 2026); GitHub already has repo-scoped memory validated against code and a records-in-repo kit; Anthropic's reported 2026 roadmap names team-wide persistence. The window for a third-party "shared graph" is open only while organisations are multi-harness.
 3. **What survived absorption is what pjman is designing**: cross-harness, data-layer-owning, open-format tools (claude-mem, Supermemory, Obsidian's format). That is the strongest evidence *for* the thesis, and it is also evidence that the survivors' revenue is small or unknown.
 4. **Permissive licensing is safe pre-traction and historically tightened post-traction.** Choose with a CLA. Apache-2.0 if a company is intended; MIT is what the closest peers (Spec Kit, Cal.diy) chose for the community artefact.
+5. **MCP is interoperability, not distribution.** Expect adoption to come from a README and a second user, and expect each harness adapter to be a churning maintenance surface.
+6. **Maintainer load with a day job is the most likely failure mode**, per Tidelift (54% quit for competing life demands) and Octoverse (AI-slop PR load). The THESIS gate "one second user installs from the README" is cheap and should precede any public launch.

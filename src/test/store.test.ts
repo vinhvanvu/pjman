@@ -115,6 +115,14 @@ test('set changes authored fields and refuses what would not validate', () => {
   assert.equal(rec.data.status, 'active');
   assert.deepEqual(rec.data.links, ['file:A.md', 'file:B.md']);
   assert.match(fs.readFileSync(rec.abs, 'utf8'), /^next: "write the plan: soon"$/m);
+  set(store, 'change:alpha', ['summary=What it is now.', 'plan=Step one.'], {});
+  const body = loadStore(store).byKey.get('change:alpha')![0];
+  assert.equal(body.sections.get('Summary'), 'What it is now.');
+  assert.equal(body.sections.get('Plan'), 'Step one.');
+  assert.equal(body.data.status, 'active');
+  set(store, 'change:alpha', ['plan='], {});
+  assert.equal(loadStore(store).byKey.get('change:alpha')![0].sections.has('Plan'), false);
+  assert.throws(() => set(store, 'change:alpha', ['summary='], {}), /Summary/);
   assert.throws(() => set(store, 'change:alpha', ['status=merged'], {}), /maps it to 'done'/);
   assert.equal(loadStore(store).byKey.get('change:alpha')![0].data.status, 'active');
   assert.throws(() => set(store, 'session:sess-1', ['agent=agent:x'], {}), /append-only/);

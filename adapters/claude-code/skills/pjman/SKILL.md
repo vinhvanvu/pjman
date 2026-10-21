@@ -28,8 +28,9 @@ Every write goes through the `pjman` command. Never edit a file under the store 
    `pjman set decision:<change>/<slug> status=decided decided_by=person:<handle> decided_on=<yyyy-mm-dd>`.
 3. **Keep `next` true.** Before you stop on a change, set the handoff:
    `pjman set change:<slug> "next=…"` and the status if it moved (`open, planning, active, blocked, review, done, dropped`).
-4. **A new unit of work is a change:** `pjman new change <slug> --title "…" --summary "…"`. Name it in your reply as
-   `change:<slug>` so the session binds to it.
+4. **A new unit of work is a change:** `pjman new change <slug> --title "…" --summary "…"`, then bind this run to it:
+   `pjman session bind <session-id> change:<slug>` (the id is in the session-start context). The hook binds only what
+   the person's prompt names, never your reply. Name the change as `change:<slug>` in your reply so the person can too.
 5. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
    `url:https://…`); a record for a source is optional.
 6. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or
@@ -42,6 +43,6 @@ pjman context [change:<slug>]           the board, or one change with its decisi
 pjman ls decision --status proposed      what is waiting on a person
 pjman show <key>                         one record
 pjman new change|decision|source …       create (refused if it would not validate)
-pjman set <key> field=value …            authored fields: title, status, next, links, binds
+pjman set <key> field=value …            authored fields: title, status, next, links, binds, summary, plan
 pjman validate                           run before committing a store that lives in the project
 ```

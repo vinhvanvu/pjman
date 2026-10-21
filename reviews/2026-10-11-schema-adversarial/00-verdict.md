@@ -15,6 +15,7 @@
 5. **The walk-through was not a test.** Every decision was written after the fact (the 63 % pattern the research named as the sharpest risk); no change binds a source; the session record is hand-written and self-exempted; no commit carries the provenance trailer the schema requires. (01, 04, 05)
 6. **Phase-3 leakage:** `owner` with no meaning, all of layer 3 with zero features, actor `aliases`, session `parent`, the audit-log sentence, two storage locations, "schema independent of storage". Meanwhile `on_behalf_of` was pruned, which breaks the second-user case (two humans, one harness, records whose human cannot be recovered). (05, 06, 04)
 7. **Drift as defined is unreachable in Phase 1** (it needs a Linear sync adapter that isn't scheduled), and it does not address the one case cited against the folder (a stale decision versus the code). (04, 05)
+8. **Sequencing is backwards.** The order schema → library/CLI with index → re-derived adapters (10–15 evenings for parity) → second user puts the cheap test last and produces the report's own kill signal ("the old tool is still the one in use"). (05, 04)
 
 ## What did not converge, or is Phase 3's
 
@@ -27,6 +28,7 @@ Status vocabulary is Linear's renamed and lacks an approval state (06) — true,
 - **Format:** slug-keyed change folders; records as Markdown with a small frontmatter whose references are keys, not ids; decisions with `status` (`proposed | decided | superseded | reverted`), `decided_by`, `decided_on`, `supersedes`; `next` and PR links back in the contract; no envelope beyond what git gives (`writer` and `session` only where an adapter writes them). No layer 3, no actor records, no index.
 - **Tool:** one file, four verbs — `new`, `validate` (the invariants that matter: references resolve, a decision marked decided has its two fields, a superseded decision has a superseder, status in vocabulary), `ls --json`, `context <change>` (the orientation surface, with a token ceiling). Five to eight evenings.
 - **Adapters:** a hook that injects `context` at session start and a skill rule that opens a decision `proposed` before acting; a one-evening bridge that emits Phase 0's `summary.md` as a view so the sidebar keeps working. No re-derived pane or sidebar until the test passes.
+- **The test, defined before the first real session:** eight weeks on pjman's own development, tallying E1 a superseded decision honoured, E2 a decision not found when needed, E3 a write the validator refused, E4 a decision proposed before the work. Build the schema's extra machinery only if the tallies say the folder failed (E1+E2+E3 ≥ 3 and E4 ≥ 5, per reviewer 04).
 - **Rule from here:** schema commits may not outnumber code commits.
 
 What survives from v2 into the Phase 2 target: the layer idea, authored versus derived as a concept, keys-in-files with ids-in-index, actors as records, sessions with `parent` and a human on behalf of whom, observed edges with provenance, and the storage-backend split stated as a backend section rather than a layer-0 claim.

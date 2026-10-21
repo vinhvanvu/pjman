@@ -1,7 +1,6 @@
 ---
 title: The Claude Code adapter
-status: review
-next: Vinh installs the plugin (claude --plugin-dir, or the local marketplace) and runs a real session on pjman; then the eight-week test rule.
+status: done
 links:
   - file:adapters/claude-code/README.md
 writer: agent:claude-code
@@ -11,4 +10,4 @@ created: 2026-10-13
 
 ## Summary
 
-Phase 1 step 3. A hook that injects `pjman context` at session start and writes the session record; a skill rule that opens a decision proposed before acting; a bridge that emits the work tool's summary.md so the existing sidebar keeps working. Harness-specific things live in the adapter and under ext, never in a record.
+Phase 1 step 3. A plugin of hooks and one skill. At session start the session record is created and the store's context injected; a prompt naming a change binds the session and injects that change's context; a file write in the project records an observed links edge from the bound change; a turn that edited a file or wrote the store leaves one log line from the assistant's own first line, with no model call; a subagent is a child session. Harness-specific things live in the adapter and under ext, never in a record.

@@ -49,7 +49,7 @@ pjman fmt [--check]                    canonical field order, the YAML rule, rep
 pjman ls [type] [--status s] [--json]
 pjman context [<change>] [--json]      what an agent reads first: the change, its decisions, sources, sessions
 pjman show <key>
-pjman set <key> <field>=<value>…   change an authored field (title, status, next, links, binds); a list is comma-separated
+pjman set <key> <field>=<value>…   change an authored field (title, status, next, links, binds, summary, plan); a list is comma-separated
 pjman mv change:<old> change:<new>     move the folder, leave an alias, rewrite every reference
 pjman index [--json]                   rebuild index.db: ids, reverse edges, conflicts
 pjman query "<sql>"                    read the index
@@ -57,6 +57,8 @@ pjman where
 ```
 
 Global flags: `--store`, `--writer <actor>`, `--session <session>`, `--created <date>`, `--json`. Environment: `PJMAN_STORE`, `PJMAN_WRITER`, `PJMAN_SESSION`, `PJMAN_HOME`.
+
+With `--session` (or `PJMAN_SESSION`) set, every write is refused until that session record exists: create the session first.
 
 ## Rules the tool enforces
 

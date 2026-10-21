@@ -1,7 +1,6 @@
 ---
 title: The tool
-status: review
-next: Vinh reviews the tool and the rebuilt store; then the Claude Code adapter.
+status: done
 links:
   - file:README.md
 writer: agent:claude-code

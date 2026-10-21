@@ -148,6 +148,25 @@ export function stringifyRecord(data: Record<string, unknown>, body: string, ord
 }
 
 /** Split a markdown body on `## ` headings. The text before the first heading is under "". */
+/** The body with one `## <name>` section replaced (or appended; an empty text removes it). Other sections are untouched. */
+export function replaceSection(body: string, name: string, text: string): string {
+  const lines = body.split(/\r?\n/);
+  const isHeading = (l: string) => /^## /.test(l);
+  const start = lines.findIndex((l) => new RegExp(`^## ${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`).test(l));
+  const block = text.trim() ? [`## ${name}`, '', text.trim(), ''] : [];
+  if (start < 0) {
+    if (!block.length) return body;
+    const head = body.replace(/\s+$/, '');
+    return (head ? head + '\n\n' : '') + block.join('\n');
+  }
+  let end = start + 1;
+  while (end < lines.length && !isHeading(lines[end])) end++;
+  const before = lines.slice(0, start).join('\n').replace(/\s+$/, '');
+  const after = lines.slice(end).join('\n').replace(/^\s+/, '');
+  const parts = [before, block.join('\n').replace(/\s+$/, ''), after].filter((s) => s.length > 0);
+  return parts.join('\n\n') + '\n';
+}
+
 export function sections(body: string): Map<string, string> {
   const out = new Map<string, string>();
   let name = '';

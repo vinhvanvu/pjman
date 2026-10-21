@@ -125,7 +125,7 @@ More record types, more readers and more writers on the same graph.
 | Phase | What it is | Validates |
 |---|---|---|
 | **0 — The work tool** (exists) | The founder's per-ticket context layer: a folder per Linear ticket, a status contract, derived session records, a pane and a sidebar | That the records are worth keeping, for one person |
-| **1 — The framework** | Layers 0–2 built to `SCHEMA.md`: the tool, the Claude Code adapter, the store on pjman's own development, the eight-week test | That a typed decision record in git, read by an agent, beats a folder of markdown on the founder's own work |
+| **1 — The framework** | Layers 0–2 built to `SCHEMA.md`: the tool, the Claude Code adapter, the store on pjman's own development | That a typed decision record in git, read by an agent, beats a folder of markdown on the founder's own work |
 | **2 — The shared graph** | Observed state from sync adapters (Linear, GitHub) and drift; sessions and actors at full strength; layer 3; change-to-change edges; a hosted backend with the same operations; a board for someone who is not the developer; the solo tier | That the record speaks to a manager and a team can run on it |
 | **3 — Alignment** | Layer 4: authorities, rubrics, approvers derived from the record, bounded asks, the brief, maturity as evidence, intake and triage, the web agent; per-signer pricing | That decisions get made before things are built, and people pay for that |
 | **4 — Views over one graph** | Roadmap, catalog and boards displacing the neighbours; brownfield ingestion; other domains | That the accumulated graph is the moat |
@@ -134,8 +134,9 @@ More record types, more readers and more writers on the same graph.
 
 1. **The tool.** TypeScript, one package: `init` (standalone by default, `--in-project` by flag), `new`, `set`, `session`, `validate`, `fmt`, `ls --json`, `context <change>`, `show`, `mv`, `index`, `query`. Keys in files, ids in the index. The YAML rule enforced.
 2. **The store, rebuilt through the tool,** on pjman's own development, with decisions opened `proposed` before the work. The existing documents backfilled as records, and cleaned so that every document states only what is true now.
-3. **The Claude Code adapter.** A hook that injects `context` at session start and writes session records; a skill rule that opens a decision `proposed` before acting; a bridge that emits the work tool's `summary.md` so the existing sidebar keeps working.
-4. **The test, defined before the first real session.** Eight weeks on pjman's own development, tallying: E1 a superseded decision honoured; E2 a decision not found when needed; E3 a write the validator refused; E4 a decision proposed before the work. The build-or-kill rule written down in advance.
+3. **The Claude Code adapter.** Hooks that inject `context` at session start, write session records, bind the session to the change the prompt names and record observed edges; a skill rule that opens a decision `proposed` before acting. No bridge to any other board.
+4. **Run on it.** pjman's own development runs on this foundation, with no time frame and no kill rule. Success is reached in stages, each counting on its own: the project managed from the store; custom mods and user interfaces built from it; the store hosted as shared context and sold. Four events are noted in session logs when they happen, as evidence with no threshold: a superseded decision honoured, a decision not found when needed, a write the validator refused, a decision proposed before the work.
+5. **The second user,** on a different stack, installing from the README without editing code.
 6. **Public:** licence, repository, name.
 
 Working rule: schema commits may not outnumber code commits.

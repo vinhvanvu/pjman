@@ -1,7 +1,6 @@
 ---
 title: The store rebuilt through the tool; documents backfilled and cleaned
-status: review
-next: Vinh reviews the rebuilt store and the cleaned documents; DECISIONS.md is retired.
+status: done
 links:
   - git-repo:vinhvanvu/pjman
 writer: agent:claude-code

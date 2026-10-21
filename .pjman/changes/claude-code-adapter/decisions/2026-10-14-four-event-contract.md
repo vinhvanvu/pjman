@@ -1,5 +1,5 @@
 ---
-title: A harness adapter is four event mappings
+title: A harness adapter is six event mappings
 status: decided
 decided_by: person:vinh
 decided_on: 2026-10-14
