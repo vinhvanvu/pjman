@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } from './keys.js';
+import { keyFromUrl, mentions, scopeOf, shortForms, trackerOf } from './refs.js';
+export { keyFromUrl, repoOf } from './refs.js';
 import { resolve, type Loaded, type Rec } from './records.js';
 import { changeContext, row, type ChangeContext, type Row } from './commands/view.js';
 
@@ -127,50 +129,6 @@ export interface GetOpts {
   project?: string;
 }
 
-const TICKET_ID = /^[A-Z][A-Z0-9]*-\d+$/;
-
-/** The source key a vendor URL names, when the tool knows the shape. */
-export function keyFromUrl(u: string): string | null {
-  let x: URL;
-  try {
-    x = new URL(u);
-  } catch {
-    return null;
-  }
-  const host = x.hostname.toLowerCase();
-  const seg = x.pathname.split('/').filter(Boolean);
-  if (host === 'linear.app' && seg[1] === 'issue' && seg[2] && TICKET_ID.test(seg[2])) return `linear:${seg[2]}`;
-  if (host === 'github.com' && seg.length >= 2) {
-    const repo = `${seg[0]}/${seg[1].replace(/\.git$/, '')}`;
-    if (seg[2] === 'pull' && /^\d+$/.test(seg[3] ?? '')) return `github-pr:${repo}#${seg[3]}`;
-    if (seg[2] === 'issues' && /^\d+$/.test(seg[3] ?? '')) return `github-issue:${repo}#${seg[3]}`;
-    if (seg.length === 2) return `git-repo:${repo}`;
-  }
-  return null;
-}
-
-/** `#12` or `owner/repo#12`: a GitHub issue reference. */
-const GH_REF = /^(?:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+))?#(\d+)$/;
-
-/** The project's GitHub repository: `ext.github.repo`, else its `git-repo:` link. */
-export function repoOf(loaded: Loaded, project?: string): string | undefined {
-  if (!project) return undefined;
-  const rec = loaded.byKey.get(project)?.[0];
-  if (!rec) return undefined;
-  const ext = rec.data.ext as Record<string, unknown> | undefined;
-  const gh = ext && typeof ext === 'object' ? (ext.github as Record<string, unknown> | undefined) : undefined;
-  if (gh && typeof gh.repo === 'string') return gh.repo;
-  const links = Array.isArray(rec.data.links) ? (rec.data.links as unknown[]) : [];
-  const link = links.find((k): k is string => typeof k === 'string' && k.startsWith('git-repo:'));
-  return link?.slice('git-repo:'.length);
-}
-
-function trackerOf(loaded: Loaded, project?: string): string | undefined {
-  if (!project) return undefined;
-  const rec = loaded.byKey.get(project)?.[0];
-  return rec && typeof rec.data.tracker === 'string' ? rec.data.tracker : undefined;
-}
-
 /** Resolve one reference to a key, in the fixed order: record key, source key, URL, ticket id, slug, file path. Never writes. */
 export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): Resolution {
   const store = loaded.store;
@@ -212,25 +170,21 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     tried.push(`source key ${ref}`);
     return sourceKey(ref, 'source key');
   }
-  if (TICKET_ID.test(ref)) {
-    tried.push(`ticket id in ${kinds.join(', ')}`);
-    for (const kind of kinds) {
-      const key = `${kind}:${ref}`;
-      if (loaded.byKey.has(key) || referenced(key)) return sourceKey(key, 'ticket id');
-    }
+  // a short form (ABC-1234, #12, owner/repo#12): only through its own kind's grammar. The project's tracker admits one it
+  // has no record of; any kind the store already references resolves one that exists; a qualified form resolves anywhere.
+  const forms = shortForms(ref, scopeOf(loaded, opts.project));
+  if (forms.length) {
     const tracker = trackerOf(loaded, opts.project);
-    if (tracker) return { status: 'key', key: `${tracker}:${ref}`, shape: 'ticket id', tried };
-    tried.push(`ticket id through the project's tracker (${opts.project ? `${opts.project} names none` : 'no current project'})`);
-  }
-  const gh = GH_REF.exec(ref);
-  if (gh) {
-    const repo = gh[1] ?? repoOf(loaded, opts.project);
-    tried.push(repo ? `github issue ${repo}#${gh[2]}` : `github issue #${gh[2]} (${opts.project ? `${opts.project} names no repository` : 'no current project'})`);
-    if (repo) {
-      const key = `github-issue:${repo}#${gh[2]}`;
-      if (loaded.byKey.has(key) || referenced(key)) return sourceKey(key, 'ticket id');
-      if (gh[1] || trackerOf(loaded, opts.project) === 'github-issue') return { status: 'key', key, shape: 'ticket id', tried };
+    for (const f of forms) {
+      if (!f.key) {
+        tried.push(`${f.kind} short form: ${opts.project ? `${opts.project} names no scope for it (${f.needs})` : `no current project (${f.needs})`}`);
+        continue;
+      }
+      tried.push(`${f.kind} short form ${f.key}`);
+      if (loaded.byKey.has(f.key) || referenced(f.key)) return sourceKey(f.key, 'ticket id');
+      if (f.qualified || (f.kind === tracker && f.inScope)) return { status: 'key', key: f.key, shape: 'ticket id', tried };
     }
+    if (!tracker) tried.push(`a ticket through the project's tracker (${opts.project ? `${opts.project} names none` : 'no current project'})`);
   }
   if (SLUG_RE.test(ref)) {
     tried.push(`change:${ref}, project:${ref}`);
@@ -335,4 +289,50 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
     out.push(`\n${'─'.repeat(60)}\n${v === 'self' ? '' : `reached ${c.change.key} through ${v}\n\n`}${formatChange(c).trimEnd()}`);
   }
   return out.join('\n') + '\n';
+}
+
+// --- references in text ----------------------------------------------------------------------------
+
+export interface Reference {
+  /** The span as written. */
+  text: string;
+  at: number;
+  /** How it was recognised: `change`, `url`, `slug`, or a source kind's short form. */
+  shape: string;
+  resolution: Resolution;
+  key: string;
+  /** The change it leads to: itself, the change that binds it, or the nearest change in reach. */
+  change?: string;
+  /** A ticket of the project's tracker with no record yet: the tracker can be asked and the sync would create the change. */
+  creatable: boolean;
+}
+
+/** Every reference in a text that resolves to something, in order of appearance, each with the change it leads to.
+ *  The last mention is what a prompt is about. Never writes. */
+export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {}): Reference[] {
+  // bare slugs: changes still in play (a dropped change is reached by its full key only)
+  const slugs = loaded.records.filter((r) => r.type === 'change' && r.data.status !== 'dropped').map((r) => r.key.slice('change:'.length));
+  const tracker = trackerOf(loaded, opts.project);
+  const out: Reference[] = [];
+  for (const m of mentions(text, slugs)) {
+    const last = out[out.length - 1];
+    if (last && m.at < last.at + last.text.length) continue; // inside a span already accepted
+    const resolution = resolveRef(loaded, m.shape === 'slug' ? m.text.toLowerCase() : m.text, opts);
+    if (resolution.status === 'none' || !resolution.key) continue;
+    const key = resolution.key;
+    let change: string | undefined;
+    if (key.startsWith('change:')) change = key;
+    else {
+      const n = get(loaded, key, opts);
+      change = n.changes[0]?.change.key;
+    }
+    const kind = key.slice(0, key.indexOf(':'));
+    out.push({ text: m.text, at: m.at, shape: m.shape, resolution, key, change, creatable: !change && resolution.status === 'key' && kind === tracker });
+  }
+  return out;
+}
+
+export function formatReferences(refs: Reference[]): string {
+  if (!refs.length) return 'no references';
+  return refs.map((r) => `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''})${r.change ? ` · ${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`).join('\n');
 }

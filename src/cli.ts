@@ -8,7 +8,7 @@ import { buildIndex, query } from './indexdb.js';
 import { loadStore } from './records.js';
 import { CliError, plural } from './util.js';
 import { formatProblems, summarise, validate } from './validate.js';
-import { formatNeighbourhood, get } from './graph.js';
+import { findReferences, formatNeighbourhood, formatReferences, get } from './graph.js';
 import { renderView, watchStore } from './commands/pane.js';
 import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
 import { readServeAddress, startServer } from './server.js';
@@ -50,6 +50,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
     usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
   { name: 'ls', about: 'list records, by type, status and project', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--json]'] },
+  { name: 'refs', about: "every reference in a text that resolves to something, in order, each with the change it leads to: change:<slug>, a URL, a ticket in any shape the store's source kinds know, an existing slug; the last mention is what a prompt is about. Never writes",
+    usage: ['pjman refs <text> [--json]', 'pjman refs - [--json]   (text on stdin)'] },
   { name: 'get', about: 'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out (exit 1 when nothing matches)',
     usage: ['pjman get <ref> [--json]'] },
   { name: 'view', about: "the view beside a session, as a Markdown document: one reference, or what a session is on (its last bound change, else the project's board); --out writes a file, --watch re-renders whenever the store changes",
@@ -260,6 +262,14 @@ function main(): number {
       const n = get(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project });
       v.json ? json(n) : out(formatNeighbourhood(n, formatChangeContext));
       return n.resolution.status === 'none' ? 1 : 0;
+    }
+    case 'refs': {
+      const store = requireStore(cwd, v.store);
+      if (!pos[1]) throw new CliError('usage: pjman refs <text> | pjman refs - (text on stdin)');
+      const text = pos[1] === '-' ? fs.readFileSync(0, 'utf8') : pos.slice(1).join(' ');
+      const refs = findReferences(loadStore(store), text, { cwd, projectDir: store.projectDir, project: store.project });
+      v.json ? json(refs) : out(formatReferences(refs));
+      return 0;
     }
     case 'view': {
       const store = requireStore(cwd, v.store);

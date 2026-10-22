@@ -1,7 +1,7 @@
 // GitHub issues: the translation from what `gh issue list --json …` or GitHub's API answers to tickets.
 import { CANONICAL_STATUSES, type Store } from '../config.js';
 import { loadStore, resolve } from '../records.js';
-import { repoOf } from '../graph.js';
+import { repoOf, slugFor } from '../refs.js';
 import { CliError } from '../util.js';
 import { applyTickets, itemsIn, obj, readObserved, type SyncResult, type Ticket } from './apply.js';
 
@@ -91,7 +91,6 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
   } catch (e) {
     throw new CliError((e as Error).message);
   }
-  const name = repo.slice(repo.indexOf('/') + 1).toLowerCase().replace(/[^a-z0-9]+/g, '-');
   const skipped: SyncResult['skipped'] = [];
   const tickets: Ticket[] = [];
   for (const i of ghIssuesIn(data)) {
@@ -100,7 +99,7 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
       continue;
     }
     tickets.push({
-      id: `${repo}#${i.number}`, slug: `${name}-${i.number}`, title: i.title, url: i.url ?? `https://github.com/${repo}/issues/${i.number}`,
+      id: `${repo}#${i.number}`, slug: slugFor('github-issue', `${repo}#${i.number}`), title: i.title, url: i.url ?? `https://github.com/${repo}/issues/${i.number}`,
       status: mapGhStatus(store, i), parent: i.parent !== undefined ? `${repo}#${i.parent}` : undefined,
       observed: { state: i.state, state_reason: i.stateReason, labels: i.labels, milestone: i.milestone, parent: i.parent, updated_at: i.updatedAt },
     });

@@ -53,6 +53,7 @@ pjman fmt [--check]                    canonical field order, the YAML rule, rep
 pjman ls [type] [--status s] [--project <key>] [--json]   records in creation order, with their date
 pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads first: this project's board, or one change with its decisions, sources, sessions
 pjman get <ref>                        the getter: a key, a URL, a ticket id, a file path or a slug in; the record, its edges both ways and the context of every change within two hops out
+pjman refs <text|->                    every reference in a text, in order, with the change it leads to; what a prompt is about
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>
 pjman set <key> <field>=<value>…   change an authored field (title, status, project, parent, next, links, binds, summary, plan; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated

@@ -4,7 +4,7 @@
 //
 //   SessionStart      register the repository if it is not a project yet (auto_register); create the session record; inject the brief,
 //                     `pjman context` (and the bound change's context on resume/compact); observe the branch and the open PR
-//   UserPromptSubmit  a prompt naming a change, a ticket id or a URL binds the change it resolves to (the getter); a ticket of the project's tracker with no change gets one; the change's context is injected the first time
+//   UserPromptSubmit  a prompt naming a change, a ticket or a URL binds the change it leads to (pjman refs); a ticket of the project's tracker with no record is read from the tracker and created through the sync (gh for GitHub), or the agent is told to; the change's context is injected the first time
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
 //   Stop              a turn that acted appends one log line, from the harness's last message
 //   SubagentStart     a child session with `parent`
@@ -40,10 +40,10 @@ function note(msg) {
 const localBin = path.resolve(here, '..', '..', '..', 'bin', 'pjman.js');
 const PJMAN = fs.existsSync(localBin) ? [process.execPath, localBin] : ['pjman'];
 
-function pjman(args, { cwd, env = {}, json = false } = {}) {
+function pjman(args, { cwd, env = {}, json = false, input } = {}) {
   const [cmd, ...pre] = PJMAN;
   const out = execFileSync(cmd, [...pre, ...args], {
-    cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    cwd, encoding: 'utf8', stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], input,
     env: { ...process.env, ...env },
   });
   return json ? JSON.parse(out) : out;
@@ -250,53 +250,32 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
   return tryPjman(args, { cwd, env }) !== null;
 }
 
-function changeKeys(cwd) {
-  const rows = tryPjman(['ls', 'change', '--json'], { cwd, json: true });
-  return rows ? rows.map((r) => r.key) : [];
-}
-
-/** change:<slug> anywhere in the prompt; or a bare existing slug containing a hyphen, as a whole word. Last mention wins. */
-function namedChange(prompt, keys) {
-  const found = [];
-  for (const m of prompt.matchAll(/\bchange:([a-z0-9][a-z0-9-]*)/g)) if (keys.includes(`change:${m[1]}`)) found.push({ i: m.index, key: `change:${m[1]}` });
-  for (const key of keys) {
-    const slug = key.slice('change:'.length);
-    if (!slug.includes('-')) continue;
-    for (const m of prompt.matchAll(new RegExp(`(^|[^a-z0-9:/-])${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![a-z0-9-])`, 'gi'))) found.push({ i: m.index, key });
-  }
-  found.sort((a, b) => a.i - b.i);
-  return found.length ? found[found.length - 1].key : null;
-}
-
-/** Ticket ids (ABC-1234), GitHub issue references (owner/repo#12; bare #12 when the project's tracker is GitHub) and
- *  URLs in the prompt, in order of appearance. */
-function references(prompt, tracker) {
-  const found = [];
-  // ticket-shaped words that are not tickets
-  const notTicket = /^(UTF|SHA|ISO|RFC|CVE|MD|AES|RSA|HTTP|TLS|ES|HTML|CSS|PEP|ECMA|IPV|X)-/;
-  for (const m of prompt.matchAll(/\b[A-Z][A-Z0-9]*-\d+\b/g)) if (!notTicket.test(m[0])) found.push({ i: m.index, ref: m[0] });
-  for (const m of prompt.matchAll(/(?<![\w/.-])[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#\d+\b/g)) found.push({ i: m.index, ref: m[0] });
-  if (tracker === 'github-issue') for (const m of prompt.matchAll(/(?<![\w#&/])#\d+\b/g)) found.push({ i: m.index, ref: m[0] });
-  for (const m of prompt.matchAll(/https?:\/\/[^\s<>()"']+/g)) found.push({ i: m.index, ref: m[0].replace(/[.,;:!?]+$/, '') });
-  return found.sort((a, b) => a.i - b.i).map((f) => f.ref);
-}
-
-/** The change a ticket id or URL in the prompt resolves to, through `pjman get`; last mention wins. A ticket of the
- *  project's tracker that no change binds gets a change (slug: the id lower-cased, title: the id, binds: the ticket). */
-function referencedChange(prompt, store, { cwd, env }) {
-  for (const ref of references(prompt, store.tracker).reverse()) {
-    const n = tryPjman(['get', ref, '--json'], { cwd, json: true });
-    if (!n || n.resolution.status === 'none') continue;
-    if (n.changes.length) return n.changes[0].change.key;
-    const key = n.resolution.key || '';
-    const kind = key.slice(0, key.indexOf(':'));
-    if (!store.tracker || kind !== store.tracker || n.resolution.status !== 'key') continue;
-    const id = key.slice(kind.length + 1);
-    // github-issue:owner/repo#12 → repo-12, the slug the sync uses; else the id lower-cased
-    const slug = kind === 'github-issue' ? id.replace(/^.*\//, '').replace('#', '-').toLowerCase() : id.toLowerCase();
-    if (tryPjman(['new', 'change', slug, '--title', id, '--binds', key], { cwd, env }) !== null) return `change:${slug}`;
+/** What a prompt is about: the last reference in it that leads to a change. The tool scans the text (`pjman refs`); the
+ *  hook knows no shapes. A ticket of the project's tracker with no record is read from the tracker and applied through
+ *  the sync, which creates the change with its real title; where the hook has no reader for the tracker, the agent is
+ *  told to read and sync it. A pattern match alone never creates a record. */
+function promptChange(prompt, { cwd, env }) {
+  const refs = tryPjman(['refs', '-', '--json'], { cwd, json: true, input: prompt }) ?? [];
+  for (const r of refs.reverse()) {
+    if (r.change) return { key: r.change };
+    if (!r.creatable) continue;
+    const created = createFromTracker(r, { cwd, env });
+    if (created) return { key: created };
+    const sync = r.key.startsWith('github-issue:') ? 'github' : r.key.slice(0, r.key.indexOf(':'));
+    return { hint: `${r.text} is ${r.key}; the store has no record of it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound when you name it).` };
   }
   return null;
+}
+
+/** GitHub issues: gh is at hand, so the hook reads the issue and the sync creates the change. */
+function createFromTracker(r, { cwd, env }) {
+  const m = /^github-issue:([^#]+)#(\d+)$/.exec(r.key);
+  if (!m) return null;
+  const issue = sh('gh', ['issue', 'view', m[2], '-R', m[1], '--json', 'number,title,url,state,stateReason,labels,milestone'], cwd);
+  if (!issue) return null;
+  if (tryPjman(['sync', 'github', '--from', '-', '--json'], { cwd, env, input: issue }) === null) return null;
+  const n = tryPjman(['get', r.key, '--json'], { cwd, json: true });
+  return n?.changes?.[0]?.change?.key ?? null;
 }
 
 // --- main ---------------------------------------------------------------------------------------
@@ -349,8 +328,13 @@ function main() {
     }
     case 'UserPromptSubmit': {
       const prompt = String(input.prompt ?? '');
-      const key = namedChange(prompt, changeKeys(cwd)) ?? referencedChange(prompt, store, { cwd, env });
-      if (!key) return;
+      const found = promptChange(prompt, { cwd, env });
+      if (!found) return;
+      if (found.hint) {
+        emitContext(EVENT, found.hint);
+        return;
+      }
+      const key = found.key;
       if (st.bound !== key) {
         if (tryPjman(['session', 'bind', sid, key], { cwd, env }) !== null) {
           st.bound = key;

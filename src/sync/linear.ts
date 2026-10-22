@@ -2,6 +2,7 @@
 import { CANONICAL_STATUSES, type Store } from '../config.js';
 import { loadStore, resolve } from '../records.js';
 import { CliError } from '../util.js';
+import { slugFor } from '../refs.js';
 import { applyTickets, itemsIn, obj, readObserved, type SyncResult, type Ticket } from './apply.js';
 
 export const WRITER = 'agent:linear-sync';
@@ -93,7 +94,7 @@ export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
       continue;
     }
     tickets.push({
-      id: issue.id, slug: issue.id.toLowerCase(), title: issue.title, url: issue.url, status: mapStatus(store, issue.state, issue.stateType), parent: issue.parent,
+      id: issue.id, slug: slugFor('linear', issue.id), title: issue.title, url: issue.url, status: mapStatus(store, issue.state, issue.stateType), parent: issue.parent,
       observed: { state: issue.state, state_type: issue.stateType, team: issue.team, parent: issue.parent, updated_at: issue.updatedAt },
     });
   }

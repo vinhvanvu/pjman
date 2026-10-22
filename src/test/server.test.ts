@@ -76,6 +76,9 @@ test('the getter: a neighbourhood by key, and resolve for anything', async () =>
   assert.deepEqual((n.body.data as { changes: { change: { key: string } }[] }).changes.map((c) => c.change.key), ['change:login']);
   const r = await getJson('/api/v1/resolve?ref=' + encodeURIComponent('https://linear.app/acme/issue/APP-1/login'));
   assert.equal((r.body.data as { resolution: { key: string } }).resolution.key, 'linear:APP-1');
+  const refs = await getJson('/api/v1/refs?text=' + encodeURIComponent('start APP-1 now'));
+  assert.equal(refs.status, 200);
+  assert.deepEqual((refs.body.data as { key: string; change?: string }[]).map((r) => [r.key, r.change]), [['linear:APP-1', 'change:login']]);
   const none = await getJson('/api/v1/resolve?ref=zzz');
   assert.equal(none.status, 404);
   assert.ok(none.body.error?.tried?.length);

@@ -12,7 +12,7 @@ import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js'
 import { set } from '../commands/set.js';
 import { changeContext, decisionLine, formatLs, formatStoreContext, ls, storeContext } from '../commands/view.js';
 import { findStore, writeStoreConfig, type Store } from '../config.js';
-import { get, keyFromUrl } from '../graph.js';
+import { findReferences, get, keyFromUrl } from '../graph.js';
 import { renderView } from '../commands/pane.js';
 import { BRIEF, installBrief } from '../commands/brief.js';
 import { start, stop } from '../commands/start.js';
@@ -299,6 +299,18 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   assert.deepEqual(get(loaded, '#8', { project: 'project:project' }).changes.map((c) => c.change.key), ['change:app-8']);
   assert.deepEqual(get(loaded, 'other/repo#8').changes, []);
   assert.equal(get(loaded, 'other/repo#8').resolution.key, 'github-issue:other/repo#8');
+  // an id of another kind's shape does not resolve through this project's tracker
+  assert.equal(get(loaded, 'XYZ-77', { project: 'project:project' }).resolution.status, 'none');
+
+  // the scanner: every reference in a text, in order, with the change it leads to; a shape of another tracker is not a reference here
+  const refs = findReferences(loaded, 'see change:contract, then #8 (not #77, UTF-8 or XYZ-77) and https://linear.app/acme/issue/ABC-1234/x', { project: 'project:project' });
+  assert.deepEqual(refs.map((r) => [r.text, r.key, r.change, r.creatable]), [
+    ['change:contract', 'change:contract', 'change:contract', false],
+    ['#8', 'github-issue:acme/app#8', 'change:app-8', false],
+    ['#77', 'github-issue:acme/app#77', undefined, true],
+    ['https://linear.app/acme/issue/ABC-1234/x', 'linear:ABC-1234', 'change:abc', false],
+  ]);
+  assert.equal(findReferences(loaded, 'nothing here', { project: 'project:project' }).length, 0);
   fs.rmSync(path.join(store.root, 'changes/abc'), { recursive: true });
 });
 

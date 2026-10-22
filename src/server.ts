@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readUserConfig, userDir, type Store } from './config.js';
 import { follow, lastSeq, readEvents } from './events.js';
-import { get } from './graph.js';
+import { findReferences, get } from './graph.js';
 import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
@@ -120,6 +120,11 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (n.resolution.status === 'none') throw new HttpError(404, 'not-found', `${ref} resolves to nothing`, n.resolution.tried);
       return send(res, 200, { data: n });
     }
+    if (route === '/refs') {
+      const text = url.searchParams.get('text');
+      if (text === null) throw new HttpError(400, 'bad-request', 'text is required');
+      return send(res, 200, { data: findReferences(loaded, text, getOpts) });
+    }
     if ((m = /^\/sessions\/([^/]+)\/view$/.exec(route))) {
       return send(res, 200, { data: viewData(store, { session: decodeURIComponent(m[1]), ...getOpts }, loaded) });
     }
@@ -177,7 +182,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since='] } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since='] } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

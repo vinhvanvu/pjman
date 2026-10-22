@@ -110,21 +110,35 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.equal(at('look at ABC-1234 and UTF-8'), '');
   assert.ok(!loadStore(g).byKey.has('change:abc-1234'));
   set(g, 'project:work', ['tracker=linear'], {});
-  const ctx = context(at('start ABC-1234 please, mind UTF-8'));
+  // a ticket of the tracker with no record: nothing is created from the pattern; the agent is told to read and sync it
+  const hint = context(at('start ABC-1234 please, mind UTF-8'));
+  assert.match(hint, /ABC-1234 is linear:ABC-1234; the store has no record/);
+  assert.match(hint, /pjman sync linear --from -/);
+  assert.ok(!loadStore(g).byKey.has('change:abc-1234'));
+  assert.ok(!loadStore(g).byKey.has('change:utf-8'));
+  // once the sync (here: the record) exists, the id binds it
+  newRecord(g, 'change', 'abc-1234', { title: 'ABC-1234', summary: 's', project: 'project:work', binds: ['linear:ABC-1234'] });
+  const ctx = context(at('continue ABC-1234'));
   assert.match(ctx, /^# change:abc-1234 — ABC-1234/);
-  const rec = loadStore(g).byKey.get('change:abc-1234')![0];
-  assert.deepEqual(rec.data.binds, ['linear:ABC-1234']);
-  assert.equal(rec.data.project, 'project:work');
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234']);
   assert.equal(at('see https://linear.app/acme/issue/ABC-1234/the-title.'), '');
   assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
-  // a GitHub project: #12 in the prompt is an issue of its repository; the change gets the sync's slug
+  // a GitHub project: #12 in the prompt is an issue of its repository; the hook reads it with gh and the sync creates the change
   assert.equal(at('fix #12 first'), '');
   set(g, 'project:work', ['tracker=github-issue', 'ext.github.repo=acme/app'], {});
-  assert.match(context(at('fix #12 first')), /^# change:app-12 — acme\/app#12/);
-  assert.deepEqual(loadStore(g).byKey.get('change:app-12')![0].data.binds, ['github-issue:acme/app#12']);
-  assert.equal(at('and acme/app#12 again'), ''); // already hydrated: bound, no second injection
+  const bin = path.join(tmp, 'bin');
+  fs.mkdirSync(bin, { recursive: true });
+  fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\ncase "$*" in *"issue view 12"*) echo \'{"number":12,"title":"Twelve","url":"https://github.com/acme/app/issues/12","state":"OPEN","labels":[{"name":"in progress"}],"milestone":null}\';; *) exit 1;; esac\n', { mode: 0o755 });
+  const withGh = { ...env, PATH: `${bin}:${process.env.PATH ?? ""}` };
+  const atGh = (prompt: string) => execFileSync(process.execPath, [HOOK, 'UserPromptSubmit'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', prompt }), encoding: 'utf8', env: withGh });
+  assert.match(context(atGh('fix #12 first')), /^# change:app-12 — Twelve/);
+  const twelve = loadStore(g).byKey.get('change:app-12')![0];
+  assert.deepEqual(twelve.data.binds, ['github-issue:acme/app#12']);
+  assert.equal(twelve.data.writer, 'agent:github-sync');
+  assert.equal(atGh('and acme/app#12 again'), ''); // already hydrated: bound, no second injection
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234', 'change:app-12']);
+  assert.match(context(atGh('fix #13 too')), /#13 is github-issue:acme\/app#13; the store has no record/); // gh knows no 13
+  assert.ok(!loadStore(g).byKey.has('change:app-13'));
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });
 

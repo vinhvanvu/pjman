@@ -54,15 +54,17 @@ signs in anywhere. When a ticket is named, or the project's board should reflect
    ```
    pjman makes the source (`linear:ABC-1234`, observed state under `ext.linear`) and the change that binds it;
    title, status and parent follow the ticket; `next`, the summary, the plan and the decisions stay pjman's.
-2. Then `pjman get ABC-1234` or `pjman context change:abc-1234` and work as usual. A ticket named in the prompt is
-   already bound to its change by the hook; a sync fills in what the hook could not know (the title, the state).
+2. Then `pjman get ABC-1234` or `pjman context change:abc-1234` and work as usual. A ticket named in the prompt binds
+   its change when the store has one (for a GitHub issue the hook reads it with gh and syncs it itself); otherwise the
+   hook tells you to read and sync it, and the sync creates the change. A pattern match alone never creates a record.
 
 ## Commands you will use
 
 ```
 pjman context [change:<slug>] [--all]   this project's board (--all: every project), or one change with its decisions, sources and sessions
 pjman get <ref>                          anything in (key, ticket id, URL, file path, slug): the record, its edges, and every change in reach
-pjman sync linear --from -               apply tickets observed through the harness's Linear MCP tools (JSON on stdin)
+pjman sync linear|github --from -        apply tickets observed through the tracker's tools (JSON on stdin)
+pjman refs <text>                        every reference in a text (a change, a ticket in any shape, a URL) and the change it leads to
 pjman ls decision --status proposed      what is waiting on a person
 pjman show <key>                         one record
 pjman new change|decision|source …       create (refused if it would not validate)
