@@ -37,11 +37,30 @@ Every write goes through the `pjman` command. Never edit a file under the store 
 6. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or
    decisions. Those belong to this adapter.
 
+## Tickets
+
+The project may name its tracker (`pjman where --json` shows `tracker`). A Linear ticket is reached through the
+harness's own Linear MCP connection (this plugin declares it; the person signs in once with `/mcp`); pjman never
+signs in anywhere. When a ticket is named, or the project's board should reflect the tracker:
+
+1. Read it with the Linear tools (`get_issue` for one, `list_issues` for the team) and hand pjman the answer, as JSON,
+   exactly as the tool returned it:
+   ```
+   pjman sync linear --from - <<'EOF'
+   { …the tool's result… }
+   EOF
+   ```
+   pjman makes the source (`linear:ABC-1234`, observed state under `ext.linear`) and the change that binds it;
+   title, status and parent follow the ticket; `next`, the summary, the plan and the decisions stay pjman's.
+2. Then `pjman get ABC-1234` or `pjman context change:abc-1234` and work as usual. A ticket named in the prompt is
+   already bound to its change by the hook; a sync fills in what the hook could not know (the title, the state).
+
 ## Commands you will use
 
 ```
 pjman context [change:<slug>] [--all]   this project's board (--all: every project), or one change with its decisions, sources and sessions
 pjman get <ref>                          anything in (key, ticket id, URL, file path, slug): the record, its edges, and every change in reach
+pjman sync linear --from -               apply tickets observed through the harness's Linear MCP tools (JSON on stdin)
 pjman ls decision --status proposed      what is waiting on a person
 pjman show <key>                         one record
 pjman new change|decision|source …       create (refused if it would not validate)

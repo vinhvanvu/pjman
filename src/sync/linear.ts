@@ -1,33 +1,18 @@
-// The Linear sync: tickets observed through Linear's MCP server become sources and the changes that bind them.
-// Pull only. Every write goes through the tool's write path: validated, committed once per run, one event per record.
+// The Linear sync: the translation layer. Tickets observed by whoever holds the connection (a harness's MCP session today)
+// arrive as JSON; they become sources with observed state and the changes that bind them. pjman never authenticates to a
+// tracker. Pull only. Every write goes through the tool's write path: validated, committed once per run, one event per record.
+import fs from 'node:fs';
 import path from 'node:path';
 import { CANONICAL_STATUSES, readUserConfig, type Store } from '../config.js';
 import type { EventInput } from '../events.js';
-import { McpClient, type McpTool } from '../mcp/client.js';
-import { currentToken, refresh } from '../mcp/oauth.js';
-import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
+import { sourceFileSlug } from '../keys.js';
+import { loadStore, resolve, type Rec } from '../records.js';
 import { CliError, localDate, nowIso } from '../util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../write.js';
-import { newSession, newSource } from '../commands/new.js';
+import { newSession } from '../commands/new.js';
 import { sessionLog } from '../commands/session.js';
-import { sourceFileSlug } from '../keys.js';
 
-export const LINEAR_MCP_URL = 'https://mcp.linear.app/mcp';
 export const WRITER = 'agent:linear-sync';
-
-export interface SyncOpts {
-  project?: string;
-  team?: string;
-  probe?: boolean;
-  /** Only issues updated at or after this date. */
-  since?: string;
-  token?: string;
-  url?: string;
-  fetchImpl?: typeof fetch;
-  /** Issues per page. */
-  limit?: number;
-  session?: string;
-}
 
 export interface Issue {
   id: string;
@@ -40,11 +25,17 @@ export interface Issue {
   team?: string;
 }
 
+export interface SyncOpts {
+  project?: string;
+  team?: string;
+  /** The observed data: a path, `-` for stdin, or the parsed value itself. */
+  from?: string | unknown;
+  session?: string;
+}
+
 export interface SyncResult {
   project: string;
-  team?: string;
-  server?: { name?: string; version?: string } | null;
-  probe?: { tools: string[]; teams?: unknown; sample?: unknown };
+  team: string;
   issues: number;
   created: string[];
   updated: string[];
@@ -69,12 +60,12 @@ export function mapStatus(store: Store, state?: string, stateType?: string): str
   return 'open';
 }
 
-// --- the shapes a tool may answer with, normalised -----------------------------------------------
+// --- the shapes a tracker's tools answer with, normalised ------------------------------------------
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : typeof v === 'number' ? String(v) : undefined);
 const obj = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
 
-/** An issue from whatever field names the server uses. */
+/** An issue from whatever field names the tool used. */
 export function toIssue(raw: unknown): Issue | null {
   const r = obj(raw);
   if (!r) return null;
@@ -96,75 +87,63 @@ export function toIssue(raw: unknown): Issue | null {
   };
 }
 
-/** The list and the cursor inside a tool's answer: an array, or the first array-valued field plus a next cursor. */
-export function pageOf(data: unknown): { items: unknown[]; next?: string } {
-  if (Array.isArray(data)) return { items: data };
+/** The issues inside a tool's answer: one issue, an array, an object with a list field, or an MCP tool result with text content. */
+export function issuesIn(data: unknown): Issue[] {
+  if (typeof data === 'string') {
+    try {
+      return issuesIn(JSON.parse(data));
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(data)) return data.flatMap((x) => issuesIn(x));
   const r = obj(data);
-  if (!r) return { items: [] };
+  if (!r) return [];
+  const one = toIssue(r);
+  if (one) return [one];
+  if (Array.isArray(r.content)) {
+    // an MCP tool result pasted whole
+    return (r.content as unknown[]).flatMap((c) => (obj(c)?.type === 'text' ? issuesIn(obj(c)!.text) : []));
+  }
+  if (r.structuredContent !== undefined) return issuesIn(r.structuredContent);
   const list = (['issues', 'nodes', 'results', 'items', 'data'] as const).map((k) => r[k]).find(Array.isArray) ?? Object.values(r).find(Array.isArray);
-  const info = obj(r.pageInfo);
-  const next = str(r.nextCursor) ?? str(r.cursor) ?? (info?.hasNextPage ? str(info.endCursor) : undefined);
-  return { items: (list as unknown[]) ?? [], next };
+  return list ? issuesIn(list) : [];
 }
 
-function pickTool(tools: McpTool[], exact: string[], pattern: RegExp): McpTool | undefined {
-  return exact.map((n) => tools.find((t) => t.name === n)).find(Boolean) ?? tools.find((t) => pattern.test(t.name));
+function readFrom(from: SyncOpts['from']): unknown {
+  if (from === undefined) throw new CliError('nothing to sync: pass --from <file> or --from - (the issues as JSON, as the tracker\'s tools answered)');
+  if (typeof from !== 'string') return from;
+  const trimmed = from.trim();
+  const text = trimmed.startsWith('{') || trimmed.startsWith('[') ? from : from === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(from, 'utf8');
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new CliError(`${from === '-' ? 'stdin' : from} is not JSON`);
+  }
 }
 
 // --- the run -------------------------------------------------------------------------------------
 
-export async function connectLinear(opts: SyncOpts): Promise<McpClient> {
-  const url = opts.url ?? process.env.PJMAN_LINEAR_URL ?? LINEAR_MCP_URL;
-  const token = opts.token ?? process.env.PJMAN_LINEAR_TOKEN ?? (await currentToken('linear', opts.fetchImpl));
-  if (!token) throw new CliError('not signed in to Linear: run `pjman auth linear` (or pass --token / PJMAN_LINEAR_TOKEN)');
-  const client = new McpClient({ url, token, fetchImpl: opts.fetchImpl, refresh: () => refresh('linear', opts.fetchImpl) });
-  return client.connect();
-}
-
-export async function syncLinear(store: Store, opts: SyncOpts = {}): Promise<SyncResult> {
+export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
   let loaded = loadStore(store);
   const projectKey = opts.project ?? store.project;
   if (!projectKey) throw new CliError('no project: run from a registered repository or pass --project project:<slug>');
   const pres = resolve(loaded, projectKey.startsWith('project:') ? projectKey : `project:${projectKey}`);
   if (pres.status !== 'ok') throw new CliError(`${projectKey} does not resolve to a project`);
   const project = pres.rec;
-  const ext = obj(obj(project.data.ext)?.linear);
-  const team = opts.team ?? str(ext?.team);
-  const tracker = str(project.data.tracker);
-  if (!opts.probe && tracker !== 'linear') throw new CliError(`${project.key} does not name linear as its tracker: pjman set ${project.key} tracker=linear`);
+  if (str(project.data.tracker) !== 'linear') throw new CliError(`${project.key} does not name linear as its tracker: pjman set ${project.key} tracker=linear ext.linear.team=<KEY>`);
+  const team = opts.team ?? str(obj(obj(project.data.ext)?.linear)?.team);
+  if (!team) throw new CliError(`${project.key} names no Linear team: pjman set ${project.key} ext.linear.team=<KEY> (the prefix of its issue ids)`);
 
-  const client = await connectLinear(opts);
-  const tools = client.tools;
-  const result: SyncResult = { project: project.key, team, server: client.serverInfo, issues: 0, created: [], updated: [], unchanged: [], skipped: [], commit: null };
-
-  const listIssues = pickTool(tools, ['list_issues', 'search_issues', 'issues'], /issues?$/i);
-  if (opts.probe || !team) {
-    const listTeams = pickTool(tools, ['list_teams', 'teams'], /teams?$/i);
-    const teams = listTeams ? await client.callJson(listTeams.name, client.argsFor(listTeams.name, { limit: 50 })).catch((e: Error) => ({ error: e.message })) : undefined;
-    const sample = listIssues ? await client.callJson(listIssues.name, client.argsFor(listIssues.name, { team, limit: 2 })).catch((e: Error) => ({ error: e.message })) : undefined;
-    result.probe = { tools: tools.map((t) => t.name), teams, sample };
-    return result;
-  }
-  if (!listIssues) throw new CliError(`the server has no issue-listing tool; it offers: ${tools.map((t) => t.name).join(', ')}`);
-
-  // pull every page
+  const all = issuesIn(readFrom(opts.from));
+  const result: SyncResult = { project: project.key, team, issues: 0, created: [], updated: [], unchanged: [], skipped: [], commit: null };
   const issues: Issue[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < 50; page++) {
-    const args = client.argsFor(listIssues.name, { team, teamKey: team, teamId: team, limit: opts.limit ?? 50, updatedAt: opts.since, updatedAfter: opts.since, since: opts.since, cursor, after: cursor, includeArchived: false });
-    const data = await client.callJson(listIssues.name, args);
-    const { items, next } = pageOf(data);
-    if (!items.length && page === 0 && typeof data === 'string') throw new CliError(`${listIssues.name} answered text, not data: ${data.slice(0, 300)}`);
-    for (const raw of items) {
-      const issue = toIssue(raw);
-      if (!issue) continue;
-      if (issue.team !== team) continue;
-      issues.push(issue);
-    }
-    if (!next || !items.length) break;
-    cursor = next;
+  for (const issue of all) {
+    if (issue.team !== team) result.skipped.push({ id: issue.id, reason: `team ${issue.team} is not ${team}` });
+    else issues.push(issue);
   }
   result.issues = issues.length;
+  if (!issues.length) return result;
 
   // the run is a session, on behalf of the person
   const actor = readUserConfig().actor;
@@ -201,18 +180,15 @@ export async function syncLinear(store: Store, opts: SyncOpts = {}): Promise<Syn
     const srcRel = path.join('sources', 'linear', `${sourceFileSlug('linear', issue.id)}.md`);
     const src = loaded.byKey.get(sourceKey)?.[0];
     const observed = { state: issue.state, state_type: issue.stateType, team: issue.team, parent: issue.parent, updated_at: issue.updatedAt, synced_at: nowIso() };
-    const srcData: Record<string, unknown> = {
-      ...(src?.data ?? {}), kind: 'linear', key: issue.id, title: issue.title, url: issue.url ?? src?.data.url,
-      ...(src ? {} : stamp), ext: { ...(obj(src?.data.ext) ?? {}), linear: observed },
-    };
-    // synced_at alone must not count as a change
-    if (src) {
-      const prev = obj(obj(src.data.ext)?.linear);
-      const same = prev && ['state', 'state_type', 'team', 'parent', 'updated_at'].every((k) => prev[k] === (observed as Record<string, unknown>)[k]) && src.data.title === issue.title && (issue.url ?? src.data.url) === src.data.url;
-      if (same) {
-        // fall through to the change; the source is unchanged
-      } else write(src, 'source', srcRel, sourceKey, srcData, src.body, ['title', 'url', 'ext']);
-    } else write(undefined, 'source', srcRel, sourceKey, srcData, '', []);
+    const prev = obj(obj(src?.data.ext)?.linear);
+    const same = src && prev && ['state', 'state_type', 'team', 'parent', 'updated_at'].every((k) => prev[k] === (observed as Record<string, unknown>)[k]) && src.data.title === issue.title && (issue.url ?? src.data.url) === src.data.url;
+    if (!same) {
+      const srcData: Record<string, unknown> = {
+        ...(src?.data ?? {}), kind: 'linear', key: issue.id, title: issue.title, url: issue.url ?? src?.data.url,
+        ...(src ? {} : stamp), ext: { ...(obj(src?.data.ext) ?? {}), linear: observed },
+      };
+      write(src, 'source', srcRel, sourceKey, srcData, src?.body ?? '', ['title', 'url', 'ext']);
+    }
 
     const bound = byBind.get(sourceKey);
     const slug = issue.id.toLowerCase();
@@ -240,11 +216,10 @@ export async function syncLinear(store: Store, opts: SyncOpts = {}): Promise<Syn
     const rec = loaded.byKey.get(key)?.[0];
     const parentKey = changeOf.get(issue.parent) ?? (loaded.byKey.has(`change:${issue.parent.toLowerCase()}`) ? `change:${issue.parent.toLowerCase()}` : undefined);
     if (!rec || !parentKey || rec.data.parent === parentKey) {
-      if (rec && !parentKey) result.skipped.push({ id: issue.id, reason: `parent ${issue.parent} is not in this project` });
+      if (rec && !parentKey) result.skipped.push({ id: issue.id, reason: `parent ${issue.parent} is not in the store` });
       continue;
     }
-    const text = render('change', { ...rec.data, parent: parentKey }, rec.body);
-    writeFile(store, rec.path, text);
+    writeFile(store, rec.path, render('change', { ...rec.data, parent: parentKey }, rec.body));
     touched.push(rec.path);
     events.push({ op: 'set', key, type: 'change', path: rec.path, fields: ['parent'], writer: WRITER, session });
     if (!result.updated.includes(key) && !result.created.includes(key)) result.updated.push(key);
@@ -252,12 +227,8 @@ export async function syncLinear(store: Store, opts: SyncOpts = {}): Promise<Syn
   }
   if (touched.length) validateOrUndo(store, touched, []);
 
-  const line = `linear ${team}: ${issues.length} issues; ${result.created.length} changes created, ${result.updated.length} updated, ${result.unchanged.length} unchanged`;
   result.commit = events.length ? finishWrite(store, `pjman: sync linear ${team} (${issues.length} issues)`, session, events) : null;
-  if (session) sessionLog(store, session, line);
+  if (session) sessionLog(store, session, `linear ${team}: ${issues.length} issues; ${result.created.length} changes created, ${result.updated.length} updated, ${result.unchanged.length} unchanged`);
   result.session = session;
   return result;
 }
-
-export { newSource };
-export type { Loaded };
