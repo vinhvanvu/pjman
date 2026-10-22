@@ -10,6 +10,8 @@ import { formatNeighbourhood, get } from './graph.js';
 import { renderView, watchStore } from './commands/pane.js';
 import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
 import { readServeAddress, startServer } from './server.js';
+import { connectLinear, LINEAR_MCP_URL, syncLinear } from './sync/linear.js';
+import { clearAuth, login, readAuth, writeAuth } from './mcp/oauth.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
@@ -60,6 +62,10 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman follow [--since <seq>] [--json]'] },
   { name: 'serve', about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs",
     usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>]'] },
+  { name: 'auth', about: "sign in to an external system's MCP server (OAuth 2.1 in the browser; the token is kept under ~/.pjman/auth); --token stores a bearer token or API key instead; --logout forgets it",
+    usage: ['pjman auth linear [--token <t>] [--logout] [--url <mcp-url>]'] },
+  { name: 'sync', about: "pull a tracker's tickets into the store through its MCP server: each ticket becomes a source and the change that binds it (title, status and parent follow the ticket; everything pjman adds is kept). --probe lists the server's tools and teams and writes nothing",
+    usage: ['pjman sync linear [--project <key>] [--team <KEY>] [--since <date>] [--probe] [--token <t>] [--url <mcp-url>] [--json]'] },
   { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
   { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
   { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },
@@ -119,6 +125,10 @@ function parse() {
     port: { type: 'string' },
     host: { type: 'string' },
     static: { type: 'string' },
+    token: { type: 'string' },
+    team: { type: 'string' },
+    logout: { type: 'boolean' },
+    probe: { type: 'boolean' },
     watch: { type: 'boolean' },
   },
     });
@@ -324,6 +334,47 @@ function main(): number {
           process.stderr.write(`pjman: ${e.message}\n`);
           process.exit(1);
         });
+      return 0;
+    }
+    case 'auth': {
+      if (pos[1] !== 'linear') throw new CliError('usage: pjman auth linear [--token <t>] [--logout]');
+      const url = v.url ?? process.env.PJMAN_LINEAR_URL ?? LINEAR_MCP_URL;
+      if (v.logout) {
+        out(clearAuth('linear') ? 'signed out of linear' : 'not signed in to linear');
+        return 0;
+      }
+      const after = async () => {
+        const c = await connectLinear({ url, token: v.token });
+        out(`signed in: ${c.serverInfo?.name ?? url}${c.serverInfo?.version ? ` ${c.serverInfo.version}` : ''}; ${plural(c.tools.length, 'tool')}`);
+      };
+      if (v.token) {
+        writeAuth('linear', { issuer: '', resource: url, client_id: '', token_endpoint: '', access_token: v.token });
+        after().catch((e: Error) => { process.stderr.write(`pjman: ${e.message}\n`); process.exitCode = 1; });
+        return 0;
+      }
+      const have = readAuth('linear');
+      if (have) out(`already signed in to ${have.resource}; pass --logout first to sign in again`);
+      else {
+        login({ name: 'linear', resourceUrl: url, clientName: 'pjman' })
+          .then(after)
+          .catch((e: Error) => { process.stderr.write(`pjman: ${e.message}\n`); process.exitCode = 1; });
+      }
+      return 0;
+    }
+    case 'sync': {
+      if (pos[1] !== 'linear') throw new CliError('usage: pjman sync linear [--project <key>] [--team <KEY>] [--probe]');
+      const store = requireStore(cwd, v.store);
+      syncLinear(store, { project: v.project, team: v.team, probe: v.probe, since: v.since, token: v.token, url: v.url, session: v.session })
+        .then((r) => {
+          if (v.json) return json(r);
+          if (r.probe) {
+            out(`server: ${r.server?.name ?? '?'} ${r.server?.version ?? ''}\ntools: ${r.probe.tools.join(', ')}\nteams: ${JSON.stringify(r.probe.teams, null, 2)}\nsample issues: ${JSON.stringify(r.probe.sample, null, 2)}`);
+            if (!r.team) out(`\nno team is bound: pjman set ${r.project} tracker=linear ext.linear.team=<KEY>`);
+            return;
+          }
+          out(`linear ${r.team} → ${r.project}: ${plural(r.issues, 'issue')}; ${plural(r.created.length, 'change')} created, ${r.updated.length} updated, ${r.unchanged.length} unchanged${r.skipped.length ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(', ')}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
+        })
+        .catch((e: Error) => { process.stderr.write(`pjman: ${e.message}\n`); process.exitCode = 1; });
       return 0;
     }
     case 'index': {

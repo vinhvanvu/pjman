@@ -52,10 +52,12 @@ pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads
 pjman get <ref>                        the getter: a key, a URL, a ticket id, a file path or a slug in; the record, its edges both ways and the context of every change within two hops out
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>
-pjman set <key> <field>=<value>…   change an authored field (title, status, project, next, links, binds, summary, plan; on a proposed decision also decision, why); a list is comma-separated
+pjman set <key> <field>=<value>…   change an authored field (title, status, project, parent, next, links, binds, summary, plan; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
 pjman mv change:<old> change:<new>     move the folder, leave an alias, rewrite every reference
 pjman events [--since <seq>] [--json]   the store's event stream, one event per write; `pjman events rebuild` derives it from git history
 pjman follow [--since <seq>] [--json]   print events as they are appended, until interrupted; what a view subscribes to
+pjman auth linear [--token <t>] [--logout]   sign in to Linear's MCP server (OAuth in the browser; token under ~/.pjman/auth)
+pjman sync linear [--project <key>] [--team <KEY>] [--since <date>] [--probe]   pull the bound team's tickets: sources and the changes that bind them
 pjman serve [--port <n>] [--host <addr>] [--static <dir>]   the store over HTTP: the API under /api/v1 and the dashboard; the address is written to ~/.pjman/serve.json while it runs
 pjman index [--json]                   rebuild index.db: ids, reverse edges, conflicts
 pjman query "<sql>"                    read the index
@@ -65,6 +67,10 @@ pjman where
 Global flags: `--store`, `--writer <actor>`, `--session <session>`, `--created <date>`, `--json`. Environment: `PJMAN_STORE`, `PJMAN_WRITER`, `PJMAN_SESSION`, `PJMAN_HOME`.
 
 With `--session` (or `PJMAN_SESSION`) set, every write is refused until that session record exists: create the session first.
+
+## Trackers: the Linear sync
+
+A project names its tracker and its team (`pjman set project:<slug> tracker=linear ext.linear.team=ABC`). `pjman auth linear` signs in once per machine through Linear's hosted MCP server (OAuth 2.1 with dynamic client registration; the token lives under `~/.pjman/auth`, never in a store or a repository; `--token` takes an API key where a browser is not available). `pjman sync linear` then pulls the team's issues: each becomes a source record `linear:ABC-1234` with its observed state under `ext.linear`, and the change that binds it is created or updated so that title, status and parent follow the ticket. Status maps through the store's vocabulary by state name, then by state type, then the built-in map (triage and backlog → open, unstarted → planning, started → active, completed → done, canceled → dropped). Everything pjman adds to a change (next, summary, plan, decisions, other links) is left alone, and nothing is written back to Linear. Each run is a session by `agent:linear-sync`, one commit, one event per record. `--probe` lists the server's tools and teams and writes nothing, which is how to check a new workspace. Linear's exact tool names are not published; the sync reads the server's tool list and passes only the arguments each tool declares.
 
 ## The dashboard and the API
 

@@ -47,7 +47,7 @@ A repository, registered in the store by `pjman init`. The unit a change belongs
 | Field | A/M | Notes |
 |---|---|---|
 | `title` | A | The repository's folder name unless named |
-| `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). A bare ticket id with no references resolves through it; an adapter creates a change for a ticket only in a project that names one |
+| `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). A bare ticket id with no references resolves through it; an adapter creates a change for a ticket only in a project that names one. The tracker's own binding sits under `ext.<tracker>` (`ext.linear.team: ABC` names the Linear team the sync pulls) |
 | `links` | A | Optional. Source keys: the repository (`git-repo:owner/name`), its tracker, its docs |
 
 The path of the repository on a machine is not in the record; it is in the user config's map (below).
@@ -114,7 +114,7 @@ Set aside: `pjman init --in-project` makes a store at `<repo>/.pjman/`, tracked 
 
 ### Source — `sources/<kind>/<key-slug>.md`, optional per source
 
-A thing outside the store: a ticket, a PR, a branch, a repo, a doc, a thread, a file in the repository. **A source may exist only as a key** — `links: [github-pr:acme/app#123]` is complete without a file. A record is created when there is something to say about the source, or when a sync adapter (Phase 2) has observed it.
+A thing outside the store: a ticket, a PR, a branch, a repo, a doc, a thread, a file in the repository. **A source may exist only as a key** — `links: [github-pr:acme/app#123]` is complete without a file. A record is created when there is something to say about the source, or when a sync adapter has observed it: a synced ticket's record carries its observed state under `ext.<tracker>` (for Linear: `state`, `state_type`, `team`, `parent`, `updated_at`, `synced_at`), maintained by the sync and never hand-edited.
 
 | Field | A/M | Notes |
 |---|---|---|
@@ -172,7 +172,7 @@ Body: `## Decision`, `## Why`; anything else free.
 | `done` | Accepted |
 | `dropped` | Closed without acceptance |
 
-The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names) onto it for adapters and views. Approval and in-effect states are Phase 3's.
+The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. For a change that binds a ticket, the tracker owns `title`, `status` and `parent`; pjman owns `next`, the body and the decisions. Approval and in-effect states are Phase 3's.
 
 ---
 

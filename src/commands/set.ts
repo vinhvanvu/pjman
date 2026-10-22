@@ -43,7 +43,25 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     if (i <= 0) throw new CliError(`'${pair}' is not field=value`);
     const field = pair.slice(0, i);
     const value = pair.slice(i + 1);
-    if (!allowed.includes(field)) throw new CliError(`'${field}' cannot be set on a ${rec.type} (${allowed.join(', ')})`);
+    if (field.startsWith('ext.')) {
+      const parts = field.split('.').slice(1);
+      if (parts.length < 2 || parts.some((p) => !p)) throw new CliError(`'${field}' must be ext.<owner>.<field>`);
+      const ext = (typeof data.ext === 'object' && data.ext && !Array.isArray(data.ext) ? { ...(data.ext as Record<string, unknown>) } : {}) as Record<string, unknown>;
+      let cur = ext;
+      for (const p of parts.slice(0, -1)) {
+        const next = typeof cur[p] === 'object' && cur[p] && !Array.isArray(cur[p]) ? { ...(cur[p] as Record<string, unknown>) } : {};
+        cur[p] = next;
+        cur = next;
+      }
+      const last = parts[parts.length - 1];
+      if (value === '') delete cur[last];
+      else cur[last] = value;
+      if (Object.keys(ext).length) data.ext = ext;
+      else delete data.ext;
+      changed.push(field);
+      continue;
+    }
+    if (!allowed.includes(field)) throw new CliError(`'${field}' cannot be set on a ${rec.type} (${allowed.join(', ')}; ext.<owner>.<field> on any record)`);
     if (SECTIONS[field] && rec.type === 'decision' && rec.data.status !== 'proposed') throw new CliError(`a ${String(rec.data.status)} decision's text is fixed; open a new decision that supersedes it`);
     if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
