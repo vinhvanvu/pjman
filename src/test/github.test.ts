@@ -8,7 +8,7 @@ import { init } from '../commands/init.js';
 import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
 import { loadStore } from '../records.js';
-import { ghIssuesIn, mapGhStatus, syncGithub, toGhIssue } from '../sync/github.js';
+import { ghIssuesIn, ghReadCommand, mapGhStatus, syncGithub, toGhIssue } from '../sync/github.js';
 import { validate } from '../validate.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-github-'));
@@ -52,6 +52,21 @@ test('shapes and status: gh json and the REST shape; labels through the vocabula
   assert.equal(mapGhStatus({ ...store, config: { ...store.config, vocabulary: { 'in progress': 'active' } } }, toGhIssue(issues[0])!), 'active');
 });
 
+test('the GraphQL shape gh api graphql --paginate --slurp answers: pages, label connections, uppercase states, parents', () => {
+  const page = (nodes: unknown[]) => ({ data: { repository: { issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } } } } });
+  const pages = [
+    page([{ number: 1, title: 'Parent', url: 'https://github.com/acme/app/issues/1', state: 'OPEN', stateReason: null, labels: { nodes: [{ name: 'in progress' }] }, milestone: null, parent: null }]),
+    page([{ number: 2, title: 'Child', url: 'https://github.com/acme/app/issues/2', state: 'CLOSED', stateReason: 'NOT_PLANNED', labels: { nodes: [] }, milestone: { title: 'v1' }, parent: { number: 1 } }]),
+  ];
+  const got = ghIssuesIn(pages);
+  assert.equal(got.length, 2);
+  assert.deepEqual(got[0].labels, ['in progress']);
+  assert.equal(got[1].parent, 1);
+  assert.equal(got[1].milestone, 'v1');
+  assert.equal(mapGhStatus(store, got[1]), 'dropped');
+  assert.match(ghReadCommand('acme/app'), /gh api graphql --paginate --slurp .*owner:"acme",name:"app".*parent\{number\}/);
+});
+
 test('a sync applies the repository from the project link: sources, changes, parent; pjman fields survive', () => {
   assert.throws(() => syncGithub(store, { from: issues }), /tracker=github-issue/);
   set(store, 'project:app', ['tracker=github-issue'], {});
@@ -73,6 +88,7 @@ test('a sync applies the repository from the project link: sources, changes, par
   const again = syncGithub(store, { from: issues });
   assert.deepEqual(again.created, []);
   assert.equal(again.unchanged.length, 4);
+  assert.equal(again.commit, null);
   set(store, 'change:app-1', ['next=ship it'], {});
   const closed = issues.map((i) => (i.number === 1 ? { ...i, state: 'CLOSED', stateReason: 'COMPLETED' } : i));
   const third = syncGithub(store, { from: closed });

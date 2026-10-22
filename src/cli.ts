@@ -68,7 +68,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'serve', about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs",
     usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>]'] },
   { name: 'sync', about: "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered",
-    usage: ['pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]', 'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]'] },
+    usage: ['pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]', 'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]', 'pjman sync github            (no --from: prints the gh command that reads the issues)'] },
   { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
   { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
   { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },

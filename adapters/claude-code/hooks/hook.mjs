@@ -268,12 +268,15 @@ function namedChange(prompt, keys) {
   return found.length ? found[found.length - 1].key : null;
 }
 
-/** Ticket ids (ABC-1234) and URLs in the prompt, in order of appearance. */
-function references(prompt) {
+/** Ticket ids (ABC-1234), GitHub issue references (owner/repo#12; bare #12 when the project's tracker is GitHub) and
+ *  URLs in the prompt, in order of appearance. */
+function references(prompt, tracker) {
   const found = [];
   // ticket-shaped words that are not tickets
   const notTicket = /^(UTF|SHA|ISO|RFC|CVE|MD|AES|RSA|HTTP|TLS|ES|HTML|CSS|PEP|ECMA|IPV|X)-/;
   for (const m of prompt.matchAll(/\b[A-Z][A-Z0-9]*-\d+\b/g)) if (!notTicket.test(m[0])) found.push({ i: m.index, ref: m[0] });
+  for (const m of prompt.matchAll(/(?<![\w/.-])[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#\d+\b/g)) found.push({ i: m.index, ref: m[0] });
+  if (tracker === 'github-issue') for (const m of prompt.matchAll(/(?<![\w#&/])#\d+\b/g)) found.push({ i: m.index, ref: m[0] });
   for (const m of prompt.matchAll(/https?:\/\/[^\s<>()"']+/g)) found.push({ i: m.index, ref: m[0].replace(/[.,;:!?]+$/, '') });
   return found.sort((a, b) => a.i - b.i).map((f) => f.ref);
 }
@@ -281,7 +284,7 @@ function references(prompt) {
 /** The change a ticket id or URL in the prompt resolves to, through `pjman get`; last mention wins. A ticket of the
  *  project's tracker that no change binds gets a change (slug: the id lower-cased, title: the id, binds: the ticket). */
 function referencedChange(prompt, store, { cwd, env }) {
-  for (const ref of references(prompt).reverse()) {
+  for (const ref of references(prompt, store.tracker).reverse()) {
     const n = tryPjman(['get', ref, '--json'], { cwd, json: true });
     if (!n || n.resolution.status === 'none') continue;
     if (n.changes.length) return n.changes[0].change.key;
@@ -289,7 +292,8 @@ function referencedChange(prompt, store, { cwd, env }) {
     const kind = key.slice(0, key.indexOf(':'));
     if (!store.tracker || kind !== store.tracker || n.resolution.status !== 'key') continue;
     const id = key.slice(kind.length + 1);
-    const slug = id.toLowerCase();
+    // github-issue:owner/repo#12 → repo-12, the slug the sync uses; else the id lower-cased
+    const slug = kind === 'github-issue' ? id.replace(/^.*\//, '').replace('#', '-').toLowerCase() : id.toLowerCase();
     if (tryPjman(['new', 'change', slug, '--title', id, '--binds', key], { cwd, env }) !== null) return `change:${slug}`;
   }
   return null;

@@ -118,6 +118,13 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234']);
   assert.equal(at('see https://linear.app/acme/issue/ABC-1234/the-title.'), '');
   assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
+  // a GitHub project: #12 in the prompt is an issue of its repository; the change gets the sync's slug
+  assert.equal(at('fix #12 first'), '');
+  set(g, 'project:work', ['tracker=github-issue', 'ext.github.repo=acme/app'], {});
+  assert.match(context(at('fix #12 first')), /^# change:app-12 — acme\/app#12/);
+  assert.deepEqual(loadStore(g).byKey.get('change:app-12')![0].data.binds, ['github-issue:acme/app#12']);
+  assert.equal(at('and acme/app#12 again'), ''); // already hydrated: bound, no second injection
+  assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234', 'change:app-12']);
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });
 

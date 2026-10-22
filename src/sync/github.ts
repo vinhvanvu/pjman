@@ -1,6 +1,7 @@
 // GitHub issues: the translation from what `gh issue list --json …` or GitHub's API answers to tickets.
 import { CANONICAL_STATUSES, type Store } from '../config.js';
 import { loadStore, resolve } from '../records.js';
+import { repoOf } from '../graph.js';
 import { CliError } from '../util.js';
 import { applyTickets, itemsIn, obj, readObserved, type SyncResult, type Ticket } from './apply.js';
 
@@ -36,7 +37,8 @@ export function toGhIssue(raw: unknown): GhIssue | null {
   const number = typeof r.number === 'number' ? r.number : undefined;
   const title = str(r.title);
   if (number === undefined || !title || r.pull_request) return null;
-  const labels = Array.isArray(r.labels) ? r.labels.map((l) => (typeof l === 'string' ? l : str(obj(l)?.name))).filter((x): x is string => !!x) : [];
+  const labelList = Array.isArray(r.labels) ? (r.labels as unknown[]) : Array.isArray(obj(r.labels)?.nodes) ? (obj(r.labels)!.nodes as unknown[]) : [];
+  const labels = labelList.map((l) => (typeof l === 'string' ? l : str(obj(l)?.name))).filter((x): x is string => !!x);
   const parent = obj(r.parent);
   const url = str(r.url) ?? str(r.html_url);
   const m = url && /github\.com\/([^/]+\/[^/]+)\/issues\/\d+/.exec(url);
@@ -60,6 +62,13 @@ export function mapGhStatus(store: Store, i: GhIssue): string {
   return 'open';
 }
 
+/** The command that reads a repository's issues with their sub-issue parents: GitHub's GraphQL API through gh (gh issue list --json has no parent). */
+export function ghReadCommand(repo: string): string {
+  const [owner, name] = repo.split('/');
+  const query = `query($endCursor:String){repository(owner:"${owner}",name:"${name}"){issues(first:100,after:$endCursor,states:[OPEN,CLOSED]){nodes{number title url state stateReason updatedAt labels(first:20){nodes{name}} milestone{title} parent{number}} pageInfo{hasNextPage endCursor}}}}`;
+  return `gh api graphql --paginate --slurp -H 'GraphQL-Features: sub_issues' -f query='${query}'`;
+}
+
 export function ghIssuesIn(data: unknown): GhIssue[] {
   return itemsIn(data, (r) => toGhIssue(r) !== null).map(toGhIssue).filter((i): i is GhIssue => i !== null);
 }
@@ -72,10 +81,10 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
   if (pres.status !== 'ok') throw new CliError(`${projectKey} does not resolve to a project`);
   const project = pres.rec;
   if (str(project.data.tracker) !== 'github-issue') throw new CliError(`${project.key} does not name github-issue as its tracker: pjman set ${project.key} tracker=github-issue`);
-  const linked = (Array.isArray(project.data.links) ? (project.data.links as string[]) : []).find((k) => k.startsWith('git-repo:'))?.slice('git-repo:'.length);
-  const repo = opts.repo ?? str(obj(obj(project.data.ext)?.github)?.repo) ?? linked;
+  const repo = opts.repo ?? repoOf(loaded, project.key);
   if (!repo) throw new CliError(`${project.key} names no repository: pjman set ${project.key} ext.github.repo=<owner/name>`);
 
+  if (opts.from === undefined) throw new CliError(`nothing to sync. Read the issues and pipe them in:\n  ${ghReadCommand(repo)} | pjman sync github --from -\n(gh issue list --state all --json number,title,state,stateReason,url,labels,milestone works too, without sub-issue parents)`);
   let data: unknown;
   try {
     data = readObserved(opts.from);

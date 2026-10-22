@@ -288,6 +288,17 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   const viaTracker = get(loadStore(store), 'XYZ-9', { project: 'project:project' });
   assert.equal(viaTracker.resolution.status, 'key');
   assert.equal(viaTracker.resolution.key, 'linear:XYZ-9');
+
+  // GitHub issue references: owner/repo#n anywhere, bare #n through the project's repository and tracker
+  assert.equal(get(loadStore(store), '#5', { project: 'project:project' }).resolution.status, 'none');
+  set(store, 'project:project', ['tracker=github-issue', 'ext.github.repo=acme/app'], {});
+  newRecord(store, 'change', 'app-8', { title: 'Eight', summary: 's', binds: ['github-issue:acme/app#8'] });
+  loaded = loadStore(store);
+  assert.equal(get(loaded, '#5', { project: 'project:project' }).resolution.key, 'github-issue:acme/app#5');
+  assert.equal(get(loaded, 'acme/app#5').resolution.key, 'github-issue:acme/app#5');
+  assert.deepEqual(get(loaded, '#8', { project: 'project:project' }).changes.map((c) => c.change.key), ['change:app-8']);
+  assert.deepEqual(get(loaded, 'other/repo#8').changes, []);
+  assert.equal(get(loaded, 'other/repo#8').resolution.key, 'github-issue:other/repo#8');
   fs.rmSync(path.join(store.root, 'changes/abc'), { recursive: true });
 });
 

@@ -149,6 +149,22 @@ export function keyFromUrl(u: string): string | null {
   return null;
 }
 
+/** `#12` or `owner/repo#12`: a GitHub issue reference. */
+const GH_REF = /^(?:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+))?#(\d+)$/;
+
+/** The project's GitHub repository: `ext.github.repo`, else its `git-repo:` link. */
+export function repoOf(loaded: Loaded, project?: string): string | undefined {
+  if (!project) return undefined;
+  const rec = loaded.byKey.get(project)?.[0];
+  if (!rec) return undefined;
+  const ext = rec.data.ext as Record<string, unknown> | undefined;
+  const gh = ext && typeof ext === 'object' ? (ext.github as Record<string, unknown> | undefined) : undefined;
+  if (gh && typeof gh.repo === 'string') return gh.repo;
+  const links = Array.isArray(rec.data.links) ? (rec.data.links as unknown[]) : [];
+  const link = links.find((k): k is string => typeof k === 'string' && k.startsWith('git-repo:'));
+  return link?.slice('git-repo:'.length);
+}
+
 function trackerOf(loaded: Loaded, project?: string): string | undefined {
   if (!project) return undefined;
   const rec = loaded.byKey.get(project)?.[0];
@@ -205,6 +221,16 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     const tracker = trackerOf(loaded, opts.project);
     if (tracker) return { status: 'key', key: `${tracker}:${ref}`, shape: 'ticket id', tried };
     tried.push(`ticket id through the project's tracker (${opts.project ? `${opts.project} names none` : 'no current project'})`);
+  }
+  const gh = GH_REF.exec(ref);
+  if (gh) {
+    const repo = gh[1] ?? repoOf(loaded, opts.project);
+    tried.push(repo ? `github issue ${repo}#${gh[2]}` : `github issue #${gh[2]} (${opts.project ? `${opts.project} names no repository` : 'no current project'})`);
+    if (repo) {
+      const key = `github-issue:${repo}#${gh[2]}`;
+      if (loaded.byKey.has(key) || referenced(key)) return sourceKey(key, 'ticket id');
+      if (gh[1] || trackerOf(loaded, opts.project) === 'github-issue') return { status: 'key', key, shape: 'ticket id', tried };
+    }
   }
   if (SLUG_RE.test(ref)) {
     tried.push(`change:${ref}, project:${ref}`);

@@ -93,7 +93,7 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     const src = loaded.byKey.get(sourceKey)?.[0];
     const observed = { ...t.observed, synced_at: nowIso() };
     const prev = obj(obj(src?.data.ext)?.[owner]);
-    const same = src && prev && Object.keys(t.observed).every((k) => prev[k] === t.observed[k]) && src.data.title === t.title && (t.url ?? src.data.url) === src.data.url;
+    const same = src && prev && Object.keys(t.observed).every((k) => JSON.stringify(prev[k] ?? null) === JSON.stringify(t.observed[k] ?? null)) && src.data.title === t.title && (t.url ?? src.data.url) === src.data.url;
     if (!same) {
       const srcData: Record<string, unknown> = {
         ...(src?.data ?? {}), kind, key: t.id, title: t.title, url: t.url ?? src?.data.url,
@@ -173,7 +173,14 @@ export function itemsIn(data: unknown, isOne: (r: Record<string, unknown>) => bo
   if (Array.isArray(r.content)) return (r.content as unknown[]).flatMap((c) => (obj(c)?.type === 'text' ? itemsIn(obj(c)!.text, isOne) : []));
   if (r.structuredContent !== undefined) return itemsIn(r.structuredContent, isOne);
   const list = (['issues', 'nodes', 'results', 'items', 'data'] as const).map((k) => r[k]).find(Array.isArray) ?? Object.values(r).find(Array.isArray);
-  return list ? itemsIn(list, isOne) : [];
+  if (list) return itemsIn(list, isOne);
+  // a wrapper with no list of its own (GraphQL: data.repository.issues.nodes): the first nested object that holds items
+  for (const v of Object.values(r)) {
+    if (!obj(v)) continue;
+    const found = itemsIn(v, isOne);
+    if (found.length) return found;
+  }
+  return [];
 }
 
 export { obj };

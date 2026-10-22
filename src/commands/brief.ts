@@ -25,8 +25,8 @@ Rules
 
 Tickets
 The project may name a tracker (\`pjman where --json\` shows it). Read tickets with the tracker's own tools (Linear's MCP:
-get_issue, list_issues; GitHub: \`gh issue list --json number,title,state,stateReason,url,labels,milestone\`) and hand
-pjman the answer as JSON: \`pjman sync linear --from - <<'EOF' … EOF\` or \`pjman sync github --from -\`. The ticket
+get_issue, list_issues; GitHub: \`pjman sync github\` with no --from prints the gh command to run) and hand pjman the
+answer as JSON: \`pjman sync linear --from - <<'EOF' … EOF\` or \`<that gh command> | pjman sync github --from -\`. The ticket
 becomes a source and the change that binds it; title, status and parent follow the ticket; next, summary, plan and
 decisions stay pjman's. A ticket id in a prompt is already bound to its change; the sync fills in the rest.
 
