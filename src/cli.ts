@@ -25,7 +25,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
       'pjman new project <slug> --title <t> [--tracker <source-kind>] [--links <key>]...',
-      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
+      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
       'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
       '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',

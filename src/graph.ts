@@ -44,6 +44,7 @@ export function allEdges(loaded: Loaded): Edge[] {
         break;
       case 'change':
         if (typeof d.project === 'string') edge('project', r.key, d.project, r);
+        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
         for (const k of list(d.binds)) edge('binds', r.key, k, r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;

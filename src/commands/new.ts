@@ -104,6 +104,7 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     title: flags.title,
     status: flags.status ?? 'open',
     project: flags.project ?? store.project,
+    parent: flags.parent,
     next: flags.next,
     binds: flags.binds?.length ? flags.binds : undefined,
     links: flags.links?.length ? flags.links : undefined,

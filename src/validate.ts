@@ -14,7 +14,7 @@ const REQUIRED: Record<RecordType, string[]> = {
 
 const STRING_FIELDS: Record<RecordType, string[]> = {
   project: ['title', 'tracker', 'writer', 'session', 'created'],
-  change: ['title', 'status', 'project', 'next', 'writer', 'session', 'created'],
+  change: ['title', 'status', 'project', 'parent', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'writer', 'created'],
@@ -40,7 +40,7 @@ export const EDGES: Record<string, [string[], string[]]> = {
   binds: [['change'], ['source']],
   links: [['change', 'decision', 'source'], ['source']],
   supersedes: [['decision'], ['decision']],
-  parent: [['session'], ['session']],
+  parent: [['session', 'change'], ['session', 'change']],
   changes: [['session'], ['change']],
   project: [['change'], ['project']],
 };
@@ -137,6 +137,22 @@ export function validate(loaded: Loaded): Problem[] {
             : `status '${d.status}' is not in the vocabulary (${CANONICAL_STATUSES.join(', ')})`);
         }
         if (typeof d.project === 'string') checkRef(r, 'project', d.project, ['project']);
+        if (typeof d.parent === 'string') {
+          checkRef(r, 'parent', d.parent, ['change']);
+          // walk up; a chain that returns to this change is a cycle
+          const seen = new Set<string>([r.key]);
+          let cur: unknown = d.parent;
+          for (;;) {
+            const res = typeof cur === 'string' ? resolve(loaded, cur) : null;
+            if (!res || (res.status !== 'ok' && res.status !== 'alias')) break;
+            if (seen.has(res.rec.key)) {
+              err(r, `'parent' cycles: ${[...seen, res.rec.key].join(' → ')}`);
+              break;
+            }
+            seen.add(res.rec.key);
+            cur = res.rec.data.parent;
+          }
+        }
         for (const k of listOf(d.binds)) checkRef(r, 'binds', k, ['source']);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
         for (const a of listOf(d.aliases)) {

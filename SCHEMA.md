@@ -140,6 +140,7 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
 | `next` | A | The handoff: the next action. What resume reads first |
+| `parent` | A | Optional. The change this one is part of. Depth is unbounded; a cycle is an error; the parent may be in another project. Children are derived, never written |
 | `aliases` | A | Former slugs, appended by `pjman mv`. A reference to an alias resolves and is reported as "resolves via alias" |
 
 Body: `## Summary` (required), `## Plan` (optional; or `plan.md` beside it), anything else free. Decisions made in the course of the change live in `changes/<slug>/decisions/`.
@@ -180,6 +181,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | Edge | From → To | Declared on | Rule |
 |---|---|---|---|
 | `project` | change → project | change | the project must exist |
+| `parent` | change → change | change | the parent must exist; no cycles; any depth; any project |
 | `binds` | change → source | change | a source binds at most one change |
 | `links` | change · decision · source → source | the referrer | — |
 | `supersedes` | decision → decision | decision | the target becomes `superseded`; no cycles |
@@ -187,7 +189,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `changes` | session → change | session | — |
 | observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule |
 
-Reverse edges (a project's changes, a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
+Reverse edges (a project's changes, a change's children, a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
 
 ## The getter
 

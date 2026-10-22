@@ -8,7 +8,7 @@ export type RecordType = 'project' | 'change' | 'decision' | 'source' | 'session
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   project: ['title', 'tracker', 'links', 'writer', 'session', 'created', 'ext'],
-  change: ['title', 'status', 'project', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
+  change: ['title', 'status', 'project', 'parent', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'changes', 'observed', 'writer', 'created', 'ext'],

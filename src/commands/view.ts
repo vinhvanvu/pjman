@@ -76,6 +76,9 @@ export interface ChangeContext {
   decisions: (Row & { decision?: string; why?: string; supersededBy?: string })[];
   sources: { key: string; record?: Row; via: 'binds' | 'links' }[];
   sessions: (Row & { last?: string })[];
+  /** The parent change, resolved, and the changes whose parent this is. */
+  parent?: Row;
+  children: Row[];
   /** Edges sessions observed from this change (the files it touched), with the session that saw each. */
   observed: { edge: string; to: string; session: string; at?: string }[];
 }
@@ -150,7 +153,16 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
       observed.push({ edge: e.edge, to: e.to, session: s.key, at: typeof e.at === 'string' ? e.at : undefined });
     }
   }
-  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, observed };
+  const parentRes = typeof rec.data.parent === 'string' ? resolve(loaded, rec.data.parent) : null;
+  const parent = parentRes && (parentRes.status === 'ok' || parentRes.status === 'alias') ? row(parentRes.rec) : undefined;
+  const children = loaded.records
+    .filter((r) => r.type === 'change' && r.valid && typeof r.data.parent === 'string')
+    .filter((r) => {
+      const p = resolve(loaded, r.data.parent);
+      return (p.status === 'ok' || p.status === 'alias') && p.rec.key === rec.key;
+    })
+    .map(row);
+  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, parent, children, observed };
 }
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
@@ -169,7 +181,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
   out.push(`# ${c.change.key} — ${c.change.title ?? ''}`);
-  out.push(`status: ${c.change.status ?? '?'}${d.project ? `\nproject: ${String(d.project)}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}`);
+  out.push(`status: ${c.change.status ?? '?'}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.title ?? ''}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}`);
   if (c.summary) out.push(`\n## Summary\n\n${c.summary}`);
   if (c.plan) out.push(`\n## Plan\n\n${c.plan}`);
   for (const [k, v] of Object.entries(c.sections)) if (v) out.push(`\n## ${k}\n\n${v}`);
@@ -188,6 +200,10 @@ export function formatChangeContext(c: ChangeContext): string {
       const u = typeof s.record?.data.url === 'string' ? ` (${s.record.data.url})` : '';
       out.push(`- ${s.via} ${s.key}${t}${u}`);
     }
+  }
+  if (c.children.length) {
+    out.push('\n## Children');
+    for (const ch of c.children) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
   }
   if (c.observed.length) {
     out.push('\n## Observed');
@@ -232,13 +248,23 @@ export function formatStoreContext(c: StoreContext): string {
   const out: string[] = [head];
   const tag = (r: Row) => (!c.project && r.data.project ? ` [${String(r.data.project)}]` : '');
   const order = ['active', 'blocked', 'review', 'planning', 'open'];
+  const onBoard = new Set(c.changes.map((r) => r.key));
+  const childrenOf = (key: string) => c.changes.filter((r) => r.data.parent === key);
+  const item = (r: Row, depth: number): string => {
+    const pad = '  '.repeat(depth);
+    const status = depth ? ` [${r.status ?? '?'}]` : '';
+    const line = `${pad}- ${r.key}${status} — ${r.title ?? ''}${tag(r)}${r.data.next ? `\n${pad}  next: ${String(r.data.next)}` : ''}`;
+    return [line, ...childrenOf(r.key).map((ch) => item(ch, depth + 1))].join('\n');
+  };
+  // a change whose parent is on the board is listed under it, not on its own
+  const top = c.changes.filter((r) => !(typeof r.data.parent === 'string' && onBoard.has(r.data.parent)));
   const groups = new Map<string, Row[]>();
-  for (const r of c.changes) groups.set(r.status ?? '?', [...(groups.get(r.status ?? '?') ?? []), r]);
+  for (const r of top) groups.set(r.status ?? '?', [...(groups.get(r.status ?? '?') ?? []), r]);
   for (const s of [...order, ...[...groups.keys()].filter((k) => !order.includes(k))]) {
     const rows = groups.get(s);
     if (!rows?.length) continue;
     out.push(`\n## ${s}`);
-    for (const r of rows) out.push(`- ${r.key} — ${r.title ?? ''}${tag(r)}${r.data.next ? `\n  next: ${String(r.data.next)}` : ''}`);
+    for (const r of rows) out.push(item(r, 0));
   }
   if (c.project && c.projects.length > 1) out.push(`\nother projects: ${c.projects.filter((p) => p.key !== c.project!.key).map((p) => p.key).join(', ')} (pjman context --all)`);
   if (c.proposed.length) {

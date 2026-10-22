@@ -10,7 +10,7 @@ import { mv } from '../commands/mv.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
 import { set } from '../commands/set.js';
-import { changeContext, decisionLine, formatLs, ls, storeContext } from '../commands/view.js';
+import { changeContext, decisionLine, formatLs, formatStoreContext, ls, storeContext } from '../commands/view.js';
 import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { get, keyFromUrl } from '../graph.js';
 import { buildIndex } from '../indexdb.js';
@@ -284,4 +284,23 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   assert.equal(viaTracker.resolution.status, 'key');
   assert.equal(viaTracker.resolution.key, 'linear:XYZ-9');
   fs.rmSync(path.join(store.root, 'changes/abc'), { recursive: true });
+});
+
+test('a change may have a parent change: any depth, no cycles, children derived, the board nests', () => {
+  newRecord(store, 'change', 'epic', { title: 'Epic', summary: 's' });
+  newRecord(store, 'change', 'epic-a', { title: 'A', summary: 's', parent: 'change:epic' });
+  newRecord(store, 'change', 'epic-a-1', { title: 'A1', summary: 's', parent: 'change:epic-a' });
+  assert.throws(() => newRecord(store, 'change', 'orphan', { title: 'O', summary: 's', parent: 'change:nope' }), /parent/);
+  assert.throws(() => set(store, 'change:epic', ['parent=change:epic-a-1'], {}), /cycles/);
+  assert.throws(() => set(store, 'change:epic', ['parent=change:epic'], {}), /cycles/);
+  const ctx = changeContext(store, 'change:epic-a');
+  assert.equal(ctx.parent?.key, 'change:epic');
+  assert.deepEqual(ctx.children.map((r) => r.key), ['change:epic-a-1']);
+  const board = formatStoreContext(storeContext(store, { project: 'project:project' }));
+  assert.match(board, /^- change:epic — Epic\n  - change:epic-a \[open\] — A\n    - change:epic-a-1 \[open\] — A1$/m);
+  const n = get(loadStore(store), 'change:epic-a');
+  assert.equal(n.via['change:epic'], 'parent');
+  assert.equal(n.via['change:epic-a-1'], 'parent');
+  assert.deepEqual(errors(store), []);
+  for (const c of ['epic-a-1', 'epic-a', 'epic']) fs.rmSync(path.join(store.root, 'changes', c), { recursive: true });
 });
