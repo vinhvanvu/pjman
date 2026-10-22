@@ -1,0 +1,179 @@
+// The shared half of every tracker sync: observed tickets in, sources and the changes that bind them out.
+// The tracker owns title, status and parent of a change that binds a ticket; pjman owns next, the body and the decisions.
+import path from 'node:path';
+import { readUserConfig, type Store } from '../config.js';
+import type { EventInput } from '../events.js';
+import { sourceFileSlug } from '../keys.js';
+import { loadStore, type Rec } from '../records.js';
+import { localDate, nowIso } from '../util.js';
+import { finishWrite, render, validateOrUndo, writeFile } from '../write.js';
+import { newSession } from '../commands/new.js';
+import { sessionLog } from '../commands/session.js';
+
+/** One observed ticket, already translated to pjman's terms by the tracker's module. */
+export interface Ticket {
+  /** The source key's rest: `APP-1`, `acme/app#12`. */
+  id: string;
+  /** The change slug it binds: `app-1`, `app-12`. */
+  slug: string;
+  title: string;
+  url?: string;
+  /** Canonical status. */
+  status: string;
+  /** What was observed, kept under ext.<owner> on the source. */
+  observed: Record<string, unknown>;
+  /** The parent ticket's id, when the tracker has one. */
+  parent?: string;
+}
+
+export interface ApplyOpts {
+  project: Rec;
+  /** The source kind: `linear`, `github-issue`. */
+  kind: string;
+  /** The ext owner on the source record: `linear`, `github`. */
+  owner: string;
+  writer: string;
+  tickets: Ticket[];
+  session?: string;
+  /** A short name for the commit message and the log line: `linear APP`, `github acme/app`. */
+  label: string;
+}
+
+export interface SyncResult {
+  project: string;
+  team?: string;
+  issues: number;
+  created: string[];
+  updated: string[];
+  unchanged: string[];
+  skipped: { id: string; reason: string }[];
+  commit: string | null;
+  session?: string;
+}
+
+const obj = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
+
+export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
+  const { project, kind, owner, writer, tickets } = opts;
+  const result: SyncResult = { project: project.key, issues: tickets.length, created: [], updated: [], unchanged: [], skipped: [], commit: null };
+  if (!tickets.length) return result;
+
+  const actor = readUserConfig().actor;
+  let session = opts.session;
+  if (!session && actor) {
+    const id = `${owner}-sync-${nowIso().replace(/[:.]/g, '-')}`;
+    newSession(store, id, { agent: writer, onBehalfOf: actor, writer });
+    session = `session:${id}`;
+  }
+  const stamp = { writer, session, created: localDate() };
+  const events: EventInput[] = [];
+  const touched: string[] = [];
+  let loaded = loadStore(store);
+
+  const byBind = new Map<string, Rec>();
+  for (const r of loaded.records) if (r.type === 'change' && Array.isArray(r.data.binds)) for (const k of r.data.binds as unknown[]) if (typeof k === 'string') byBind.set(k, r);
+
+  const write = (rec: Rec | undefined, type: 'source' | 'change', rel: string, key: string, data: Record<string, unknown>, body: string, fields: string[]) => {
+    const text = render(type, data, body);
+    if (rec && render(type, rec.data, rec.body) === text) {
+      if (type === 'change') result.unchanged.push(key);
+      return;
+    }
+    writeFile(store, rel, text);
+    touched.push(rel);
+    events.push(rec ? { op: 'set', key, type, path: rel, fields, writer, session } : { op: 'created', key, type, path: rel, writer, session });
+    if (type === 'change') (rec ? result.updated : result.created).push(key);
+  };
+
+  // pass 1: sources and changes, without parents
+  const changeOf = new Map<string, string>();
+  for (const t of tickets) {
+    const sourceKey = `${kind}:${t.id}`;
+    const srcRel = path.join('sources', kind, `${sourceFileSlug(kind, t.id)}.md`);
+    const src = loaded.byKey.get(sourceKey)?.[0];
+    const observed = { ...t.observed, synced_at: nowIso() };
+    const prev = obj(obj(src?.data.ext)?.[owner]);
+    const same = src && prev && Object.keys(t.observed).every((k) => prev[k] === t.observed[k]) && src.data.title === t.title && (t.url ?? src.data.url) === src.data.url;
+    if (!same) {
+      const srcData: Record<string, unknown> = {
+        ...(src?.data ?? {}), kind, key: t.id, title: t.title, url: t.url ?? src?.data.url,
+        ...(src ? {} : stamp), ext: { ...(obj(src?.data.ext) ?? {}), [owner]: observed },
+      };
+      write(src, 'source', srcRel, sourceKey, srcData, src?.body ?? '', ['title', 'url', 'ext']);
+    }
+    const existing = byBind.get(sourceKey) ?? loaded.byKey.get(`change:${t.slug}`)?.[0];
+    const changeKey = existing?.key ?? `change:${t.slug}`;
+    changeOf.set(t.id, changeKey);
+    const rel = existing?.path ?? path.join('changes', t.slug, 'change.md');
+    if (existing) {
+      const binds = Array.isArray(existing.data.binds) ? (existing.data.binds as string[]) : [];
+      write(existing, 'change', rel, changeKey, { ...existing.data, title: t.title, status: t.status, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['title', 'status']);
+    } else {
+      write(undefined, 'change', rel, changeKey, { title: t.title, status: t.status, project: project.key, binds: [sourceKey], ...stamp }, '## Summary\n\n\n', []);
+    }
+  }
+  if (touched.length) validateOrUndo(store, touched, events.filter((e) => e.op === 'created').map((e) => e.path));
+
+  // pass 2: parents, where the parent change exists
+  loaded = loadStore(store);
+  for (const t of tickets) {
+    if (!t.parent) continue;
+    const key = changeOf.get(t.id)!;
+    const rec = loaded.byKey.get(key)?.[0];
+    const parentKey = changeOf.get(t.parent) ?? byBind.get(`${kind}:${t.parent}`)?.key;
+    if (!rec || !parentKey || rec.data.parent === parentKey) {
+      if (rec && !parentKey) result.skipped.push({ id: t.id, reason: `parent ${t.parent} is not in the store` });
+      continue;
+    }
+    writeFile(store, rec.path, render('change', { ...rec.data, parent: parentKey }, rec.body));
+    touched.push(rec.path);
+    events.push({ op: 'set', key, type: 'change', path: rec.path, fields: ['parent'], writer, session });
+    if (!result.updated.includes(key) && !result.created.includes(key)) result.updated.push(key);
+    result.unchanged = result.unchanged.filter((k) => k !== key);
+  }
+  if (touched.length) validateOrUndo(store, touched, []);
+
+  result.commit = events.length ? finishWrite(store, `pjman: sync ${opts.label} (${tickets.length} issues)`, session, events) : null;
+  if (session) sessionLog(store, session, `${opts.label}: ${tickets.length} issues; ${result.created.length} changes created, ${result.updated.length} updated, ${result.unchanged.length} unchanged`);
+  result.session = session;
+  return result;
+}
+
+/** The observed data: a path, `-` for stdin, inline JSON text, or the parsed value itself. */
+export function readObserved(from: string | unknown): unknown {
+  if (from === undefined) throw new Error("nothing to sync: pass --from <file> or --from - (the issues as JSON, as the tracker's tools answered)");
+  if (typeof from !== 'string') return from;
+  const trimmed = from.trim();
+  const fs = require_fs();
+  const text = trimmed.startsWith('{') || trimmed.startsWith('[') ? from : from === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(from, 'utf8');
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`${from === '-' ? 'stdin' : from} is not JSON`);
+  }
+}
+import fsMod from 'node:fs';
+function require_fs() {
+  return fsMod;
+}
+
+/** The items inside a tool's answer: one object, an array, an object with a list field, or an MCP tool result with text content. */
+export function itemsIn(data: unknown, isOne: (r: Record<string, unknown>) => boolean): unknown[] {
+  if (typeof data === 'string') {
+    try {
+      return itemsIn(JSON.parse(data), isOne);
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(data)) return data.flatMap((x) => itemsIn(x, isOne));
+  const r = obj(data);
+  if (!r) return [];
+  if (isOne(r)) return [r];
+  if (Array.isArray(r.content)) return (r.content as unknown[]).flatMap((c) => (obj(c)?.type === 'text' ? itemsIn(obj(c)!.text, isOne) : []));
+  if (r.structuredContent !== undefined) return itemsIn(r.structuredContent, isOne);
+  const list = (['issues', 'nodes', 'results', 'items', 'data'] as const).map((k) => r[k]).find(Array.isArray) ?? Object.values(r).find(Array.isArray);
+  return list ? itemsIn(list, isOne) : [];
+}
+
+export { obj };

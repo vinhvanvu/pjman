@@ -24,8 +24,9 @@ Rules
 6. Nothing harness-specific in a record: no tool, model or session mechanics in titles, summaries or decisions.
 
 Tickets
-The project may name a tracker (\`pjman where --json\` shows it). Read a ticket with the tracker's own tools (Linear:
-get_issue, list_issues) and hand pjman the answer as JSON: \`pjman sync linear --from - <<'EOF' … EOF\`. The ticket
+The project may name a tracker (\`pjman where --json\` shows it). Read tickets with the tracker's own tools (Linear's MCP:
+get_issue, list_issues; GitHub: \`gh issue list --json number,title,state,stateReason,url,labels,milestone\`) and hand
+pjman the answer as JSON: \`pjman sync linear --from - <<'EOF' … EOF\` or \`pjman sync github --from -\`. The ticket
 becomes a source and the change that binds it; title, status and parent follow the ticket; next, summary, plan and
 decisions stay pjman's. A ticket id in a prompt is already bound to its change; the sync fills in the rest.
 

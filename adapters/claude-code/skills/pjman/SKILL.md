@@ -43,8 +43,9 @@ The project may name its tracker (`pjman where --json` shows `tracker`). A Linea
 harness's own Linear MCP connection (this plugin declares it; the person signs in once with `/mcp`); pjman never
 signs in anywhere. When a ticket is named, or the project's board should reflect the tracker:
 
-1. Read it with the Linear tools (`get_issue` for one, `list_issues` for the team) and hand pjman the answer, as JSON,
-   exactly as the tool returned it:
+1. Read it with the tracker's tools (Linear: `get_issue` for one, `list_issues` for the team; GitHub:
+   `gh issue list --state all --json number,title,state,stateReason,url,labels,milestone`) and hand pjman the answer,
+   as JSON, exactly as the tool returned it (`pjman sync github --from -` for GitHub):
    ```
    pjman sync linear --from - <<'EOF'
    { …the tool's result… }

@@ -13,6 +13,7 @@ import { renderView, watchStore } from './commands/pane.js';
 import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
 import { readServeAddress, startServer } from './server.js';
 import { syncLinear } from './sync/linear.js';
+import { syncGithub } from './sync/github.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
@@ -67,7 +68,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'serve', about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs",
     usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>]'] },
   { name: 'sync', about: "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered",
-    usage: ['pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]'] },
+    usage: ['pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]', 'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]'] },
   { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
   { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
   { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },
@@ -132,6 +133,7 @@ function parse() {
     host: { type: 'string' },
     static: { type: 'string' },
     team: { type: 'string' },
+    repo: { type: 'string' },
     from: { type: 'string' },
     watch: { type: 'boolean' },
   },
@@ -361,11 +363,13 @@ function main(): number {
       return 0;
     }
     case 'sync': {
-      if (pos[1] !== 'linear') throw new CliError('usage: pjman sync linear --from <file|-> [--project <key>] [--team <KEY>]');
+      if (pos[1] !== 'linear' && pos[1] !== 'github') throw new CliError('usage: pjman sync linear|github --from <file|-> [--project <key>]');
       const store = requireStore(cwd, v.store);
-      const r = syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session });
+      const r = pos[1] === 'linear'
+        ? syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session })
+        : syncGithub(store, { project: v.project, repo: v.repo, from: v.from, session: v.session });
       if (v.json) json(r);
-      else out(`linear ${r.team} → ${r.project}: ${plural(r.issues, 'issue')}; ${plural(r.created.length, 'change')} created, ${r.updated.length} updated, ${r.unchanged.length} unchanged${r.skipped.length ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(', ')}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
+      else out(`${pos[1]} ${r.team} → ${r.project}: ${plural(r.issues, 'issue')}; ${plural(r.created.length, 'change')} created, ${r.updated.length} updated, ${r.unchanged.length} unchanged${r.skipped.length ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(', ')}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'index': {
