@@ -15,7 +15,7 @@ Binding follows what the prompt names, never the directory or branch; a change t
 
 ## Install
 
-Requires `pjman` (this repository: `npm install && npm link`) and a store in the project (`pjman init`).
+Requires `pjman` (this repository: `npm install && npm link`) and the repository registered in the global store (`pjman init`).
 
 For a session:
 

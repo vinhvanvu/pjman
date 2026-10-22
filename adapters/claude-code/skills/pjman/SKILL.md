@@ -39,7 +39,7 @@ Every write goes through the `pjman` command. Never edit a file under the store 
 ## Commands you will use
 
 ```
-pjman context [change:<slug>]           the board, or one change with its decisions, sources and sessions
+pjman context [change:<slug>] [--all]   this project's board (--all: every project), or one change with its decisions, sources and sessions
 pjman ls decision --status proposed      what is waiting on a person
 pjman show <key>                         one record
 pjman new change|decision|source …       create (refused if it would not validate)

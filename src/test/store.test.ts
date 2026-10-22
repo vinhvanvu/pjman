@@ -10,7 +10,7 @@ import { mv } from '../commands/mv.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
 import { set } from '../commands/set.js';
-import { changeContext, decisionLine, ls } from '../commands/view.js';
+import { changeContext, decisionLine, ls, storeContext } from '../commands/view.js';
 import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
@@ -36,22 +36,29 @@ before(() => {
   git(project, 'config', 'user.email', 't@example.com');
 });
 
-test('init standalone creates its own repository and binds the project', () => {
-  init({ cwd: project, dir: path.join(tmp, 'store') });
+test('init creates the global store, its own repository, and registers the repository as a project', () => {
+  const lines = init({ cwd: project });
+  assert.ok(lines.some((l) => /created the global store/.test(l)));
   const found = findStore(project);
   assert.ok(found);
   store = found;
   assert.equal(store.mode, 'standalone');
+  assert.equal(store.root, path.join(home, 'store'));
+  assert.equal(store.config.name, 'global');
+  assert.equal(store.project, 'project:project');
+  assert.ok(loadStore(store).byKey.has('project:project'));
   writeStoreConfig(store.root, { ...store.config, vocabulary: { merged: 'done' } });
   store = findStore(project)!;
-  assert.equal(git(store.root, 'log', '--format=%s'), 'pjman: init store project');
+  assert.match(git(store.root, 'log', '--format=%s'), /pjman: new project:project\npjman: init store global$/);
   assert.ok(fs.existsSync(path.join(store.root, '.gitignore')));
+  assert.deepEqual(init({ cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
 });
 
 test('new change, decision, source, actor, session validate and commit', () => {
   const c = newRecord(store, 'change', 'schema', { title: 'Schema: v3', summary: 'The contract.', links: ['file:SCHEMA.md'] });
   assert.equal(c.key, 'change:schema');
   assert.ok(c.commit);
+  assert.equal(loadStore(store).byKey.get('change:schema')![0].data.project, 'project:project');
   const d = newRecord(store, 'decision', 'schema/keys', { title: 'Keys', decision: 'Keys.', why: 'Because.', created: '2026-10-10' });
   assert.equal(d.path, 'changes/schema/decisions/2026-10-10-keys.md');
   newRecord(store, 'source', 'file:SCHEMA.md', { title: 'The schema' });
@@ -177,6 +184,27 @@ test('index mints stable ids, derives reverse edges, records conflicts', async (
   assert.equal(c.conflicts.length, 1);
   assert.equal(c.conflicts[0].kind, 'double-bind');
   fs.rmSync(path.join(store.root, 'changes/beta'), { recursive: true });
+});
+
+test('a second repository joins the same global store as its own project; the board scopes by project', () => {
+  const p3 = path.join(tmp, 'p3');
+  fs.mkdirSync(path.join(p3, 'src'), { recursive: true });
+  git(p3, 'init', '-q');
+  git(p3, 'remote', 'add', 'origin', 'git@github.com:acme/other.git');
+  init({ cwd: p3, name: 'Other' });
+  const s3 = findStore(path.join(p3, 'src'))!;
+  assert.equal(s3.root, store.root);
+  assert.equal(s3.project, 'project:other');
+  assert.deepEqual(loadStore(s3).byKey.get('project:other')![0].data.links, ['git-repo:acme/other']);
+  newRecord(s3, 'change', 'x2', { title: 'X2', summary: 's' });
+  assert.deepEqual(storeContext(s3, { project: s3.project }).changes.map((r) => r.key), ['change:x2']);
+  const all = storeContext(store, { project: null });
+  assert.ok(all.changes.some((r) => r.key === 'change:x2') && all.changes.some((r) => r.data.project === 'project:project'));
+  assert.equal(ls(store, { type: 'change', project: 'project:other' }).length, 1);
+  assert.throws(() => set(store, 'change:x2', ['project=project:nope'], {}), /does not resolve/);
+  set(store, 'change:x2', ['project=project:project'], {});
+  assert.equal(storeContext(s3, { project: 'project:other' }).changes.length, 0);
+  assert.throws(() => storeContext(store, { project: 'project:nope' }), /does not resolve to a project/);
 });
 
 test('init --in-project never commits; the store resolves by walking up', () => {

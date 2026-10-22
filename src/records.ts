@@ -4,10 +4,11 @@ import type { Store } from './config.js';
 import { parseRecord, sections, type Parsed } from './frontmatter.js';
 import { canonicalSourceKey, parseKey, type Key } from './keys.js';
 
-export type RecordType = 'change' | 'decision' | 'source' | 'session' | 'actor';
+export type RecordType = 'project' | 'change' | 'decision' | 'source' | 'session' | 'actor';
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
-  change: ['title', 'status', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
+  project: ['title', 'links', 'writer', 'session', 'created', 'ext'],
+  change: ['title', 'status', 'project', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'changes', 'observed', 'writer', 'created', 'ext'],
@@ -15,6 +16,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
 };
 
 export const LAYER_OF: Record<RecordType, string> = {
+  project: 'core',
   change: 'work',
   decision: 'work',
   source: 'sources',
@@ -40,6 +42,7 @@ export interface Rec {
   parsed: Parsed;
   /** Frontmatter parsed and is a mapping. */
   valid: boolean;
+  projectSlug?: string;
   changeSlug?: string;
   decisionSlug?: string;
   fileDate?: string;
@@ -88,6 +91,19 @@ export function loadStore(store: Store): Loaded {
   const problems: Problem[] = [];
   const root = store.root;
   const unexpected = (rel: string) => problems.push({ level: 'warning', path: rel, message: 'unexpected file; not a record' });
+
+  // projects/<slug>.md
+  for (const f of listDir(path.join(root, 'projects'))) {
+    const rel = path.join('projects', f);
+    if (!f.endsWith('.md')) {
+      unexpected(rel);
+      continue;
+    }
+    const slug = f.slice(0, -3);
+    const r = readRec(store, rel, 'project', `project:${slug}`);
+    r.projectSlug = slug;
+    records.push(r);
+  }
 
   // changes/<slug>/change.md, changes/<slug>/decisions/<date>-<slug>.md
   for (const slug of listDir(path.join(root, 'changes'))) {
@@ -193,7 +209,7 @@ export function loadStore(store: Store): Loaded {
 
   // anything else at the root that is not a store file
   for (const name of listDir(root)) {
-    if (['changes', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'README.md'].includes(name)) continue;
+    if (['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'README.md'].includes(name)) continue;
     unexpected(name);
   }
 
@@ -242,7 +258,7 @@ export function resolve(loaded: Loaded, raw: unknown): Resolution {
     }
     return { status: 'missing', key };
   }
-  if (key.kind === 'session') return { status: 'missing', key };
+  if (key.kind === 'session' || key.kind === 'project') return { status: 'missing', key };
   if (key.kind === 'person' || key.kind === 'agent') return { status: 'actor-key', key };
   if (key.kind === 'url') {
     const rec = loaded.byKey.get(canonicalSourceKey('url', key.rest))?.[0];

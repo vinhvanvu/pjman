@@ -4,6 +4,7 @@ import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, ty
 import { isDateString, isTimestamp } from './util.js';
 
 const REQUIRED: Record<RecordType, string[]> = {
+  project: ['title'],
   change: ['title', 'status'],
   decision: ['title', 'status'],
   source: ['kind', 'key'],
@@ -12,7 +13,8 @@ const REQUIRED: Record<RecordType, string[]> = {
 };
 
 const STRING_FIELDS: Record<RecordType, string[]> = {
-  change: ['title', 'status', 'next', 'writer', 'session', 'created'],
+  project: ['title', 'writer', 'session', 'created'],
+  change: ['title', 'status', 'project', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'writer', 'created'],
@@ -20,6 +22,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
 };
 
 const LIST_FIELDS: Record<RecordType, string[]> = {
+  project: ['links'],
   change: ['binds', 'links', 'aliases'],
   decision: ['links'],
   source: ['links'],
@@ -39,6 +42,7 @@ export const EDGES: Record<string, [string[], string[]]> = {
   supersedes: [['decision'], ['decision']],
   parent: [['session'], ['session']],
   changes: [['session'], ['change']],
+  project: [['change'], ['project']],
 };
 
 export function validate(loaded: Loaded): Problem[] {
@@ -63,7 +67,7 @@ export function validate(loaded: Loaded): Problem[] {
       err(r, `${field}: '${String(raw)}' is not a key (kind:rest)`);
       return;
     }
-    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session'].includes(key.kind);
+    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session', 'project'].includes(key.kind);
     const cls = isRecordKind ? (isActorKey(key) ? 'actor' : key.kind) : 'source';
     if (cls === 'source' && !sourceKinds.has(key.kind)) {
       err(r, `${field}: '${key.raw}' has unknown kind '${key.kind}' (not a record kind; not in source_kinds)`);
@@ -117,6 +121,11 @@ export function validate(loaded: Loaded): Problem[] {
     for (const s of REQUIRED_SECTIONS[r.type] ?? []) if (!r.sections.has(s)) err(r, `body is missing the '## ${s}' section`);
 
     switch (r.type) {
+      case 'project': {
+        if (r.projectSlug && !SLUG_RE.test(r.projectSlug)) err(r, `file name '${r.projectSlug}' is not a slug`);
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        break;
+      }
       case 'change': {
         if (typeof d.status === 'string' && !canonical.has(d.status)) {
           const mapped = store.config.vocabulary[d.status];
@@ -124,6 +133,7 @@ export function validate(loaded: Loaded): Problem[] {
             ? `status '${d.status}' is not canonical; the vocabulary maps it to '${mapped}', which is what the file must say`
             : `status '${d.status}' is not in the vocabulary (${CANONICAL_STATUSES.join(', ')})`);
         }
+        if (typeof d.project === 'string') checkRef(r, 'project', d.project, ['project']);
         for (const k of listOf(d.binds)) checkRef(r, 'binds', k, ['source']);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
         for (const a of listOf(d.aliases)) {

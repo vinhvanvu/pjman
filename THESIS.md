@@ -54,6 +54,7 @@ One object at three distances: the local graph, the shared graph, the alignment 
 ### Vocabulary
 
 - **Product** — the root. **Feature** — any node beneath it; not defined, only its contract is; nests without limit under one or several parents. *(Phase 2.)*
+- **Project** — a repository, registered in the store. A change belongs to one.
 - **Change** — a unit of work. A Linear ticket, a GitHub issue, a milestone, a brainstorm are all changes.
 - **Decision** — what an actor with authority wrote: what, who, why, when. Opened `proposed` before the work it governs.
 - **Source** — a thing outside the store: a ticket, a PR, a doc, a thread, a file. May exist only as a key.
@@ -68,13 +69,13 @@ One object at three distances: the local graph, the shared graph, the alignment 
 | 3 · Product | product, features, `touches` | 2 |
 | 2 · Work | change, decision, the status vocabulary | 1 |
 | 1 · Sources | source records; observed state when a sync adapter exists | 1 (records) · 2 (observed) |
-| 0 · Core | keys, the envelope, actors, sessions, validation, the index, location | 1 |
+| 0 · Core | keys, the envelope, projects, actors, sessions, validation, the index, location | 1 |
 
 A record references its own layer or a lower one. Each layer adds record types, edges and rules; a store enables what it needs.
 
 ### Principles of the record (the contract is `SCHEMA.md`)
 
-- **Records are files in git; the index is derived and disposable.** The store is a git repository in one of two modes: standalone (the default; the project's repository is never touched) or in-project.
+- **Records are files in git; the index is derived and disposable.** The store is one git repository per person, the global store; every repository the person works in is a project in it, and the record never sits in a project's repository.
 - **References are keys, not ids** (`person:vinh`, `change:schema`, `linear:ABC-1234`). Ids exist only in the index. Renames go through the tool and leave aliases.
 - **Edges are declared on the record that made them.** Reverse edges are derived. Observed edges, recorded by sessions, are evidence, never truth.
 - **Authored versus maintained.** A field is authored by an actor on intent, or maintained by one named writer. Nothing is verified against what a tool previously wrote.
@@ -125,19 +126,23 @@ More record types, more readers and more writers on the same graph.
 | Phase | What it is | Validates |
 |---|---|---|
 | **0 — The work tool** (exists) | The founder's per-ticket context layer: a folder per Linear ticket, a status contract, derived session records, a pane and a sidebar | That the records are worth keeping, for one person |
-| **1 — The framework** | Layers 0–2 built to `SCHEMA.md`: the tool, the Claude Code adapter, the store on pjman's own development | That a typed decision record in git, read by an agent, beats a folder of markdown on the founder's own work |
+| **1 — The framework** | Layers 0–2 built to `SCHEMA.md`: the tool, the Claude Code adapter, the global store, the getter, the view beside the session, the event stream and the board, the tracker sync | That the founder's daily work runs from the store, and that a typed decision record read by an agent beats a folder of markdown |
 | **2 — The shared graph** | Observed state from sync adapters (Linear, GitHub) and drift; sessions and actors at full strength; layer 3; change-to-change edges; a hosted backend with the same operations; a board for someone who is not the developer; the solo tier | That the record speaks to a manager and a team can run on it |
 | **3 — Alignment** | Layer 4: authorities, rubrics, approvers derived from the record, bounded asks, the brief, maturity as evidence, intake and triage, the web agent; per-signer pricing | That decisions get made before things are built, and people pay for that |
 | **4 — Views over one graph** | Roadmap, catalog and boards displacing the neighbours; brownfield ingestion; other domains | That the accumulated graph is the moat |
 
 ### Phase 1, in order
 
-1. **The tool.** TypeScript, one package: `init` (standalone by default, `--in-project` by flag), `new`, `set`, `session`, `validate`, `fmt`, `ls --json`, `context <change>`, `show`, `mv`, `index`, `query`. Keys in files, ids in the index. The YAML rule enforced.
+1. **The tool.** TypeScript, one package: `init`, `new`, `set`, `session`, `validate`, `fmt`, `ls --json`, `context`, `show`, `mv`, `index`, `query`. Keys in files, ids in the index. The YAML rule enforced.
 2. **The store, rebuilt through the tool,** on pjman's own development, with decisions opened `proposed` before the work. The existing documents backfilled as records, and cleaned so that every document states only what is true now.
 3. **The Claude Code adapter.** Hooks that inject `context` at session start, write session records, bind the session to the change the prompt names and record observed edges; a skill rule that opens a decision `proposed` before acting. No bridge to any other board.
-4. **Run on it.** pjman's own development runs on this foundation, with no time frame and no kill rule. Success is reached in stages, each counting on its own: the project managed from the store; custom mods and user interfaces built from it; the store hosted as shared context and sold. Four events are noted in session logs when they happen, as evidence with no threshold: a superseded decision honoured, a decision not found when needed, a write the validator refused, a decision proposed before the work.
-5. **The second user,** on a different stack, installing from the README without editing code.
-6. **Public:** licence, repository, name.
+4. **The global store.** One per person, its own repository; a repository is a project in it; the record out of every project's repository.
+5. **The getter.** Anything in — a key, a ticket id, a URL, a document link, a file path — the record and its neighbourhood out. Naming a ticket in a prompt binds the session through it.
+6. **The view beside the session.** The bound change, its ticket, decisions, sources, files touched and sessions, refreshing as the store changes; no commands to run to see where you are.
+7. **The event stream and the board.** Every write appends an event; a follow command streams them; the session board is a projection that subscribes and sorts sessions into lanes.
+8. **The tracker sync.** Linear drives the store through its MCP server: a ticket becomes or updates the change that binds it.
+
+Phase 1 ends when the founder's daily work runs from the store. There is no time frame and no kill rule; success is reached in stages, each counting on its own: the work managed from the store; views built from it; the store hosted as shared context and sold. After Phase 1: **the second user**, who installs from the README and gets value; then **public**: licence, repository, name.
 
 Working rule: schema commits may not outnumber code commits.
 
@@ -149,7 +154,7 @@ Working rule: schema commits may not outnumber code commits.
 - Records are strictly parseable under the YAML rule; nothing structural lives in prose.
 - Every record an adapter writes carries its writer and session; sessions carry the person they ran for.
 - The status vocabulary is data; the canonical word is what is written.
-- The store is a git repository; standalone by default; the tool commits only in standalone mode.
+- The store is one global git repository per person; the tool commits every write it makes.
 - Sources may exist as keys; observed state arrives only with a sync adapter.
 - Conflicts are recorded, never silently resolved.
 

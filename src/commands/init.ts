@@ -1,18 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_SOURCE_KINDS, LAYERS, readUserConfig, userDir, writeStoreConfig, writeUserConfig, type StoreConfig } from '../config.js';
+import { DEFAULT_SOURCE_KINDS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type StoreConfig, type UserStore } from '../config.js';
 import { git, gitUserName, hasGit, toplevel } from '../git.js';
 import { slugify } from '../keys.js';
+import { loadStore } from '../records.js';
 import { CliError } from '../util.js';
+import { newProject } from './new.js';
 
 export interface InitOpts {
   cwd: string;
+  /** A store inside the repository at <repo>/.pjman/. Set aside; kept for a repository that must carry its own record. */
   inProject?: boolean;
-  dir?: string;
+  /** The project's name (default: the repository folder's); in-project, the store's name. */
   name?: string;
 }
 
-const FOLDERS = ['changes', 'decisions', 'sources', 'sessions', 'actors'];
+const FOLDERS = ['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors'];
 
 function scaffold(root: string, cfg: StoreConfig): void {
   fs.mkdirSync(root, { recursive: true });
@@ -36,39 +39,67 @@ function ensureActor(): string | undefined {
   return user.actor;
 }
 
+/** `owner/name` from the repository's origin remote, when it has one. */
+function originRepo(project: string): string | null {
+  try {
+    const url = git(project, ['remote', 'get-url', 'origin']);
+    const m = /[:/]([^/:]+\/[^/]+?)(?:\.git)?\/?$/.exec(url);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 export function init(opts: InitOpts): string[] {
   const out: string[] = [];
   const project = toplevel(opts.cwd) ?? path.resolve(opts.cwd);
-  const name = opts.name ?? path.basename(project);
-  const cfg: StoreConfig = { name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS] };
+  const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS] });
+  const actor = ensureActor();
 
   if (opts.inProject) {
     const root = path.join(project, '.pjman');
-    scaffold(root, cfg);
+    scaffold(root, cfg(opts.name ?? path.basename(project)));
     out.push(`initialised in-project store at ${root}`);
     if (!toplevel(project)) out.push(`note: ${project} is not a git repository; the store will have no history until it is`);
     out.push('the tool never commits here; commit the store with the project');
   } else {
-    if (!hasGit()) throw new CliError('git is required on PATH for a standalone store');
-    const root = path.resolve(opts.dir ?? path.join(userDir(), 'stores', name));
-    scaffold(root, cfg);
-    if (!toplevel(root) || fs.realpathSync(toplevel(root)!) !== fs.realpathSync(root)) {
-      git(root, ['init', '-q']);
-    }
-    git(root, ['add', '-A', '--', '.']);
-    git(root, ['commit', '-q', '-m', `pjman: init store ${name}`]);
-    const user = readUserConfig();
-    const existing = user.stores.find((s) => path.resolve(s.path) === root);
-    if (existing) {
-      if (!existing.projects.includes(project)) existing.projects.push(project);
+    if (!hasGit()) throw new CliError('git is required on PATH for the global store');
+    const root = globalStorePath();
+    if (!fs.existsSync(path.join(root, 'pjman.yaml'))) {
+      scaffold(root, cfg('global'));
+      if (!toplevel(root) || fs.realpathSync(toplevel(root)!) !== fs.realpathSync(root)) git(root, ['init', '-q']);
+      git(root, ['add', '-A', '--', '.']);
+      git(root, ['commit', '-q', '-m', 'pjman: init store global']);
+      out.push(`created the global store at ${root} (its own git repository)`);
     } else {
-      user.stores.push({ name, path: root, projects: [project] });
+      for (const f of FOLDERS) fs.mkdirSync(path.join(root, f), { recursive: true });
+      out.push(`global store at ${root}`);
     }
+    const user = readUserConfig();
+    let entry: UserStore | undefined = user.stores.find((s) => path.resolve(s.path) === root);
+    if (!entry) {
+      entry = { name: 'global', path: root, projects: [] };
+      user.stores.push(entry);
+    }
+    const title = opts.name ?? path.basename(project);
+    const slug = slugify(title);
+    if (!slug) throw new CliError(`'${title}' does not make a project slug; pass --name`);
+    const key = `project:${slug}`;
+    const store = openStore(root);
+    if (!loadStore(store).byKey.has(key)) {
+      const repo = originRepo(project);
+      newProject(store, slug, { title, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor });
+      out.push(`registered ${key}${repo ? ` (git-repo:${repo})` : ''}`);
+    } else {
+      out.push(`${key} is already registered`);
+    }
+    const binding = entry.projects.find((b) => path.resolve(b.path) === project);
+    if (binding) binding.project = key;
+    else entry.projects.push({ path: project, project: key });
     writeUserConfig(user);
-    out.push(`initialised standalone store '${name}' at ${root} (its own git repository)`);
-    out.push(`bound to ${project} in ${path.join(userDir(), 'config.yaml')}`);
+    out.push(`${project} → ${key} in ${userConfigPath()}`);
+    out.push('the tool commits every write it makes here');
   }
-  const actor = ensureActor();
   if (actor) out.push(`records the tool writes will carry writer: ${actor} (user config 'actor')`);
   else out.push(`no actor known: set 'actor: person:<handle>' in ${path.join(userDir(), 'config.yaml')} or pass --writer`);
   return out;

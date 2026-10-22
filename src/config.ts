@@ -26,12 +26,20 @@ export interface Store {
   root: string;
   mode: StoreMode;
   config: StoreConfig;
+  /** The project the working directory maps to, when the store was found through the user map. */
+  project?: string;
+}
+
+/** A directory on this machine → the project record it belongs to. */
+export interface ProjectBinding {
+  path: string;
+  project?: string;
 }
 
 export interface UserStore {
   name: string;
   path: string;
-  projects: string[];
+  projects: ProjectBinding[];
 }
 
 export interface UserConfig {
@@ -47,11 +55,22 @@ export function userConfigPath(): string {
   return path.join(userDir(), 'config.yaml');
 }
 
+/** The one global store: `~/.pjman/store`. */
+export function globalStorePath(): string {
+  return path.join(userDir(), 'store');
+}
+
 export function readUserConfig(): UserConfig {
   const p = userConfigPath();
   if (!fs.existsSync(p)) return { stores: [] };
   const raw = parse(fs.readFileSync(p, 'utf8')) as Partial<UserConfig> | null;
-  const stores = Array.isArray(raw?.stores) ? raw!.stores : [];
+  const stores = (Array.isArray(raw?.stores) ? raw!.stores : []).map((s) => {
+    const st = s as { name?: string; path?: string; projects?: unknown };
+    const projects = (Array.isArray(st.projects) ? st.projects : []).map((p): ProjectBinding =>
+      typeof p === 'string' ? { path: p } : { path: String((p as ProjectBinding).path), project: (p as ProjectBinding).project },
+    );
+    return { name: String(st.name ?? ''), path: String(st.path ?? ''), projects };
+  });
   return { actor: typeof raw?.actor === 'string' ? raw.actor : undefined, stores };
 }
 
@@ -112,17 +131,17 @@ export function findStore(cwd: string, override?: string): Store | null {
     dir = parent;
   }
   const user = readUserConfig();
-  let best: { store: UserStore; depth: number } | null = null;
+  let best: { store: UserStore; binding: ProjectBinding; depth: number } | null = null;
   for (const s of user.stores) {
-    for (const p of s.projects ?? []) {
-      const abs = path.resolve(p);
+    for (const b of s.projects ?? []) {
+      const abs = path.resolve(b.path);
       if (isWithin(abs, path.resolve(cwd))) {
         const depth = abs.split(path.sep).length;
-        if (!best || depth > best.depth) best = { store: s, depth };
+        if (!best || depth > best.depth) best = { store: s, binding: b, depth };
       }
     }
   }
-  if (best && fs.existsSync(path.join(best.store.path, 'pjman.yaml'))) return openStore(best.store.path);
+  if (best && fs.existsSync(path.join(best.store.path, 'pjman.yaml'))) return { ...openStore(best.store.path), project: best.binding.project };
   return null;
 }
 

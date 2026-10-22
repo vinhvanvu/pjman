@@ -12,18 +12,16 @@ npm install && npm link
 
 ## The store
 
-A store is a git repository (or a tracked directory inside one) holding `pjman.yaml` and the record folders. `pjman init` creates one in either mode:
+One global store per person: `~/.pjman/store`, its own git repository. `pjman init` in a repository creates the store the first time, registers the repository as a project (`project:<folder-name>`, or `--name`), and maps the repository's path to that project in `~/.pjman/config.yaml`. The tool commits every write it makes there. A change belongs to the project of the directory it was created from; `pjman context` is that project's board, `--all` every project's.
 
-| Mode | Command | Where | Commits |
-|---|---|---|---|
-| standalone (default) | `pjman init` | `~/.pjman/stores/<name>/`, its own repository, bound to the project in `~/.pjman/config.yaml` | the tool commits after every write it makes |
-| in-project | `pjman init --in-project` | `<repo>/.pjman/`, tracked with the project | the tool never commits; the project's workflow does |
+Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a `.pjman/` walking up; else the user map, which also names the current project.
 
-Resolution from any directory: an in-project `.pjman/` walking up, else the user map, else `--store <path>` / `PJMAN_STORE`.
+`pjman init --in-project` makes a store at `<repo>/.pjman/` instead, tracked with the project and never committed by the tool. It is set aside: kept for a repository that must carry its own record.
 
 ```
 pjman.yaml                                   name, layers, vocabulary, source_kinds
-changes/<slug>/change.md                     change:<slug>
+projects/<slug>.md                           project:<slug>              a repository
+changes/<slug>/change.md                     change:<slug>               carries its project
 changes/<slug>/decisions/<date>-<slug>.md    decision:<change>/<slug>
 decisions/<date>-<slug>.md                   decision:/<slug>            (store level)
 sources/<kind>/<key-slug>.md                 <kind>:<key>                (optional; a source may exist as a key only)
@@ -35,8 +33,9 @@ index.db                                     derived, git-ignored, rebuilt by `p
 ## Commands
 
 ```
-pjman init [--in-project] [--dir <path>] [--name <name>]
-pjman new change <slug> --title … [--status open] [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
+pjman init [--name <project-name>] [--in-project]
+pjman new project <slug> --title … [--links <key>]…
+pjman new change <slug> --title … [--status open] [--project <key>] [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
 pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
 pjman new source <kind>:<key> [--title …] [--url …]
 pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
@@ -46,10 +45,10 @@ pjman session bind <id> <change>       record that the run worked on a change
 pjman session observe <id> <edge> <from> <to>   record an observed edge (evidence)
 pjman validate [--json]                every record, every reference; errors are reported, never dropped
 pjman fmt [--check]                    canonical field order, the YAML rule, repaired quoting
-pjman ls [type] [--status s] [--json]
-pjman context [<change>] [--json]      what an agent reads first: the change, its decisions, sources, sessions
+pjman ls [type] [--status s] [--project <key>] [--json]
+pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads first: this project's board, or one change with its decisions, sources, sessions
 pjman show <key>
-pjman set <key> <field>=<value>…   change an authored field (title, status, next, links, binds, summary, plan; on a proposed decision also decision, why); a list is comma-separated
+pjman set <key> <field>=<value>…   change an authored field (title, status, project, next, links, binds, summary, plan; on a proposed decision also decision, why); a list is comma-separated
 pjman mv change:<old> change:<new>     move the folder, leave an alias, rewrite every reference
 pjman index [--json]                   rebuild index.db: ids, reverse edges, conflicts
 pjman query "<sql>"                    read the index
@@ -62,7 +61,7 @@ With `--session` (or `PJMAN_SESSION`) set, every write is refused until that ses
 
 ## Rules the tool enforces
 
-- **References are keys** (`person:vinh`, `change:schema`, `decision:schema/keys`, `linear:ABC-1`, `file:THESIS.md`). Changes, decisions and sessions must exist; sources and actors need no record.
+- **References are keys** (`person:vinh`, `project:pjman`, `change:schema`, `decision:schema/keys`, `linear:ABC-1`, `file:THESIS.md`). Projects, changes, decisions and sessions must exist; sources and actors need no record.
 - **The YAML rule:** any scalar containing `: ` or `#`, or starting with a special character, is quoted. `validate` reports; `fmt` quotes.
 - **A decision is decided by a person.** `--status decided` needs `--decided-by` unless the writer is a `person:`; `supersedes` marks its target `superseded`.
 - **A source binds at most one change.** A second bind is refused on write and reported as a conflict on hand edit.

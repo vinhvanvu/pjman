@@ -21,6 +21,7 @@ Inside records, every reference is a human-readable key. Ids exist only in the i
 | Kind | Key form | Example |
 |---|---|---|
 | actor | `person:<handle>` · `agent:<handle>` | `person:vinh`, `agent:claude-code` |
+| project | `project:<slug>` | `project:pjman` |
 | change | `change:<slug>` | `change:schema` |
 | decision | `decision:<change-slug>/<decision-slug>` · `decision:/<slug>` for store-level | `decision:schema/layered-minimal` |
 | source | `<kind>:<key>` | `linear:ABC-1234`, `github-pr:acme/app#123`, `file:THESIS.md`, `url:https://…` |
@@ -38,6 +39,17 @@ A key is resolved by the tool; a reference to a record that does not exist is a 
 | `ext` | — | Extension namespace, `ext.<owner>.<field>`, one writer per `<owner>` subtree. Preserved structurally (a YAML round-trip may reformat it); never validated |
 
 No `id`, no `type` (the folder is the type), no `updated` (git has it).
+
+### Project — `projects/<slug>.md`
+
+A repository, registered in the store by `pjman init`. The unit a change belongs to; a product over several projects is layer 3.
+
+| Field | A/M | Notes |
+|---|---|---|
+| `title` | A | The repository's folder name unless named |
+| `links` | A | Optional. Source keys: the repository (`git-repo:owner/name`), its tracker, its docs |
+
+The path of the repository on a machine is not in the record; it is in the user config's map (below).
 
 ### Actor — `actors/<handle>.md`, optional
 
@@ -83,20 +95,15 @@ SQLite, in `index.db` at the store root, git-ignored, rebuilt from the records b
 
 ### Location and configuration
 
-A **store** is a git repository (or a tracked directory within one) holding `pjman.yaml`, `changes/`, `decisions/`, `sources/`, `sessions/`, `actors/`, and `index.db` (ignored). Which repository is a choice made at `pjman init`:
+A **store** is a git repository holding `pjman.yaml`, `projects/`, `changes/`, `decisions/`, `sources/`, `sessions/`, `actors/`, and `index.db` (ignored). There is one per person, the **global store** at `~/.pjman/store`, its own repository; every repository the person works in is a **project** in it. `pjman init` in a repository creates the store the first time, registers the repository as `project:<slug>`, and maps the repository's path to that project in `~/.pjman/config.yaml`. The record never sits in the project's repository, and sessions never appear in product PRs.
 
-| Mode | Where | History |
-|---|---|---|
-| **In-project** | `<repo>/.pjman/`, tracked | The project's commits; a decision can be reviewed in the same PR as the work |
-| **Standalone** | `~/.pjman/stores/<name>/`, its own repository, bound to one or more project paths in `~/.pjman/config.yaml` | Its own; pushed to its own private remote or not at all. The project repository is untouched; sessions never appear in product PRs |
+Resolution: `--store` or `PJMAN_STORE`; else walk up from the working directory for a `.pjman/`; else the user map, which also names the current project. A change created from inside a mapped directory belongs to that project.
 
-`pjman init` defaults to **standalone** (the tool never touches a project's repository unless asked); `--in-project` opts in; `--dir` chooses the standalone location; the store's name defaults to the project folder's.
+Set aside: `pjman init --in-project` makes a store at `<repo>/.pjman/`, tracked with the project and never committed by the tool, for a repository that must carry its own record. The record shape is identical.
 
-Resolution: walk up from the working directory for a tracked `.pjman/`; else the user map; else none. The record shape is identical in both modes. Everything this schema says about provenance, history and merge holds in either; only whose history differs.
+**Git policy.** The tool shells out to git for four things and wraps nothing else: `init` (initialise the store; ignore `index.db`), `mv` (stage the rename so history follows), reading history for views and provenance, and committing — the tool commits after every write it makes to the global store, with a `Pjman-Session:` trailer when a session is known; an in-project store it never commits, the project's own workflow does. Branches, remotes, push and merge are the user's. Git on `PATH` is the only dependency.
 
-**Git policy.** The tool shells out to git for four things and wraps nothing else: `init` (initialise a standalone store; ignore `index.db`), `mv` (stage the rename so history follows), reading history for views and provenance, and committing — in **standalone** mode the tool commits after every write it makes, with a `Pjman-Session:` trailer when a session is known; in **in-project** mode it never commits, the project's own workflow does. Branches, remotes, push and merge are the user's. Git on `PATH` is the only dependency.
-
-`pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`. Configuration is never in a record.
+`pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`. `~/.pjman/config.yaml`: `actor`, and `stores[].projects[]` as `{path, project}`. Configuration is never in a record.
 
 ---
 
@@ -126,6 +133,7 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 |---|---|---|
 | `title` | A | |
 | `status` | A | One canonical word from the vocabulary |
+| `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
 | `next` | A | The handoff: the next action. What resume reads first |
@@ -168,6 +176,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 
 | Edge | From → To | Declared on | Rule |
 |---|---|---|---|
+| `project` | change → project | change | the project must exist |
 | `binds` | change → source | change | a source binds at most one change |
 | `links` | change · decision · source → source | the referrer | — |
 | `supersedes` | decision → decision | decision | the target becomes `superseded`; no cycles |
@@ -175,7 +184,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `changes` | session → change | session | — |
 | observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule |
 
-Reverse edges (a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
+Reverse edges (a project's changes, a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
 
 ## Backends
 

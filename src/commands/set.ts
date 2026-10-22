@@ -7,7 +7,8 @@ import { commitIfStandalone, render, validateOrUndo } from '../write.js';
 
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
-  change: ['title', 'status', 'next', 'binds', 'links', 'summary', 'plan'],
+  project: ['title', 'links'],
+  change: ['title', 'status', 'project', 'next', 'binds', 'links', 'summary', 'plan'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'links', 'decision', 'why'],
   source: ['title', 'url', 'links'],
   actor: ['name', 'url'],

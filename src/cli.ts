@@ -19,11 +19,12 @@ const VERSION = (createRequire(import.meta.url)('../package.json') as { version:
 
 /** One entry per command: the usage lines and a one-line purpose. `pjman <cmd> --help` prints one; `pjman --help` prints all. */
 const COMMANDS: { name: string; usage: string[]; about: string }[] = [
-  { name: 'init', about: 'create a store: standalone (its own git repository, bound to this project) or in-project (<repo>/.pjman/)',
-    usage: ['pjman init [--in-project] [--dir <path>] [--name <name>]'] },
+  { name: 'init', about: 'join the global store (~/.pjman/store, its own git repository) and register this repository as a project; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
+    usage: ['pjman init [--name <project-name>] [--in-project]'] },
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
-      'pjman new change <slug> --title <t> [--status open] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
+      'pjman new project <slug> --title <t> [--links <key>]...',
+      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
       'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
       '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
@@ -34,9 +35,9 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman set <key> <field>=<value>...'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge',
     usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },
-  { name: 'context', about: 'what an agent reads first: the open changes, or one change with its decisions, sources and sessions',
-    usage: ['pjman context [<change>] [--json]'] },
-  { name: 'ls', about: 'list records, by type and status', usage: ['pjman ls [change|decision|source|session|actor] [--status <s>] [--json]'] },
+  { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
+    usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
+  { name: 'ls', about: 'list records, by type, status and project', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--json]'] },
   { name: 'show', about: 'print one record by key', usage: ['pjman show <key> [--json]'] },
   { name: 'validate', about: 'check every record and every reference; errors are reported, never dropped (exit 1 on errors)',
     usage: ['pjman validate [--json]'] },
@@ -75,7 +76,8 @@ function parse() {
     session: { type: 'string' },
     created: { type: 'string' },
     'in-project': { type: 'boolean' },
-    dir: { type: 'string' },
+    all: { type: 'boolean' },
+    project: { type: 'string' },
     name: { type: 'string' },
     title: { type: 'string' },
     status: { type: 'string' },
@@ -126,15 +128,15 @@ function main(): number {
   const cwd = process.cwd();
   switch (cmd) {
     case 'init': {
-      for (const line of init({ cwd, inProject: v['in-project'], dir: v.dir, name: v.name })) out(line);
+      for (const line of init({ cwd, inProject: v['in-project'], name: v.name })) out(line);
       return 0;
     }
     case 'new': {
       const store = requireStore(cwd, v.store);
       const [, type, ident] = pos;
-      if (!type || !ident) throw new CliError('usage: pjman new <change|decision|source|actor|session> <ident> [flags]');
+      if (!type || !ident) throw new CliError('usage: pjman new <project|change|decision|source|actor|session> <ident> [flags]');
       const flags: NewFlags = {
-        title: v.title, status: v.status, summary: v.summary, plan: v.plan, next: v.next,
+        title: v.title, status: v.status, project: v.project, summary: v.summary, plan: v.plan, next: v.next,
         binds: v.binds, links: v.links, decidedBy: v['decided-by'], decidedOn: v['decided-on'],
         supersedes: v.supersedes, decision: v.decision, why: v.why, name: v.name, url: v.url,
         agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, started: v.started,
@@ -191,17 +193,17 @@ function main(): number {
     }
     case 'ls': {
       const store = requireStore(cwd, v.store);
-      const rows = ls(store, { type: pos[1], status: v.status });
+      const rows = ls(store, { type: pos[1], status: v.status, project: v.project });
       v.json ? json(rows) : out(formatLs(rows));
       return 0;
     }
     case 'context': {
       const store = requireStore(cwd, v.store);
-      if (pos[1]) {
+      if (pos[1] && !pos[1].startsWith('project:')) {
         const c = changeContext(store, pos[1]);
         v.json ? json(c) : out(formatChangeContext(c));
       } else {
-        const c = storeContext(store);
+        const c = storeContext(store, { project: v.all ? null : (pos[1] ?? v.project ?? store.project ?? null) });
         v.json ? json(c) : out(formatStoreContext(c));
       }
       return 0;
@@ -252,8 +254,8 @@ function main(): number {
       const store = findStore(cwd, v.store);
       if (!store) throw new CliError('no store found');
       v.json
-        ? json({ root: store.root, mode: store.mode, name: store.config.name, actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
-        : out(`${store.root} (${store.mode})`);
+        ? json({ root: store.root, mode: store.mode, name: store.config.name, project: store.project ?? null, actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
+        : out(`${store.root} (${store.mode})${store.project ? ` ${store.project}` : ''}`);
       return 0;
     }
     default:

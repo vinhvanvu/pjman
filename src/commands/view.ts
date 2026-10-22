@@ -26,20 +26,21 @@ export function row(r: Rec): Row {
 }
 
 const TYPE_ALIASES: Record<string, RecordType> = {
-  change: 'change', changes: 'change', decision: 'decision', decisions: 'decision',
+  project: 'project', projects: 'project', change: 'change', changes: 'change', decision: 'decision', decisions: 'decision',
   source: 'source', sources: 'source', session: 'session', sessions: 'session', actor: 'actor', actors: 'actor',
 };
 
-export function ls(store: Store, opts: { type?: string; status?: string }): Row[] {
+export function ls(store: Store, opts: { type?: string; status?: string; project?: string }): Row[] {
   const loaded = loadStore(store);
   let recs = loaded.records;
   if (opts.type) {
     const t = TYPE_ALIASES[opts.type];
-    if (!t) throw new CliError(`unknown type '${opts.type}' (change, decision, source, session, actor)`);
+    if (!t) throw new CliError(`unknown type '${opts.type}' (project, change, decision, source, session, actor)`);
     recs = recs.filter((r) => r.type === t);
   }
   if (opts.status) recs = recs.filter((r) => r.data.status === opts.status);
-  const typeOrder: RecordType[] = ['change', 'decision', 'source', 'session', 'actor'];
+  if (opts.project) recs = recs.filter((r) => r.type !== 'change' || r.data.project === opts.project);
+  const typeOrder: RecordType[] = ['project', 'change', 'decision', 'source', 'session', 'actor'];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))
@@ -78,6 +79,9 @@ export interface ChangeContext {
 
 export interface StoreContext {
   store: { name: string; mode: string; root: string };
+  /** The project the board is scoped to, or null for the whole store. */
+  project: Row | null;
+  projects: Row[];
   changes: Row[];
   proposed: Row[];
   counts: Record<string, number>;
@@ -148,7 +152,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
   out.push(`# ${c.change.key} — ${c.change.title ?? ''}`);
-  out.push(`status: ${c.change.status ?? '?'}${d.next ? `\nnext: ${String(d.next)}` : ''}`);
+  out.push(`status: ${c.change.status ?? '?'}${d.project ? `\nproject: ${String(d.project)}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}`);
   if (c.summary) out.push(`\n## Summary\n\n${c.summary}`);
   if (c.plan) out.push(`\n## Plan\n\n${c.plan}`);
   for (const [k, v] of Object.entries(c.sections)) if (v) out.push(`\n## ${k}\n\n${v}`);
@@ -177,19 +181,35 @@ export function formatChangeContext(c: ChangeContext): string {
   return out.join('\n') + '\n';
 }
 
-export function storeContext(store: Store): StoreContext {
+/** The board: the open changes of one project (`opts.project`), or of the whole store. */
+export function storeContext(store: Store, opts: { project?: string | null } = {}): StoreContext {
   const loaded = loadStore(store);
   const counts: Record<string, number> = {};
   for (const r of loaded.records) counts[r.type] = (counts[r.type] ?? 0) + 1;
+  const projects = loaded.records.filter((r) => r.type === 'project').map(row);
+  let project: Row | null = null;
+  if (opts.project) {
+    const res = resolve(loaded, opts.project.startsWith('project:') ? opts.project : `project:${opts.project}`);
+    if (res.status !== 'ok') throw new CliError(`${opts.project} does not resolve to a project`);
+    project = row(res.rec);
+  }
   const changes = loaded.records
     .filter((r) => r.type === 'change' && r.data.status !== 'done' && r.data.status !== 'dropped')
+    .filter((r) => !project || r.data.project === project.key)
     .map(row);
-  const proposed = loaded.records.filter((r) => r.type === 'decision' && r.data.status === 'proposed').map(row);
-  return { store: { name: store.config.name, mode: store.mode, root: store.root }, changes, proposed, counts };
+  const proposed = loaded.records
+    .filter((r) => r.type === 'decision' && r.data.status === 'proposed')
+    .filter((r) => !project || !r.changeSlug || loaded.byKey.get(`change:${r.changeSlug}`)?.[0]?.data.project === project.key)
+    .map(row);
+  return { store: { name: store.config.name, mode: store.mode, root: store.root }, project, projects, changes, proposed, counts };
 }
 
 export function formatStoreContext(c: StoreContext): string {
-  const out: string[] = [`# ${c.store.name} (${c.store.mode} store)`];
+  const head = c.project
+    ? `# ${c.project.key} — ${c.project.title ?? ''} (${c.store.name} store)`
+    : `# ${c.store.name} (${c.store.mode} store)${c.projects.length ? `\nprojects: ${c.projects.map((p) => p.key).join(', ')}` : ''}`;
+  const out: string[] = [head];
+  const tag = (r: Row) => (!c.project && r.data.project ? ` [${String(r.data.project)}]` : '');
   const order = ['active', 'blocked', 'review', 'planning', 'open'];
   const groups = new Map<string, Row[]>();
   for (const r of c.changes) groups.set(r.status ?? '?', [...(groups.get(r.status ?? '?') ?? []), r]);
@@ -197,8 +217,9 @@ export function formatStoreContext(c: StoreContext): string {
     const rows = groups.get(s);
     if (!rows?.length) continue;
     out.push(`\n## ${s}`);
-    for (const r of rows) out.push(`- ${r.key} — ${r.title ?? ''}${r.data.next ? `\n  next: ${String(r.data.next)}` : ''}`);
+    for (const r of rows) out.push(`- ${r.key} — ${r.title ?? ''}${tag(r)}${r.data.next ? `\n  next: ${String(r.data.next)}` : ''}`);
   }
+  if (c.project && c.projects.length > 1) out.push(`\nother projects: ${c.projects.filter((p) => p.key !== c.project!.key).map((p) => p.key).join(', ')} (pjman context --all)`);
   if (c.proposed.length) {
     out.push('\n## proposed decisions');
     for (const r of c.proposed) out.push(`- ${r.key} — ${r.title ?? ''}`);

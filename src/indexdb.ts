@@ -120,7 +120,7 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
   const sourceKeys = new Set<string>();
   const noteSource = (raw: string) => {
     const k = parseKey(raw);
-    if (!k || ['person', 'agent', 'change', 'decision', 'session'].includes(k.kind)) return;
+    if (!k || ['person', 'agent', 'change', 'decision', 'session', 'project'].includes(k.kind)) return;
     const c = canon(raw);
     if (!seenKeys.has(c)) sourceKeys.add(c);
   };
@@ -131,7 +131,14 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
     if (!r.valid) continue;
     const d = r.data;
     switch (r.type) {
+      case 'project':
+        for (const k of list(d.links)) {
+          edge('links', r.key, k, r);
+          noteSource(k);
+        }
+        break;
       case 'change':
+        if (typeof d.project === 'string') edge('project', r.key, d.project, r);
         for (const k of list(d.binds)) {
           edge('binds', r.key, k, r);
           noteSource(k);
