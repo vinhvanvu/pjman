@@ -1,0 +1,134 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { after, before, test } from 'node:test';
+import { init } from '../commands/init.js';
+import { newRecord } from '../commands/new.js';
+import { sessionBind } from '../commands/session.js';
+import { findStore, type Store } from '../config.js';
+import { readServeAddress, startServer } from '../server.js';
+
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-server-'));
+const project = path.join(tmp, 'project');
+process.env.PJMAN_HOME = path.join(tmp, 'home');
+process.env.PJMAN_WRITER = 'person:tester';
+delete process.env.PJMAN_SESSION;
+delete process.env.PJMAN_STORE;
+
+let store: Store;
+let base = '';
+let server: http.Server;
+
+const getJson = async (route: string) => {
+  const res = await fetch(base + route);
+  return { status: res.status, seq: res.headers.get('x-pjman-seq'), body: (await res.json()) as { seq: number; data?: unknown; error?: { code: string; message: string; tried?: string[] } } };
+};
+
+before(async () => {
+  fs.mkdirSync(project, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: project });
+  init({ cwd: project, name: 'app' });
+  store = findStore(project)!;
+  newRecord(store, 'change', 'login', { title: 'Login', summary: 'Sign in.', binds: ['linear:APP-1'], links: ['file:README.md'] });
+  newRecord(store, 'decision', 'login/magic-links', { title: 'Magic links', decision: 'Links.', why: 'No passwords.' });
+  newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  const ui = path.join(tmp, 'ui');
+  fs.mkdirSync(ui);
+  fs.writeFileSync(path.join(ui, 'index.html'), '<!doctype html><title>pjman</title>');
+  fs.writeFileSync(path.join(ui, 'app.js'), 'console.log(1)');
+  const started = await startServer(store, { staticDir: ui });
+  server = started.server;
+  base = started.address.url;
+});
+
+after(() => server.close());
+
+test('the address file names the running server', () => {
+  const a = readServeAddress();
+  assert.ok(a);
+  assert.equal(a.url, base);
+  assert.equal(a.pid, process.pid);
+});
+
+test('records by key, the listing, the store', async () => {
+  const one = await getJson('/api/v1/records/change/login');
+  assert.equal(one.status, 200);
+  assert.equal((one.body.data as { key: string }).key, 'change:login');
+  assert.equal(String(one.body.seq), one.seq);
+  const dec = await getJson('/api/v1/records/decision/login/magic-links');
+  assert.equal((dec.body.data as { key: string }).key, 'decision:login/magic-links');
+  const missing = await getJson('/api/v1/records/change/nope');
+  assert.equal(missing.status, 404);
+  assert.equal(missing.body.error?.code, 'not-found');
+  const list = await getJson('/api/v1/records?type=change');
+  assert.deepEqual((list.body.data as { key: string }[]).map((r) => r.key), ['change:login']);
+  const s = await getJson('/api/v1/store');
+  assert.equal((s.body.data as { name: string }).name, 'global');
+  assert.deepEqual((s.body.data as { projects: { key: string }[] }).projects.map((p) => p.key), ['project:app']);
+});
+
+test('the getter: a neighbourhood by key, and resolve for anything', async () => {
+  const n = await getJson('/api/v1/records/linear/APP-1/neighbourhood');
+  assert.equal(n.status, 200);
+  assert.deepEqual((n.body.data as { changes: { change: { key: string } }[] }).changes.map((c) => c.change.key), ['change:login']);
+  const r = await getJson('/api/v1/resolve?ref=' + encodeURIComponent('https://linear.app/acme/issue/APP-1/login'));
+  assert.equal((r.body.data as { resolution: { key: string } }).resolution.key, 'linear:APP-1');
+  const none = await getJson('/api/v1/resolve?ref=zzz');
+  assert.equal(none.status, 404);
+  assert.ok(none.body.error?.tried?.length);
+});
+
+test("a session's view and a project's board", async () => {
+  const before = await getJson('/api/v1/sessions/sess-1/view');
+  assert.equal((before.body.data as { showing: { board: string } }).showing.board, 'project:app');
+  sessionBind(store, 'sess-1', 'change:login');
+  const after = await getJson('/api/v1/sessions/sess-1/view');
+  assert.equal((after.body.data as { showing: { key: string } }).showing.key, 'change:login');
+  const board = await getJson('/api/v1/projects/app/board');
+  assert.deepEqual((board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key), ['change:login']);
+});
+
+test('the event stream: a list, and server-sent events with ids', async () => {
+  const list = await getJson('/api/v1/events');
+  const events = list.body.data as { seq: number; op: string }[];
+  assert.equal(events[0].op, 'init');
+  const last = events.at(-1)!.seq;
+  const received: string[] = [];
+  const res = await fetch(`${base}/api/v1/events`, { headers: { accept: 'text/event-stream' } });
+  assert.equal(res.headers.get('content-type'), 'text/event-stream');
+  const reader = res.body!.getReader();
+  const done = new Promise<void>((resolve) => {
+    const pump = async () => {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) return resolve();
+        received.push(new TextDecoder().decode(value));
+        if (received.join('').includes('event: set')) return resolve();
+      }
+    };
+    void pump();
+  });
+  newRecord(store, 'change', 'signup', { title: 'Signup', summary: 's' });
+  const { set } = await import('../commands/set.js');
+  set(store, 'change:signup', ['status=active'], {});
+  await done;
+  await reader.cancel();
+  const text = received.join('');
+  assert.match(text, new RegExp(`id: ${last + 1}\\nevent: created\\ndata: `));
+  assert.match(text, /event: set\n/);
+});
+
+test('the app is served with a history fallback; unknown api routes are 404 json', async () => {
+  const index = await fetch(base + '/session/sess-1');
+  assert.equal(index.headers.get('content-type'), 'text/html; charset=utf-8');
+  assert.match(await index.text(), /<title>pjman<\/title>/);
+  const js = await fetch(base + '/app.js');
+  assert.equal(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
+  const bad = await getJson('/api/v1/nope');
+  assert.equal(bad.status, 404);
+  const old = await getJson('/api/records');
+  assert.equal(old.status, 404);
+});

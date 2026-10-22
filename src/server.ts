@@ -1,0 +1,215 @@
+import fs from 'node:fs';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readUserConfig, userDir, type Store } from './config.js';
+import { follow, lastSeq, readEvents } from './events.js';
+import { get } from './graph.js';
+import { loadStore, resolve } from './records.js';
+import { viewData } from './commands/pane.js';
+import { ls, row, storeContext } from './commands/view.js';
+import { CliError } from './util.js';
+
+export interface ServeOpts {
+  port?: number;
+  host?: string;
+  /** The folder of built UI assets; the default is the app shipped with the tool. */
+  staticDir?: string | null;
+}
+
+export interface ServeAddress {
+  url: string;
+  host: string;
+  port: number;
+  pid: number;
+  store: string;
+  started: string;
+}
+
+export function serveAddressPath(): string {
+  return path.join(userDir(), 'serve.json');
+}
+
+/** The running server's address, when one is running (its pid is alive). */
+export function readServeAddress(): ServeAddress | null {
+  try {
+    const a = JSON.parse(fs.readFileSync(serveAddressPath(), 'utf8')) as ServeAddress;
+    process.kill(a.pid, 0);
+    return a;
+  } catch {
+    return null;
+  }
+}
+
+/** The bundled app: dist/ui beside this file's folder. */
+export function defaultStaticDir(): string | null {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const dir = path.join(here, 'ui');
+  return fs.existsSync(path.join(dir, 'index.html')) ? dir : null;
+}
+
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.woff': 'font/woff', '.woff2': 'font/woff2', '.map': 'application/json',
+};
+
+class HttpError extends Error {
+  constructor(public status: number, public code: string, message: string, public tried?: string[]) {
+    super(message);
+  }
+}
+
+/** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
+export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
+  const staticDir = opts.staticDir === undefined ? defaultStaticDir() : opts.staticDir;
+
+  const send = (res: http.ServerResponse, status: number, body: unknown) => {
+    const seq = lastSeq(store);
+    const text = JSON.stringify({ seq, ...(body as object) });
+    res.writeHead(status, {
+      'content-type': 'application/json; charset=utf-8',
+      'x-pjman-seq': String(seq),
+      'access-control-allow-origin': '*',
+      'cache-control': 'no-store',
+    });
+    res.end(text);
+  };
+  const fail = (res: http.ServerResponse, e: unknown) => {
+    if (e instanceof HttpError) return send(res, e.status, { error: { code: e.code, message: e.message, tried: e.tried } });
+    if (e instanceof CliError) return send(res, 400, { error: { code: 'bad-request', message: e.message } });
+    send(res, 500, { error: { code: 'internal', message: (e as Error).message } });
+  };
+
+  const api = (req: http.IncomingMessage, res: http.ServerResponse, route: string, url: URL): void => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API is read-only in this version`);
+    const loaded = loadStore(store);
+    const getOpts = { cwd: store.projectDir ?? process.cwd(), projectDir: store.projectDir, project: store.project };
+    let m: RegExpExecArray | null;
+
+    if (route === '/store') {
+      const cfg = store.config;
+      return send(res, 200, { data: {
+        root: store.root, mode: store.mode, name: cfg.name, project: store.project ?? null, actor: readUserConfig().actor ?? null,
+        source_kinds: cfg.source_kinds, vocabulary: cfg.vocabulary,
+        projects: loaded.records.filter((r) => r.type === 'project').map(row),
+      } });
+    }
+    if (route === '/records') {
+      const q = url.searchParams;
+      return send(res, 200, { data: ls(store, { type: q.get('type') ?? undefined, status: q.get('status') ?? undefined, project: q.get('project') ?? undefined }) });
+    }
+    if ((m = /^\/records\/([a-z][a-z0-9-]*)\/(.+?)(\/neighbourhood)?$/.exec(route))) {
+      const key = `${m[1]}:${decodeURIComponent(m[2])}`;
+      if (m[3]) {
+        const n = get(loaded, key, getOpts);
+        if (n.resolution.status === 'none') throw new HttpError(404, 'not-found', `${key} has no record`, n.resolution.tried);
+        return send(res, 200, { data: n });
+      }
+      const r = resolve(loaded, key);
+      if (r.status === 'ok' || r.status === 'alias' || r.status === 'invalid') {
+        return send(res, 200, { data: { ...row(r.rec), body: r.rec.body, sections: Object.fromEntries(r.rec.sections), via: r.status === 'alias' ? r.via : undefined } });
+      }
+      throw new HttpError(404, 'not-found', `${key} has no record`);
+    }
+    if (route === '/resolve') {
+      const ref = url.searchParams.get('ref');
+      if (!ref) throw new HttpError(400, 'bad-request', 'ref is required');
+      const n = get(loaded, ref, getOpts);
+      if (n.resolution.status === 'none') throw new HttpError(404, 'not-found', `${ref} resolves to nothing`, n.resolution.tried);
+      return send(res, 200, { data: n });
+    }
+    if ((m = /^\/sessions\/([^/]+)\/view$/.exec(route))) {
+      return send(res, 200, { data: viewData(store, { session: decodeURIComponent(m[1]), ...getOpts }, loaded) });
+    }
+    if ((m = /^\/projects\/([a-z0-9][a-z0-9-]*)\/board$/.exec(route))) {
+      return send(res, 200, { data: storeContext(store, { project: `project:${m[1]}` }) });
+    }
+    if (route === '/board') {
+      return send(res, 200, { data: storeContext(store, { project: url.searchParams.get('project') ?? null }) });
+    }
+    if (route === '/events') {
+      const sinceParam = url.searchParams.get('since') ?? req.headers['last-event-id'];
+      const since = sinceParam ? Number(sinceParam) : 0;
+      if ((req.headers.accept ?? '').includes('text/event-stream') || url.searchParams.get('stream') === '1') {
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-store',
+          connection: 'keep-alive',
+          'access-control-allow-origin': '*',
+          'x-pjman-seq': String(lastSeq(store)),
+        });
+        res.write(`retry: 2000\n\n`);
+        const stop = follow(store, sinceParam ? since : lastSeq(store), (e) => res.write(`id: ${e.seq}\nevent: ${e.op}\ndata: ${JSON.stringify(e)}\n\n`));
+        const beat = setInterval(() => res.write(': keep-alive\n\n'), 15000);
+        req.on('close', () => {
+          stop();
+          clearInterval(beat);
+        });
+        return;
+      }
+      return send(res, 200, { data: readEvents(store, since) });
+    }
+    throw new HttpError(404, 'not-found', `no route ${route}`);
+  };
+
+  const serveStatic = (req: http.IncomingMessage, res: http.ServerResponse, pathname: string): void => {
+    if (!staticDir) {
+      send(res, 404, { error: { code: 'no-ui', message: 'no UI assets are built; the API is under /api/v1' } });
+      return;
+    }
+    const safe = path.normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
+    let file = path.join(staticDir, safe);
+    if (!file.startsWith(staticDir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(staticDir, 'index.html');
+    const type = MIME[path.extname(file)] ?? 'application/octet-stream';
+    res.writeHead(200, { 'content-type': type, 'cache-control': file.endsWith('index.html') ? 'no-store' : 'public, max-age=3600' });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    fs.createReadStream(file).pipe(res);
+  };
+
+  return http.createServer((req, res) => {
+    try {
+      const url = new URL(req.url ?? '/', 'http://localhost');
+      if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+        if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
+        const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since='] } });
+        return api(req, res, route, url);
+      }
+      serveStatic(req, res, url.pathname);
+    } catch (e) {
+      fail(res, e);
+    }
+  });
+}
+
+/** Listen, write the address file, remove it on exit. Resolves with the address. */
+export function startServer(store: Store, opts: ServeOpts = {}): Promise<{ server: http.Server; address: ServeAddress }> {
+  const server = createServer(store, opts);
+  const host = opts.host ?? '127.0.0.1';
+  return new Promise((res, rej) => {
+    server.once('error', rej);
+    server.listen(opts.port ?? 0, host, () => {
+      const a = server.address();
+      const port = typeof a === 'object' && a ? a.port : 0;
+      const address: ServeAddress = { url: `http://${host === '0.0.0.0' ? os.hostname() : host}:${port}`, host, port, pid: process.pid, store: store.root, started: new Date().toISOString() };
+      fs.mkdirSync(userDir(), { recursive: true });
+      fs.writeFileSync(serveAddressPath(), JSON.stringify(address, null, 2) + '\n');
+      const cleanup = () => {
+        try {
+          const cur = JSON.parse(fs.readFileSync(serveAddressPath(), 'utf8')) as ServeAddress;
+          if (cur.pid === process.pid) fs.rmSync(serveAddressPath(), { force: true });
+        } catch {
+          // already gone
+        }
+      };
+      process.on('exit', cleanup);
+      for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => { cleanup(); process.exit(0); });
+      res({ server, address });
+    });
+  });
+}

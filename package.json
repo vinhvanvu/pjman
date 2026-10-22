@@ -4,11 +4,19 @@
   "description": "A context graph for product development: typed records in git under one schema, and the tool that is the schema.",
   "private": true,
   "type": "module",
-  "bin": { "pjman": "./bin/pjman.js" },
-  "files": ["bin", "dist"],
-  "engines": { "node": ">=22.13" },
+  "bin": {
+    "pjman": "./bin/pjman.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:ui": "npm --prefix ui run build",
     "test": "npm run build && node --test dist/test/*.test.js",
     "prepare": "npm run build"
   },

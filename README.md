@@ -56,6 +56,7 @@ pjman set <key> <field>=<value>…   change an authored field (title, status, pr
 pjman mv change:<old> change:<new>     move the folder, leave an alias, rewrite every reference
 pjman events [--since <seq>] [--json]   the store's event stream, one event per write; `pjman events rebuild` derives it from git history
 pjman follow [--since <seq>] [--json]   print events as they are appended, until interrupted; what a view subscribes to
+pjman serve [--port <n>] [--host <addr>] [--static <dir>]   the store over HTTP: the API under /api/v1 and the dashboard; the address is written to ~/.pjman/serve.json while it runs
 pjman index [--json]                   rebuild index.db: ids, reverse edges, conflicts
 pjman query "<sql>"                    read the index
 pjman where
@@ -64,6 +65,12 @@ pjman where
 Global flags: `--store`, `--writer <actor>`, `--session <session>`, `--created <date>`, `--json`. Environment: `PJMAN_STORE`, `PJMAN_WRITER`, `PJMAN_SESSION`, `PJMAN_HOME`.
 
 With `--session` (or `PJMAN_SESSION`) set, every write is refused until that session record exists: create the session first.
+
+## The dashboard and the API
+
+`pjman serve` serves the store over HTTP: the library's results as JSON under `/api/v1` and the bundled dashboard, a React app that shows a session's change as it works (`/session/<id>`), any reference's neighbourhood (`/get/<ref>`), a project's board (`/board/<project>`) and the store (`/`), all live over the event stream. The API is the contract any UI can build on: records by key (`/records/{kind}/{rest}`, `…/neighbourhood`), the getter for anything (`/resolve?ref=`), a session's view (`/sessions/{id}/view`), a project's board (`/projects/{slug}/board`), the listing (`/records?type=&status=&project=`), the store (`/store`) and the stream (`/events?since=`, live with `Accept: text/event-stream`). Every response carries `seq`, the stream position, in the body and in `X-Pjman-Seq`; errors are `{ error: { code, message, tried } }`. Read-only in this version; writes come later over the same library functions. See `decision:dashboard/api-contract`.
+
+The app lives in `ui/` (React, Vite) and builds into `dist/ui`, which ships with the tool (`npm run build:ui`); the runtime has no UI dependency. For development, `npm --prefix ui run dev` proxies `/api` to a running `pjman serve` (set `PJMAN_SERVE` to its URL if not on port 7331). `pjman serve --static <dir>` serves a different app on the same API.
 
 ## Rules the tool enforces
 

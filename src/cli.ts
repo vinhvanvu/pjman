@@ -9,6 +9,7 @@ import { formatProblems, summarise, validate } from './validate.js';
 import { formatNeighbourhood, get } from './graph.js';
 import { renderView, watchStore } from './commands/pane.js';
 import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
+import { readServeAddress, startServer } from './server.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
@@ -57,6 +58,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman events [--since <seq>] [--json]', 'pjman events rebuild'] },
   { name: 'follow', about: 'print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to',
     usage: ['pjman follow [--since <seq>] [--json]'] },
+  { name: 'serve', about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs",
+    usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>]'] },
   { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
   { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
   { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },
@@ -113,6 +116,9 @@ function parse() {
     check: { type: 'boolean' },
     out: { type: 'string' },
     since: { type: 'string' },
+    port: { type: 'string' },
+    host: { type: 'string' },
+    static: { type: 'string' },
     watch: { type: 'boolean' },
   },
     });
@@ -307,6 +313,18 @@ function main(): number {
       const since = v.since !== undefined ? Number(v.since) : readEvents(store).at(-1)?.seq ?? 0;
       follow(store, since, (e) => out(v.json ? JSON.stringify(e) : formatEvent(e)));
       return 0; // the watcher keeps the process alive until it is interrupted
+    }
+    case 'serve': {
+      const store = requireStore(cwd, v.store);
+      const running = readServeAddress();
+      if (running && !v.port) throw new CliError(`a server is already running at ${running.url} (pid ${running.pid}); pass --port to start another`);
+      startServer(store, { port: v.port ? Number(v.port) : undefined, host: v.host, staticDir: v.static })
+        .then(({ address }) => out(`pjman serve: ${address.url} (store ${store.root}; api ${address.url}/api/v1; ctrl-c to stop)`))
+        .catch((e: Error) => {
+          process.stderr.write(`pjman: ${e.message}\n`);
+          process.exit(1);
+        });
+      return 0;
     }
     case 'index': {
       const store = requireStore(cwd, v.store);

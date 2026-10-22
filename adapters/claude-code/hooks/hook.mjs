@@ -10,9 +10,10 @@
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed
 //
-//   The view: `pjman view --session <id> --out <file> --watch` runs beside the session from start to end, subscribed to the
-//   store's event stream, and keeps view/<id>.md in the plugin data directory current; the hooks only render it themselves when
-//   they bind. In cmux the file is docked in cmux's own document viewer (live reload) when the session starts, and closed when it ends.
+//   The view beside the session. In cmux: the dashboard's session page (pjman serve, started if none is running) is docked in a
+//   browser pane at session start and closed at session end. Elsewhere: `pjman view --session <id> --out <file> --watch` runs
+//   beside the session, subscribed to the store's event stream, and keeps view/<id>.md current for any viewer; the hooks only
+//   render it themselves when they bind.
 
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -110,6 +111,40 @@ function stopWatcher(st) {
   st.watcher = null;
 }
 
+/** The dashboard: the running server's address from ~/.pjman/serve.json, or a server started now (detached). */
+function serveAddressFile() {
+  return path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'serve.json');
+}
+function readServeAddress() {
+  try {
+    const a = JSON.parse(fs.readFileSync(serveAddressFile(), 'utf8'));
+    process.kill(a.pid, 0);
+    return a;
+  } catch {
+    return null;
+  }
+}
+function ensureServer(cwd) {
+  const running = readServeAddress();
+  if (running) return running;
+  const [cmd, ...pre] = PJMAN;
+  try {
+    const child = spawn(cmd, [...pre, 'serve'], { cwd, detached: true, stdio: 'ignore', env: process.env });
+    child.unref();
+  } catch (e) {
+    note(`pjman serve failed to start: ${e.message}`);
+    return null;
+  }
+  const until = Date.now() + 4000;
+  while (Date.now() < until) {
+    const a = readServeAddress();
+    if (a) return a;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+  note('pjman serve did not come up in time');
+  return null;
+}
+
 /** cmux, when the session runs inside it: its socket CLI docks the view and names the change in the sidebar. */
 const inCmux = () => Boolean(process.env.CMUX_PANEL_ID || process.env.CMUX_BUNDLE_ID);
 function cmux(args) {
@@ -121,11 +156,15 @@ function cmux(args) {
     return null;
   }
 }
-function dockView(st, file) {
+function dockView(st, sid, cwd, file) {
   if (st.pane || !inCmux()) return;
-  const out = cmux(['markdown', 'open', file]);
-  const m = out && /surface=(\S+)/.exec(out);
+  const server = ensureServer(cwd);
+  const out = server
+    ? cmux(['browser', 'open', `${server.url}/session/${encodeURIComponent(sid)}`])
+    : cmux(['markdown', 'open', file]);
+  const m = out && /surface[=:\s]+(surface:\d+|[0-9a-fA-F-]{36})/.exec(out);
   if (m) st.pane = m[1];
+  else if (out) note(`dock: could not read the surface from: ${out.trim().split('\n')[0]}`);
 }
 function undockView(st) {
   if (!st.pane) return;
@@ -249,8 +288,8 @@ function main() {
       emitContext(EVENT, text);
       if (!input.agent_id) {
         const file = refreshView(sid, cwd);
-        dockView(st, file);
-        startWatcher(st, sid, cwd);
+        dockView(st, sid, cwd, file);
+        if (!st.pane) startWatcher(st, sid, cwd); // no browser pane: keep the document current for any viewer
         sidebarStatus(st.bound);
         saveState(sid, st);
       }

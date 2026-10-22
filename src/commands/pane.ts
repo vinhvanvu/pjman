@@ -3,7 +3,7 @@ import { follow, lastSeq } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded } from '../records.js';
 import { CliError } from '../util.js';
-import { decisionLine, storeContext, type ChangeContext, type Row } from './view.js';
+import { decisionLine, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
 
 export interface ViewOpts extends GetOpts {
   /** A reference to show, and not follow. */
@@ -16,6 +16,13 @@ export interface View {
   markdown: string;
   /** What the document shows: the key rendered, and the session followed when one was. */
   showing: { key?: string; session?: string; board?: string | null };
+}
+
+/** What a view shows, as data: a neighbourhood, or a board. */
+export interface ViewData {
+  showing: View['showing'];
+  neighbourhood?: Neighbourhood;
+  board?: StoreContext;
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };
@@ -118,17 +125,15 @@ function neighbourhoodDoc(n: Neighbourhood, loaded: Loaded): string[] {
   return out;
 }
 
-/** Render the view: one reference, or what a session is on. */
-export function renderView(store: Store, opts: ViewOpts): View {
-  const loaded = loadStore(store);
-  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
-  let body: string[];
+/** What to show: one reference, or what a session is on (its last bound change, else the project's board). */
+export function viewData(store: Store, opts: ViewOpts, loaded: Loaded = loadStore(store)): ViewData {
   const showing: View['showing'] = {};
   if (opts.ref) {
     const n = get(loaded, opts.ref, opts);
-    body = neighbourhoodDoc(n, loaded);
     showing.key = n.resolution.key;
-  } else if (opts.session) {
+    return { showing, neighbourhood: n };
+  }
+  if (opts.session) {
     const id = opts.session.startsWith('session:') ? opts.session : `session:${opts.session}`;
     const res = resolve(loaded, id);
     if (res.status !== 'ok') throw new CliError(`${id} does not resolve to a session`);
@@ -137,18 +142,22 @@ export function renderView(store: Store, opts: ViewOpts): View {
     const last = changes.length ? changes[changes.length - 1] : undefined;
     if (last) {
       const n = get(loaded, last, opts);
-      body = neighbourhoodDoc(n, loaded);
       showing.key = n.resolution.key;
-    } else {
-      showing.board = opts.project ?? null;
-      body = boardDoc(store, opts.project ?? null);
+      return { showing, neighbourhood: n };
     }
-  } else {
-    showing.board = opts.project ?? null;
-    body = boardDoc(store, opts.project ?? null);
   }
-  const foot = `\n---\n_${stamp}${showing.session ? ` · following ${showing.session.slice(0, 24)}` : ''} · pjman view_\n`;
-  return { markdown: body.join('\n') + '\n' + foot, showing };
+  showing.board = opts.project ?? null;
+  return { showing, board: storeContext(store, { project: opts.project ?? null }) };
+}
+
+/** Render the view as a Markdown document. */
+export function renderView(store: Store, opts: ViewOpts): View {
+  const loaded = loadStore(store);
+  const stamp = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const v = viewData(store, opts, loaded);
+  const body = v.neighbourhood ? neighbourhoodDoc(v.neighbourhood, loaded) : boardDoc(store, v.showing.board ?? null);
+  const foot = `\n---\n_${stamp}${v.showing.session ? ` · following ${v.showing.session.slice(0, 24)}` : ''} · pjman view_\n`;
+  return { markdown: body.join('\n') + '\n' + foot, showing: v.showing };
 }
 
 /** Call `fn` on every new event in the store's stream (debounced). Returns a stop function. */
