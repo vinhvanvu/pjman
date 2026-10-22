@@ -10,10 +10,11 @@ import { mv } from '../commands/mv.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
 import { set } from '../commands/set.js';
-import { changeContext, decisionLine, ls, storeContext } from '../commands/view.js';
+import { changeContext, decisionLine, formatLs, ls, storeContext } from '../commands/view.js';
 import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
+import { localDate, today } from '../util.js';
 import { validate } from '../validate.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-test-'));
@@ -218,4 +219,22 @@ test('init --in-project never commits; the store resolves by walking up', () => 
   const r = newRecord(s, 'change', 'x', { title: 'X', summary: 's' });
   assert.equal(r.commit, null);
   assert.match(git(p2, 'status', '--short'), /\.pjman/);
+});
+
+test('the store resolves from inside its own directory, unscoped', () => {
+  const inside = findStore(path.join(store.root, 'changes'));
+  assert.ok(inside);
+  assert.equal(inside.root, store.root);
+  assert.equal(inside.project, undefined);
+});
+
+test('dates are local calendar days; ls shows them', () => {
+  assert.equal(localDate(new Date(2026, 9, 21, 23, 30)), '2026-10-21');
+  assert.equal(localDate(new Date(2026, 0, 1, 0, 10)), '2026-01-01');
+  assert.equal(today(), localDate(new Date()));
+  const r = newRecord(store, 'change', 'dated', { title: 'Dated' });
+  const line = formatLs(ls(store, { type: 'change' })).split('\n').find((l) => l.includes('change:dated'));
+  assert.ok(line);
+  assert.match(line, new RegExp(`^change   ${today()}  change:dated`));
+  fs.rmSync(path.join(store.root, path.dirname(r.path)), { recursive: true });
 });

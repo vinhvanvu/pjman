@@ -97,7 +97,9 @@ SQLite, in `index.db` at the store root, git-ignored, rebuilt from the records b
 
 A **store** is a git repository holding `pjman.yaml`, `projects/`, `changes/`, `decisions/`, `sources/`, `sessions/`, `actors/`, and `index.db` (ignored). There is one per person, the **global store** at `~/.pjman/store`, its own repository; every repository the person works in is a **project** in it. `pjman init` in a repository creates the store the first time, registers the repository as `project:<slug>`, and maps the repository's path to that project in `~/.pjman/config.yaml`. The record never sits in the project's repository, and sessions never appear in product PRs.
 
-Resolution: `--store` or `PJMAN_STORE`; else walk up from the working directory for a `.pjman/`; else the user map, which also names the current project. A change created from inside a mapped directory belongs to that project.
+Resolution: `--store` or `PJMAN_STORE`; else walk up from the working directory for a store root (`pjman.yaml` beside `changes/`, so the global store resolves from inside itself) or a `.pjman/`; else the user map, which also names the current project. A change created from inside a mapped directory belongs to that project; from inside the store itself the board is unscoped.
+
+Dates (`created`, `decided_on`, the date in a decision's or session's file name) are the local calendar day of the write. Timestamps (`started`, log lines) are UTC instants.
 
 Set aside: `pjman init --in-project` makes a store at `<repo>/.pjman/`, tracked with the project and never committed by the tool, for a repository that must carry its own record. The record shape is identical.
 

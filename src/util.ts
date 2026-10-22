@@ -4,8 +4,14 @@ export class CliError extends Error {
   }
 }
 
+/** The calendar date (yyyy-mm-dd) in local time: the day the person worked, not the UTC day. */
+export function localDate(d: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 export function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDate();
 }
 
 export function nowIso(): string {

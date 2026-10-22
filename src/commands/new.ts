@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Store } from '../config.js';
 import { parseDecisionRest, parseKey, SLUG_RE, sourceFileSlug } from '../keys.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
-import { CliError, isDateString, today } from '../util.js';
+import { CliError, isDateString, localDate, today } from '../util.js';
 import { commitIfStandalone, envelope, render, validateOrUndo, writeFile } from '../write.js';
 
 export interface NewFlags {
@@ -211,7 +211,7 @@ export function newSession(store: Store, ident: string, flags: NewFlags): NewRes
   if (!flags.onBehalfOf) throw new CliError('--on-behalf-of is required (a person key)');
   const started = flags.started ?? new Date().toISOString();
   if (Number.isNaN(Date.parse(started))) throw new CliError('--started must be a timestamp');
-  const date = new Date(started).toISOString().slice(0, 10);
+  const date = localDate(new Date(started));
   const loaded = loadStore(store);
   if (loaded.byKey.has(`session:${id}`)) throw new CliError(`refused: session:${id} already exists at ${loaded.byKey.get(`session:${id}`)![0].path}`);
   const rel = path.join('sessions', `${date}-${id}.md`);

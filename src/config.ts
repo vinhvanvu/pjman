@@ -124,6 +124,8 @@ export function findStore(cwd: string, override?: string): Store | null {
   if (explicit) return openStore(explicit);
   let dir = path.resolve(cwd);
   for (;;) {
+    // inside a store itself (the global store, or any store opened by path)
+    if (fs.existsSync(path.join(dir, 'pjman.yaml')) && fs.existsSync(path.join(dir, 'changes'))) return openStore(dir);
     const candidate = path.join(dir, '.pjman');
     if (fs.existsSync(path.join(candidate, 'pjman.yaml'))) return openStore(candidate);
     const parent = path.dirname(dir);

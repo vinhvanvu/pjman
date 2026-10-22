@@ -50,8 +50,9 @@ export function ls(store: Store, opts: { type?: string; status?: string; project
 export function formatLs(rows: Row[]): string {
   if (rows.length === 0) return '(no records)';
   const w = Math.min(48, Math.max(...rows.map((r) => r.key.length)));
+  const dateOf = (r: Row) => r.created ?? (typeof r.data.started === 'string' ? r.data.started.slice(0, 10) : '');
   return rows
-    .map((r) => `${r.type.padEnd(8)} ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.title ?? (r.valid ? '' : '(invalid)')}`)
+    .map((r) => `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.title ?? (r.valid ? '' : '(invalid)')}`)
     .join('\n');
 }
 
