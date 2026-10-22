@@ -13,6 +13,7 @@ import { set } from '../commands/set.js';
 import { changeContext, decisionLine, formatLs, formatStoreContext, ls, storeContext } from '../commands/view.js';
 import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { get, keyFromUrl } from '../graph.js';
+import { renderView } from '../commands/pane.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
 import { localDate, today } from '../util.js';
@@ -303,4 +304,23 @@ test('a change may have a parent change: any depth, no cycles, children derived,
   assert.equal(n.via['change:epic-a-1'], 'parent');
   assert.deepEqual(errors(store), []);
   for (const c of ['epic-a-1', 'epic-a', 'epic']) fs.rmSync(path.join(store.root, 'changes', c), { recursive: true });
+});
+
+test('the view renders a reference, or what a session is on', () => {
+  const one = renderView(store, { ref: 'change:contract' });
+  assert.match(one.markdown, /^# change:contract\n## Schema: v3\n/);
+  assert.match(one.markdown, /### Decisions\n- /);
+  assert.equal(one.showing.key, 'change:contract');
+  const bySource = renderView(store, { ref: 'file:SCHEMA.md' });
+  assert.match(bySource.markdown, /^# file:SCHEMA.md\n## The schema/);
+  assert.match(bySource.markdown, /_reached through links_\n\n# change:contract/);
+  newRecord(store, 'session', 'sess-v', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  const board = renderView(store, { session: 'sess-v', project: 'project:project' });
+  assert.equal(board.showing.board, 'project:project');
+  assert.match(board.markdown, /^# project:project\n/);
+  sessionBind(store, 'sess-v', 'change:contract');
+  const followed = renderView(store, { session: 'session:sess-v' });
+  assert.equal(followed.showing.key, 'change:contract');
+  assert.match(followed.markdown, /following session:sess-v · pjman view_/);
+  assert.throws(() => renderView(store, { session: 'nope' }), /does not resolve to a session/);
 });

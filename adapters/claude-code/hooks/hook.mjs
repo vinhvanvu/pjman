@@ -8,7 +8,10 @@
 //   Stop              a turn that acted appends one log line, from the harness's last message
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
-//   SessionEnd        a closing log line
+//   SessionEnd        a closing log line; the view's pane is closed
+//
+//   The view: every event re-renders `pjman view --session <id>` to a file in the plugin data directory; in cmux the file is
+//   docked beside the session in cmux's own document viewer (live reload) when the session starts, and closed when it ends.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -60,12 +63,52 @@ function loadState(sid) {
   try {
     return JSON.parse(fs.readFileSync(stateFile(sid), 'utf8'));
   } catch {
-    return { acted: 0, bound: null, hydrated: [], observed: [] };
+    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null };
   }
 }
 function saveState(sid, st) {
   fs.mkdirSync(path.dirname(stateFile(sid)), { recursive: true });
   fs.writeFileSync(stateFile(sid), JSON.stringify(st));
+}
+
+// --- the view beside the session --------------------------------------------------------------
+function viewFile(sid) {
+  return path.join(dataDir, 'view', `${sid}.md`);
+}
+
+/** Re-render what the session is on. Cheap enough to run on every event; the event stream will make it exact. */
+function refreshView(sid, cwd) {
+  const file = viewFile(sid);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  tryPjman(['view', '--session', sid, '--out', file], { cwd });
+  return file;
+}
+
+/** cmux, when the session runs inside it: its socket CLI docks the view and names the change in the sidebar. */
+const inCmux = () => Boolean(process.env.CMUX_PANEL_ID || process.env.CMUX_BUNDLE_ID);
+function cmux(args) {
+  if (!inCmux()) return null;
+  try {
+    return execFileSync('cmux', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 });
+  } catch (e) {
+    note(`cmux ${args.join(' ')} failed: ${String(e.stderr || e.message).trim().split('\n')[0]}`);
+    return null;
+  }
+}
+function dockView(st, file) {
+  if (st.pane || !inCmux()) return;
+  const out = cmux(['markdown', 'open', file]);
+  const m = out && /surface=(\S+)/.exec(out);
+  if (m) st.pane = m[1];
+}
+function undockView(st) {
+  if (!st.pane) return;
+  cmux(['close-surface', '--surface', st.pane]);
+  st.pane = null;
+}
+function sidebarStatus(key) {
+  if (key) cmux(['set-status', 'pjman', key, '--icon', 'point.3.connected.trianglepath.dotted']);
+  else cmux(['clear-status', 'pjman']);
 }
 
 // --- helpers ------------------------------------------------------------------------------------
@@ -178,6 +221,12 @@ function main() {
         if (ctx) text += `\n---\nBound change:\n\n${ctx}`;
       }
       emitContext(EVENT, text);
+      if (!input.agent_id) {
+        const file = refreshView(sid, cwd);
+        dockView(st, file);
+        sidebarStatus(st.bound);
+        saveState(sid, st);
+      }
       return;
     }
     case 'UserPromptSubmit': {
@@ -185,8 +234,12 @@ function main() {
       const key = namedChange(prompt, changeKeys(cwd)) ?? referencedChange(prompt, store, { cwd, env });
       if (!key) return;
       if (st.bound !== key) {
-        if (tryPjman(['session', 'bind', sid, key], { cwd, env }) !== null) st.bound = key;
+        if (tryPjman(['session', 'bind', sid, key], { cwd, env }) !== null) {
+          st.bound = key;
+          sidebarStatus(key);
+        }
       }
+      refreshView(sid, cwd);
       if (!st.hydrated.includes(key)) {
         const ctx = tryPjman(['context', key], { cwd });
         if (ctx) {
@@ -200,7 +253,9 @@ function main() {
     case 'PostToolUse': {
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
       const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|session|mv|fmt)\b/;
-      if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
+      const acted = input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''));
+      if (acted) st.acted += 1;
+      let touched = acted && input.tool_name === 'Bash';
       const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
       if (file && st.bound) {
         // real path of p, or of its nearest existing ancestor (a file may not exist yet)
@@ -216,10 +271,14 @@ function main() {
         if (inProject && !inStore && store.source_kinds.includes('file')) {
           const edge = `${st.bound}|file:${rel}`;
           if (!st.observed.includes(edge)) {
-            if (tryPjman(['session', 'observe', sid, 'links', st.bound, `file:${rel}`], { cwd, env }) !== null) st.observed.push(edge);
+            if (tryPjman(['session', 'observe', sid, 'links', st.bound, `file:${rel}`], { cwd, env }) !== null) {
+              st.observed.push(edge);
+              touched = true;
+            }
           }
         }
       }
+      if (touched && !input.agent_id) refreshView(sid, cwd);
       saveState(sid, st);
       return;
     }
@@ -230,6 +289,7 @@ function main() {
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });
         st.acted = 0;
         saveState(sid, st);
+        if (!input.agent_id) refreshView(sid, cwd);
       }
       return;
     }
@@ -242,6 +302,10 @@ function main() {
     }
     case 'SessionEnd': {
       tryPjman(['session', 'log', sid, `session ended (${input.reason || 'other'})`], { cwd, env });
+      refreshView(sid, cwd);
+      undockView(st);
+      sidebarStatus(null);
+      saveState(sid, st);
       return;
     }
     default:

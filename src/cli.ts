@@ -1,4 +1,5 @@
 import './quiet.js';
+import fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { findStore, readUserConfig, requireStore } from './config.js';
 import { buildIndex, query } from './indexdb.js';
@@ -6,6 +7,7 @@ import { loadStore } from './records.js';
 import { CliError, plural } from './util.js';
 import { formatProblems, summarise, validate } from './validate.js';
 import { formatNeighbourhood, get } from './graph.js';
+import { renderView, watchStore } from './commands/pane.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
@@ -41,6 +43,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'ls', about: 'list records, by type, status and project', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--json]'] },
   { name: 'get', about: 'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out (exit 1 when nothing matches)',
     usage: ['pjman get <ref> [--json]'] },
+  { name: 'view', about: "the view beside a session, as a Markdown document: one reference, or what a session is on (its last bound change, else the project's board); --out writes a file, --watch re-renders whenever the store changes",
+    usage: ['pjman view [<ref>] [--session <id>] [--out <file>] [--watch]'] },
   { name: 'show', about: 'print one record by key', usage: ['pjman show <key> [--json]'] },
   { name: 'validate', about: 'check every record and every reference; errors are reported, never dropped (exit 1 on errors)',
     usage: ['pjman validate [--json]'] },
@@ -102,6 +106,8 @@ function parse() {
     started: { type: 'string' },
     body: { type: 'string' },
     check: { type: 'boolean' },
+    out: { type: 'string' },
+    watch: { type: 'boolean' },
   },
     });
   } catch (e) {
@@ -225,6 +231,34 @@ function main(): number {
       const n = get(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project });
       v.json ? json(n) : out(formatNeighbourhood(n, formatChangeContext));
       return n.resolution.status === 'none' ? 1 : 0;
+    }
+    case 'view': {
+      const store = requireStore(cwd, v.store);
+      const opts = { ref: pos[1], session: v.session, cwd, projectDir: store.projectDir, project: store.project };
+      const render = () => {
+        const view = renderView(store, opts);
+        if (v.out) {
+          const tmp = `${v.out}.tmp`;
+          fs.writeFileSync(tmp, view.markdown);
+          fs.renameSync(tmp, v.out);
+        } else if (v.watch) {
+          process.stdout.write(`\x1b[2J\x1b[H${view.markdown}`);
+        } else {
+          v.json ? json(view) : out(view.markdown);
+        }
+      };
+      render();
+      if (v.watch) {
+        watchStore(store, () => {
+          try {
+            render();
+          } catch (e) {
+            process.stderr.write(`pjman: ${(e as Error).message}\n`);
+          }
+        });
+        // the watchers keep the process alive until it is interrupted
+      }
+      return 0;
     }
     case 'show': {
       const store = requireStore(cwd, v.store);

@@ -1,6 +1,6 @@
 # pjman adapter for Claude Code
 
-A plugin: seven hooks and one skill. Every write goes through `pjman`; the plugin holds no record logic of its own.
+A plugin: seven hooks and one skill. Every write goes through `pjman`; the plugin holds no record logic of its own. The view beside the session is `pjman view`, rendered by the tool and docked by the plugin.
 
 | Claude Code event | What happens |
 |---|---|
@@ -9,7 +9,9 @@ A plugin: seven hooks and one skill. Every write goes through `pjman`; the plugi
 | `PostToolUse` (Write, Edit, MultiEdit, NotebookEdit, Bash) | an edit, or a shell call that writes the store (`pjman new|set|session|mv|fmt|init`), marks the turn as having acted; a file write in the project records an observed `links` edge from the bound change to `file:<path>`. A shell call that only reads, builds or tests does not count; a file edited through the shell is not observed |
 | `Stop` | if the turn acted, appends one log line from the first line of the assistant's message |
 | `SubagentStart` / `SubagentStop` | a child session with `parent`, and its own log line |
-| `SessionEnd` | a closing log line |
+| `SessionEnd` | a closing log line; the view's pane is closed |
+
+**The view beside the session.** Every event re-renders `pjman view --session <id>` to `view/<id>.md` in the plugin's data directory: the change the session is bound to (status, ticket, decisions, sources, files touched, sessions), or the project's board before a bind. Inside cmux the file is docked beside the session in cmux's document viewer when the session starts (live reload) and closed when it ends, and the bound change is named in the workspace sidebar. In any other terminal, `pjman view --session <id> --watch` in a split does the same. Until the event stream exists the refresh is per event, so a write made outside the session shows on the next event.
 
 Binding follows what the prompt names, never the directory or branch; a change the agent creates is bound by the agent itself (`pjman session bind`, as the skill says). The log line is the harness's own text; no model is called. The hook never blocks and never fails a session: errors go to `hook.log` in the plugin's data directory.
 

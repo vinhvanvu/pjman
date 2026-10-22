@@ -19,6 +19,7 @@ const project = path.join(tmp, 'project');
 const env = { ...process.env, PJMAN_HOME: path.join(tmp, 'home'), CLAUDE_PLUGIN_DATA: path.join(tmp, 'data'), CLAUDE_PROJECT_DIR: project };
 delete (env as Record<string, unknown>).PJMAN_SESSION;
 delete (env as Record<string, unknown>).PJMAN_STORE;
+for (const k of Object.keys(env)) if (k.startsWith('CMUX_')) delete (env as Record<string, unknown>)[k];
 
 function hook(event: string, input: Record<string, unknown>): string {
   return execFileSync(process.execPath, [HOOK, event], { input: JSON.stringify({ cwd: project, session_id: 'sess-a', ...input }), encoding: 'utf8', env });
@@ -48,10 +49,20 @@ test('SessionStart creates the session record and injects the board', () => {
   assert.equal(rec.data.writer, 'agent:claude-code');
 });
 
+test('the view file follows the session: the board before a bind, the change after', () => {
+  const file = path.join(env.CLAUDE_PLUGIN_DATA, 'view', 'sess-a.md');
+  const before = fs.readFileSync(file, 'utf8');
+  assert.match(before, /^# project\n/);
+  assert.match(before, /change:eight-week-test/);
+  hook('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
+  const after = fs.readFileSync(file, 'utf8');
+  assert.match(after, /^# change:eight-week-test\n## The test\n\*\*open\*\*/);
+  assert.match(after, /following session:sess-a/);
+});
+
 test('a prompt naming a change binds it and injects its context once', () => {
   assert.equal(hook('UserPromptSubmit', { prompt: 'hello' }), '');
-  const ctx = context(hook('UserPromptSubmit', { prompt: 'work on the eight-week-test now' }));
-  assert.match(ctx, /^# change:eight-week-test/);
+  assert.equal(hook('UserPromptSubmit', { prompt: 'work on the eight-week-test now' }), '');
   assert.equal(hook('UserPromptSubmit', { prompt: 'again change:eight-week-test' }), '');
   assert.deepEqual(loadStore(store).byKey.get('session:sess-a')![0].data.changes, ['change:eight-week-test']);
 });
