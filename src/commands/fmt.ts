@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { FIELD_ORDER, loadStore } from '../records.js';
 import { parseRecord, stringifyRecord } from '../frontmatter.js';
-import { commitIfStandalone } from '../write.js';
+import { envelope, finishWrite } from '../write.js';
 
 export interface FmtResult {
   changed: string[];
@@ -31,6 +31,9 @@ export function fmt(store: Store, opts: { check?: boolean; session?: string }): 
     changed.push(r.path);
     if (!opts.check) fs.writeFileSync(r.abs, next);
   }
-  const commit = !opts.check && changed.length ? commitIfStandalone(store, 'pjman: fmt', opts.session) : null;
+  const env = envelope(opts);
+  const commit = !opts.check && changed.length
+    ? finishWrite(store, 'pjman: fmt', env.session, changed.map((p) => { const r = loaded.records.find((x) => x.path === p)!; return { op: 'formatted' as const, key: r.key, type: r.type, path: p, writer: env.writer }; }))
+    : null;
   return { changed, skipped, commit };
 }

@@ -1,5 +1,5 @@
-import fs from 'node:fs';
 import type { Store } from '../config.js';
+import { follow, lastSeq } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded } from '../records.js';
 import { CliError } from '../util.js';
@@ -151,17 +151,11 @@ export function renderView(store: Store, opts: ViewOpts): View {
   return { markdown: body.join('\n') + '\n' + foot, showing };
 }
 
-/** Call `fn` whenever a record in the store changes (debounced); returns a stop function. */
+/** Call `fn` on every new event in the store's stream (debounced). Returns a stop function. */
 export function watchStore(store: Store, fn: () => void, debounceMs = 150): () => void {
   let timer: NodeJS.Timeout | null = null;
-  const trigger = (name?: string | null) => {
-    if (name && (name.endsWith('index.db') || name.includes('.git') || name.endsWith('.tmp'))) return;
+  return follow(store, lastSeq(store), () => {
     if (timer) clearTimeout(timer);
     timer = setTimeout(fn, debounceMs);
-  };
-  const watchers = ['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors']
-    .map((d) => `${store.root}/${d}`)
-    .filter((p) => fs.existsSync(p))
-    .map((p) => fs.watch(p, { recursive: true }, (_ev, name) => trigger(typeof name === 'string' ? name : null)));
-  return () => watchers.forEach((w) => w.close());
+  });
 }

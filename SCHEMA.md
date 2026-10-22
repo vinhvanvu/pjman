@@ -191,6 +191,24 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 
 Reverse edges (a project's changes, a change's children, a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
 
+## The event stream
+
+Every write the tool makes appends one event per record written to `events.jsonl` at the store root, after validation passes and after the commit when the tool commits. The stream is derived and disposable like the index, git-ignored, and `pjman events rebuild` rewrites it from the store's git history. `pjman follow` prints events as they are appended; a view subscribes to it instead of watching files or being called by a harness. The shape is part of this contract; the transport (a file, a command that tails it) is not.
+
+| Field | Notes |
+|---|---|
+| `seq` | Position in the stream, from 1; a rebuild renumbers |
+| `at` | UTC instant of the write |
+| `op` | `created` · `set` · `log` · `bind` · `observe` · `moved` · `formatted` · `init` · `write` (a rebuild's word for a commit it cannot classify) |
+| `key` | The record written; `store` for `init` |
+| `type` | The record type; `store` for `init` |
+| `path` | The record's path |
+| `fields` | Names of the fields or sections that changed; absent on `created` |
+| `writer` · `session` | The envelope of the write |
+| `commit` | The commit the write made, when the tool commits |
+
+A write that touches two records emits two events (a decision that supersedes another: `created` and `set status`). A hand edit outside the tool emits nothing; `validate` reports what it finds.
+
 ## The getter
 
 `pjman get <ref>` resolves one reference and returns the record, every edge into and out of it (declared and observed, with the session that observed it), and the full context of every change within two hops. The order is fixed: a record key (`change:` with aliases, `decision:`, `project:`, `session:`, `person:`/`agent:`); a URL, matched against `url:` sources and the `url` field of any source record, then against the vendor shapes the tool knows (a Linear issue, a GitHub pull, issue or repository); a source key (`kind:key`, canonicalised); a bare ticket id (`ABC-1234`), matched against every source kind that has references in the store and then the current project's `tracker`; a bare slug as a change or project; a file path, made relative to the current project as `file:<path>`; a bare slug as a unique decision slug or session id prefix. The first match wins; nothing matched exits 1 and names the shapes tried. The getter never writes. A source key with no record is still an answer (`key`): the edges that cite it are its neighbourhood. Two hops is how far a reference sits from its change here: a source is cited by a change directly or by one of its decisions; a session names its changes.

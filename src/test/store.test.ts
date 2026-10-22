@@ -14,6 +14,7 @@ import { changeContext, decisionLine, formatLs, formatStoreContext, ls, storeCon
 import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { get, keyFromUrl } from '../graph.js';
 import { renderView } from '../commands/pane.js';
+import { follow, readEvents, rebuildEvents } from '../events.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
 import { localDate, today } from '../util.js';
@@ -323,4 +324,38 @@ test('the view renders a reference, or what a session is on', () => {
   assert.equal(followed.showing.key, 'change:contract');
   assert.match(followed.markdown, /following session:sess-v · pjman view_/);
   assert.throws(() => renderView(store, { session: 'nope' }), /does not resolve to a session/);
+});
+
+test('every write appends one event per record to the stream; follow delivers new ones; rebuild derives the stream from git', async () => {
+  const before = readEvents(store);
+  assert.ok(before.length > 0);
+  assert.equal(before[0].op, 'init');
+  assert.ok(before.every((e, i) => e.seq === i + 1));
+  const delivered: string[] = [];
+  const stop = follow(store, before.at(-1)!.seq, (e) => delivered.push(`${e.op} ${e.key}`));
+  const r = newRecord(store, 'change', 'evented', { title: 'E', summary: 's' });
+  set(store, 'change:evented', ['status=active', 'next=go'], {});
+  newRecord(store, 'decision', 'evented/first', { title: 'First', decision: 'a', why: 'b' });
+  newRecord(store, 'decision', 'evented/second', { title: 'Second', decision: 'a', why: 'b', supersedes: 'decision:evented/first' });
+  const after = readEvents(store, before.at(-1)!.seq);
+  assert.deepEqual(after.map((e) => [e.op, e.key, e.fields]), [
+    ['created', 'change:evented', undefined],
+    ['set', 'change:evented', ['status', 'next']],
+    ['created', 'decision:evented/first', undefined],
+    ['created', 'decision:evented/second', undefined],
+    ['set', 'decision:evented/first', ['status']],
+  ]);
+  assert.equal(after[0].commit, r.commit);
+  assert.equal(after[0].writer, 'person:tester');
+  assert.match(after[0].at, /^\d{4}-\d{2}-\d{2}T.*Z$/);
+  await new Promise((res) => setTimeout(res, 300));
+  stop();
+  assert.deepEqual(delivered, ['created change:evented', 'set change:evented', 'created decision:evented/first', 'created decision:evented/second', 'set decision:evented/first']);
+  const all = readEvents(store);
+  const rebuilt = rebuildEvents(store);
+  const again = readEvents(store);
+  assert.equal(rebuilt.events, again.length);
+  assert.deepEqual(again.slice(-5).map((e) => [e.op, e.key]), all.slice(-5).map((e) => [e.op, e.key]));
+  assert.equal(again.at(-1)!.commit, all.at(-1)!.commit);
+  fs.rmSync(path.join(store.root, 'changes/evented'), { recursive: true });
 });

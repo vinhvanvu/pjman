@@ -3,8 +3,9 @@ import path from 'node:path';
 import type { Store } from '../config.js';
 import { parseDecisionRest, parseKey, SLUG_RE, sourceFileSlug } from '../keys.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
+import type { EventInput } from '../events.js';
 import { CliError, isDateString, localDate, today } from '../util.js';
-import { commitIfStandalone, envelope, render, validateOrUndo, writeFile } from '../write.js';
+import { envelope, finishWrite, render, validateOrUndo, writeFile } from '../write.js';
 
 export interface NewFlags {
   title?: string;
@@ -77,7 +78,8 @@ export function newRecord(store: Store, type: string, ident: string, flags: NewF
 
 function finish(store: Store, type: RecordType, key: string, rel: string, created: string[], flags: NewFlags, notes: string[] = []): NewResult {
   validateOrUndo(store, [rel, ...created], created);
-  const commit = commitIfStandalone(store, `pjman: new ${key}`, envelope(flags).session);
+  const env = envelope(flags);
+  const commit = finishWrite(store, `pjman: new ${key}`, env.session, [{ op: 'created', key, type, path: rel, writer: env.writer }]);
   return { type, key, path: rel, commit, notes };
 }
 
@@ -155,6 +157,7 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
   };
   const notes: string[] = [];
   const touched: string[] = [];
+  const also: EventInput[] = [];
   if (flags.supersedes) {
     const res = resolve(loaded, flags.supersedes);
     if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`supersedes: ${flags.supersedes} does not resolve`);
@@ -163,6 +166,7 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
       const updated = render('decision', { ...res.rec.data, status: 'superseded' }, res.rec.body);
       if (updated !== text) fs.writeFileSync(res.rec.abs, updated);
       touched.push(res.rec.path);
+      also.push({ op: 'set', key: res.rec.key, type: 'decision', path: res.rec.path, fields: ['status'], writer: env.writer as string | undefined });
       notes.push(`${res.rec.key} is now superseded`);
     }
   }
@@ -170,7 +174,7 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
   if (flags.body) body += '\n' + flags.body.trim() + '\n';
   writeFile(store, rel, render('decision', data, body));
   validateOrUndo(store, [rel, ...touched], [rel]);
-  const commit = commitIfStandalone(store, `pjman: new ${key}`, envelope(flags).session);
+  const commit = finishWrite(store, `pjman: new ${key}`, envelope(flags).session, [{ op: 'created', key, type: 'decision', path: rel, writer: env.writer as string | undefined }, ...also]);
   return { type: 'decision', key, path: rel, commit, notes };
 }
 
@@ -230,6 +234,6 @@ export function newSession(store: Store, ident: string, flags: NewFlags): NewRes
   const body = section('Log', flags.body);
   writeFile(store, rel, render('session', data, body));
   validateOrUndo(store, [rel], [rel]);
-  const commit = commitIfStandalone(store, `pjman: new session:${id}`, `session:${id}`);
+  const commit = finishWrite(store, `pjman: new session:${id}`, `session:${id}`, [{ op: 'created', key: `session:${id}`, type: 'session', path: rel, writer: env.writer }]);
   return { type: 'session', key: `session:${id}`, path: rel, commit, notes: [] };
 }

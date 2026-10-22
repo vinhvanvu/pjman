@@ -10,10 +10,11 @@
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed
 //
-//   The view: every event re-renders `pjman view --session <id>` to a file in the plugin data directory; in cmux the file is
-//   docked beside the session in cmux's own document viewer (live reload) when the session starts, and closed when it ends.
+//   The view: `pjman view --session <id> --out <file> --watch` runs beside the session from start to end, subscribed to the
+//   store's event stream, and keeps view/<id>.md in the plugin data directory current; the hooks only render it themselves when
+//   they bind. In cmux the file is docked in cmux's own document viewer (live reload) when the session starts, and closed when it ends.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -63,7 +64,7 @@ function loadState(sid) {
   try {
     return JSON.parse(fs.readFileSync(stateFile(sid), 'utf8'));
   } catch {
-    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null };
+    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null, watcher: null };
   }
 }
 function saveState(sid, st) {
@@ -82,6 +83,31 @@ function refreshView(sid, cwd) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   tryPjman(['view', '--session', sid, '--out', file], { cwd });
   return file;
+}
+
+/** The subscriber: one detached `pjman view --watch` per session, following the stream until the session ends. */
+function startWatcher(st, sid, cwd) {
+  if (st.watcher) {
+    try {
+      process.kill(st.watcher, 0);
+      return; // still running
+    } catch {}
+  }
+  const [cmd, ...pre] = PJMAN;
+  try {
+    const child = spawn(cmd, [...pre, 'view', '--session', sid, '--out', viewFile(sid), '--watch'], { cwd, detached: true, stdio: 'ignore', env: process.env });
+    child.unref();
+    st.watcher = child.pid ?? null;
+  } catch (e) {
+    note(`watcher failed to start: ${e.message}`);
+  }
+}
+function stopWatcher(st) {
+  if (!st.watcher) return;
+  try {
+    process.kill(st.watcher);
+  } catch {}
+  st.watcher = null;
 }
 
 /** cmux, when the session runs inside it: its socket CLI docks the view and names the change in the sidebar. */
@@ -224,6 +250,7 @@ function main() {
       if (!input.agent_id) {
         const file = refreshView(sid, cwd);
         dockView(st, file);
+        startWatcher(st, sid, cwd);
         sidebarStatus(st.bound);
         saveState(sid, st);
       }
@@ -253,9 +280,7 @@ function main() {
     case 'PostToolUse': {
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
       const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|session|mv|fmt)\b/;
-      const acted = input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''));
-      if (acted) st.acted += 1;
-      let touched = acted && input.tool_name === 'Bash';
+      if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
       const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
       if (file && st.bound) {
         // real path of p, or of its nearest existing ancestor (a file may not exist yet)
@@ -271,14 +296,10 @@ function main() {
         if (inProject && !inStore && store.source_kinds.includes('file')) {
           const edge = `${st.bound}|file:${rel}`;
           if (!st.observed.includes(edge)) {
-            if (tryPjman(['session', 'observe', sid, 'links', st.bound, `file:${rel}`], { cwd, env }) !== null) {
-              st.observed.push(edge);
-              touched = true;
-            }
+            if (tryPjman(['session', 'observe', sid, 'links', st.bound, `file:${rel}`], { cwd, env }) !== null) st.observed.push(edge);
           }
         }
       }
-      if (touched && !input.agent_id) refreshView(sid, cwd);
       saveState(sid, st);
       return;
     }
@@ -289,7 +310,6 @@ function main() {
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });
         st.acted = 0;
         saveState(sid, st);
-        if (!input.agent_id) refreshView(sid, cwd);
       }
       return;
     }
@@ -302,6 +322,7 @@ function main() {
     }
     case 'SessionEnd': {
       tryPjman(['session', 'log', sid, `session ended (${input.reason || 'other'})`], { cwd, env });
+      stopWatcher(st);
       refreshView(sid, cwd);
       undockView(st);
       sidebarStatus(null);

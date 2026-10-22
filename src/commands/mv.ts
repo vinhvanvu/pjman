@@ -5,7 +5,7 @@ import { gitMv, isTracked, toplevel } from '../git.js';
 import { parseKey, SLUG_RE } from '../keys.js';
 import { loadStore, type Rec } from '../records.js';
 import { CliError } from '../util.js';
-import { commitIfStandalone, render, validateOrUndo } from '../write.js';
+import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
 
 export interface MvResult {
   from: string;
@@ -60,7 +60,13 @@ export function mv(store: Store, fromRaw: string, toRaw: string, opts: { session
   }
   const touched = [path.join(newDir, 'change.md'), ...rewritten];
   validateOrUndo(store, touched, []);
-  const commit = commitIfStandalone(store, `pjman: mv ${from.raw} ${to.raw}`, opts.session);
+  const env = envelope(opts);
+  const moved = path.join(newDir, 'change.md');
+  const recAt = (p: string) => loaded.records.find((r) => r.path === p || (r.path.startsWith(oldDir + '/') && newDir + r.path.slice(oldDir.length) === p));
+  const commit = finishWrite(store, `pjman: mv ${from.raw} ${to.raw}`, env.session, [
+    { op: 'moved', key: to.raw, type: 'change', path: moved, fields: ['aliases'], writer: env.writer },
+    ...rewritten.filter((p) => p !== moved).map((p) => ({ op: 'set' as const, key: recAt(p)?.key ?? p, type: recAt(p)?.type ?? ('change' as const), path: p, fields: ['references'], writer: env.writer })),
+  ]);
   return { from: from.raw, to: to.raw, rewritten, commit };
 }
 

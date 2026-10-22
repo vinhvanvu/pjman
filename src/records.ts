@@ -209,7 +209,7 @@ export function loadStore(store: Store): Loaded {
 
   // anything else at the root that is not a store file
   for (const name of listDir(root)) {
-    if (['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'README.md'].includes(name)) continue;
+    if (['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'events.jsonl', 'README.md'].includes(name)) continue;
     unexpected(name);
   }
 

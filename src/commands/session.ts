@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { findSession, loadStore } from '../records.js';
 import { CliError, nowIso } from '../util.js';
-import { commitIfStandalone, render, validateOrUndo } from '../write.js';
+import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
 import { EDGES } from '../validate.js';
 
 function load(store: Store, id: string) {
@@ -13,10 +13,11 @@ function load(store: Store, id: string) {
   return { loaded, rec };
 }
 
-function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string): string | null {
+function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: 'log' | 'bind' | 'observe'): string | null {
   fs.writeFileSync(rec.abs, render('session', data, body));
   validateOrUndo(store, [rec.path], []);
-  return commitIfStandalone(store, message, rec.key);
+  const fields = { log: ['log'], bind: ['changes'], observe: ['observed'] }[op];
+  return finishWrite(store, message, rec.key, [{ op, key: rec.key, type: 'session', path: rec.path, fields, writer: envelope({}).writer }]);
 }
 
 /** Append one line to `## Log`. */
@@ -25,7 +26,7 @@ export function sessionLog(store: Store, id: string, text: string): { path: stri
   let body = rec.body.replace(/\s+$/, '');
   if (!rec.sections.has('Log')) body += `${body ? '\n\n' : ''}## Log`;
   body += `\n- ${nowIso()} — ${text.trim()}`;
-  const commit = save(store, rec, rec.data, body + '\n', `pjman: session log ${rec.key}`);
+  const commit = save(store, rec, rec.data, body + '\n', `pjman: session log ${rec.key}`, 'log');
   return { path: rec.path, commit };
 }
 
@@ -36,7 +37,7 @@ export function sessionBind(store: Store, id: string, changeKey: string): { path
   const changes = Array.isArray(rec.data.changes) ? [...(rec.data.changes as string[])] : [];
   if (changes.includes(key)) return { path: rec.path, commit: null, added: false };
   changes.push(key);
-  const commit = save(store, rec, { ...rec.data, changes }, rec.body, `pjman: session bind ${rec.key} ${key}`);
+  const commit = save(store, rec, { ...rec.data, changes }, rec.body, `pjman: session bind ${rec.key} ${key}`, 'bind');
   return { path: rec.path, commit, added: true };
 }
 
@@ -46,6 +47,6 @@ export function sessionObserve(store: Store, id: string, edge: string, from: str
   const { rec } = load(store, id);
   const observed = Array.isArray(rec.data.observed) ? [...(rec.data.observed as unknown[])] : [];
   observed.push({ edge, from, to, at: nowIso() });
-  const commit = save(store, rec, { ...rec.data, observed }, rec.body, `pjman: session observe ${rec.key} ${edge} ${from} ${to}`);
+  const commit = save(store, rec, { ...rec.data, observed }, rec.body, `pjman: session observe ${rec.key} ${edge} ${from} ${to}`, 'observe');
   return { path: rec.path, commit };
 }

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readUserConfig, type Store } from './config.js';
 import { stringifyRecord } from './frontmatter.js';
+import { emit, type EventInput } from './events.js';
 import { commitAll } from './git.js';
 import { FIELD_ORDER, loadStore, type Problem, type RecordType } from './records.js';
 import { CliError } from './util.js';
@@ -56,4 +57,11 @@ export function validateOrUndo(store: Store, rels: string[], created: string[]):
 export function commitIfStandalone(store: Store, message: string, session?: string): string | null {
   if (store.mode !== 'standalone') return null;
   return commitAll(store.root, message, session);
+}
+
+/** The end of every write: commit (standalone), then one event per record written, carrying the commit. */
+export function finishWrite(store: Store, message: string, session: string | undefined, events: EventInput[]): string | null {
+  const commit = commitIfStandalone(store, message, session);
+  emit(store, events.map((e) => ({ ...e, session: e.session ?? session })), commit);
+  return commit;
 }

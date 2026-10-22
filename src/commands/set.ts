@@ -3,7 +3,7 @@ import type { Store } from '../config.js';
 import { replaceSection } from '../frontmatter.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
 import { CliError } from '../util.js';
-import { commitIfStandalone, render, validateOrUndo } from '../write.js';
+import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
 
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
@@ -59,6 +59,7 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     fs.writeFileSync(rec.abs, before);
     throw e;
   }
-  const commit = commitIfStandalone(store, `pjman: set ${rec.key} ${changed.join(' ')}`, opts.session);
+  const env = envelope(opts);
+  const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, writer: env.writer }]);
   return { key: rec.key, path: rec.path, changed, commit };
 }

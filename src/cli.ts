@@ -8,6 +8,7 @@ import { CliError, plural } from './util.js';
 import { formatProblems, summarise, validate } from './validate.js';
 import { formatNeighbourhood, get } from './graph.js';
 import { renderView, watchStore } from './commands/pane.js';
+import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
@@ -52,6 +53,10 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman fmt [--check]'] },
   { name: 'mv', about: 'rename a change: move the folder, leave an alias, rewrite every reference',
     usage: ['pjman mv change:<old> change:<new>'] },
+  { name: 'events', about: "the store's event stream: one event per write (seq, at, op, key, type, path, fields, writer, session, commit); `rebuild` rewrites it from the store's git history",
+    usage: ['pjman events [--since <seq>] [--json]', 'pjman events rebuild'] },
+  { name: 'follow', about: 'print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to',
+    usage: ['pjman follow [--since <seq>] [--json]'] },
   { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
   { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
   { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },
@@ -107,6 +112,7 @@ function parse() {
     body: { type: 'string' },
     check: { type: 'boolean' },
     out: { type: 'string' },
+    since: { type: 'string' },
     watch: { type: 'boolean' },
   },
     });
@@ -283,6 +289,24 @@ function main(): number {
         out(`moved ${r.from} → ${r.to}; rewrote ${plural(r.rewritten.length, 'file')}${r.commit ? ` (committed ${r.commit})` : ''}`);
       }
       return 0;
+    }
+    case 'events': {
+      const store = requireStore(cwd, v.store);
+      if (pos[1] === 'rebuild') {
+        const r = rebuildEvents(store);
+        out(`rebuilt ${plural(r.events, 'event')} from ${plural(r.commits, 'commit')}`);
+        return 0;
+      }
+      if (pos[1]) throw new CliError('usage: pjman events [--since <seq>] | pjman events rebuild');
+      const events = readEvents(store, v.since ? Number(v.since) : 0);
+      v.json ? json(events) : out(events.length ? events.map(formatEvent).join('\n') : '(no events)');
+      return 0;
+    }
+    case 'follow': {
+      const store = requireStore(cwd, v.store);
+      const since = v.since !== undefined ? Number(v.since) : readEvents(store).at(-1)?.seq ?? 0;
+      follow(store, since, (e) => out(v.json ? JSON.stringify(e) : formatEvent(e)));
+      return 0; // the watcher keeps the process alive until it is interrupted
     }
     case 'index': {
       const store = requireStore(cwd, v.store);

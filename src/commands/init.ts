@@ -1,3 +1,4 @@
+import { emit } from '../events.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_SOURCE_KINDS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type StoreConfig, type UserStore } from '../config.js';
@@ -21,7 +22,7 @@ function scaffold(root: string, cfg: StoreConfig): void {
   fs.mkdirSync(root, { recursive: true });
   if (fs.existsSync(path.join(root, 'pjman.yaml'))) throw new CliError(`a store already exists at ${root}`);
   writeStoreConfig(root, cfg);
-  fs.writeFileSync(path.join(root, '.gitignore'), 'index.db\nindex.db.tmp\n');
+  fs.writeFileSync(path.join(root, '.gitignore'), 'index.db\nindex.db.tmp\nevents.jsonl\nevents.jsonl.tmp\n');
   for (const f of FOLDERS) {
     fs.mkdirSync(path.join(root, f), { recursive: true });
     fs.writeFileSync(path.join(root, f, '.gitkeep'), '');
@@ -70,6 +71,7 @@ export function init(opts: InitOpts): string[] {
       if (!toplevel(root) || fs.realpathSync(toplevel(root)!) !== fs.realpathSync(root)) git(root, ['init', '-q']);
       git(root, ['add', '-A', '--', '.']);
       git(root, ['commit', '-q', '-m', 'pjman: init store global']);
+      emit(openStore(root), [{ op: 'init', key: 'store', type: 'store', path: 'pjman.yaml' }], git(root, ['rev-parse', '--short', 'HEAD']));
       out.push(`created the global store at ${root} (its own git repository)`);
     } else {
       for (const f of FOLDERS) fs.mkdirSync(path.join(root, f), { recursive: true });
