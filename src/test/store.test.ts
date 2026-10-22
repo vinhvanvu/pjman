@@ -123,6 +123,13 @@ test('set changes authored fields and refuses what would not validate', () => {
   set(store, 'change:alpha', ['plan='], {});
   assert.equal(loadStore(store).byKey.get('change:alpha')![0].sections.has('Plan'), false);
   assert.throws(() => set(store, 'change:alpha', ['summary='], {}), /Summary/);
+  const proposed = loadStore(store).records.find((r) => r.type === 'decision' && r.data.status === 'proposed');
+  if (proposed) {
+    set(store, proposed.key, ['why=Because.'], {});
+    assert.equal(loadStore(store).byKey.get(proposed.key)![0].sections.get('Why'), 'Because.');
+  }
+  const decided = loadStore(store).records.find((r) => r.type === 'decision' && r.data.status === 'decided')!;
+  assert.throws(() => set(store, decided.key, ['decision=changed'], {}), /text is fixed/);
   assert.throws(() => set(store, 'change:alpha', ['status=merged'], {}), /maps it to 'done'/);
   assert.equal(loadStore(store).byKey.get('change:alpha')![0].data.status, 'active');
   assert.throws(() => set(store, 'session:sess-1', ['agent=agent:x'], {}), /append-only/);

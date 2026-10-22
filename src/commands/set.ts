@@ -8,13 +8,13 @@ import { commitIfStandalone, render, validateOrUndo } from '../write.js';
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
   change: ['title', 'status', 'next', 'binds', 'links', 'summary', 'plan'],
-  decision: ['title', 'status', 'decided_by', 'decided_on', 'links'],
+  decision: ['title', 'status', 'decided_by', 'decided_on', 'links', 'decision', 'why'],
   source: ['title', 'url', 'links'],
   actor: ['name', 'url'],
   session: [],
 };
 const LISTS = new Set(['binds', 'links']);
-const SECTIONS: Record<string, string> = { summary: 'Summary', plan: 'Plan' };
+const SECTIONS: Record<string, string> = { summary: 'Summary', plan: 'Plan', decision: 'Decision', why: 'Why' };
 
 export interface SetResult {
   key: string;
@@ -43,6 +43,7 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     const field = pair.slice(0, i);
     const value = pair.slice(i + 1);
     if (!allowed.includes(field)) throw new CliError(`'${field}' cannot be set on a ${rec.type} (${allowed.join(', ')})`);
+    if (SECTIONS[field] && rec.type === 'decision' && rec.data.status !== 'proposed') throw new CliError(`a ${String(rec.data.status)} decision's text is fixed; open a new decision that supersedes it`);
     if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
     else data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean) : value;

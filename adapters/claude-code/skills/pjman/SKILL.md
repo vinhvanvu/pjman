@@ -43,6 +43,6 @@ pjman context [change:<slug>]           the board, or one change with its decisi
 pjman ls decision --status proposed      what is waiting on a person
 pjman show <key>                         one record
 pjman new change|decision|source …       create (refused if it would not validate)
-pjman set <key> field=value …            authored fields: title, status, next, links, binds, summary, plan
+pjman set <key> field=value …            authored fields: title, status, next, links, binds, summary, plan; decision, why while proposed
 pjman validate                           run before committing a store that lives in the project
 ```
