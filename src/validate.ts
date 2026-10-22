@@ -13,7 +13,7 @@ const REQUIRED: Record<RecordType, string[]> = {
 };
 
 const STRING_FIELDS: Record<RecordType, string[]> = {
-  project: ['title', 'writer', 'session', 'created'],
+  project: ['title', 'tracker', 'writer', 'session', 'created'],
   change: ['title', 'status', 'project', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
@@ -124,6 +124,9 @@ export function validate(loaded: Loaded): Problem[] {
       case 'project': {
         if (r.projectSlug && !SLUG_RE.test(r.projectSlug)) err(r, `file name '${r.projectSlug}' is not a slug`);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        if (typeof d.tracker === 'string' && !store.config.source_kinds.map((k) => k.toLowerCase()).includes(d.tracker.toLowerCase())) {
+          err(r, `tracker '${d.tracker}' is not in source_kinds (${store.config.source_kinds.join(', ')})`);
+        }
         break;
       }
       case 'change': {

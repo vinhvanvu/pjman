@@ -8,6 +8,7 @@ import { before, test } from 'node:test';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
 import { findStore, type Store } from '../config.js';
+import { set } from '../commands/set.js';
 import { loadStore } from '../records.js';
 import { validate } from '../validate.js';
 
@@ -85,4 +86,26 @@ test('compaction rehydrates the bound change; the store stays valid; a non-pjman
   hook('SessionEnd', { reason: 'other' });
   assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error'), []);
   assert.equal(hook('SessionStart', { cwd: os.tmpdir(), session_id: 'zzz', source: 'startup' }), '');
+});
+
+test('a ticket id or URL in the prompt binds the change that binds it; in a project with a tracker a new ticket gets a change', () => {
+  const work = path.join(tmp, 'work');
+  fs.mkdirSync(work, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: work });
+  init({ cwd: work, name: 'work' });
+  const g = findStore(work)!;
+  const at = (prompt: string) => hook('UserPromptSubmit', { cwd: work, session_id: 'sess-t', prompt });
+  hook('SessionStart', { cwd: work, session_id: 'sess-t', source: 'startup' });
+  assert.equal(at('look at ABC-1234 and UTF-8'), '');
+  assert.ok(!loadStore(g).byKey.has('change:abc-1234'));
+  set(g, 'project:work', ['tracker=linear'], {});
+  const ctx = context(at('start ABC-1234 please, mind UTF-8'));
+  assert.match(ctx, /^# change:abc-1234 — ABC-1234/);
+  const rec = loadStore(g).byKey.get('change:abc-1234')![0];
+  assert.deepEqual(rec.data.binds, ['linear:ABC-1234']);
+  assert.equal(rec.data.project, 'project:work');
+  assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234']);
+  assert.equal(at('see https://linear.app/acme/issue/ABC-1234/the-title.'), '');
+  assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
+  assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });

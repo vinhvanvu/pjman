@@ -47,6 +47,7 @@ A repository, registered in the store by `pjman init`. The unit a change belongs
 | Field | A/M | Notes |
 |---|---|---|
 | `title` | A | The repository's folder name unless named |
+| `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). A bare ticket id with no references resolves through it; an adapter creates a change for a ticket only in a project that names one |
 | `links` | A | Optional. Source keys: the repository (`git-repo:owner/name`), its tracker, its docs |
 
 The path of the repository on a machine is not in the record; it is in the user config's map (below).
@@ -187,6 +188,10 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule |
 
 Reverse edges (a project's changes, a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
+
+## The getter
+
+`pjman get <ref>` resolves one reference and returns the record, every edge into and out of it (declared and observed, with the session that observed it), and the full context of every change within two hops. The order is fixed: a record key (`change:` with aliases, `decision:`, `project:`, `session:`, `person:`/`agent:`); a URL, matched against `url:` sources and the `url` field of any source record, then against the vendor shapes the tool knows (a Linear issue, a GitHub pull, issue or repository); a source key (`kind:key`, canonicalised); a bare ticket id (`ABC-1234`), matched against every source kind that has references in the store and then the current project's `tracker`; a bare slug as a change or project; a file path, made relative to the current project as `file:<path>`; a bare slug as a unique decision slug or session id prefix. The first match wins; nothing matched exits 1 and names the shapes tried. The getter never writes. A source key with no record is still an answer (`key`): the edges that cite it are its neighbourhood. Two hops is how far a reference sits from its change here: a source is cited by a change directly or by one of its decisions; a session names its changes.
 
 ## Backends
 

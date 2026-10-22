@@ -76,6 +76,8 @@ export interface ChangeContext {
   decisions: (Row & { decision?: string; why?: string; supersededBy?: string })[];
   sources: { key: string; record?: Row; via: 'binds' | 'links' }[];
   sessions: (Row & { last?: string })[];
+  /** Edges sessions observed from this change (the files it touched), with the session that saw each. */
+  observed: { edge: string; to: string; session: string; at?: string }[];
 }
 
 export interface StoreContext {
@@ -98,8 +100,7 @@ function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
     .sort((a, b) => String(a.data.started).localeCompare(String(b.data.started)));
 }
 
-export function changeContext(store: Store, key: string): ChangeContext {
-  const loaded = loadStore(store);
+export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
   const raw = key.startsWith('change:') ? key : `change:${key}`;
   const res = resolve(loaded, raw);
   if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`${raw} does not resolve`);
@@ -134,7 +135,22 @@ export function changeContext(store: Store, key: string): ChangeContext {
     const lines = log.split('\n').filter((l) => l.trim());
     return { ...row(r), last: lines.length ? lines[lines.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined };
   });
-  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions };
+  const observed: ChangeContext['observed'] = [];
+  const seen = new Set<string>();
+  for (const s of loaded.records) {
+    if (s.type !== 'session' || !s.valid || !Array.isArray(s.data.observed)) continue;
+    for (const o of s.data.observed as unknown[]) {
+      if (!o || typeof o !== 'object') continue;
+      const e = o as Record<string, unknown>;
+      if (typeof e.edge !== 'string' || typeof e.from !== 'string' || typeof e.to !== 'string') continue;
+      const from = resolve(loaded, e.from);
+      if (!(from.status === 'ok' || from.status === 'alias') || from.rec.key !== rec.key) continue;
+      if (seen.has(`${e.edge} ${e.to}`)) continue;
+      seen.add(`${e.edge} ${e.to}`);
+      observed.push({ edge: e.edge, to: e.to, session: s.key, at: typeof e.at === 'string' ? e.at : undefined });
+    }
+  }
+  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, observed };
 }
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
@@ -172,6 +188,10 @@ export function formatChangeContext(c: ChangeContext): string {
       const u = typeof s.record?.data.url === 'string' ? ` (${s.record.data.url})` : '';
       out.push(`- ${s.via} ${s.key}${t}${u}`);
     }
+  }
+  if (c.observed.length) {
+    out.push('\n## Observed');
+    for (const o of c.observed) out.push(`- ${o.edge} ${o.to} (${o.session}${o.at ? `, ${o.at.slice(0, 10)}` : ''})`);
   }
   if (c.sessions.length) {
     out.push('\n## Sessions');

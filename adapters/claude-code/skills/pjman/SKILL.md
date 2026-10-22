@@ -17,7 +17,8 @@ Every write goes through the `pjman` command. Never edit a file under the store 
 ## Rules
 
 1. **Read before acting.** When a change is named or implied, run `pjman context change:<slug>` first. It is the
-   record of what was decided, what was tried, and what is next.
+   record of what was decided, what was tried, and what is next. Given a ticket, a URL or a file instead, run
+   `pjman get <it>`: it finds the change through the graph.
 2. **Open a decision `proposed` before acting on a choice that forecloses options** (a data model, a boundary, a
    dependency, a scope cut, anything a later reader would ask "why?" about):
    ```
@@ -40,6 +41,7 @@ Every write goes through the `pjman` command. Never edit a file under the store 
 
 ```
 pjman context [change:<slug>] [--all]   this project's board (--all: every project), or one change with its decisions, sources and sessions
+pjman get <ref>                          anything in (key, ticket id, URL, file path, slug): the record, its edges, and every change in reach
 pjman ls decision --status proposed      what is waiting on a person
 pjman show <key>                         one record
 pjman new change|decision|source …       create (refused if it would not validate)

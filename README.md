@@ -14,7 +14,9 @@ npm install && npm link
 
 One global store per person: `~/.pjman/store`, its own git repository. `pjman init` in a repository creates the store the first time, registers the repository as a project (`project:<folder-name>`, or `--name`), and maps the repository's path to that project in `~/.pjman/config.yaml`. The tool commits every write it makes there. A change belongs to the project of the directory it was created from; `pjman context` is that project's board, `--all` every project's.
 
-Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a `.pjman/` walking up; else the user map, which also names the current project.
+Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root or a `.pjman/` walking up; else the user map, which also names the current project.
+
+A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): the source kind of its tickets. A ticket id or ticket URL then resolves through the getter to the change that binds it, and the adapter binds a session to that change, creating it when none binds the ticket.
 
 `pjman init --in-project` makes a store at `<repo>/.pjman/` instead, tracked with the project and never committed by the tool. It is set aside: kept for a repository that must carry its own record.
 
@@ -34,7 +36,7 @@ index.db                                     derived, git-ignored, rebuilt by `p
 
 ```
 pjman init [--name <project-name>] [--in-project]
-pjman new project <slug> --title … [--links <key>]…
+pjman new project <slug> --title … [--tracker <source-kind>] [--links <key>]…
 pjman new change <slug> --title … [--status open] [--project <key>] [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
 pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
 pjman new source <kind>:<key> [--title …] [--url …]
@@ -47,6 +49,7 @@ pjman validate [--json]                every record, every reference; errors are
 pjman fmt [--check]                    canonical field order, the YAML rule, repaired quoting
 pjman ls [type] [--status s] [--project <key>] [--json]   records in creation order, with their date
 pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads first: this project's board, or one change with its decisions, sources, sessions
+pjman get <ref>                        the getter: a key, a URL, a ticket id, a file path or a slug in; the record, its edges both ways and the context of every change within two hops out
 pjman show <key>
 pjman set <key> <field>=<value>…   change an authored field (title, status, project, next, links, binds, summary, plan; on a proposed decision also decision, why); a list is comma-separated
 pjman mv change:<old> change:<new>     move the folder, leave an alias, rewrite every reference

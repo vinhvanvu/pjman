@@ -5,7 +5,7 @@ A plugin: seven hooks and one skill. Every write goes through `pjman`; the plugi
 | Claude Code event | What happens |
 |---|---|
 | `SessionStart` (startup, resume, clear, compact, fork) | creates `session:<id>` if missing, appends a log line, injects `pjman context`; on resume and compact also the bound change's context |
-| `UserPromptSubmit` | a prompt naming `change:<slug>` (or an existing hyphenated slug) binds the session to it and injects that change's context the first time |
+| `UserPromptSubmit` | a prompt naming `change:<slug>` (or an existing hyphenated slug) binds the session to it; otherwise a ticket id (`ABC-1234`) or a URL in the prompt is resolved through `pjman get` and the session binds to the change it reaches. A ticket of the project's `tracker` that no change binds gets a change (slug: the id lower-cased, title: the id, `binds` the ticket); a project without a tracker never has changes created this way. Common ticket-shaped words (`UTF-8`, `SHA-256`, `RFC-…`) are skipped. The change's context is injected the first time |
 | `PostToolUse` (Write, Edit, MultiEdit, NotebookEdit, Bash) | an edit, or a shell call that writes the store (`pjman new|set|session|mv|fmt|init`), marks the turn as having acted; a file write in the project records an observed `links` edge from the bound change to `file:<path>`. A shell call that only reads, builds or tests does not count; a file edited through the shell is not observed |
 | `Stop` | if the turn acted, appends one log line from the first line of the assistant's message |
 | `SubagentStart` / `SubagentStop` | a child session with `parent`, and its own log line |

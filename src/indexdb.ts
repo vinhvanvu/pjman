@@ -2,8 +2,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import type { Store } from './config.js';
-import { canonicalSourceKey, parseKey } from './keys.js';
-import { loadStore, resolve, type Loaded, type Rec } from './records.js';
+import { allEdges, sourceKeysOnly } from './graph.js';
+import { loadStore, type Loaded, type Rec } from './records.js';
 import { uuidv7 } from './util.js';
 import { validate } from './validate.js';
 
@@ -65,11 +65,6 @@ function list(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 }
 
-function canon(raw: string): string {
-  const k = parseKey(raw);
-  return k && k.kind === 'url' ? canonicalSourceKey('url', k.rest) : raw;
-}
-
 /** Rebuild index.db from the records. Ids already minted for a key are kept. */
 export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): IndexReport {
   const file = indexPath(store);
@@ -117,79 +112,15 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
     insRec.run(idFor(r.key), r.key, r.type, r.path, str(r.data.title), str(r.data.status), str(r.data.created), str(r.data.writer), str(r.data.session), r.valid ? 1 : 0, JSON.stringify(r.data));
   }
 
-  const sourceKeys = new Set<string>();
-  const noteSource = (raw: string) => {
-    const k = parseKey(raw);
-    if (!k || ['person', 'agent', 'change', 'decision', 'session', 'project'].includes(k.kind)) return;
-    const c = canon(raw);
-    if (!seenKeys.has(c)) sourceKeys.add(c);
-  };
-  const edge = (name: string, from: string, to: string, on: Rec) => insEdge.run(name, from, canon(to), on.path, 0, null);
-
+  const edges = allEdges(loaded);
+  for (const e of edges) insEdge.run(e.edge, e.from, e.to, e.on, e.observed ? 1 : 0, e.at);
+  for (const r of loaded.records) if (r.type === 'change' && r.valid) for (const a of list(r.data.aliases)) insAlias.run(`change:${a}`, r.key);
+  const sourceKeys = sourceKeysOnly(loaded, edges);
   const boundBy = new Map<string, Rec[]>();
-  for (const r of loaded.records) {
-    if (!r.valid) continue;
-    const d = r.data;
-    switch (r.type) {
-      case 'project':
-        for (const k of list(d.links)) {
-          edge('links', r.key, k, r);
-          noteSource(k);
-        }
-        break;
-      case 'change':
-        if (typeof d.project === 'string') edge('project', r.key, d.project, r);
-        for (const k of list(d.binds)) {
-          edge('binds', r.key, k, r);
-          noteSource(k);
-          const c = canon(k);
-          boundBy.set(c, [...(boundBy.get(c) ?? []), r]);
-        }
-        for (const k of list(d.links)) {
-          edge('links', r.key, k, r);
-          noteSource(k);
-        }
-        for (const a of list(d.aliases)) insAlias.run(`change:${a}`, r.key);
-        break;
-      case 'decision':
-        if (typeof d.supersedes === 'string') {
-          const res = resolve(loaded, d.supersedes);
-          edge('supersedes', r.key, res.status === 'ok' || res.status === 'alias' ? res.rec.key : d.supersedes, r);
-        }
-        for (const k of list(d.links)) {
-          edge('links', r.key, k, r);
-          noteSource(k);
-        }
-        if (r.changeSlug) edge('in', r.key, `change:${r.changeSlug}`, r);
-        break;
-      case 'source':
-        for (const k of list(d.links)) {
-          edge('links', r.key, k, r);
-          noteSource(k);
-        }
-        break;
-      case 'session':
-        if (typeof d.parent === 'string') edge('parent', r.key, d.parent, r);
-        for (const k of list(d.changes)) {
-          const res = resolve(loaded, k);
-          edge('changes', r.key, res.status === 'ok' || res.status === 'alias' ? res.rec.key : k, r);
-        }
-        if (Array.isArray(d.observed)) {
-          for (const o of d.observed) {
-            if (!o || typeof o !== 'object') continue;
-            const e = o as Record<string, unknown>;
-            if (typeof e.edge !== 'string' || typeof e.from !== 'string' || typeof e.to !== 'string') continue;
-            insEdge.run(e.edge, e.from, canon(e.to), r.path, 1, typeof e.at === 'string' ? e.at : null);
-            noteSource(e.from);
-            noteSource(e.to);
-          }
-        }
-        break;
-      case 'actor':
-        break;
-    }
-    if (typeof d.writer === 'string') edge('writer', r.key, d.writer, r);
-    if (typeof d.session === 'string') edge('session', r.key, d.session, r);
+  for (const e of edges) {
+    if (e.edge !== 'binds' || e.observed) continue;
+    const r = seenKeys.get(e.from);
+    if (r) boundBy.set(e.to, [...(boundBy.get(e.to) ?? []), r]);
   }
   for (const key of sourceKeys) {
     insRec.run(idFor(key), key, 'source', null, null, null, null, null, null, 1, null);

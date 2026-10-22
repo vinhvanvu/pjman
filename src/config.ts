@@ -28,6 +28,8 @@ export interface Store {
   config: StoreConfig;
   /** The project the working directory maps to, when the store was found through the user map. */
   project?: string;
+  /** The directory `file:` keys are relative to: the mapped repository, or the repository holding an in-project store. */
+  projectDir?: string;
 }
 
 /** A directory on this machine → the project record it belongs to. */
@@ -127,7 +129,7 @@ export function findStore(cwd: string, override?: string): Store | null {
     // inside a store itself (the global store, or any store opened by path)
     if (fs.existsSync(path.join(dir, 'pjman.yaml')) && fs.existsSync(path.join(dir, 'changes'))) return openStore(dir);
     const candidate = path.join(dir, '.pjman');
-    if (fs.existsSync(path.join(candidate, 'pjman.yaml'))) return openStore(candidate);
+    if (fs.existsSync(path.join(candidate, 'pjman.yaml'))) return { ...openStore(candidate), projectDir: dir };
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -143,7 +145,7 @@ export function findStore(cwd: string, override?: string): Store | null {
       }
     }
   }
-  if (best && fs.existsSync(path.join(best.store.path, 'pjman.yaml'))) return { ...openStore(best.store.path), project: best.binding.project };
+  if (best && fs.existsSync(path.join(best.store.path, 'pjman.yaml'))) return { ...openStore(best.store.path), project: best.binding.project, projectDir: path.resolve(best.binding.path) };
   return null;
 }
 

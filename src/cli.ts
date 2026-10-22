@@ -5,6 +5,7 @@ import { buildIndex, query } from './indexdb.js';
 import { loadStore } from './records.js';
 import { CliError, plural } from './util.js';
 import { formatProblems, summarise, validate } from './validate.js';
+import { formatNeighbourhood, get } from './graph.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
@@ -23,7 +24,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman init [--name <project-name>] [--in-project]'] },
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
-      'pjman new project <slug> --title <t> [--links <key>]...',
+      'pjman new project <slug> --title <t> [--tracker <source-kind>] [--links <key>]...',
       'pjman new change <slug> --title <t> [--status open] [--project <key>] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
       'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
       '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
@@ -38,6 +39,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
     usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
   { name: 'ls', about: 'list records, by type, status and project', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--json]'] },
+  { name: 'get', about: 'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out (exit 1 when nothing matches)',
+    usage: ['pjman get <ref> [--json]'] },
   { name: 'show', about: 'print one record by key', usage: ['pjman show <key> [--json]'] },
   { name: 'validate', about: 'check every record and every reference; errors are reported, never dropped (exit 1 on errors)',
     usage: ['pjman validate [--json]'] },
@@ -78,6 +81,7 @@ function parse() {
     'in-project': { type: 'boolean' },
     all: { type: 'boolean' },
     project: { type: 'string' },
+    tracker: { type: 'string' },
     name: { type: 'string' },
     title: { type: 'string' },
     status: { type: 'string' },
@@ -111,6 +115,13 @@ const { values: v, positionals: pos } = parse();
 const out = (s: string) => process.stdout.write(s.endsWith('\n') ? s : s + '\n');
 const json = (x: unknown) => out(JSON.stringify(x, null, 2));
 
+/** The current project's tracker (its ticket source kind), or null. */
+function trackerOf(store: ReturnType<typeof requireStore>): string | null {
+  if (!store.project) return null;
+  const rec = loadStore(store).byKey.get(store.project)?.[0];
+  return rec && typeof rec.data.tracker === 'string' ? rec.data.tracker : null;
+}
+
 function main(): number {
   const cmd = pos[0];
   if (v.version) {
@@ -136,7 +147,7 @@ function main(): number {
       const [, type, ident] = pos;
       if (!type || !ident) throw new CliError('usage: pjman new <project|change|decision|source|actor|session> <ident> [flags]');
       const flags: NewFlags = {
-        title: v.title, status: v.status, project: v.project, summary: v.summary, plan: v.plan, next: v.next,
+        title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary, plan: v.plan, next: v.next,
         binds: v.binds, links: v.links, decidedBy: v['decided-by'], decidedOn: v['decided-on'],
         supersedes: v.supersedes, decision: v.decision, why: v.why, name: v.name, url: v.url,
         agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, started: v.started,
@@ -208,6 +219,13 @@ function main(): number {
       }
       return 0;
     }
+    case 'get': {
+      const store = requireStore(cwd, v.store);
+      if (!pos[1]) throw new CliError('usage: pjman get <ref>');
+      const n = get(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project });
+      v.json ? json(n) : out(formatNeighbourhood(n, formatChangeContext));
+      return n.resolution.status === 'none' ? 1 : 0;
+    }
     case 'show': {
       const store = requireStore(cwd, v.store);
       if (!pos[1]) throw new CliError('usage: pjman show <key>');
@@ -254,7 +272,7 @@ function main(): number {
       const store = findStore(cwd, v.store);
       if (!store) throw new CliError('no store found');
       v.json
-        ? json({ root: store.root, mode: store.mode, name: store.config.name, project: store.project ?? null, actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
+        ? json({ root: store.root, mode: store.mode, name: store.config.name, project: store.project ?? null, project_dir: store.projectDir ?? null, tracker: trackerOf(store), actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
         : out(`${store.root} (${store.mode})${store.project ? ` ${store.project}` : ''}`);
       return 0;
     }

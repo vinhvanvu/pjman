@@ -12,6 +12,7 @@ import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js'
 import { set } from '../commands/set.js';
 import { changeContext, decisionLine, formatLs, ls, storeContext } from '../commands/view.js';
 import { findStore, writeStoreConfig, type Store } from '../config.js';
+import { get, keyFromUrl } from '../graph.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
 import { localDate, today } from '../util.js';
@@ -237,4 +238,50 @@ test('dates are local calendar days; ls shows them', () => {
   assert.ok(line);
   assert.match(line, new RegExp(`^change   ${today()}  change:dated`));
   fs.rmSync(path.join(store.root, path.dirname(r.path)), { recursive: true });
+});
+
+test('the getter: any shape in, the record and the changes in reach out', () => {
+  let loaded = loadStore(store);
+  // change:schema was renamed to change:contract above; the former slug still resolves
+  const byAlias = get(loaded, 'change:schema');
+  assert.equal(byAlias.resolution.status, 'alias');
+  assert.equal(byAlias.resolution.key, 'change:contract');
+  assert.equal(byAlias.via['change:contract'], 'self');
+  const bySource = get(loaded, 'file:SCHEMA.md');
+  assert.equal(bySource.resolution.status, 'record');
+  assert.deepEqual(bySource.changes.map((c) => c.change.key), ['change:contract']);
+  assert.equal(bySource.via['change:contract'], 'links');
+  const byPath = get(loaded, path.join(project, 'SCHEMA.md'), { cwd: project, projectDir: project });
+  assert.equal(byPath.resolution.key, 'file:SCHEMA.md');
+  assert.equal(byPath.resolution.shape, 'file path');
+  const byDecision = get(loaded, 'keys');
+  assert.equal(byDecision.resolution.key, 'decision:contract/keys');
+  assert.equal(byDecision.via['change:contract'], 'in');
+  assert.equal(get(loaded, 'sess-1').resolution.key, 'session:sess-1');
+  assert.equal(get(loaded, 'nothing-here').resolution.status, 'none');
+
+  newRecord(store, 'change', 'abc', { title: 'ABC', summary: 's', binds: ['linear:ABC-1234'] });
+  loaded = loadStore(store);
+  const byTicket = get(loaded, 'ABC-1234');
+  assert.equal(byTicket.resolution.status, 'key');
+  assert.equal(byTicket.resolution.key, 'linear:ABC-1234');
+  assert.deepEqual(byTicket.changes.map((c) => c.change.key), ['change:abc']);
+  assert.equal(byTicket.via['change:abc'], 'binds');
+  const byUrl = get(loaded, 'https://linear.app/acme/issue/ABC-1234/some-title');
+  assert.equal(byUrl.resolution.key, 'linear:ABC-1234');
+  assert.equal(byUrl.resolution.shape, 'url');
+  assert.deepEqual(byUrl.changes.map((c) => c.change.key), ['change:abc']);
+  assert.equal(keyFromUrl('https://github.com/acme/app/pull/7'), 'github-pr:acme/app#7');
+  assert.equal(keyFromUrl('https://github.com/acme/app/issues/8'), 'github-issue:acme/app#8');
+  assert.equal(keyFromUrl('https://github.com/acme/app'), 'git-repo:acme/app');
+  assert.equal(get(loaded, 'https://github.com/acme/app/pull/7').changes.length, 0);
+
+  // a bare id nothing references resolves only through the project's tracker
+  assert.equal(get(loaded, 'XYZ-9', { project: 'project:project' }).resolution.status, 'none');
+  assert.throws(() => set(store, 'project:project', ['tracker=nope'], {}), /not in source_kinds/);
+  set(store, 'project:project', ['tracker=linear'], {});
+  const viaTracker = get(loadStore(store), 'XYZ-9', { project: 'project:project' });
+  assert.equal(viaTracker.resolution.status, 'key');
+  assert.equal(viaTracker.resolution.key, 'linear:XYZ-9');
+  fs.rmSync(path.join(store.root, 'changes/abc'), { recursive: true });
 });

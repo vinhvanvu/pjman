@@ -9,6 +9,7 @@ import { commitIfStandalone, envelope, render, validateOrUndo, writeFile } from 
 export interface NewFlags {
   title?: string;
   project?: string;
+  tracker?: string;
   status?: string;
   summary?: string;
   plan?: string;
@@ -86,7 +87,7 @@ export function newProject(store: Store, ident: string, flags: NewFlags): NewRes
   if (!flags.title) throw new CliError('--title is required');
   const rel = path.join('projects', `${slug}.md`);
   refuseExisting(store, rel);
-  const data: Record<string, unknown> = { title: flags.title, links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
+  const data: Record<string, unknown> = { title: flags.title, tracker: flags.tracker, links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
   writeFile(store, rel, render('project', data, flags.body ? flags.body.trim() + '\n' : ''));
   return finish(store, 'project', `project:${slug}`, rel, [rel], flags);
 }
