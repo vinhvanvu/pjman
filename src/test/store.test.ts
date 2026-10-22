@@ -14,6 +14,9 @@ import { changeContext, decisionLine, formatLs, formatStoreContext, ls, storeCon
 import { findStore, writeStoreConfig, type Store } from '../config.js';
 import { get, keyFromUrl } from '../graph.js';
 import { renderView } from '../commands/pane.js';
+import { BRIEF, installBrief } from '../commands/brief.js';
+import { start, stop } from '../commands/start.js';
+import { readServeAddress } from '../server.js';
 import { follow, readEvents, rebuildEvents } from '../events.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
@@ -358,4 +361,41 @@ test('every write appends one event per record to the stream; follow delivers ne
   assert.deepEqual(again.slice(-5).map((e) => [e.op, e.key]), all.slice(-5).map((e) => [e.op, e.key]));
   assert.equal(again.at(-1)!.commit, all.at(-1)!.commit);
   fs.rmSync(path.join(store.root, 'changes/evented'), { recursive: true });
+});
+
+test('the brief is short and installs once, between markers, in the harness file', () => {
+  assert.ok(BRIEF.trim().split('\n').length <= 40, `the brief is ${BRIEF.trim().split('\n').length} lines`);
+  process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
+  fs.mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true });
+  const file = path.join(process.env.CLAUDE_CONFIG_DIR, 'CLAUDE.md');
+  fs.writeFileSync(file, '# mine\n\nkeep this\n');
+  const first = installBrief('claude-md');
+  assert.equal(first.path, file);
+  assert.ok(first.changed);
+  const second = installBrief('claude-md');
+  assert.ok(!second.changed);
+  const text = fs.readFileSync(file, 'utf8');
+  assert.equal((text.match(/<!-- pjman:brief -->/g) ?? []).length, 1);
+  assert.match(text, /^# mine\n\nkeep this\n/);
+  assert.match(text, /pjman get <anything>/);
+  const lines = init({ cwd: project, brief: 'claude-md' });
+  assert.ok(lines.some((l) => /kept the brief/.test(l)));
+  delete process.env.CLAUDE_CONFIG_DIR;
+});
+
+test('start brings the dashboard up detached and is idempotent; stop takes it down', () => {
+  const first = start({ cwd: project, ui: false });
+  assert.ok(first.started);
+  assert.match(first.address.url, /^http:\/\/127\.0\.0\.1:\d+$/);
+  const again = start({ cwd: project, ui: false });
+  assert.ok(!again.started);
+  assert.equal(again.address.url, first.address.url);
+  assert.equal(readServeAddress()?.pid, first.address.pid);
+  const lines = init({ cwd: project, start: true });
+  assert.ok(lines.some((l) => l === `dashboard: ${first.address.url} (already running)` || l.startsWith(`dashboard: ${first.address.url}`)));
+  assert.ok(lines.some((l) => /left to do/.test(l)));
+  const stopped = stop();
+  assert.equal(stopped?.pid, first.address.pid);
+  assert.equal(readServeAddress(), null);
+  assert.equal(stop(), null);
 });

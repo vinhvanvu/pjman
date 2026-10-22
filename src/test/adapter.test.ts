@@ -120,3 +120,38 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });
+
+test('a session in an unregistered git repository registers it and gets the brief; auto_register: false keeps it silent', () => {
+  const auto = path.join(tmp, 'auto');
+  fs.mkdirSync(auto, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: auto });
+  const ctx = context(hook('SessionStart', { cwd: auto, session_id: 'sess-auto', source: 'startup' }));
+  assert.match(ctx, /^# pjman — the project's record, kept by agents/);
+  assert.match(ctx, /project project:auto\./);
+  assert.ok(loadStore(findStore(auto)!).byKey.has('project:auto'));
+  const cfg = path.join(env.PJMAN_HOME, 'config.yaml');
+  const before = fs.readFileSync(cfg, 'utf8');
+  fs.writeFileSync(cfg, before + 'auto_register: false\n');
+  const quiet = path.join(tmp, 'quiet');
+  fs.mkdirSync(quiet, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: quiet });
+  assert.equal(hook('SessionStart', { cwd: quiet, session_id: 'sess-quiet', source: 'startup' }), '');
+  assert.ok(!loadStore(findStore(auto)!).byKey.has('project:quiet'));
+  fs.writeFileSync(cfg, before);
+  const plain = path.join(tmp, 'plain');
+  fs.mkdirSync(plain, { recursive: true });
+  assert.equal(hook('SessionStart', { cwd: plain, session_id: 'sess-plain', source: 'startup' }), '');
+});
+
+test('binding observes the branch as a source of the change', () => {
+  const work = path.join(tmp, 'work');
+  execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@e.com', 'commit', '-q', '--allow-empty', '-m', 'x'], { cwd: work });
+  execFileSync('git', ['checkout', '-q', '-b', 'feat/login'], { cwd: work });
+  hook('SessionStart', { cwd: work, session_id: 'sess-b', source: 'startup' });
+  hook('UserPromptSubmit', { cwd: work, session_id: 'sess-b', prompt: 'continue ABC-1234' });
+  const g = findStore(work)!;
+  const rec = loadStore(g).byKey.get('session:sess-b')![0];
+  const observed = (rec.data.observed as { from: string; to: string }[]).map((o) => `${o.from} ${o.to}`);
+  assert.ok(observed.includes('change:abc-1234 branch:feat/login'), observed.join(', '));
+  assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
+});

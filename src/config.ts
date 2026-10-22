@@ -46,6 +46,8 @@ export interface UserStore {
 
 export interface UserConfig {
   actor?: string;
+  /** A session in an unregistered git repository registers it (default true). */
+  auto_register?: boolean;
   stores: UserStore[];
 }
 
@@ -73,7 +75,7 @@ export function readUserConfig(): UserConfig {
     );
     return { name: String(st.name ?? ''), path: String(st.path ?? ''), projects };
   });
-  return { actor: typeof raw?.actor === 'string' ? raw.actor : undefined, stores };
+  return { actor: typeof raw?.actor === 'string' ? raw.actor : undefined, stores , auto_register: raw?.auto_register };
 }
 
 export function writeUserConfig(cfg: UserConfig): void {
@@ -147,6 +149,12 @@ export function findStore(cwd: string, override?: string): Store | null {
   }
   if (best && fs.existsSync(path.join(best.store.path, 'pjman.yaml'))) return { ...openStore(best.store.path), project: best.binding.project, projectDir: path.resolve(best.binding.path) };
   return null;
+}
+
+/** The global store on its own, for commands that serve every project. */
+export function globalStore(): Store | null {
+  const root = globalStorePath();
+  return fs.existsSync(path.join(root, 'pjman.yaml')) ? openStore(root) : null;
 }
 
 export function requireStore(cwd: string, override?: string): Store {

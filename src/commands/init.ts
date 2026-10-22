@@ -7,6 +7,9 @@ import { slugify } from '../keys.js';
 import { loadStore } from '../records.js';
 import { CliError } from '../util.js';
 import { newProject } from './new.js';
+import { installBrief, type BriefTarget } from './brief.js';
+import { packageRoot, start } from './start.js';
+import { execFileSync } from 'node:child_process';
 
 export interface InitOpts {
   cwd: string;
@@ -14,6 +17,40 @@ export interface InitOpts {
   inProject?: boolean;
   /** The project's name (default: the repository folder's); in-project, the store's name. */
   name?: string;
+  /** Install the harness adapter found on the machine (the CLI's default; the library's is false). */
+  adapter?: boolean;
+  /** Run pjman start at the end (the CLI's default; the library's is false). */
+  start?: boolean;
+  /** Also put the brief in a harness's always-on file. */
+  brief?: BriefTarget;
+  port?: number;
+}
+
+/** Install the Claude Code plugin from this checkout at user scope, when `claude` is on PATH. Idempotent; never throws. */
+export function installClaudeAdapter(): string {
+  const run = (args: string[]) => execFileSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 });
+  try {
+    run(['--version']);
+  } catch {
+    return 'no harness found on PATH (claude); the adapter is not installed';
+  }
+  const root = packageRoot();
+  const soft = (args: string[]) => {
+    try {
+      return run(args);
+    } catch (e) {
+      const msg = String((e as { stderr?: string }).stderr || (e as Error).message);
+      if (/already/i.test(msg)) return msg;
+      throw new Error(msg.trim().split('\n')[0]);
+    }
+  };
+  try {
+    soft(['plugin', 'marketplace', 'add', root]);
+    const out = soft(['plugin', 'install', 'pjman@pjman', '--scope', 'user']);
+    return /already/i.test(out) ? 'Claude Code: the pjman plugin is installed (hooks, skill, brief, Linear MCP)' : 'Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins';
+  } catch (e) {
+    return `Claude Code: the plugin could not be installed (${(e as Error).message}); run: claude plugin marketplace add ${root} && claude plugin install pjman@pjman`;
+  }
 }
 
 const FOLDERS = ['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors'];
@@ -102,7 +139,21 @@ export function init(opts: InitOpts): string[] {
     out.push(`${project} → ${key} in ${userConfigPath()}`);
     out.push('the tool commits every write it makes here');
   }
-  if (actor) out.push(`records the tool writes will carry writer: ${actor} (user config 'actor')`);
+  if (actor) out.push(`you are ${actor} (user config 'actor')`);
   else out.push(`no actor known: set 'actor: person:<handle>' in ${path.join(userDir(), 'config.yaml')} or pass --writer`);
+  if (opts.adapter) out.push(installClaudeAdapter());
+  if (opts.brief) {
+    const b = installBrief(opts.brief);
+    out.push(`${b.changed ? 'wrote' : 'kept'} the brief in ${b.path}`);
+  }
+  if (opts.start && !opts.inProject) {
+    try {
+      const s = start({ cwd: opts.cwd, port: opts.port, log: (l) => out.push(l) });
+      out.push(`dashboard: ${s.address.url}${s.started ? '' : ' (already running)'}${s.ui ? '' : ' (API only: no built app)'}`);
+    } catch (e) {
+      out.push(`dashboard: ${(e as Error).message}`);
+    }
+  }
+  out.push('left to do: nothing here; to read tickets, sign in to the tracker from inside a session (/mcp)');
   return out;
 }

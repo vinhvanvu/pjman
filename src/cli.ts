@@ -1,7 +1,9 @@
 import './quiet.js';
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { findStore, readUserConfig, requireStore } from './config.js';
+import { findStore, globalStore, readUserConfig, requireStore } from './config.js';
+import { BRIEF } from './commands/brief.js';
+import { start, stop } from './commands/start.js';
 import { buildIndex, query } from './indexdb.js';
 import { loadStore } from './records.js';
 import { CliError, plural } from './util.js';
@@ -25,8 +27,11 @@ const VERSION = (createRequire(import.meta.url)('../package.json') as { version:
 
 /** One entry per command: the usage lines and a one-line purpose. `pjman <cmd> --help` prints one; `pjman --help` prints all. */
 const COMMANDS: { name: string; usage: string[]; about: string }[] = [
-  { name: 'init', about: 'join the global store (~/.pjman/store, its own git repository) and register this repository as a project; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
-    usage: ['pjman init [--name <project-name>] [--in-project]'] },
+  { name: 'init', about: 'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project, set the actor, install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
+    usage: ['pjman init [--name <project-name>] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
+  { name: 'start', about: 'the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL', usage: ['pjman start [--port <n>] [--open]'] },
+  { name: 'stop', about: 'stop the dashboard server', usage: ['pjman stop'] },
+  { name: 'brief', about: 'print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md)', usage: ['pjman brief'] },
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
       'pjman new project <slug> --title <t> [--tracker <source-kind>] [--links <key>]...',
@@ -94,6 +99,10 @@ function parse() {
     session: { type: 'string' },
     created: { type: 'string' },
     'in-project': { type: 'boolean' },
+    'no-start': { type: 'boolean' },
+    'no-adapter': { type: 'boolean' },
+    brief: { type: 'string' },
+    open: { type: 'boolean' },
     all: { type: 'boolean' },
     project: { type: 'string' },
     tracker: { type: 'string' },
@@ -162,7 +171,8 @@ function main(): number {
   const cwd = process.cwd();
   switch (cmd) {
     case 'init': {
-      for (const line of init({ cwd, inProject: v['in-project'], name: v.name })) out(line);
+      if (v.brief && v.brief !== 'claude-md') throw new CliError('--brief takes claude-md');
+      for (const line of init({ cwd, inProject: v['in-project'], name: v.name, adapter: !v['no-adapter'], start: !v['no-start'], brief: v.brief as 'claude-md' | undefined, port: v.port ? Number(v.port) : undefined })) out(line);
       return 0;
     }
     case 'new': {
@@ -319,8 +329,27 @@ function main(): number {
       follow(store, since, (e) => out(v.json ? JSON.stringify(e) : formatEvent(e)));
       return 0; // the watcher keeps the process alive until it is interrupted
     }
+    case 'start': {
+      const s = start({ cwd, port: v.port ? Number(v.port) : undefined, log: out });
+      out(`dashboard: ${s.address.url}${s.started ? '' : ' (already running)'}${s.ui ? '' : ' (API only: no built app)'}`);
+      if (v.open) {
+        const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+        import('node:child_process').then((cp) => cp.spawn(cmd, [s.address.url], { detached: true, stdio: 'ignore' }).unref());
+      }
+      return 0;
+    }
+    case 'stop': {
+      const a = stop();
+      out(a ? `stopped the dashboard at ${a.url} (pid ${a.pid})` : 'no dashboard was running');
+      return 0;
+    }
+    case 'brief': {
+      out(BRIEF);
+      return 0;
+    }
     case 'serve': {
-      const store = requireStore(cwd, v.store);
+      const store = findStore(cwd, v.store) ?? globalStore();
+      if (!store) throw new CliError('no store: run `pjman init` in a repository first');
       const running = readServeAddress();
       if (running && !v.port) throw new CliError(`a server is already running at ${running.url} (pid ${running.pid}); pass --port to start another`);
       startServer(store, { port: v.port ? Number(v.port) : undefined, host: v.host, staticDir: v.static })

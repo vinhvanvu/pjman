@@ -4,11 +4,14 @@ A context graph for product development: typed records (changes, decisions, sour
 
 ## Install
 
-Node 22.13 or later and git on `PATH`.
-
 ```bash
-npm install && npm link
+git clone <this repository> && cd pjman && npm install && npm link   # until the package is published
+cd ~/Projects/<your-repo> && pjman init
 ```
+
+`pjman init` is the whole onboarding: it creates the global store if missing, registers the repository as a project, sets you as the actor from your git name, installs the Claude Code plugin from this checkout when `claude` is on PATH (hooks, skill, brief, Linear's MCP server), runs `pjman start` (the dashboard, detached) and prints what exists and what is left, which is at most signing in to the tracker from inside a session with `/mcp`. Running it again is the health check; it repairs what is missing and never undoes anything. `pjman stop` stops the dashboard; `pjman init --brief claude-md` also writes the brief into `~/.claude/CLAUDE.md` for sessions that run without hooks.
+
+After that nothing is asked of you: a session in any git repository registers it as a project (`auto_register: false` in `~/.pjman/config.yaml` turns that off), starts with the brief and the board in front of the model, binds to the change or ticket a prompt names, observes the files, branch and pull request it works on, and docks the dashboard beside itself.
 
 ## The store
 
@@ -35,7 +38,7 @@ index.db                                     derived, git-ignored, rebuilt by `p
 ## Commands
 
 ```
-pjman init [--name <project-name>] [--in-project]
+pjman init [--name <project-name>] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]
 pjman new project <slug> --title … [--tracker <source-kind>] [--links <key>]…
 pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
 pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
@@ -57,6 +60,8 @@ pjman mv change:<old> change:<new>     move the folder, leave an alias, rewrite 
 pjman events [--since <seq>] [--json]   the store's event stream, one event per write; `pjman events rebuild` derives it from git history
 pjman follow [--since <seq>] [--json]   print events as they are appended, until interrupted; what a view subscribes to
 pjman sync linear --from <file|-> [--project <key>] [--team <KEY>]   apply tickets observed through the harness's tracker connection: sources and the changes that bind them
+pjman start [--port <n>] [--open]      the dashboard, detached (installs and builds the app if the checkout has none); pjman stop stops it
+pjman brief                             the brief an agent needs every session (the adapter injects it)
 pjman serve [--port <n>] [--host <addr>] [--static <dir>]   the store over HTTP: the API under /api/v1 and the dashboard; the address is written to ~/.pjman/serve.json while it runs
 pjman index [--json]                   rebuild index.db: ids, reverse edges, conflicts
 pjman query "<sql>"                    read the index

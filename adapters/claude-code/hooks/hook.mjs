@@ -2,7 +2,8 @@
 // The Claude Code adapter for pjman: one script, one event per invocation, every write through `pjman`.
 // Never blocks, never fails the session: on any error it logs to the plugin data directory and exits 0.
 //
-//   SessionStart      create the session record if needed; inject `pjman context` (and the bound change's context on resume/compact)
+//   SessionStart      register the repository if it is not a project yet (auto_register); create the session record; inject the brief,
+//                     `pjman context` (and the bound change's context on resume/compact); observe the branch and the open PR
 //   UserPromptSubmit  a prompt naming a change, a ticket id or a URL binds the change it resolves to (the getter); a ticket of the project's tracker with no change gets one; the change's context is injected the first time
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
 //   Stop              a turn that acted appends one log line, from the harness's last message
@@ -72,6 +73,44 @@ function saveState(sid, st) {
   fs.mkdirSync(path.dirname(stateFile(sid)), { recursive: true });
   fs.writeFileSync(stateFile(sid), JSON.stringify(st));
 }
+
+// --- the repository, the branch, the pull request ---------------------------------------------------
+function sh(cmd, args, cwd) {
+  try {
+    return execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 8000, env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } }).trim();
+  } catch {
+    return null;
+  }
+}
+const gitTop = (cwd) => sh('git', ['rev-parse', '--show-toplevel'], cwd);
+
+/** The user config says auto_register: false. Read as text: the hook has no YAML parser. */
+function autoRegisterOff() {
+  try {
+    const file = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml');
+    return /^auto_register:\s*false\s*$/m.test(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+
+/** Observed edges from the bound change to the branch and the open pull request, once each per session. */
+function observeWork(st, sid, cwd, env) {
+  if (!st.bound) return;
+  const keys = [];
+  const branch = sh('git', ['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
+  if (branch && !['HEAD', 'main', 'master'].includes(branch) && store_sourceKinds().includes('branch')) keys.push(`branch:${branch}`);
+  const prUrl = store_sourceKinds().includes('github-pr') ? sh('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd) : null;
+  const m = prUrl && /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(prUrl);
+  if (m) keys.push(`github-pr:${m[1]}#${m[2]}`);
+  for (const key of keys) {
+    const edge = `${st.bound}|${key}`;
+    if (st.observed.includes(edge)) continue;
+    if (tryPjman(['session', 'observe', sid, 'links', st.bound, key], { cwd, env }) !== null) st.observed.push(edge);
+  }
+}
+let _sourceKinds = null;
+const store_sourceKinds = () => _sourceKinds ?? [];
 
 // --- the view beside the session --------------------------------------------------------------
 function viewFile(sid) {
@@ -264,8 +303,16 @@ function main() {
   try {
     store = pjman(['where', '--json'], { cwd, json: true });
   } catch {
-    return; // not a pjman project: the adapter is silent
+    // not a project yet: a git repository registers itself at session start, unless the user config says otherwise
+    if (EVENT !== 'SessionStart' || autoRegisterOff() || !gitTop(cwd)) return;
+    if (tryPjman(['init', '--no-start', '--no-adapter'], { cwd }) === null) return;
+    try {
+      store = pjman(['where', '--json'], { cwd, json: true });
+    } catch {
+      return;
+    }
   }
+  _sourceKinds = store.source_kinds ?? [];
 
   const mainSid = input.session_id;
   if (!mainSid) return;
@@ -279,7 +326,7 @@ function main() {
       const source = input.source || 'startup';
       const started = { startup: 'session started', clear: 'session started after /clear', resume: 'session resumed; context rehydrated', compact: 'context compacted and rehydrated', fork: 'session forked; context rehydrated' };
       tryPjman(['session', 'log', sid, started[source] ?? `session started (${source})`], { cwd, env });
-      let text = `pjman store: ${store.root} (${store.mode}). This run is session:${sid}; records it writes carry that session.\n\n`;
+      let text = (tryPjman(['brief'], { cwd }) ?? '') + `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
       text += tryPjman(['context'], { cwd }) ?? '';
       if ((source === 'resume' || source === 'compact') && st.bound) {
         const ctx = tryPjman(['context', st.bound], { cwd });
@@ -287,6 +334,7 @@ function main() {
       }
       emitContext(EVENT, text);
       if (!input.agent_id) {
+        observeWork(st, sid, cwd, env);
         const file = refreshView(sid, cwd);
         dockView(st, sid, cwd, file);
         if (!st.pane) startWatcher(st, sid, cwd); // no browser pane: keep the document current for any viewer
@@ -303,6 +351,7 @@ function main() {
         if (tryPjman(['session', 'bind', sid, key], { cwd, env }) !== null) {
           st.bound = key;
           sidebarStatus(key);
+          observeWork(st, sid, cwd, env);
         }
       }
       refreshView(sid, cwd);
@@ -320,6 +369,7 @@ function main() {
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
       const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|session|mv|fmt)\b/;
       if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
+      if (input.tool_name === 'Bash' && /\bgit\s+(checkout|switch)\b|\bgh\s+pr\s+create\b/.test(String(input.tool_input?.command ?? ''))) observeWork(st, sid, cwd, env);
       const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
       if (file && st.bound) {
         // real path of p, or of its nearest existing ancestor (a file may not exist yet)
