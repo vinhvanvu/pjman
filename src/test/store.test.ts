@@ -11,7 +11,7 @@ import { rm } from '../commands/rm.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
 import { set } from '../commands/set.js';
-import { changeContext, decisionLine, formatLs, formatStoreContext, ls, storeContext } from '../commands/view.js';
+import { changeContext, decisionLine, formatChangeContext, formatLs, formatStoreContext, ls, storeContext } from '../commands/view.js';
 import { findStore, readUserConfig, writeStoreConfig, type Store } from '../config.js';
 import { findReferences, get, keyFromUrl } from '../graph.js';
 import { renderView } from '../commands/pane.js';
@@ -316,7 +316,7 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   fs.rmSync(path.join(store.root, 'changes/abc'), { recursive: true });
 });
 
-test('a change may have a parent change: any depth, no cycles, children derived, the board nests', () => {
+test('a change may have a parent change: any depth, no cycles, children derived, progress derived, the board nests', () => {
   newRecord(store, 'change', 'epic', { title: 'Epic', summary: 's' });
   newRecord(store, 'change', 'epic-a', { title: 'A', summary: 's', parent: 'change:epic' });
   newRecord(store, 'change', 'epic-a-1', { title: 'A1', summary: 's', parent: 'change:epic-a' });
@@ -327,12 +327,18 @@ test('a change may have a parent change: any depth, no cycles, children derived,
   assert.equal(ctx.parent?.key, 'change:epic');
   assert.deepEqual(ctx.children.map((r) => r.key), ['change:epic-a-1']);
   const board = formatStoreContext(storeContext(store, { project: 'project:project' }));
-  assert.match(board, /^- change:epic — Epic\n  - change:epic-a \[open\] — A\n    - change:epic-a-1 \[open\] — A1$/m);
+  assert.match(board, /^- change:epic — Epic · 0\/1 done\n  - change:epic-a \[open\] — A · 0\/1 done\n    - change:epic-a-1 \[open\] — A1$/m);
+  // a parent change is a milestone: progress is its children done, dropped excluded
+  newRecord(store, 'change', 'epic-b', { title: 'B', summary: 's', parent: 'change:epic', status: 'done' });
+  newRecord(store, 'change', 'epic-c', { title: 'C', summary: 's', parent: 'change:epic', status: 'dropped' });
+  assert.deepEqual(changeContext(store, 'change:epic').progress, { done: 1, total: 2 });
+  assert.equal(changeContext(store, 'change:epic-a-1').progress, undefined);
+  assert.match(formatChangeContext(changeContext(store, 'change:epic')), /## Children \(1\/2 done\)/);
   const n = get(loadStore(store), 'change:epic-a');
   assert.equal(n.via['change:epic'], 'parent');
   assert.equal(n.via['change:epic-a-1'], 'parent');
   assert.deepEqual(errors(store), []);
-  for (const c of ['epic-a-1', 'epic-a', 'epic']) fs.rmSync(path.join(store.root, 'changes', c), { recursive: true });
+  for (const c of ['epic-a-1', 'epic-a', 'epic-b', 'epic-c', 'epic']) fs.rmSync(path.join(store.root, 'changes', c), { recursive: true });
 });
 
 test('the view renders a reference, or what a session is on', () => {

@@ -63,10 +63,12 @@ signs in anywhere. When a ticket is named, or the project's board should reflect
 What the product *is* lives in a tree beside the work: a `product:<slug>` at the root, `feature:<slug>` records nested
 beneath it (`--product` for a top-level feature, `--parent` below; the level label comes from the template, feature then
 capability, or `--level`), projects attached to the product (`pjman set project:<slug> product=product:<slug>`). Owners
-(`owners`, a list of actors) sit on any node and are inherited downward. A change names the features it affects with an
-effect: `--features "adds feature:<slug>"`, `"feature:<slug>"` (changes), `"removes feature:<slug>"`. A feature's state is
-derived from those changes (live once an adding change is done, retired once a removing one is), so prefer the effect to
-writing a status. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
+(`owners`, a list of actors) sit on any node and are inherited downward. A change names the features it adds, changes
+or removes: `--features "adds feature:<slug>"`, `"feature:<slug>"` (changes), `"removes feature:<slug>"`. Name the most
+specific node, the capability rather than the feature above it; state rolls up. A feature's state is derived from those
+changes (live once an adding change is done, retired once a removing one is), so prefer the verb to writing a status.
+A parent change is a milestone: its progress is its children done; goals such as a release or a second user are
+milestones, not features. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
 beneath any node. Create a feature only when the person names a capability; a ticket label is not a feature.
 
 ## Commands you will use

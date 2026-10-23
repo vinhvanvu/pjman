@@ -80,6 +80,8 @@ export interface ChangeContext {
   /** The parent change, resolved, and the changes whose parent this is. */
   parent?: Row;
   children: Row[];
+  /** A parent change is a milestone: done children over children, dropped excluded. */
+  progress?: { done: number; total: number };
   /** Edges sessions observed from this change (the files it touched), with the session that saw each. */
   observed: { edge: string; to: string; session: string; at?: string }[];
 }
@@ -92,6 +94,12 @@ export interface StoreContext {
   changes: Row[];
   proposed: Row[];
   counts: Record<string, number>;
+}
+
+/** Milestone progress: done children over children that were not dropped; undefined without children. */
+export function progressOf(children: { status?: string }[]): { done: number; total: number } | undefined {
+  const counted = children.filter((c) => c.status !== 'dropped');
+  return counted.length ? { done: counted.filter((c) => c.status === 'done').length, total: counted.length } : undefined;
 }
 
 function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
@@ -163,7 +171,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
       return (p.status === 'ok' || p.status === 'alias') && p.rec.key === rec.key;
     })
     .map(row);
-  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, parent, children, observed };
+  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, parent, children, progress: progressOf(children), observed };
 }
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
@@ -203,7 +211,7 @@ export function formatChangeContext(c: ChangeContext): string {
     }
   }
   if (c.children.length) {
-    out.push('\n## Children');
+    out.push(`\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} done)` : ''}`);
     for (const ch of c.children) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
   }
   if (c.observed.length) {
@@ -254,7 +262,9 @@ export function formatStoreContext(c: StoreContext): string {
   const item = (r: Row, depth: number): string => {
     const pad = '  '.repeat(depth);
     const status = depth ? ` [${r.status ?? '?'}]` : '';
-    const line = `${pad}- ${r.key}${status} — ${r.title ?? ''}${tag(r)}${r.data.next ? `\n${pad}  next: ${String(r.data.next)}` : ''}`;
+    const kids = childrenOf(r.key);
+    const p = progressOf(kids);
+    const line = `${pad}- ${r.key}${status} — ${r.title ?? ''}${tag(r)}${p ? ` · ${p.done}/${p.total} done` : ''}${r.data.next ? `\n${pad}  next: ${String(r.data.next)}` : ''}`;
     return [line, ...childrenOf(r.key).map((ch) => item(ch, depth + 1))].join('\n');
   };
   // a change whose parent is on the board is listed under it, not on its own

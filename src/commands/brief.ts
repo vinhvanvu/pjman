@@ -33,8 +33,8 @@ read it and sync, which creates the change. \`pjman refs <text>\` shows what a t
 
 The product tree
 A product is the root; features nest beneath it (levels: feature, capability by default); projects attach to it.
-A change names the features it affects: \`--features "adds feature:<slug>"\` (adds | changes | removes; a bare key
-means changes). \`pjman tree\` shows the product by features with derived status, owners and backlog; \`pjman activity
+A change names the features it adds, changes or removes: \`--features "adds feature:<slug>"\` (a bare key means changes);
+name the most specific node. A parent change is a milestone; goals are milestones, not features. \`pjman tree\` shows the product by features with derived status, owners and backlog; \`pjman activity
 <key>\` the motion beneath any node. Create a feature only when the person names a capability, never from a ticket label.
 
 Also: \`pjman ls decision --status proposed\` (what waits on a person) · \`pjman show <key>\` · \`pjman validate\` ·

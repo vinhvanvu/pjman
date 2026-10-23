@@ -170,12 +170,12 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 | `title` | A | |
 | `status` | A | One canonical word from the vocabulary |
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
-| `features` | A | Optional list of effects on the product tree: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. A feature's derived state and the tree at any release come from these. |
+| `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
 | `owners` | A | Optional list of actor keys; a change without owners answers to its feature's or project's. |
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
 | `next` | A | The handoff: the next action. What resume reads first |
-| `parent` | A | Optional. The change this one is part of. Depth is unbounded; a cycle is an error; the parent may be in another project. Children are derived, never written |
+| `parent` | A | Optional. The change this one is part of. Depth is unbounded; a cycle is an error; the parent may be in another project. Children are derived, never written. A change with children is a milestone: its progress is the children done over children, dropped excluded, derived |
 | `aliases` | A | Former slugs, appended by `pjman mv`. A reference to an alias resolves and is reported as "resolves via alias" |
 
 Body: `## Summary` (required), `## Plan` (optional; or `plan.md` beside it), anything else free. Decisions made in the course of the change live in `changes/<slug>/decisions/`.
@@ -220,7 +220,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `binds` | change → source | change | a source binds at most one change |
 | `product` | feature, project → product | the child | the fixed root of the product tree |
 | `owners` | product, feature, project, change → actor | the node | inherited downward when a node names none |
-| `adds`, `changes`, `removes` | change → feature | change | the change's effect on the feature; derived state replays the done ones |
+| `adds`, `changes`, `removes` | change → feature | change | what the change does to the feature; derived state replays the done ones |
 | `links` | change · decision · source → source | the referrer | — |
 | `supersedes` | decision → decision | decision | the target becomes `superseded`; no cycles |
 | `parent` | session → session | session | — |
