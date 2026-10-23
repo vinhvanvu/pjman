@@ -1,8 +1,12 @@
 // The client for pjman's API (/api/v1): one function per endpoint, and a subscription to the event stream.
 // Types mirror the tool's result types; record fields are as in the files (snake case), computed fields camel case.
 
+export type RecordType = 'product' | 'feature' | 'project' | 'change' | 'decision' | 'source' | 'session' | 'actor';
+export type Lens = 'project' | 'feature' | 'milestone';
+export const LENSES: Lens[] = ['project', 'feature', 'milestone'];
+
 export interface Row {
-  type: 'project' | 'change' | 'decision' | 'source' | 'session' | 'actor';
+  type: RecordType;
   key: string;
   path: string;
   valid: boolean;
@@ -30,6 +34,7 @@ export interface ChangeContext {
   sessions: (Row & { last?: string })[];
   parent?: Row;
   children: Row[];
+  progress?: { done: number; total: number };
   observed: { edge: string; to: string; session: string; at?: string }[];
 }
 
@@ -77,6 +82,7 @@ export interface StoreInfo {
   source_kinds: string[];
   vocabulary: Record<string, string>;
   projects: Row[];
+  products: Row[];
 }
 
 export interface StoreEvent {
@@ -90,6 +96,91 @@ export interface StoreEvent {
   writer?: string;
   session?: string;
   commit?: string | null;
+}
+
+// --- the scope: one page ------------------------------------------------------
+
+export interface Health {
+  days: number;
+  last: string | null;
+  staleDays: number | null;
+  moved: number;
+  done: number;
+  created: number;
+  blocked: number;
+  waiting: number;
+}
+
+export interface ChangeRow {
+  key: string;
+  title?: string;
+  status?: string;
+  created?: string;
+  project?: string;
+  parent?: string;
+  ticket?: { key: string; label: string; url?: string };
+  next?: string;
+  progress?: { done: number; total: number };
+  features: { effect: 'adds' | 'changes' | 'removes'; key: string; title?: string }[];
+  waiting: number;
+  live: boolean;
+  children: number;
+}
+
+export interface ScopeNode {
+  key: string;
+  type: 'product' | 'feature' | 'project' | 'change' | 'unassigned';
+  title?: string;
+  level?: string;
+  status?: string;
+  derived?: string;
+  owners: string[];
+  ownersFrom?: string;
+  open: number;
+  inFlight: number;
+  projects: string[];
+  childCount: number;
+  health?: Health;
+  progress?: { done: number; total: number };
+  row?: ChangeRow;
+  children: ScopeNode[];
+}
+
+export interface LiveSession {
+  key: string;
+  agent?: string;
+  onBehalfOf?: string;
+  started?: string;
+  last: string;
+  on?: string;
+  lastLine?: string;
+}
+
+export interface Scope {
+  lens: Lens;
+  days: number;
+  node: (Row & { level?: string; derived?: string; summary?: string }) | null;
+  container: string | null;
+  crumbs: { key: string; title?: string }[];
+  products: Row[];
+  tree: ScopeNode[];
+  changes: ChangeRow[];
+  projects: string[];
+  doneHidden: number;
+  retiredHidden: number;
+  health: Health;
+  owners: { owners: string[]; from?: string };
+  sessions: LiveSession[];
+  recent: StoreEvent[];
+  change?: ChangeContext;
+}
+
+export interface ScopeQuery {
+  lens: Lens;
+  node?: string;
+  days?: number;
+  done?: boolean;
+  retired?: boolean;
 }
 
 export class ApiError extends Error {
@@ -124,12 +215,20 @@ export const api = {
   resolve: (ref: string) => call<Neighbourhood>(`/resolve?ref=${encodeURIComponent(ref)}`),
   sessionView: (id: string) => call<ViewData>(`/sessions/${encodeURIComponent(id)}/view`),
   board: (project?: string | null) => call<Board>(project ? `/projects/${project.replace(/^project:/, '')}/board` : '/board'),
+  scope: (q: ScopeQuery) => {
+    const p = new URLSearchParams({ lens: q.lens });
+    if (q.node) p.set('node', q.node);
+    if (q.days) p.set('days', String(q.days));
+    if (q.done) p.set('done', '1');
+    if (q.retired) p.set('retired', '1');
+    return call<Scope>(`/scope?${p}`);
+  },
   events: (since = 0) => call<StoreEvent[]>(`/events?since=${since}`),
   /** Subscribe to the stream; `fn` gets every new event. Returns a stop function. The browser resumes from the last id on its own. */
   subscribe(fn: (e: StoreEvent) => void): () => void {
     const es = new EventSource(`${BASE}/events`);
     const handler = (ev: MessageEvent) => fn(JSON.parse(ev.data as string) as StoreEvent);
-    for (const op of ['created', 'set', 'log', 'bind', 'observe', 'moved', 'formatted', 'init', 'write']) es.addEventListener(op, handler as EventListener);
+    for (const op of ['created', 'set', 'log', 'bind', 'observe', 'moved', 'removed', 'formatted', 'init', 'write']) es.addEventListener(op, handler as EventListener);
     return () => es.close();
   },
 };

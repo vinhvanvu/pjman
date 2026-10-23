@@ -135,3 +135,22 @@ test('the app is served with a history fallback; unknown api routes are 404 json
   const old = await getJson('/api/records');
   assert.equal(old.status, 404);
 });
+
+test('the scope: one page as data, in a lens, at a node; a bad lens or node is a bad request', async () => {
+  const root = await getJson('/api/v1/scope?lens=project');
+  assert.equal(root.status, 200);
+  const data = root.body.data as { lens: string; node: null; tree: { key: string; children: { key: string; row?: { ticket?: { label: string } } }[] }[]; changes: { key: string }[] };
+  assert.equal(data.lens, 'project');
+  assert.equal(data.node, null);
+  assert.deepEqual(data.tree.map((n) => n.key), ['project:app']);
+  assert.deepEqual(data.tree[0].children.map((n) => n.key), ['change:login', 'change:signup']);
+  assert.equal(data.tree[0].children[0].row?.ticket?.label, 'APP-1');
+  const at = await getJson('/api/v1/scope?lens=feature&node=change:login&days=7');
+  assert.equal(at.status, 200);
+  const d2 = at.body.data as { container: string; change?: { change: { key: string } }; health: { days: number } };
+  assert.equal(d2.container, 'project:app'); // no feature names it: the project's product, else the project itself
+  assert.equal(d2.change?.change.key, 'change:login');
+  assert.equal(d2.health.days, 7);
+  assert.equal((await getJson('/api/v1/scope?lens=colour')).status, 400);
+  assert.equal((await getJson('/api/v1/scope?node=change:nope')).status, 400);
+});

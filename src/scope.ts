@@ -1,0 +1,419 @@
+// The scope: what one page of the dashboard shows. A lens (project, feature, milestone) decides the structure the
+// same changes group under; a node narrows to a subtree; a view (tree, lanes) is the client's business. The result is
+// one tree of structure nodes with change rows, the flat list of the same changes for lanes, and the health, owners,
+// live sessions and activity of the node stood on. Everything here is derived from the records and the event stream.
+import type { Store } from './config.js';
+import { readEvents, type StoreEvent } from './events.js';
+import { resolve, type Loaded, type Rec } from './records.js';
+import { changeContext, progressOf, row, type ChangeContext, type Row } from './commands/view.js';
+import { ancestorsOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
+import { CliError } from './util.js';
+
+export const LENSES = ['project', 'feature', 'milestone'] as const;
+export type Lens = (typeof LENSES)[number];
+export const IN_FLIGHT = ['active', 'review', 'blocked'];
+/** A session is live while something it did reached the stream inside this window. */
+export const LIVE_MINUTES = 30;
+const DAY = 86_400_000;
+
+export interface Health {
+  days: number;
+  /** When the subtree last moved, and how many days ago; null when it never has. */
+  last: string | null;
+  staleDays: number | null;
+  /** Events inside the window. */
+  moved: number;
+  /** Changes that reached done inside the window; changes created inside it. */
+  done: number;
+  created: number;
+  /** As they stand now: changes blocked, decisions waiting on a person. */
+  blocked: number;
+  waiting: number;
+}
+
+export interface ChangeRow {
+  key: string;
+  title?: string;
+  status?: string;
+  created?: string;
+  project?: string;
+  parent?: string;
+  /** The first tracker ticket the change binds, as people write it, with its page when known. */
+  ticket?: { key: string; label: string; url?: string };
+  next?: string;
+  /** A parent change is a milestone: done children over children not dropped. */
+  progress?: { done: number; total: number };
+  features: { effect: EffectName; key: string; title?: string }[];
+  /** Proposed decisions on it: what waits on a person. */
+  waiting: number;
+  /** A session bound to it moved inside the live window. */
+  live: boolean;
+  children: number;
+}
+
+export interface ScopeNode {
+  key: string;
+  type: 'product' | 'feature' | 'project' | 'change' | 'unassigned';
+  title?: string;
+  level?: string;
+  /** A feature's authored status, a change's status. */
+  status?: string;
+  /** A feature's derived state. */
+  derived?: string;
+  owners: string[];
+  ownersFrom?: string;
+  /** Open changes beneath (not done, not dropped) and how many of those are in flight. */
+  open: number;
+  inFlight: number;
+  /** Projects the open changes beneath live in. */
+  projects: string[];
+  /** Structure nodes beneath, whatever is shown. */
+  childCount: number;
+  health?: Health;
+  /** On a project: done over not dropped, every change beneath. */
+  progress?: { done: number; total: number };
+  row?: ChangeRow;
+  children: ScopeNode[];
+}
+
+export interface LiveSession {
+  key: string;
+  agent?: string;
+  onBehalfOf?: string;
+  started?: string;
+  /** The last instant it reached the stream. */
+  last: string;
+  /** The change it was last bound to. */
+  on?: string;
+  lastLine?: string;
+}
+
+export interface Scope {
+  lens: Lens;
+  days: number;
+  /** The node stood on; null at the store root. */
+  node: (Row & { level?: string; derived?: string; summary?: string }) | null;
+  /** The container whose tree is drawn: the node when it is one, else the nearest above it in this lens; null at the root. */
+  container: string | null;
+  crumbs: { key: string; title?: string }[];
+  products: Row[];
+  tree: ScopeNode[];
+  /** Every change in the container's scope, creation order: the lanes view draws these. */
+  changes: ChangeRow[];
+  /** Projects those changes live in; a row shows its project only when there are several. */
+  projects: string[];
+  /** Changes left out: done unless asked for; features retired unless asked for. */
+  doneHidden: number;
+  retiredHidden: number;
+  health: Health;
+  owners: { owners: string[]; from?: string };
+  sessions: LiveSession[];
+  /** The last events beneath the node, oldest first. */
+  recent: StoreEvent[];
+  /** The change's full context when the node is one. */
+  change?: ChangeContext;
+}
+
+export interface ScopeOpts {
+  lens?: string;
+  node?: string;
+  days?: number;
+  /** Include done changes; include retired features. */
+  done?: boolean;
+  retired?: boolean;
+  now?: number;
+}
+
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+const TRACKER_KINDS = new Set(['github-issue', 'linear', 'jira']);
+
+function ticketOf(loaded: Loaded, rec: Rec): ChangeRow['ticket'] {
+  for (const k of list(rec.data.binds)) {
+    const i = k.indexOf(':');
+    const kind = k.slice(0, i);
+    const rest = k.slice(i + 1);
+    if (!TRACKER_KINDS.has(kind)) continue;
+    const gh = kind === 'github-issue' ? /^(.+)#(\d+)$/.exec(rest) : null;
+    const url = str(live(loaded, k)?.data.url) ?? (gh ? `https://github.com/${gh[1]}/issues/${gh[2]}` : undefined);
+    return { key: k, label: gh ? `#${gh[2]}` : rest, url };
+  }
+  return undefined;
+}
+
+/** Everything computed once per request and shared by every node. */
+class Index {
+  readonly changes: Rec[];
+  readonly ancestors = new Map<string, string[]>();
+  readonly childrenOf = new Map<string, Rec[]>();
+  readonly waiting = new Map<string, number>();
+  readonly events: StoreEvent[];
+  readonly now: number;
+  readonly liveSessions = new Map<string, string>();
+
+  constructor(readonly store: Store, readonly loaded: Loaded, now: number) {
+    this.now = now;
+    this.events = readEvents(store);
+    // creation order: the day the record names, then its place in the stream (a renamed change keeps its first place)
+    const firstSeq = new Map<string, number>();
+    for (const e of this.events) if (e.op === 'created' && !firstSeq.has(e.key)) firstSeq.set(e.key, e.seq);
+    const seqOf = (c: Rec) => Math.min(firstSeq.get(c.key) ?? Infinity, ...list(c.data.aliases).map((a) => firstSeq.get(`change:${a}`) ?? Infinity));
+    this.changes = loaded.records
+      .filter((r) => r.type === 'change' && r.valid)
+      .sort((a, b) => (str(a.data.created) ?? '').localeCompare(str(b.data.created) ?? '') || seqOf(a) - seqOf(b) || a.key.localeCompare(b.key));
+    for (const r of loaded.records) {
+      if (!r.valid || r.type === 'source' || r.type === 'session' || r.type === 'actor') continue;
+      this.ancestors.set(r.key, ancestorsOf(loaded, r.key));
+    }
+    for (const c of this.changes) {
+      const p = live(loaded, c.data.parent);
+      if (p) this.childrenOf.set(p.key, [...(this.childrenOf.get(p.key) ?? []), c]);
+    }
+    for (const d of loaded.records) {
+      if (d.type !== 'decision' || !d.valid || d.data.status !== 'proposed' || !d.changeSlug) continue;
+      const c = live(loaded, `change:${d.changeSlug}`);
+      if (c) this.waiting.set(c.key, (this.waiting.get(c.key) ?? 0) + 1);
+    }
+    const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
+    for (const e of this.events) {
+      const s = e.session ?? (e.type === 'session' ? e.key : undefined);
+      if (s && e.at >= liveSince) this.liveSessions.set(s, e.at);
+    }
+  }
+
+  parentOf(c: Rec): string | undefined {
+    return live(this.loaded, c.data.parent)?.key;
+  }
+
+  /** The keys beneath a node, the node included; every key when the node is the root. */
+  beneath(key: string | null): Set<string> {
+    if (key === null) return new Set(this.ancestors.keys());
+    const out = new Set<string>([key]);
+    for (const [k, anc] of this.ancestors) if (anc.includes(key)) out.add(k);
+    return out;
+  }
+
+  health(keys: Set<string>, days: number): Health {
+    const loaded = this.loaded;
+    const all = new Set(keys);
+    for (const k of keys) {
+      const r = live(loaded, k);
+      if (r?.type === 'change') for (const a of list(r.data.aliases)) all.add(`change:${a}`);
+    }
+    const since = new Date(this.now - days * DAY).toISOString();
+    const mine = this.events.filter((e) => all.has(e.key));
+    const inWindow = mine.filter((e) => e.at >= since);
+    const last = mine.length ? mine[mine.length - 1].at : null;
+    const isDone = (k: string) => live(loaded, k)?.data.status === 'done';
+    const done = new Set(inWindow.filter((e) => e.type === 'change' && e.op === 'set' && e.fields?.includes('status') && isDone(e.key)).map((e) => live(loaded, e.key)!.key));
+    const created = new Set(inWindow.filter((e) => e.type === 'change' && e.op === 'created').map((e) => e.key));
+    let blocked = 0;
+    let waiting = 0;
+    for (const k of keys) {
+      const r = live(loaded, k);
+      if (r?.type === 'change' && r.data.status === 'blocked') blocked++;
+      if (r?.type === 'decision' && r.data.status === 'proposed') waiting++;
+    }
+    return { days, last, staleDays: last ? Math.floor((this.now - Date.parse(last)) / DAY) : null, moved: inWindow.length, done: done.size, created: created.size, blocked, waiting };
+  }
+
+  row(c: Rec): ChangeRow {
+    const kids = this.childrenOf.get(c.key) ?? [];
+    const sessions = this.loaded.records.filter((s) => s.type === 'session' && this.liveSessions.has(s.key) && list(s.data.changes).some((k) => live(this.loaded, k)?.key === c.key));
+    return {
+      key: c.key, title: str(c.data.title), status: str(c.data.status), created: str(c.data.created),
+      project: live(this.loaded, c.data.project)?.key, parent: this.parentOf(c), ticket: ticketOf(this.loaded, c), next: str(c.data.next),
+      progress: progressOf(kids.map((k) => ({ status: str(k.data.status) }))),
+      features: effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
+      waiting: this.waiting.get(c.key) ?? 0, live: sessions.length > 0, children: kids.length,
+    };
+  }
+}
+
+const isOpen = (c: Rec) => c.data.status !== 'done' && c.data.status !== 'dropped';
+
+/** What one page shows. */
+export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope {
+  const lens = (opts.lens ?? 'feature') as Lens;
+  if (!LENSES.includes(lens)) throw new CliError(`lens must be one of ${LENSES.join(', ')}`);
+  const days = opts.days && opts.days > 0 ? opts.days : 14;
+  const ix = new Index(store, loaded, opts.now ?? Date.now());
+
+  let node: Rec | undefined;
+  if (opts.node) {
+    const res = resolve(loaded, opts.node);
+    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`${opts.node} has no record`);
+    node = res.rec;
+    if (!['product', 'feature', 'project', 'change'].includes(node.type)) throw new CliError(`${node.key} is not a node of the tree (product, feature, project or change)`);
+  }
+
+  // the container: the node when it holds things, else the nearest holder above it in this lens
+  const hasChildren = (c: Rec) => (ix.childrenOf.get(c.key) ?? []).length > 0;
+  /** The first feature a change names, else the first its nearest parent names: where the feature lens files it. */
+  const nearestFeature = (c: Rec): Rec | undefined => {
+    const seen = new Set<string>();
+    for (let cur: Rec | undefined = c; cur && !seen.has(cur.key); cur = live(loaded, cur.data.parent)) {
+      seen.add(cur.key);
+      const f = effectsOf(cur).map((e) => live(loaded, e.key)).find((x) => x);
+      if (f) return f;
+    }
+    return undefined;
+  };
+  let container: Rec | undefined = node;
+  if (node?.type === 'change' && !hasChildren(node)) {
+    const project = live(loaded, node.data.project);
+    const parent = live(loaded, node.data.parent);
+    const top = project && (rootProductOf(loaded, project) ?? project);
+    container = lens === 'project' ? project : lens === 'feature' ? nearestFeature(node) ?? top : parent ?? top;
+  }
+
+  const beneath = ix.beneath(container?.key ?? null);
+  const inScope = ix.changes.filter((c) => beneath.has(c.key) && c.key !== container?.key);
+  const shown = inScope.filter((c) => (opts.done ? c.data.status !== 'dropped' : isOpen(c)));
+  const shownKeys = new Set(shown.map((c) => c.key));
+  const doneHidden = inScope.length - shown.length - inScope.filter((c) => c.data.status === 'dropped').length;
+
+  // structure nodes
+  let retiredHidden = 0;
+  const placed = new Set<string>();
+  const changeNode = (c: Rec, canNest: (k: Rec) => boolean): ScopeNode => {
+    placed.add(c.key);
+    const kids = (ix.childrenOf.get(c.key) ?? []).filter((k) => shownKeys.has(k.key) && !placed.has(k.key) && canNest(k));
+    const r = ix.row(c);
+    return { key: c.key, type: 'change', title: r.title, status: r.status, owners: [], open: 0, inFlight: 0, projects: [], childCount: 0, row: r, children: kids.map((k) => changeNode(k, canNest)) };
+  };
+  /** Rows for the changes `here`, nested by parent among those that `canNest`. A change already placed is not placed
+   *  twice, except where `again` says a change belongs under every node that lists it (a change naming two features). */
+  const rows = (here: Rec[], canNest: (k: Rec) => boolean, again = false): ScopeNode[] => {
+    const keys = new Set(here.filter((c) => again || !placed.has(c.key)).map((c) => c.key));
+    const top = here.filter((c) => keys.has(c.key) && !(ix.parentOf(c) && keys.has(ix.parentOf(c)!) && canNest(c)));
+    return top.map((c) => changeNode(c, canNest));
+  };
+  const facts = (rec: Rec): Pick<ScopeNode, 'owners' | 'ownersFrom' | 'open' | 'inFlight' | 'projects' | 'health' | 'progress'> => {
+    const keys = ix.beneath(rec.key);
+    const mine = ix.changes.filter((c) => keys.has(c.key) && c.key !== rec.key);
+    const open = mine.filter(isOpen);
+    const eo = effectiveOwners(loaded, rec.key);
+    const counted = mine.filter((c) => c.data.status !== 'dropped');
+    return {
+      owners: eo.owners, ownersFrom: eo.from, open: open.length, inFlight: open.filter((c) => IN_FLIGHT.includes(String(c.data.status))).length,
+      projects: [...new Set(open.map((c) => live(loaded, c.data.project)?.key).filter((p): p is string => !!p))].sort(),
+      health: ix.health(keys, days),
+      progress: rec.type === 'project' && counted.length ? { done: counted.filter((c) => c.data.status === 'done').length, total: counted.length } : undefined,
+    };
+  };
+  const names = (c: Rec, key: string) => effectsOf(c).some((e) => live(loaded, e.key)?.key === key);
+  const namesNothing = (c: Rec) => effectsOf(c).length === 0;
+  const featureChildren = (key: string) => loaded.records.filter((f) => f.type === 'feature' && f.valid && structuralParent(loaded, f)?.key === key);
+  const featureNode = (f: Rec): ScopeNode | null => {
+    const d = derivedStatus(loaded, f.key);
+    const state = str(f.data.status) ?? d.status;
+    if (state === 'retired' && !opts.retired) {
+      retiredHidden++;
+      return null;
+    }
+    const children = featureChildren(f.key).map(featureNode).filter((n): n is ScopeNode => n !== null);
+    const here = shown.filter((c) => names(c, f.key));
+    const kids = rows(here, (k) => names(k, f.key) || namesNothing(k), true);
+    return { key: f.key, type: 'feature', title: str(f.data.title), level: levelOf(loaded, f), status: str(f.data.status), derived: d.status, childCount: children.length, ...facts(f), children: [...children, ...kids] };
+  };
+  const projectChildren = (key: string) => loaded.records.filter((p) => p.type === 'project' && p.valid && structuralParent(loaded, p)?.key === key);
+  const projectNode = (p: Rec): ScopeNode => {
+    const children = projectChildren(p.key).map(projectNode);
+    const here = shown.filter((c) => live(loaded, c.data.project)?.key === p.key);
+    const kids = rows(here, (k) => live(loaded, k.data.project)?.key === p.key);
+    return { key: p.key, type: 'project', title: str(p.data.title), level: 'project', childCount: children.length, ...facts(p), children: [...children, ...kids] };
+  };
+  const productNode = (p: Rec, lensOf: 'feature' | 'project'): ScopeNode => {
+    const children = lensOf === 'feature' ? featureChildren(p.key).map(featureNode).filter((n): n is ScopeNode => n !== null) : projectChildren(p.key).map(projectNode);
+    return { key: p.key, type: 'product', title: str(p.data.title), level: 'product', childCount: children.length, ...facts(p), children };
+  };
+  const flat = <T extends Rec>(recs: T[], node: (r: T) => ScopeNode | null): ScopeNode[] =>
+    [...new Map(recs.map((r) => [r.key, r])).values()].sort((a, b) => a.key.localeCompare(b.key)).map(node).filter((n): n is ScopeNode => n !== null);
+
+  let tree: ScopeNode[] = [];
+  const products = loaded.records.filter((r) => r.type === 'product' && r.valid);
+  if (lens === 'feature') {
+    if (!container) tree = products.map((p) => productNode(p, 'feature'));
+    else if (container.type === 'product' || container.type === 'feature') {
+      const children = featureChildren(container.key).map(featureNode).filter((n): n is ScopeNode => n !== null);
+      tree = [...children, ...rows(shown.filter((c) => names(c, container!.key)), (k) => names(k, container!.key) || namesNothing(k), true)];
+    } else {
+      // a project or a milestone: the features its changes name, flat
+      tree = flat(shown.flatMap((c) => effectsOf(c).map((e) => live(loaded, e.key)).filter((f): f is Rec => !!f)), featureNode);
+    }
+  } else if (lens === 'project') {
+    if (!container) tree = [...products.map((p) => productNode(p, 'project')), ...loaded.records.filter((p) => p.type === 'project' && p.valid && !structuralParent(loaded, p)).map(projectNode)];
+    else if (container.type === 'product') tree = projectChildren(container.key).map(projectNode);
+    else if (container.type === 'project') tree = [...projectChildren(container.key).map(projectNode), ...rows(shown.filter((c) => live(loaded, c.data.project)?.key === container!.key), (k) => live(loaded, k.data.project)?.key === container!.key)];
+    else tree = flat(shown.map((c) => live(loaded, c.data.project)).filter((p): p is Rec => !!p), projectNode);
+  } else {
+    // milestones: the parent changes in scope whose parent is not, nested all the way down
+    if (container?.type === 'change') tree = rows(shown.filter((c) => ix.parentOf(c) === container!.key), () => true);
+    else {
+      const roots = shown.filter((c) => (ix.childrenOf.get(c.key) ?? []).some((k) => shownKeys.has(k.key)) && !(ix.parentOf(c) && shownKeys.has(ix.parentOf(c)!)));
+      tree = roots.map((c) => changeNode(c, () => true));
+    }
+  }
+  // whatever the lens did not place closes the list
+  const left = shown.filter((c) => !placed.has(c.key));
+  if (left.length) {
+    const kids = rows(left, (k) => !placed.has(k.key));
+    tree.push({ key: 'unassigned', type: 'unassigned', title: lens === 'milestone' ? 'No milestone' : lens === 'project' ? 'In other projects' : 'No feature named', owners: [], open: left.filter(isOpen).length, inFlight: left.filter((c) => IN_FLIGHT.includes(String(c.data.status))).length, projects: [], childCount: 0, children: kids });
+  }
+
+  // the node's own facts
+  const nodeKeys = ix.beneath(node?.key ?? null);
+  const health = ix.health(nodeKeys, days);
+  const owners = node ? effectiveOwners(loaded, node.key) : { owners: [] as string[] };
+  const sessions: LiveSession[] = loaded.records
+    .filter((s) => s.type === 'session' && s.valid && ix.liveSessions.has(s.key))
+    .map((s) => {
+      const bound = list(s.data.changes).map((k) => live(loaded, k)?.key).filter((k): k is string => !!k);
+      const on = bound[bound.length - 1];
+      const log = (s.sections.get('Log') ?? '').split('\n').filter((l) => l.trim());
+      return { key: s.key, agent: str(s.data.agent), onBehalfOf: str(s.data.on_behalf_of), started: str(s.data.started), last: ix.liveSessions.get(s.key)!, on, lastLine: log.length ? log[log.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined };
+    })
+    .filter((s) => !node || (s.on && nodeKeys.has(s.on)))
+    .sort((a, b) => b.last.localeCompare(a.last));
+  const aliasKeys = new Set(nodeKeys);
+  for (const k of nodeKeys) for (const a of list(live(loaded, k)?.data.aliases)) aliasKeys.add(`change:${a}`);
+  const recent = ix.events.filter((e) => aliasKeys.has(e.key) && e.op !== 'write' && e.op !== 'formatted').slice(-20);
+
+  // crumbs: the chain above the node in this lens, product first
+  const crumbs: Scope['crumbs'] = [];
+  const crumb = (r: Rec | undefined) => r && crumbs.unshift({ key: r.key, title: str(r.data.title) });
+  const climb = (r: Rec | undefined) => {
+    const seen = new Set<string>();
+    while (r && !seen.has(r.key)) {
+      seen.add(r.key);
+      crumb(r);
+      r = structuralParent(loaded, r);
+    }
+  };
+  if (node?.type === 'change') {
+    let cur: Rec | undefined = live(loaded, node.data.parent);
+    const seen = new Set<string>([node.key]);
+    while (cur && !seen.has(cur.key)) {
+      seen.add(cur.key);
+      crumb(cur);
+      cur = live(loaded, cur.data.parent);
+    }
+    const project = live(loaded, node.data.project);
+    const top = project && (rootProductOf(loaded, project) ?? project);
+    climb(lens === 'project' ? project : lens === 'feature' ? nearestFeature(node) ?? top : top);
+  } else if (node) {
+    climb(structuralParent(loaded, node));
+  }
+
+  const changes = shown.map((c) => ix.row(c));
+  return {
+    lens, days,
+    node: node ? { ...row(node), level: node.type === 'change' ? undefined : levelOf(loaded, node), derived: node.type === 'feature' ? derivedStatus(loaded, node.key).status : undefined, summary: node.sections.get('Summary') } : null,
+    container: container?.key ?? null,
+    crumbs, products: products.map(row), tree, changes,
+    projects: [...new Set(changes.map((c) => c.project).filter((p): p is string => !!p))].sort(),
+    doneHidden, retiredHidden, health, owners, sessions, recent,
+    change: node?.type === 'change' ? changeContext(store, node.key, loaded) : undefined,
+  };
+}
