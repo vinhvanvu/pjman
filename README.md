@@ -53,6 +53,7 @@ pjman session observe <id> <edge> <from> <to>   record an observed edge (evidenc
 pjman validate [--json]                every record, every reference; errors are reported, never dropped
 pjman fmt [--check]                    canonical field order, the YAML rule, repaired quoting
 pjman ls [type] [--status s] [--project <key>] [--json]   records in creation order, with their date
+pjman events --receipt [--since <seq>]  what the store received, one line per record, for a person (the adapter shows it after every turn)
 pjman tree [product:<slug>|feature:<slug>]   the product tree: features at labelled levels, derived status, owners, backlog by project
 pjman activity <key> [--days 14]       the events beneath a node, through every chain, and what they say about health
 pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads first: this project's board, or one change with its decisions, sources, sessions

@@ -21,6 +21,7 @@ import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
 import { rm } from './commands/rm.js';
 import { formatTree, tree } from './tree.js';
+import { formatReceipt, receipt } from './receipt.js';
 import { activity, formatActivity } from './activity.js';
 import { set } from './commands/set.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
@@ -75,7 +76,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'rm', about: "remove a record (a change takes its decisions with it). Refused while anything refers to it, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped",
     usage: ['pjman rm <key> [--detach] [--json]'] },
   { name: 'events', about: "the store's event stream: one event per write (seq, at, op, key, type, path, fields, writer, session, commit); `rebuild` rewrites it from the store's git history",
-    usage: ['pjman events [--since <seq>] [--json]', 'pjman events rebuild'] },
+    usage: ['pjman events [--since <seq>] [--session <key>] [--json]', 'pjman events --receipt [--since <seq>] [--session <key>] [--json]   what the store received, one line per record, for a person', 'pjman events rebuild'] },
   { name: 'follow', about: 'print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to',
     usage: ['pjman follow [--since <seq>] [--json]'] },
   { name: 'serve', about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs",
@@ -156,6 +157,7 @@ function parse() {
     from: { type: 'string' },
     watch: { type: 'boolean' },
     detach: { type: 'boolean' },
+    receipt: { type: 'boolean' },
   },
     });
   } catch (e) {
@@ -382,8 +384,13 @@ function main(): number {
         out(`rebuilt ${plural(r.events, 'event')} from ${plural(r.commits, 'commit')}`);
         return 0;
       }
-      if (pos[1]) throw new CliError('usage: pjman events [--since <seq>] | pjman events rebuild');
-      const events = readEvents(store, v.since ? Number(v.since) : 0);
+      if (pos[1]) throw new CliError('usage: pjman events [--since <seq>] [--session <key>] [--receipt] | pjman events rebuild');
+      if (v.receipt) {
+        const r = receipt(store, { since: v.since ? Number(v.since) : 0, session: v.session });
+        v.json ? json(r) : out(formatReceipt(r) || '(nothing recorded)');
+        return 0;
+      }
+      const events = readEvents(store, v.since ? Number(v.since) : 0).filter((e) => !v.session || e.session === v.session);
       v.json ? json(events) : out(events.length ? events.map(formatEvent).join('\n') : '(no events)');
       return 0;
     }

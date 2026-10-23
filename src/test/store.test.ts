@@ -19,6 +19,7 @@ import { BRIEF, installBrief } from '../commands/brief.js';
 import { start, stop } from '../commands/start.js';
 import { readServeAddress } from '../server.js';
 import { follow, readEvents, rebuildEvents } from '../events.js';
+import { receipt } from '../receipt.js';
 import { buildIndex } from '../indexdb.js';
 import { loadStore } from '../records.js';
 import { localDate, today } from '../util.js';
@@ -503,4 +504,21 @@ test('crud: set reaches actors and refuses sessions; mv renames a decision, with
   assert.throws(() => mv(store, 'linear:ABC-1', 'linear:ABC-2', {}), /not renamed/);
   const evs = readEvents(store);
   assert.equal(evs.filter((e) => e.op === 'moved').slice(-1)[0].key, 'project:renamed');
+});
+
+test('the receipt: what the store received since a point, one line per record, deterministic', () => {
+  const since = readEvents(store).at(-1)?.seq ?? 0;
+  newRecord(store, 'change', 'receipt-a', { title: 'Receipt A', summary: 's', project: 'project:renamed' });
+  set(store, 'change:receipt-a', ['status=active', 'next=go'], {});
+  newRecord(store, 'decision', 'receipt-a/d', { title: 'D', decision: 'd', why: 'w' });
+  rm(store, 'change:receipt-a', { detach: true });
+  const r = receipt(store, { since });
+  assert.equal(r.seq, readEvents(store).at(-1)!.seq);
+  assert.deepEqual(r.lines, ['removed change:receipt-a', 'removed decision:receipt-a/d']);
+  newRecord(store, 'change', 'receipt-b', { title: 'Receipt B', summary: 's', project: 'project:renamed' });
+  const mid = readEvents(store).at(-1)!.seq;
+  set(store, 'change:receipt-b', ['status=review', 'next=look'], {});
+  assert.deepEqual(receipt(store, { since: mid }).lines, ['set change:receipt-b (status → review, next)']);
+  assert.deepEqual(receipt(store, { since: mid, session: 'session:nobody' }).lines, []);
+  rm(store, 'change:receipt-b');
 });

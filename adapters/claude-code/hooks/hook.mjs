@@ -6,7 +6,7 @@
 //                     `pjman context` (and the bound change's context on resume/compact); observe the branch and the open PR
 //   UserPromptSubmit  a prompt naming a change, a ticket or a URL binds the change it leads to (pjman refs); a ticket of the project's tracker with no record is read from the tracker and created through the sync (gh for GitHub), or the agent is told to; the change's context is injected the first time
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
-//   Stop              a turn that acted appends one log line, from the harness's last message
+//   Stop              a turn that acted appends one log line, from the harness's last message; the receipt of what the store received since the last turn is shown to the person
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed
@@ -66,7 +66,7 @@ function loadState(sid) {
   try {
     return JSON.parse(fs.readFileSync(stateFile(sid), 'utf8'));
   } catch {
-    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null, watcher: null };
+    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null, watcher: null, seq: undefined };
   }
 }
 function saveState(sid, st) {
@@ -306,6 +306,7 @@ function main() {
   switch (EVENT) {
     case 'SessionStart': {
       if (!ensureSession(store, sid, env, { cwd })) return;
+      if (st.seq === undefined) st.seq = tryPjman(['events', '--receipt', '--json'], { cwd, json: true })?.seq ?? 0; // receipts start from here
       const source = input.source || 'startup';
       const started = { startup: 'session started', clear: 'session started after /clear', resume: 'session resumed; context rehydrated', compact: 'context compacted and rehydrated', fork: 'session forked; context rehydrated' };
       tryPjman(['session', 'log', sid, started[source] ?? `session started (${source})`], { cwd, env });
@@ -386,8 +387,17 @@ function main() {
         const line = firstLine(input.last_assistant_message);
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });
         st.acted = 0;
-        saveState(sid, st);
       }
+      // the receipt: what the store received since the last turn, composed by the tool, shown to the person
+      if (EVENT === 'Stop') {
+        const r = tryPjman(['events', '--receipt', '--since', String(st.seq ?? 0), '--json'], { cwd, json: true });
+        if (r) {
+          const lines = r.lines.filter((l) => !l.startsWith(`session:${sid}:`));
+          if (lines.length && st.seq !== undefined) process.stdout.write(JSON.stringify({ systemMessage: `pjman recorded:\n${lines.map((l) => `- ${l}`).join('\n')}` }));
+          st.seq = r.seq;
+        }
+      }
+      saveState(sid, st);
       return;
     }
     case 'SubagentStart': {

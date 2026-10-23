@@ -138,6 +138,12 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.equal(atGh('and acme/app#12 again'), ''); // already hydrated: bound, no second injection
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234', 'change:app-12']);
   assert.match(context(atGh('fix #13 too')), /#13 is github-issue:acme\/app#13; the store has no record/); // gh knows no 13
+  // the receipt at the end of the turn: what the store received, for the person
+  const stop = JSON.parse(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'done' }), encoding: 'utf8', env: withGh })) as { systemMessage?: string };
+  assert.match(stop.systemMessage ?? '', /pjman recorded:/);
+  assert.match(stop.systemMessage ?? '', /created change:app-12 — Twelve/);
+  assert.ok(!/session:sess-t:/.test(stop.systemMessage ?? ''));
+  assert.equal(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'nothing' }), encoding: 'utf8', env: withGh }), '');
   assert.ok(!loadStore(g).byKey.has('change:app-13'));
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });
