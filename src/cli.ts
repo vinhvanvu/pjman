@@ -19,6 +19,7 @@ import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
+import { rm } from './commands/rm.js';
 import { set } from './commands/set.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
 
@@ -63,6 +64,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman fmt [--check]'] },
   { name: 'mv', about: 'rename a change: move the folder, leave an alias, rewrite every reference',
     usage: ['pjman mv change:<old> change:<new>'] },
+  { name: 'rm', about: "remove a record (a change takes its decisions with it). Refused while anything refers to it, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped",
+    usage: ['pjman rm <key> [--detach] [--json]'] },
   { name: 'events', about: "the store's event stream: one event per write (seq, at, op, key, type, path, fields, writer, session, commit); `rebuild` rewrites it from the store's git history",
     usage: ['pjman events [--since <seq>] [--json]', 'pjman events rebuild'] },
   { name: 'follow', about: 'print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to',
@@ -138,6 +141,7 @@ function parse() {
     repo: { type: 'string' },
     from: { type: 'string' },
     watch: { type: 'boolean' },
+    detach: { type: 'boolean' },
   },
     });
   } catch (e) {
@@ -321,6 +325,14 @@ function main(): number {
       else {
         out(`moved ${r.from} → ${r.to}; rewrote ${plural(r.rewritten.length, 'file')}${r.commit ? ` (committed ${r.commit})` : ''}`);
       }
+      return 0;
+    }
+    case 'rm': {
+      const store = requireStore(cwd, v.store);
+      if (!pos[1]) throw new CliError('usage: pjman rm <key> [--detach]');
+      const r = rm(store, pos[1], { detach: v.detach, session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else out(`removed ${r.key} (${plural(r.removed.length, 'file')})${r.detached.length ? `; detached from ${r.detached.map((d) => `${d.key} ${d.fields.join(',')}`).join(', ')}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'events': {

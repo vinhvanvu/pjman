@@ -10,7 +10,7 @@ export interface StoreEvent {
   seq: number;
   /** When the write happened (UTC instant). */
   at: string;
-  op: 'created' | 'set' | 'log' | 'bind' | 'observe' | 'moved' | 'formatted' | 'init' | 'write';
+  op: 'created' | 'set' | 'log' | 'bind' | 'observe' | 'moved' | 'formatted' | 'removed' | 'init' | 'write';
   /** The record written, or `store` for the store itself. */
   key: string;
   type: RecordType | 'store';
@@ -207,11 +207,17 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
     });
     for (const { status, p } of rows) {
       const type = TYPE_OF_PATH(p);
-      if (!type || status.startsWith('D')) continue;
+      if (!type) continue;
+      if (status.startsWith('D')) {
+        // a removed record: its key as it was in the parent commit
+        if (verb === 'rm') events.push({ seq: ++seq, at, op: 'removed', key: keyOfPath(p, type, root, `${sha}^`), type, path: p, session, commit: short });
+        continue;
+      }
       const key = keyOfPath(p, type, root, sha);
       let op: StoreEvent['op'] = 'write';
       let fields: string[] | undefined;
       if (verb === 'new' && rest === key) op = 'created';
+      else if (verb === 'rm') { op = 'set'; fields = ['references']; } // a record that lost a reference to the removed one
       else if (verb === 'new') { op = 'set'; fields = ['status']; } // the record a new decision superseded
       else if (verb === 'set') { op = 'set'; fields = rest.split(' ').slice(1); }
       else if (verb === 'session') { op = rest.startsWith('log') ? 'log' : rest.startsWith('bind') ? 'bind' : 'observe'; fields = [op === 'log' ? 'log' : op === 'bind' ? 'changes' : 'observed']; }

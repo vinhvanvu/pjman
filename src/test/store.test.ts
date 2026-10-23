@@ -7,6 +7,7 @@ import { before, test } from 'node:test';
 import { fmt } from '../commands/fmt.js';
 import { init } from '../commands/init.js';
 import { mv } from '../commands/mv.js';
+import { rm } from '../commands/rm.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
 import { set } from '../commands/set.js';
@@ -421,4 +422,42 @@ test('start brings the dashboard up detached and is idempotent; stop takes it do
   assert.equal(stopped?.pid, first.address.pid);
   assert.equal(readServeAddress(), null);
   assert.equal(stop(), null);
+});
+
+test('rm removes a record; refused while referenced; --detach drops droppable references; a project with changes and a required reference refuse', () => {
+  newRecord(store, 'change', 'doomed', { title: 'Doomed', summary: 'd', binds: ['linear:DOOM-1'] });
+  newRecord(store, 'decision', 'doomed/why', { title: 'Why', decision: 'd', why: 'w' });
+  newRecord(store, 'change', 'orphan', { title: 'Orphan', summary: 'o', parent: 'change:doomed' });
+  newRecord(store, 'session', 'sess-rm', { agent: 'agent:claude-code', onBehalfOf: 'person:vinh' });
+  sessionBind(store, 'sess-rm', 'change:doomed');
+  sessionObserve(store, 'sess-rm', 'links', 'change:doomed', 'file:src/x.ts');
+  assert.throws(() => rm(store, 'change:nope'), /does not exist/);
+  assert.throws(() => rm(store, 'change:doomed'), /referenced by\n  change:orphan  parent\n  session:sess-rm  changes, observed/);
+  assert.ok(loadStore(store).byKey.has('change:doomed'));
+  const r = rm(store, 'change:doomed', { detach: true });
+  assert.equal(r.removed.length, 2);
+  assert.ok(r.removed.includes('changes/doomed/change.md'));
+  assert.ok(r.removed.some((p) => p.startsWith('changes/doomed/decisions/')));
+  assert.deepEqual(r.detached.map((d) => [d.key, d.fields]), [['change:orphan', ['parent']], ['session:sess-rm', ['changes', 'observed']]]);
+  const after = loadStore(store);
+  assert.ok(!after.byKey.has('change:doomed'));
+  assert.ok(!after.byKey.has('decision:doomed/why'));
+  assert.ok(!fs.existsSync(path.join(store.root, 'changes/doomed')));
+  assert.equal(after.byKey.get('change:orphan')![0].data.parent, undefined);
+  assert.equal(after.byKey.get('session:sess-rm')![0].data.changes, undefined);
+  assert.deepEqual(validate(after).filter((p) => p.level === 'error'), []);
+  const evs = readEvents(store);
+  const removed = evs.filter((e) => e.op === 'removed').map((e) => e.key);
+  assert.deepEqual(removed.slice(-2), ['change:doomed', 'decision:doomed/why']);
+  assert.ok(evs.some((e) => e.op === 'set' && e.key === 'change:orphan' && e.fields?.includes('parent')));
+  // a project with changes, and a record whose writer is the actor, refuse even with --detach
+  assert.throws(() => rm(store, 'project:project', { detach: true }), /is the project of/);
+  // a referenced source with --detach: the bind goes
+  newRecord(store, 'change', 'keeper', { title: 'Keeper', summary: 'k', binds: ['linear:KEEP-1'] });
+  newRecord(store, 'source', 'linear:KEEP-1', { title: 'Keep' });
+  assert.throws(() => rm(store, 'linear:KEEP-1'), /change:keeper  binds/);
+  rm(store, 'linear:KEEP-1', { detach: true });
+  assert.equal(loadStore(store).byKey.get('change:keeper')![0].data.binds, undefined);
+  rm(store, 'change:keeper');
+  rm(store, 'change:orphan');
 });
