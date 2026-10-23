@@ -62,8 +62,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman validate [--json]'] },
   { name: 'fmt', about: 'rewrite records in canonical form: field order, the YAML rule, repaired quoting (--check reports only)',
     usage: ['pjman fmt [--check]'] },
-  { name: 'mv', about: 'rename a change: move the folder, leave an alias, rewrite every reference',
-    usage: ['pjman mv change:<old> change:<new>'] },
+  { name: 'mv', about: 'rename a change (the folder moves, the old slug stays as an alias), a project (directories bound to it follow) or a decision (within or across changes); every reference is rewritten in the same commit',
+    usage: ['pjman mv change:<old> change:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>'] },
   { name: 'rm', about: "remove a record (a change takes its decisions with it). Refused while anything refers to it, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped",
     usage: ['pjman rm <key> [--detach] [--json]'] },
   { name: 'events', about: "the store's event stream: one event per write (seq, at, op, key, type, path, fields, writer, session, commit); `rebuild` rewrites it from the store's git history",
@@ -319,7 +319,7 @@ function main(): number {
     }
     case 'mv': {
       const store = requireStore(cwd, v.store);
-      if (!pos[1] || !pos[2]) throw new CliError('usage: pjman mv change:<old> change:<new>');
+      if (!pos[1] || !pos[2]) throw new CliError('usage: pjman mv <key> <new key>  (change, project or decision)');
       const r = mv(store, pos[1], pos[2], { session: v.session });
       if (v.json) json(r);
       else {

@@ -57,7 +57,7 @@ pjman refs <text|->                    every reference in a text, in order, with
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>
 pjman set <key> <field>=<value>…   change an authored field (title, status, project, parent, next, links, binds, summary, plan; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
-pjman mv change:<old> change:<new>     move the folder, leave an alias, rewrite every reference
+pjman mv <key> <new key>               rename a change (alias kept), a project or a decision; every reference rewritten
 pjman rm <key> [--detach]              remove a record (a change with its decisions); refused while referenced, --detach drops droppable references
 pjman events [--since <seq>] [--json]   the store's event stream, one event per write; `pjman events rebuild` derives it from git history
 pjman follow [--since <seq>] [--json]   print events as they are appended, until interrupted; what a view subscribes to

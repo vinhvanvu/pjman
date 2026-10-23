@@ -12,7 +12,7 @@ import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
 import { set } from '../commands/set.js';
 import { changeContext, decisionLine, formatLs, formatStoreContext, ls, storeContext } from '../commands/view.js';
-import { findStore, writeStoreConfig, type Store } from '../config.js';
+import { findStore, readUserConfig, writeStoreConfig, type Store } from '../config.js';
 import { findReferences, get, keyFromUrl } from '../graph.js';
 import { renderView } from '../commands/pane.js';
 import { BRIEF, installBrief } from '../commands/brief.js';
@@ -460,4 +460,47 @@ test('rm removes a record; refused while referenced; --detach drops droppable re
   assert.equal(loadStore(store).byKey.get('change:keeper')![0].data.binds, undefined);
   rm(store, 'change:keeper');
   rm(store, 'change:orphan');
+});
+
+test('crud: set reaches actors and refuses sessions; mv renames a decision, within and across changes, and a project with its bindings', () => {
+  // update on the two kinds set did not reach
+  const actor = loadStore(store).records.find((r) => r.type === 'actor')!;
+  set(store, actor.key, ['url=https://example.com/me'], {});
+  assert.equal(loadStore(store).byKey.get(actor.key)![0].data.url, 'https://example.com/me');
+  // a session is append-only: log, bind and observe add to it; nothing rewrites it
+  assert.throws(() => set(store, 'session:sess-1', ['parent=session:sess-rm'], {}), /append-only/);
+
+  // a decision rename: the superseding decision's pointer follows, the date prefix stays
+  const before = loadStore(store).byKey.get('decision:contract/keys')![0].path;
+  const d = mv(store, 'decision:contract/keys', 'decision:contract/keys-v1', {});
+  assert.ok(d.rewritten.some((p) => p.endsWith('keys-and-aliases.md')));
+  let loaded = loadStore(store);
+  assert.ok(!loaded.byKey.has('decision:contract/keys'));
+  const moved = loaded.byKey.get('decision:contract/keys-v1')![0];
+  assert.equal(path.basename(moved.path), path.basename(before).replace(/keys\.md$/, 'keys-v1.md'));
+  assert.equal(loaded.byKey.get('decision:contract/keys-and-aliases')![0].data.supersedes, 'decision:contract/keys-v1');
+  assert.deepEqual(errors(store), []);
+  // across changes
+  newRecord(store, 'change', 'elsewhere', { title: 'Elsewhere', summary: 'e' });
+  mv(store, 'decision:contract/keys-v1', 'decision:elsewhere/keys-v1', {});
+  loaded = loadStore(store);
+  assert.ok(loaded.byKey.get('decision:elsewhere/keys-v1')![0].path.startsWith('changes/elsewhere/decisions/'));
+  assert.equal(loaded.byKey.get('decision:contract/keys-and-aliases')![0].data.supersedes, 'decision:elsewhere/keys-v1');
+  assert.throws(() => mv(store, 'decision:elsewhere/keys-v1', 'decision:nowhere/keys-v1', {}), /change:nowhere does not exist/);
+  assert.throws(() => mv(store, 'decision:elsewhere/keys-v1', 'change:keys-v1', {}), /keeps the kind/);
+  assert.deepEqual(errors(store), []);
+
+  // a project rename: every change's project field and the directory binding follow
+  const bound = readUserConfig().stores.flatMap((s) => s.projects).filter((b) => b.project === 'project:project').length;
+  const p = mv(store, 'project:project', 'project:renamed', {});
+  loaded = loadStore(store);
+  assert.ok(!loaded.byKey.has('project:project'));
+  assert.equal(loaded.byKey.get('project:renamed')![0].path, 'projects/renamed.md');
+  assert.ok(loaded.records.filter((r) => r.type === 'change' && r.data.project).every((r) => r.data.project === 'project:renamed'));
+  assert.ok(p.rewritten.length >= 1);
+  assert.equal(readUserConfig().stores.flatMap((s) => s.projects).filter((b) => b.project === 'project:renamed').length, bound);
+  assert.deepEqual(errors(store), []);
+  assert.throws(() => mv(store, 'linear:ABC-1', 'linear:ABC-2', {}), /not renamed/);
+  const evs = readEvents(store);
+  assert.equal(evs.filter((e) => e.op === 'moved').slice(-1)[0].key, 'project:renamed');
 });
