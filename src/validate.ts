@@ -1,9 +1,12 @@
 import { ACTOR_KINDS, CANONICAL_STATUSES, DECISION_STATUSES } from './config.js';
+import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
 import { isDateString, isTimestamp } from './util.js';
 
 const REQUIRED: Record<RecordType, string[]> = {
+  product: ['title'],
+  feature: ['title'],
   project: ['title'],
   change: ['title', 'status'],
   decision: ['title', 'status'],
@@ -13,7 +16,9 @@ const REQUIRED: Record<RecordType, string[]> = {
 };
 
 const STRING_FIELDS: Record<RecordType, string[]> = {
-  project: ['title', 'tracker', 'writer', 'session', 'created'],
+  product: ['title', 'writer', 'session', 'created'],
+  feature: ['title', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
+  project: ['title', 'product', 'parent', 'tracker', 'writer', 'session', 'created'],
   change: ['title', 'status', 'project', 'parent', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
@@ -22,8 +27,10 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
 };
 
 const LIST_FIELDS: Record<RecordType, string[]> = {
-  project: ['links'],
-  change: ['binds', 'links', 'aliases'],
+  product: ['owners', 'levels', 'links'],
+  feature: ['owners', 'links'],
+  project: ['owners', 'links'],
+  change: ['features', 'owners', 'binds', 'links', 'aliases'],
   decision: ['links'],
   source: ['links'],
   session: ['changes'],
@@ -38,11 +45,15 @@ const REQUIRED_SECTIONS: Partial<Record<RecordType, string[]>> = {
 /** Edge name → [from kinds, to kinds]. 'source' stands for any source kind. */
 export const EDGES: Record<string, [string[], string[]]> = {
   binds: [['change'], ['source']],
-  links: [['change', 'decision', 'source'], ['source']],
+  links: [['product', 'feature', 'project', 'change', 'decision', 'source'], ['source']],
   supersedes: [['decision'], ['decision']],
-  parent: [['session', 'change'], ['session', 'change']],
+  parent: [['session', 'change', 'feature', 'project'], ['session', 'change', 'feature', 'project']],
   changes: [['session'], ['change']],
   project: [['change'], ['project']],
+  product: [['feature', 'project'], ['product']],
+  owners: [['product', 'feature', 'project', 'change'], ['actor']],
+  adds: [['change'], ['feature']],
+  removes: [['change'], ['feature']],
 };
 
 export function validate(loaded: Loaded): Problem[] {
@@ -67,7 +78,7 @@ export function validate(loaded: Loaded): Problem[] {
       err(r, `${field}: '${String(raw)}' is not a key (kind:rest)`);
       return;
     }
-    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session', 'project'].includes(key.kind);
+    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature'].includes(key.kind);
     const cls = isRecordKind ? (isActorKey(key) ? 'actor' : key.kind) : 'source';
     if (cls === 'source' && !sourceKinds.has(key.kind)) {
       err(r, `${field}: '${key.raw}' has unknown kind '${key.kind}' (not a record kind; not in source_kinds)`);
@@ -120,9 +131,48 @@ export function validate(loaded: Loaded): Problem[] {
 
     for (const s of REQUIRED_SECTIONS[r.type] ?? []) if (!r.sections.has(s)) err(r, `body is missing the '## ${s}' section`);
 
+    // a parent chain of the record's own kind that returns to it is a cycle
+    const parentCycle = (field: string): void => {
+      const seen = new Set<string>([r.key]);
+      let cur: unknown = d[field];
+      for (;;) {
+        const res = typeof cur === 'string' ? resolve(loaded, cur) : null;
+        if (!res || (res.status !== 'ok' && res.status !== 'alias')) break;
+        if (seen.has(res.rec.key)) {
+          err(r, `'${field}' cycles: ${[...seen, res.rec.key].join(' → ')}`);
+          break;
+        }
+        seen.add(res.rec.key);
+        cur = res.rec.data[field];
+      }
+    };
+    for (const k of listOf(d.owners)) checkRef(r, 'owners', k, ['actor']);
+
     switch (r.type) {
+      case 'product': {
+        if (r.productSlug && !SLUG_RE.test(r.productSlug)) err(r, `file name '${r.productSlug}' is not a slug`);
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        break;
+      }
+      case 'feature': {
+        if (r.featureSlug && !SLUG_RE.test(r.featureSlug)) err(r, `folder name '${r.featureSlug}' is not a slug`);
+        if (typeof d.status === 'string' && !(FEATURE_STATUSES as readonly string[]).includes(d.status)) err(r, `status '${d.status}' is not one of ${FEATURE_STATUSES.join(', ')}`);
+        if (typeof d.product !== 'string' && typeof d.parent !== 'string') err(r, `a feature names its 'product' (a top-level feature) or its 'parent' (a feature)`);
+        if (typeof d.product === 'string') checkRef(r, 'product', d.product, ['product']);
+        if (typeof d.parent === 'string') {
+          checkRef(r, 'parent', d.parent, ['feature']);
+          parentCycle('parent');
+        }
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        break;
+      }
       case 'project': {
         if (r.projectSlug && !SLUG_RE.test(r.projectSlug)) err(r, `file name '${r.projectSlug}' is not a slug`);
+        if (typeof d.product === 'string') checkRef(r, 'product', d.product, ['product']);
+        if (typeof d.parent === 'string') {
+          checkRef(r, 'parent', d.parent, ['project']);
+          parentCycle('parent');
+        }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
         if (typeof d.tracker === 'string' && !store.config.source_kinds.map((k) => k.toLowerCase()).includes(d.tracker.toLowerCase())) {
           err(r, `tracker '${d.tracker}' is not in source_kinds (${store.config.source_kinds.join(', ')})`);
@@ -139,19 +189,12 @@ export function validate(loaded: Loaded): Problem[] {
         if (typeof d.project === 'string') checkRef(r, 'project', d.project, ['project']);
         if (typeof d.parent === 'string') {
           checkRef(r, 'parent', d.parent, ['change']);
-          // walk up; a chain that returns to this change is a cycle
-          const seen = new Set<string>([r.key]);
-          let cur: unknown = d.parent;
-          for (;;) {
-            const res = typeof cur === 'string' ? resolve(loaded, cur) : null;
-            if (!res || (res.status !== 'ok' && res.status !== 'alias')) break;
-            if (seen.has(res.rec.key)) {
-              err(r, `'parent' cycles: ${[...seen, res.rec.key].join(' → ')}`);
-              break;
-            }
-            seen.add(res.rec.key);
-            cur = res.rec.data.parent;
-          }
+          parentCycle('parent');
+        }
+        for (const f of listOf(d.features)) {
+          const e = parseEffect(f);
+          if (!e) err(r, `features: '${f}' must be '<effect> feature:<slug>' or 'feature:<slug>' (effects: ${EFFECTS.join(', ')})`);
+          else checkRef(r, 'features', e.key, ['feature']);
         }
         for (const k of listOf(d.binds)) checkRef(r, 'binds', k, ['source']);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);

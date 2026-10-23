@@ -5,7 +5,7 @@ import { findStore, globalStore, readUserConfig, requireStore } from './config.j
 import { BRIEF } from './commands/brief.js';
 import { start, stop } from './commands/start.js';
 import { buildIndex, query } from './indexdb.js';
-import { loadStore } from './records.js';
+import { loadStore, resolve } from './records.js';
 import { CliError, plural } from './util.js';
 import { formatProblems, summarise, validate } from './validate.js';
 import { findReferences, formatNeighbourhood, formatReferences, get } from './graph.js';
@@ -20,6 +20,8 @@ import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
 import { rm } from './commands/rm.js';
+import { formatTree, tree } from './tree.js';
+import { activity, formatActivity } from './activity.js';
 import { set } from './commands/set.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
 
@@ -36,8 +38,10 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'brief', about: 'print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md)', usage: ['pjman brief'] },
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
-      'pjman new project <slug> --title <t> [--tracker <source-kind>] [--links <key>]...',
-      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
+      'pjman new product <slug> --title <t> [--owners <actor>]... [--levels <label>]... [--summary <s>]',
+      'pjman new feature <slug> --title <t> --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>]',
+      'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...',
+      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]... [--owners <actor>]... [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
       'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
       '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
@@ -53,6 +57,10 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'ls', about: 'list records, by type, status and project', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--json]'] },
   { name: 'refs', about: "every reference in a text that resolves to something, in order, each with the change it leads to: change:<slug>, a URL, a ticket in any shape the store's source kinds know, an existing slug; the last mention is what a prompt is about. Never writes",
     usage: ['pjman refs <text> [--json]', 'pjman refs - [--json]   (text on stdin)'] },
+  { name: 'tree', about: "the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature",
+    usage: ['pjman tree [product:<slug>|feature:<slug>] [--json]'] },
+  { name: 'activity', about: "the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person",
+    usage: ['pjman activity <key> [--days 14] [--since <iso>] [--json]'] },
   { name: 'get', about: 'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out (exit 1 when nothing matches)',
     usage: ['pjman get <ref> [--json]'] },
   { name: 'view', about: "the view beside a session, as a Markdown document: one reference, or what a session is on (its last bound change, else the project's board); --out writes a file, --watch re-renders whenever the store changes",
@@ -120,6 +128,12 @@ function parse() {
     next: { type: 'string' },
     binds: { type: 'string', multiple: true },
     links: { type: 'string', multiple: true },
+    owners: { type: 'string', multiple: true },
+    features: { type: 'string', multiple: true },
+    levels: { type: 'string', multiple: true },
+    level: { type: 'string' },
+    product: { type: 'string' },
+    days: { type: 'string' },
     'decided-by': { type: 'string' },
     'decided-on': { type: 'string' },
     supersedes: { type: 'string' },
@@ -186,12 +200,13 @@ function main(): number {
     case 'new': {
       const store = requireStore(cwd, v.store);
       const [, type, ident] = pos;
-      if (!type || !ident) throw new CliError('usage: pjman new <project|change|decision|source|actor|session> <ident> [flags]');
+      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|project|change|decision|source|actor|session> <ident> [flags]');
       const flags: NewFlags = {
         title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary, plan: v.plan, next: v.next,
         binds: v.binds, links: v.links, decidedBy: v['decided-by'], decidedOn: v['decided-on'],
         supersedes: v.supersedes, decision: v.decision, why: v.why, name: v.name, url: v.url,
         agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, started: v.started,
+        product: v.product, owners: v.owners, features: v.features, level: v.level, levels: v.levels,
         created: v.created, body: v.body, writer: v.writer, session: v.session,
       };
       const r = newRecord(store, type, ident, flags);
@@ -249,8 +264,33 @@ function main(): number {
       v.json ? json(rows) : out(formatLs(rows));
       return 0;
     }
+    case 'tree': {
+      const store = requireStore(cwd, v.store);
+      const nodes = tree(loadStore(store), pos[1]);
+      if (v.json) json(nodes);
+      else out(nodes.length ? formatTree(nodes) : pos[1] ? `${pos[1]} is not a product or a feature` : 'no products yet: pjman new product <slug> --title <t>');
+      return 0;
+    }
+    case 'activity': {
+      const store = requireStore(cwd, v.store);
+      if (!pos[1]) throw new CliError('usage: pjman activity <key> [--days 14]');
+      const loaded = loadStore(store);
+      const res = resolve(loaded, pos[1]);
+      if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`${pos[1]} does not resolve to a record`);
+      const a = activity(store, loaded, res.rec.key, { days: v.days ? Number(v.days) : undefined, since: v.since });
+      v.json ? json(a) : out(formatActivity(a, formatEvent));
+      return 0;
+    }
     case 'context': {
       const store = requireStore(cwd, v.store);
+      if (pos[1] && (pos[1].startsWith('product:') || pos[1].startsWith('feature:'))) {
+        const loaded = loadStore(store);
+        const nodes = tree(loaded, pos[1]);
+        if (!nodes.length) throw new CliError(`${pos[1]} does not resolve to a product or a feature`);
+        const a = activity(store, loaded, nodes[0].key, {});
+        v.json ? json({ tree: nodes[0], activity: a }) : out(formatTree(nodes) + '\n' + formatActivity(a, formatEvent));
+        return 0;
+      }
       if (pos[1] && !pos[1].startsWith('project:')) {
         const c = changeContext(store, pos[1]);
         v.json ? json(c) : out(formatChangeContext(c));

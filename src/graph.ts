@@ -5,6 +5,7 @@ import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } fro
 import { keyFromUrl, mentions, scopeOf, shortForms, trackerOf } from './refs.js';
 export { keyFromUrl, repoOf } from './refs.js';
 import { resolve, type Loaded, type Rec } from './records.js';
+import { parseEffect } from './tree.js';
 import { changeContext, row, type ChangeContext, type Row } from './commands/view.js';
 
 // --- edges ---------------------------------------------------------------------------------------
@@ -40,13 +41,28 @@ export function allEdges(loaded: Loaded): Edge[] {
   for (const r of loaded.records) {
     if (!r.valid) continue;
     const d = r.data;
+    for (const k of list(d.owners)) edge('owners', r.key, k, r);
     switch (r.type) {
+      case 'product':
+        for (const k of list(d.links)) edge('links', r.key, k, r);
+        break;
+      case 'feature':
+        if (typeof d.product === 'string') edge('product', r.key, d.product, r);
+        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
+        for (const k of list(d.links)) edge('links', r.key, k, r);
+        break;
       case 'project':
+        if (typeof d.product === 'string') edge('product', r.key, d.product, r);
+        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'change':
         if (typeof d.project === 'string') edge('project', r.key, d.project, r);
         if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
+        for (const f of list(d.features)) {
+          const e = parseEffect(f);
+          if (e) edge(e.effect, r.key, live(e.key), r);
+        }
         for (const k of list(d.binds)) edge('binds', r.key, k, r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;

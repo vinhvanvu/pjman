@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { readUserConfig, userDir, type Store } from './config.js';
 import { follow, lastSeq, readEvents } from './events.js';
 import { findReferences, get } from './graph.js';
+import { tree } from './tree.js';
+import { activity } from './activity.js';
 import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
@@ -120,6 +122,20 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (n.resolution.status === 'none') throw new HttpError(404, 'not-found', `${ref} resolves to nothing`, n.resolution.tried);
       return send(res, 200, { data: n });
     }
+    if (route === '/tree') {
+      const root = url.searchParams.get('root') ?? undefined;
+      const nodes = tree(loaded, root);
+      if (root && !nodes.length) throw new HttpError(404, 'not-found', `${root} is not a product or a feature`);
+      return send(res, 200, { data: nodes });
+    }
+    if (route === '/activity') {
+      const key = url.searchParams.get('key');
+      if (!key) throw new HttpError(400, 'bad-request', 'key is required');
+      const r = resolve(loaded, key);
+      if (r.status !== 'ok' && r.status !== 'alias') throw new HttpError(404, 'not-found', `${key} has no record`);
+      const days = url.searchParams.get('days');
+      return send(res, 200, { data: activity(store, loaded, r.rec.key, { days: days ? Number(days) : undefined, since: url.searchParams.get('since') ?? undefined }) });
+    }
     if (route === '/refs') {
       const text = url.searchParams.get('text');
       if (text === null) throw new HttpError(400, 'bad-request', 'text is required');
@@ -182,7 +198,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since='] } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/tree?root=', '/activity?key=&days=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since='] } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

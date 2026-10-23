@@ -58,6 +58,17 @@ signs in anywhere. When a ticket is named, or the project's board should reflect
    its change when the store has one (for a GitHub issue the hook reads it with gh and syncs it itself); otherwise the
    hook tells you to read and sync it, and the sync creates the change. A pattern match alone never creates a record.
 
+## The product tree
+
+What the product *is* lives in a tree beside the work: a `product:<slug>` at the root, `feature:<slug>` records nested
+beneath it (`--product` for a top-level feature, `--parent` below; the level label comes from the template, feature then
+capability, or `--level`), projects attached to the product (`pjman set project:<slug> product=product:<slug>`). Owners
+(`owners`, a list of actors) sit on any node and are inherited downward. A change names the features it affects with an
+effect: `--features "adds feature:<slug>"`, `"feature:<slug>"` (changes), `"removes feature:<slug>"`. A feature's state is
+derived from those changes (live once an adding change is done, retired once a removing one is), so prefer the effect to
+writing a status. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
+beneath any node. Create a feature only when the person names a capability; a ticket label is not a feature.
+
 ## Commands you will use
 
 ```
@@ -68,6 +79,9 @@ pjman refs <text>                        every reference in a text (a change, a 
 pjman ls decision --status proposed      what is waiting on a person
 pjman show <key>                         one record
 pjman new change|decision|source …       create (refused if it would not validate)
+pjman new product|feature …              the product tree: a root, then nested features
+pjman tree [product:<slug>]              the product by features: levels, derived status, owners, backlog by project
+pjman activity <key> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
 pjman set <key> field=value …            authored fields: title, status, next, links, binds, summary, plan; decision, why while proposed
 pjman rm <key> [--detach]                remove a record you created by mistake; refused while anything refers to it
 pjman validate                           run before committing a store that lives in the project

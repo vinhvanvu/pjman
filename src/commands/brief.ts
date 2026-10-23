@@ -31,6 +31,12 @@ becomes a source and the change that binds it; title, status and parent follow t
 decisions stay pjman's. A ticket named in a prompt binds its change when the store has one; otherwise you are told to
 read it and sync, which creates the change. \`pjman refs <text>\` shows what a text refers to.
 
+The product tree
+A product is the root; features nest beneath it (levels: feature, capability by default); projects attach to it.
+A change names the features it affects: \`--features "adds feature:<slug>"\` (adds | changes | removes; a bare key
+means changes). \`pjman tree\` shows the product by features with derived status, owners and backlog; \`pjman activity
+<key>\` the motion beneath any node. Create a feature only when the person names a capability, never from a ticket label.
+
 Also: \`pjman ls decision --status proposed\` (what waits on a person) · \`pjman show <key>\` · \`pjman validate\` ·
 the dashboard: \`pjman start\` prints its URL (also in ~/.pjman/serve.json).
 `;

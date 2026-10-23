@@ -13,11 +13,15 @@ export const DEFAULT_SOURCE_KINDS = [
   'file', 'url', 'doc', 'git-repo', 'branch', 'github-pr', 'github-issue', 'linear', 'jira', 'thread',
 ];
 
+/** The product tree's level labels below the root, pjman's template; a product may name its own. */
+export const DEFAULT_TREE_LEVELS = ['feature', 'capability'];
+
 export interface StoreConfig {
   name: string;
   layers: string[];
   vocabulary: Record<string, string>;
   source_kinds: string[];
+  tree_levels: string[];
 }
 
 export type StoreMode = 'in-project' | 'standalone';
@@ -93,7 +97,8 @@ export function loadStoreConfig(root: string): StoreConfig {
     for (const [k, v] of Object.entries(raw.vocabulary as Record<string, unknown>)) vocabulary[k] = String(v);
   }
   const source_kinds = Array.isArray(raw.source_kinds) ? raw.source_kinds.map(String) : [...DEFAULT_SOURCE_KINDS];
-  return { name: typeof raw.name === 'string' ? raw.name : path.basename(root), layers, vocabulary, source_kinds };
+  const tree_levels = Array.isArray(raw.tree_levels) && raw.tree_levels.length ? raw.tree_levels.map(String) : [...DEFAULT_TREE_LEVELS];
+  return { name: typeof raw.name === 'string' ? raw.name : path.basename(root), layers, vocabulary, source_kinds, tree_levels };
 }
 
 export function writeStoreConfig(root: string, cfg: StoreConfig): void {

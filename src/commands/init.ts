@@ -1,7 +1,7 @@
 import { emit } from '../events.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_SOURCE_KINDS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type StoreConfig, type UserStore } from '../config.js';
+import { DEFAULT_SOURCE_KINDS, DEFAULT_TREE_LEVELS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type StoreConfig, type UserStore } from '../config.js';
 import { git, gitUserName, hasGit, toplevel } from '../git.js';
 import { slugify } from '../keys.js';
 import { loadStore } from '../records.js';
@@ -91,7 +91,7 @@ function originRepo(project: string): string | null {
 export function init(opts: InitOpts): string[] {
   const out: string[] = [];
   const project = toplevel(opts.cwd) ?? path.resolve(opts.cwd);
-  const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS] });
+  const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS], tree_levels: [...DEFAULT_TREE_LEVELS] });
   const actor = ensureActor();
 
   if (opts.inProject) {

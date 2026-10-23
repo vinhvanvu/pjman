@@ -26,6 +26,7 @@ export function row(r: Rec): Row {
 }
 
 const TYPE_ALIASES: Record<string, RecordType> = {
+  product: 'product', products: 'product', feature: 'feature', features: 'feature',
   project: 'project', projects: 'project', change: 'change', changes: 'change', decision: 'decision', decisions: 'decision',
   source: 'source', sources: 'source', session: 'session', sessions: 'session', actor: 'actor', actors: 'actor',
 };
@@ -35,12 +36,12 @@ export function ls(store: Store, opts: { type?: string; status?: string; project
   let recs = loaded.records;
   if (opts.type) {
     const t = TYPE_ALIASES[opts.type];
-    if (!t) throw new CliError(`unknown type '${opts.type}' (project, change, decision, source, session, actor)`);
+    if (!t) throw new CliError(`unknown type '${opts.type}' (product, feature, project, change, decision, source, session, actor)`);
     recs = recs.filter((r) => r.type === t);
   }
   if (opts.status) recs = recs.filter((r) => r.data.status === opts.status);
   if (opts.project) recs = recs.filter((r) => r.type !== 'change' || r.data.project === opts.project);
-  const typeOrder: RecordType[] = ['project', 'change', 'decision', 'source', 'session', 'actor'];
+  const typeOrder: RecordType[] = ['product', 'feature', 'project', 'change', 'decision', 'source', 'session', 'actor'];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))

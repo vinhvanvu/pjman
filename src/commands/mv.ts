@@ -89,6 +89,37 @@ function mvChange(store: Store, loaded: Loaded, from: string, to: string, opts: 
   return finish(store, loaded, from, to, 'change', path.join(newDir, 'change.md'), rewritten, pathAfter, opts, ['aliases']);
 }
 
+/** A one-file record (project, product): the file moves and every reference follows. */
+function mvFile(store: Store, loaded: Loaded, type: 'project' | 'product', dir: string, from: string, to: string, opts: { session?: string }): MvResult {
+  const toSlug = to.slice(type.length + 1);
+  if (!SLUG_RE.test(toSlug)) throw new CliError(`'${toSlug}' is not a slug`);
+  const rec = loaded.byKey.get(from)?.[0];
+  if (!rec || rec.type !== type) throw new CliError(`${from} does not exist`);
+  if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before renaming`);
+  if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
+  const newRel = path.join(dir, `${toSlug}.md`);
+  move(store, rec.path, newRel);
+  const pathAfter = (rel: string) => (rel === rec.path ? newRel : rel);
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text) => rewriteKey(text, from, to));
+  return finish(store, loaded, from, to, type, newRel, rewritten, pathAfter, opts);
+}
+
+/** A feature: the folder moves and every reference, effects included, follows. */
+function mvFeature(store: Store, loaded: Loaded, from: string, to: string, opts: { session?: string }): MvResult {
+  const toSlug = to.slice('feature:'.length);
+  if (!SLUG_RE.test(toSlug)) throw new CliError(`'${toSlug}' is not a slug`);
+  const rec = loaded.byKey.get(from)?.[0];
+  if (!rec || rec.type !== 'feature') throw new CliError(`${from} does not exist`);
+  if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before renaming`);
+  if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
+  const oldDir = path.join('features', from.slice('feature:'.length));
+  const newDir = path.join('features', toSlug);
+  move(store, oldDir, newDir);
+  const pathAfter = (rel: string) => (rel.startsWith(oldDir + '/') ? newDir + rel.slice(oldDir.length) : rel);
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text) => rewriteKey(text, from, to));
+  return finish(store, loaded, from, to, 'feature', path.join(newDir, 'feature.md'), rewritten, pathAfter, opts);
+}
+
 function mvProject(store: Store, loaded: Loaded, from: string, to: string, opts: { session?: string }): MvResult {
   const toSlug = to.slice('project:'.length);
   if (!SLUG_RE.test(toSlug)) throw new CliError(`'${toSlug}' is not a slug`);
@@ -132,14 +163,16 @@ function mvDecision(store: Store, loaded: Loaded, from: string, to: string, opts
 export function mv(store: Store, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
   const from = parseKey(fromRaw);
   const to = parseKey(toRaw);
-  if (!from || !to) throw new CliError('usage: pjman mv <key> <new key>  (change, project or decision)');
+  if (!from || !to) throw new CliError('usage: pjman mv <key> <new key>  (product, feature, project, change or decision)');
   if (from.kind !== to.kind) throw new CliError(`mv keeps the kind: ${from.kind} → ${to.kind}`);
   const loaded = loadStore(store);
   switch (from.kind) {
     case 'change': return mvChange(store, loaded, from.raw, to.raw, opts);
     case 'project': return mvProject(store, loaded, from.raw, to.raw, opts);
+    case 'product': return mvFile(store, loaded, 'product', 'products', from.raw, to.raw, opts);
+    case 'feature': return mvFeature(store, loaded, from.raw, to.raw, opts);
     case 'decision': return mvDecision(store, loaded, from.raw, to.raw, opts);
-    default: throw new CliError('mv renames changes, projects and decisions; sources, actors and sessions are not renamed (their keys are external)');
+    default: throw new CliError('mv renames products, features, projects, changes and decisions; sources, actors and sessions are not renamed (their keys are external)');
   }
 }
 

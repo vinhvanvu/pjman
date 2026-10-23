@@ -39,8 +39,10 @@ index.db                                     derived, git-ignored, rebuilt by `p
 
 ```
 pjman init [--name <project-name>] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]
-pjman new project <slug> --title … [--tracker <source-kind>] [--links <key>]…
-pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
+pjman new product <slug> --title … [--owners <actor>]… [--levels <label>]… [--summary …]
+pjman new feature <slug> --title … --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]…
+pjman new project <slug> --title … [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]… [--links <key>]…
+pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
 pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
 pjman new source <kind>:<key> [--title …] [--url …]
 pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
@@ -51,6 +53,8 @@ pjman session observe <id> <edge> <from> <to>   record an observed edge (evidenc
 pjman validate [--json]                every record, every reference; errors are reported, never dropped
 pjman fmt [--check]                    canonical field order, the YAML rule, repaired quoting
 pjman ls [type] [--status s] [--project <key>] [--json]   records in creation order, with their date
+pjman tree [product:<slug>|feature:<slug>]   the product tree: features at labelled levels, derived status, owners, backlog by project
+pjman activity <key> [--days 14]       the events beneath a node, through every chain, and what they say about health
 pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads first: this project's board, or one change with its decisions, sources, sessions
 pjman get <ref>                        the getter: a key, a URL, a ticket id, a file path or a slug in; the record, its edges both ways and the context of every change within two hops out
 pjman refs <text|->                    every reference in a text, in order, with the change it leads to; what a prompt is about
@@ -73,6 +77,10 @@ pjman where
 Global flags: `--store`, `--writer <actor>`, `--session <session>`, `--created <date>`, `--json`. Environment: `PJMAN_STORE`, `PJMAN_WRITER`, `PJMAN_SESSION`, `PJMAN_HOME`.
 
 With `--session` (or `PJMAN_SESSION`) set, every write is refused until that session record exists: create the session first.
+
+## The product tree
+
+Two sibling lenses onto the same changes sit under a product: **project**, where the code lives (a grouping of code one team ships together, with one or more repositories), and **feature**, what the product does. A `product:<slug>` is the fixed root. Features are one nestable kind, `feature:<slug>`, any depth; the level names (feature, then capability, by default; `tree_levels` in pjman.yaml, or `levels` on the product) are labels, not kinds. Projects attach to the product (`product`), and nest too (`parent`). Owners, a list of actors on any node, are inherited downward. A change names the features it affects with an effect, `adds`, `changes` or `removes`, and a feature's status is derived from those changes (live once an adding change is done, retired once a removing one is), with an authored status shown beside it when they differ. `pjman tree` renders the tree with roll-ups; `pjman activity <key>` is the event stream of everything beneath a node, which is where health is read from: when it last moved, what got done, what is new, what is blocked, what waits on a person.
 
 ## Trackers: the Linear sync
 

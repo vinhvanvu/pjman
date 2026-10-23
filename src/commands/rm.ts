@@ -1,6 +1,7 @@
 // pjman rm: remove a record. Refused while anything else refers to it, naming each referrer; --detach drops the
 // references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same
-// commit. A reference that is required (a change's project, a record's writer or session) always refuses.
+// commit. A reference that is required (a change's project, a record's writer or session) always refuses. A change
+// or a feature takes its folder.
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../config.js';
@@ -25,13 +26,13 @@ export interface RmResult {
   commit: string | null;
 }
 
-const LISTS = ['binds', 'links', 'changes'];
+const LISTS = ['binds', 'links', 'changes', 'owners', 'features'];
 const SINGLE = ['parent', 'supersedes'];
 
 /** Drop `key` from the fields that may lose a reference. Returns the fields changed. */
 function detach(data: Record<string, unknown>, keys: Set<string>): string[] {
   const changed: string[] = [];
-  const is = (v: unknown): boolean => typeof v === 'string' && keys.has(canon(v));
+  const is = (v: unknown): boolean => typeof v === 'string' && (keys.has(canon(v)) || keys.has(canon(v.replace(/^(adds|changes|removes)\s+/, ''))));
   for (const f of LISTS) {
     if (!Array.isArray(data[f])) continue;
     const kept = (data[f] as unknown[]).filter((v) => !is(v));
@@ -66,7 +67,7 @@ function referrers(records: Rec[], removedPaths: Set<string>, keys: Set<string>)
     const fields: string[] = [];
     const walk = (v: unknown, field: string): void => {
       if (typeof v === 'string') {
-        if (keys.has(canon(v))) fields.push(field);
+        if (keys.has(canon(v)) || keys.has(canon(v.replace(/^(adds|changes|removes)\s+/, '')))) fields.push(field);
       } else if (Array.isArray(v)) v.forEach((x) => walk(x, field));
       else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) walk(x, field === '' ? k : field);
     };
@@ -85,7 +86,7 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
   const rec = res.rec;
 
   // what goes: a change takes its folder (decisions included); anything else is one file
-  const dir = rec.type === 'change' ? path.dirname(rec.path) : null;
+  const dir = rec.type === 'change' || rec.type === 'feature' ? path.dirname(rec.path) : null;
   const going = loaded.records.filter((r) => r.path === rec.path || (dir !== null && r.path.startsWith(dir + '/')));
   const removedPaths = new Set(going.map((r) => r.path));
   const keys = new Set<string>(going.map((r) => r.key));
@@ -94,6 +95,10 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
   if (rec.type === 'project') {
     const members = loaded.records.filter((r) => r.type === 'change' && r.data.project === rec.key).map((r) => r.key);
     if (members.length) throw new CliError(`refused: ${rec.key} is the project of ${members.join(', ')}; move or remove them first`);
+  }
+  if (rec.type === 'product') {
+    const members = loaded.records.filter((r) => (r.type === 'feature' || r.type === 'project') && r.data.product === rec.key).map((r) => r.key);
+    if (members.length) throw new CliError(`refused: ${rec.key} is the product of ${members.join(', ')}; move or remove them first`);
   }
   const refs = referrers(loaded.records, removedPaths, keys);
   if (refs.length && !opts.detach) {

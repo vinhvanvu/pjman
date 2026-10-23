@@ -138,6 +138,8 @@ export function ensureIgnored(store: Store): void {
 // --- rebuild from git -------------------------------------------------------------------------
 
 const TYPE_OF_PATH = (p: string): RecordType | null => {
+  if (p.startsWith('products/')) return 'product';
+  if (p.startsWith('features/') && p.endsWith('/feature.md')) return 'feature';
   if (p.startsWith('projects/')) return 'project';
   if (p.startsWith('changes/') && p.endsWith('/change.md')) return 'change';
   if (p.startsWith('changes/') && p.includes('/decisions/')) return 'decision';
@@ -152,6 +154,8 @@ function keyOfPath(p: string, type: RecordType, root: string, sha: string): stri
   const base = path.basename(p, '.md');
   const dated = /^\d{4}-\d{2}-\d{2}-(.+)$/.exec(base);
   switch (type) {
+    case 'product': return `product:${base}`;
+    case 'feature': return `feature:${p.split('/')[1]}`;
     case 'project': return `project:${base}`;
     case 'change': return `change:${p.split('/')[1]}`;
     case 'decision': return p.startsWith('decisions/') ? `decision:/${dated?.[1] ?? base}` : `decision:${p.split('/')[1]}/${dated?.[1] ?? base}`;

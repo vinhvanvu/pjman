@@ -40,6 +40,35 @@ A key is resolved by the tool; a reference to a record that does not exist is a 
 
 No `id`, no `type` (the folder is the type), no `updated` (git has it).
 
+### Product — `products/<slug>.md`
+
+The fixed root of the product tree. Projects and top-level features attach to it.
+
+| field | kind | meaning |
+|---|---|---|
+| `title` | A | Required. |
+| `owners` | A | Optional list of actor keys; inherited by every node beneath that names none. |
+| `levels` | A | Optional list of level labels for the features beneath, by depth (default: the store's `tree_levels`, `feature` then `capability`; anything deeper takes the last label). |
+| `links` | A | Optional source keys. |
+| body | A | `## Summary`, optional: the product in a paragraph. |
+
+### Feature — `features/<slug>/feature.md`
+
+One nestable kind for everything the product is and does, at any depth: a feature, a capability beneath it, a sub-capability beneath that. The level is a label, not a kind.
+
+| field | kind | meaning |
+|---|---|---|
+| `title` | A | Required. |
+| `status` | A | Optional authored state: `planned`, `building`, `live`, `retired`. The tool also derives one from the changes that affect the feature (below) and shows both when they differ. |
+| `level` | A | Optional label; default from the product's `levels` or the store's `tree_levels` at this node's depth. |
+| `product` | A | The product, for a top-level feature. A feature names `product` or `parent`. |
+| `parent` | A | The feature above. Unbounded depth; a cycle is refused. |
+| `owners` | A | Optional list of actor keys; inherited downward. |
+| `links` | A | Optional source keys. |
+| body | A | `## Summary`, optional. |
+
+Derived state: `retired` once a change that `removes` the feature is done; else `live` once a change that `adds` it is done; else `building` while any change affecting it is in flight; a child's `live` or `building` lifts its parent; else `planned`. The tree at any release is a replay of the done changes up to it.
+
 ### Project — `projects/<slug>.md`
 
 A repository, registered in the store by `pjman init`. The unit a change belongs to; a product over several projects is layer 3.
@@ -47,6 +76,9 @@ A repository, registered in the store by `pjman init`. The unit a change belongs
 | Field | A/M | Notes |
 |---|---|---|
 | `title` | A | The repository's folder name unless named |
+| `product` | A | Optional. The product this project belongs to. |
+| `parent` | A | Optional. The project above (a platform over web and api); unbounded depth, cycles refused. |
+| `owners` | A | Optional list of actor keys; inherited downward. |
 | `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). A bare ticket id with no references resolves through it; an adapter creates a change for a ticket only in a project that names one. The tracker's own binding sits under `ext.<tracker>` (`ext.linear.team: ABC` names the Linear team the sync pulls) |
 | `links` | A | Optional. Source keys: the repository (`git-repo:owner/name`), its tracker, its docs |
 
@@ -138,6 +170,8 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 | `title` | A | |
 | `status` | A | One canonical word from the vocabulary |
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
+| `features` | A | Optional list of effects on the product tree: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. A feature's derived state and the tree at any release come from these. |
+| `owners` | A | Optional list of actor keys; a change without owners answers to its feature's or project's. |
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
 | `next` | A | The handoff: the next action. What resume reads first |
@@ -184,6 +218,9 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `project` | change → project | change | the project must exist |
 | `parent` | change → change | change | the parent must exist; no cycles; any depth; any project |
 | `binds` | change → source | change | a source binds at most one change |
+| `product` | feature, project → product | the child | the fixed root of the product tree |
+| `owners` | product, feature, project, change → actor | the node | inherited downward when a node names none |
+| `adds`, `changes`, `removes` | change → feature | change | the change's effect on the feature; derived state replays the done ones |
 | `links` | change · decision · source → source | the referrer | — |
 | `supersedes` | decision → decision | decision | the target becomes `superseded`; no cycles |
 | `parent` | session → session | session | — |

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 /** Kinds whose keys name records inside the store. Every other kind is a source kind. */
-export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project']);
+export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature']);
 
 export interface Key {
   kind: string;

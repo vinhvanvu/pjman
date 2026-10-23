@@ -27,6 +27,11 @@ export interface NewFlags {
   agent?: string;
   onBehalfOf?: string;
   parent?: string;
+  product?: string;
+  owners?: string[];
+  features?: string[];
+  level?: string;
+  levels?: string[];
   started?: string;
   created?: string;
   body?: string;
@@ -59,6 +64,10 @@ export interface NewResult {
 
 export function newRecord(store: Store, type: string, ident: string, flags: NewFlags): NewResult {
   switch (type) {
+    case 'product':
+      return newProduct(store, ident, flags);
+    case 'feature':
+      return newFeature(store, ident, flags);
     case 'project':
       return newProject(store, ident, flags);
     case 'change':
@@ -72,7 +81,7 @@ export function newRecord(store: Store, type: string, ident: string, flags: NewF
     case 'session':
       return newSession(store, ident, flags);
     default:
-      throw new CliError(`unknown record type '${type}' (project, change, decision, source, actor, session)`);
+      throw new CliError(`unknown record type '${type}' (product, feature, project, change, decision, source, actor, session)`);
   }
 }
 
@@ -83,13 +92,45 @@ function finish(store: Store, type: RecordType, key: string, rel: string, create
   return { type, key, path: rel, commit, notes };
 }
 
+const listOrNone = (v?: string[]): string[] | undefined => (v?.length ? v : undefined);
+
+export function newProduct(store: Store, ident: string, flags: NewFlags): NewResult {
+  const slug = ident.startsWith('product:') ? ident.slice(8) : ident;
+  if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
+  if (!flags.title) throw new CliError('--title is required');
+  const rel = path.join('products', `${slug}.md`);
+  refuseExisting(store, rel);
+  const data: Record<string, unknown> = { title: flags.title, owners: listOrNone(flags.owners), levels: listOrNone(flags.levels), links: listOrNone(flags.links), ...stamp(flags) };
+  let body = flags.summary ? section('Summary', flags.summary) : '';
+  if (flags.body) body += (body ? '\n' : '') + flags.body.trim() + '\n';
+  writeFile(store, rel, render('product', data, body));
+  return finish(store, 'product', `product:${slug}`, rel, [rel], flags);
+}
+
+export function newFeature(store: Store, ident: string, flags: NewFlags): NewResult {
+  const slug = ident.startsWith('feature:') ? ident.slice(8) : ident;
+  if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
+  if (!flags.title) throw new CliError('--title is required');
+  if (!flags.product && !flags.parent) throw new CliError('a feature needs --product product:<slug> (top level) or --parent feature:<slug>');
+  const rel = path.join('features', slug, 'feature.md');
+  refuseExisting(store, rel);
+  const data: Record<string, unknown> = {
+    title: flags.title, status: flags.status, level: flags.level, product: flags.product, parent: flags.parent,
+    owners: listOrNone(flags.owners), links: listOrNone(flags.links), ...stamp(flags),
+  };
+  let body = flags.summary ? section('Summary', flags.summary) : '';
+  if (flags.body) body += (body ? '\n' : '') + flags.body.trim() + '\n';
+  writeFile(store, rel, render('feature', data, body));
+  return finish(store, 'feature', `feature:${slug}`, rel, [rel], flags);
+}
+
 export function newProject(store: Store, ident: string, flags: NewFlags): NewResult {
   const slug = ident.startsWith('project:') ? ident.slice(8) : ident;
   if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
   if (!flags.title) throw new CliError('--title is required');
   const rel = path.join('projects', `${slug}.md`);
   refuseExisting(store, rel);
-  const data: Record<string, unknown> = { title: flags.title, tracker: flags.tracker, links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
+  const data: Record<string, unknown> = { title: flags.title, product: flags.product, parent: flags.parent, tracker: flags.tracker, owners: listOrNone(flags.owners), links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
   writeFile(store, rel, render('project', data, flags.body ? flags.body.trim() + '\n' : ''));
   return finish(store, 'project', `project:${slug}`, rel, [rel], flags);
 }
@@ -107,6 +148,8 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     status: flags.status ?? 'open',
     project: flags.project ?? store.project,
     parent: flags.parent,
+    features: listOrNone(flags.features),
+    owners: listOrNone(flags.owners),
     next: flags.next,
     binds: flags.binds?.length ? flags.binds : undefined,
     links: flags.links?.length ? flags.links : undefined,
