@@ -175,7 +175,7 @@ export interface DerivedStatus {
 }
 
 /** What the done changes say a feature's state is: removed once a removing change is done, live once an adding change is
- *  done, building while any change that affects it is in flight, else planned. A child's state lifts a parent to at
+ *  done, building while any change that affects it is in flight (active, review, blocked; planning and open are not), else planned. A child's state lifts a parent to at
  *  least building or live. */
 export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
   const affecting = loaded.records.filter((r) => r.type === 'change' && r.valid && effectsOf(r).some((e) => live(loaded, e.key)?.key === key));
@@ -184,7 +184,8 @@ export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
   if (removed.length) return { status: 'retired', because: `${removed[removed.length - 1].key} (removes) is done` };
   const added = done('adds');
   if (added.length) return { status: 'live', because: `${added[0].key} (adds) is done` };
-  const inFlight = affecting.filter((r) => ['active', 'review', 'blocked', 'planning'].includes(String(r.data.status)));
+  // in flight means someone is building: active, review or blocked. planning is thinking; open is a backlog line.
+  const inFlight = affecting.filter((r) => ['active', 'review', 'blocked'].includes(String(r.data.status)));
   if (inFlight.length) return { status: 'building', because: `${inFlight.map((r) => r.key).join(', ')} in flight` };
   const children = loaded.records.filter((r) => r.type === 'feature' && r.valid && live(loaded, r.data.parent)?.key === key);
   const childStates = children.map((c) => derivedStatus(loaded, c.key).status);

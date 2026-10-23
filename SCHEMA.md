@@ -67,7 +67,7 @@ One nestable kind for everything the product is and does, at any depth: a featur
 | `links` | A | Optional source keys. |
 | body | A | `## Summary`, optional. |
 
-Derived state: `retired` once a change that `removes` the feature is done; else `live` once a change that `adds` it is done; else `building` while any change affecting it is in flight; a child's `live` or `building` lifts its parent; else `planned`. The tree at any release is a replay of the done changes up to it.
+Derived state: `retired` once a change that `removes` the feature is done; else `live` once a change that `adds` it is done; else `building` while any change affecting it is in flight (`active`, `review` or `blocked`; `planning` and `open` are not building); a child's `live` or `building` lifts its parent; else `planned`. The tree at any release is a replay of the done changes up to it.
 
 ### Project — `projects/<slug>.md`
 

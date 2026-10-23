@@ -84,6 +84,9 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   assert.equal(derivedStatus(loaded, 'feature:saved-cards').status, 'building');
   assert.equal(derivedStatus(loaded, 'feature:checkout').status, 'building');
   assert.equal(derivedStatus(loaded, 'feature:card-scan').status, 'planned');
+  // planning is thinking, not building
+  set(store, 'change:card-form', ['status=planning'], {});
+  assert.equal(derivedStatus(loadStore(store), 'feature:saved-cards').status, 'planned');
   set(store, 'change:card-form', ['status=done'], {});
   loaded = loadStore(store);
   assert.equal(derivedStatus(loaded, 'feature:saved-cards').status, 'live');
