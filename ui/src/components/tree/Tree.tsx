@@ -32,7 +32,10 @@ export interface TreeProps<T> {
   expanded: string[];
   onExpandedChange: (ids: string[]) => void;
   selectedId?: string;
-  onPrimaryAction?: (data: T) => void;
+  /** A click on a row. */
+  onSelect?: (data: T) => void;
+  /** A double-click on a row: the deliberate act of drilling in. */
+  onOpen?: (data: T) => void;
   renderRow: (ctx: TreeRowContext<T>) => ReactNode;
   /** Changes when the data behind the lookups changed, so the tree rebuilds. */
   version: string | number;
@@ -53,7 +56,8 @@ export function Tree<T>({
   expanded,
   onExpandedChange,
   selectedId,
-  onPrimaryAction,
+  onSelect,
+  onOpen,
   renderRow,
   version,
   label,
@@ -65,7 +69,7 @@ export function Tree<T>({
     dataLoader: { getItem, getChildren },
     isItemFolder: (item) => isFolder(item.getItemData()),
     getItemName: (item) => getName(item.getItemData()),
-    onPrimaryAction: (item) => onPrimaryAction?.(item.getItemData()),
+    onPrimaryAction: (item) => onSelect?.(item.getItemData()),
     state: { expandedItems: expanded, selectedItems: selectedId ? [selectedId] : [] },
     setExpandedItems: (updater) => onExpandedChange(typeof updater === 'function' ? updater(expanded) : updater),
     setSelectedItems: () => undefined,
@@ -91,8 +95,16 @@ export function Tree<T>({
           <div
             key={item.getId()}
             {...props}
+            role="treeitem"
+            tabIndex={item.isSelected() ? 0 : -1}
+            aria-selected={item.isSelected()}
+            onClick={() => onSelect?.(data)}
+            onDoubleClick={() => onOpen?.(data)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') onSelect?.(data);
+            }}
             className={cn(
-              'group flex h-8 items-stretch rounded-row outline-none focus-visible:ring-1 focus-visible:ring-ring',
+              'group flex h-8 cursor-default items-stretch rounded-row outline-none select-none focus-visible:ring-1 focus-visible:ring-ring',
               item.isSelected() ? 'bg-selection' : 'hover:bg-raised',
             )}
           >

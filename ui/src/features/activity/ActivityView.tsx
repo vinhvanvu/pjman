@@ -18,7 +18,8 @@ export function ActivityView({
   lens: Lens;
   days: number;
 }) {
-  const events = recent.toReversed();
+  // bounded: the last 30 beneath the entity, newest first; the window is the scope's
+  const events = recent.slice(-30).toReversed();
   return (
     <div className="flex flex-col gap-6 p-5 md:p-6">
       <section className="flex flex-col gap-2">
@@ -56,7 +57,7 @@ export function ActivityView({
         <div className="flex items-baseline gap-2">
           <Label>Stream</Label>
           <span className="text-meta text-ink-faint">
-            last {events.length} events beneath this node · window {days} days
+            last {events.length} events beneath it · window {days} days
           </span>
         </div>
         {events.length === 0 ? (

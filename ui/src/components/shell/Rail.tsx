@@ -2,17 +2,7 @@
 // view is a search param on the current route. Slots take what a feature owns (the theme picker, the person).
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
-import {
-  Activity,
-  ChevronDown,
-  Columns3,
-  Flag,
-  FolderGit2,
-  Inbox,
-  Layers,
-  ListTree,
-  type LucideIcon,
-} from 'lucide-react';
+import { ChevronDown, Columns3, Flag, FolderGit2, Inbox, Layers, ListTree, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Lens, View } from '@/data/contract';
 
@@ -27,8 +17,9 @@ export interface RailProps {
   lensCounts?: Partial<Record<Lens, number>>;
   /** Figures beside views that have one: the inbox count. */
   viewCounts?: Partial<Record<View, number>>;
-  /** Views the current page offers. */
+  /** Views the current page offers, and the one the lens draws when none is asked for. */
   views: readonly View[];
+  defaultView: View;
   themeSlot?: ReactNode;
   personSlot?: ReactNode;
   className?: string;
@@ -44,7 +35,6 @@ const VIEW_ITEMS: { view: View; label: string; icon: LucideIcon }[] = [
   { view: 'tree', label: 'Tree', icon: ListTree },
   { view: 'lanes', label: 'Lanes', icon: Columns3 },
   { view: 'inbox', label: 'Inbox', icon: Inbox },
-  { view: 'activity', label: 'Activity', icon: Activity },
 ];
 
 export function Rail({
@@ -56,6 +46,7 @@ export function Rail({
   lensCounts,
   viewCounts,
   views,
+  defaultView,
   themeSlot,
   personSlot,
   className,
@@ -101,7 +92,7 @@ export function Rail({
           key={v}
           to="/$lens/$"
           params={{ lens, _splat: node ?? '' }}
-          search={(prev: Record<string, unknown>) => ({ ...prev, view: v === 'tree' ? undefined : v })}
+          search={(prev: Record<string, unknown>) => ({ ...prev, view: v === defaultView ? undefined : v })}
           className={cn(railItem, v === view && railItemOn)}
           aria-current={v === view ? 'page' : undefined}
         >

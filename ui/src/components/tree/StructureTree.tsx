@@ -1,10 +1,10 @@
 // A tree over scope nodes of any kind: projects and products as containers, changes nested by parent. The project
-// and milestone lenses draw their tree view with it; the feature lens has its own product map.
+// and milestone lenses draw their tree view with it; the feature lens has its own product map. A click selects, a
+// double-click focuses.
 import { useMemo } from 'react';
-import type { Lens, ScopeNode } from '@/data/contract';
+import type { ScopeNode } from '@/data/contract';
 import { short } from '@/lib/keys';
 import { Chip, Label, StatusChip } from '@/components/chips/Chip';
-import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { Tree } from './Tree';
 
@@ -30,18 +30,20 @@ export function indexNodes(nodes: ScopeNode[], keep: (n: ScopeNode) => boolean =
 
 export function StructureTree({
   nodes,
-  lens,
   expanded,
   onExpandedChange,
   selected,
+  onSelect,
+  onOpen,
   showProject,
   version,
 }: {
   nodes: ScopeNode[];
-  lens: Lens;
   expanded: string[];
   onExpandedChange: (ids: string[]) => void;
   selected?: string;
+  onSelect: (key: string) => void;
+  onOpen: (key: string) => void;
   showProject?: boolean;
   version: string | number;
 }) {
@@ -59,6 +61,7 @@ export function StructureTree({
     }),
     [nodes],
   );
+  const real = (n: ScopeNode) => n.type !== 'unassigned';
   return (
     <Tree<ScopeNode>
       rootId={ROOT}
@@ -69,22 +72,22 @@ export function StructureTree({
       expanded={expanded}
       onExpandedChange={onExpandedChange}
       selectedId={selected}
+      onSelect={(n) => real(n) && onSelect(n.key)}
+      onOpen={(n) => real(n) && n.children.length > 0 && onOpen(n.key)}
       version={version}
       label="Structure"
-      renderRow={({ data: n }) => <StructureRow node={n} lens={lens} showProject={showProject} />}
+      renderRow={({ data: n }) => <StructureRow node={n} showProject={showProject} />}
     />
   );
 }
 
-function StructureRow({ node: n, lens, showProject }: { node: ScopeNode; lens: Lens; showProject?: boolean }) {
+function StructureRow({ node: n, showProject }: { node: ScopeNode; showProject?: boolean }) {
   if (n.type === 'change' && n.row) {
     const r = n.row;
     return (
-      <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2 pr-2" title={r.title}>
         {r.live && <Pulse className="size-[7px]" />}
-        <NodeLink to={r.key} lens={lens} className="min-w-0 flex-1 truncate font-medium hover:text-primary">
-          {r.title ?? short(r.key)}
-        </NodeLink>
+        <span className="min-w-0 flex-1 truncate font-medium">{r.title ?? short(r.key)}</span>
         <StatusChip status={r.status} />
         {r.ticket && (
           <Chip tone="quiet" mono>
@@ -110,10 +113,8 @@ function StructureRow({ node: n, lens, showProject }: { node: ScopeNode; lens: L
     );
   }
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
-      <NodeLink to={n.key} lens={lens} className="min-w-0 truncate font-medium hover:text-primary">
-        {n.name ?? n.title ?? short(n.key)}
-      </NodeLink>
+    <div className="flex min-w-0 flex-1 items-center gap-2 pr-2" title={n.title}>
+      <span className="min-w-0 truncate font-medium">{n.name ?? n.title ?? short(n.key)}</span>
       <Label>{n.level}</Label>
       <span className="ml-auto flex shrink-0 items-center gap-2.5 text-meta text-ink-faint">
         {n.progress && (

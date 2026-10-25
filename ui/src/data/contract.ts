@@ -11,9 +11,12 @@ import type { Lens } from '@contract/scope';
 
 export const LENSES = ['feature', 'project', 'milestone'] as const satisfies readonly Lens[];
 export const IN_FLIGHT = ['active', 'review', 'blocked'] as const;
-/** The views a lens can be drawn in. The inbox is only meaningful where there are changes beneath. */
-export const VIEWS = ['tree', 'lanes', 'inbox', 'activity'] as const;
+/** How the structure pane draws the scope. */
+export const VIEWS = ['tree', 'lanes', 'inbox'] as const;
 export type View = (typeof VIEWS)[number];
+/** The record pane's tabs, for the selected entity. */
+export const TABS = ['overview', 'activity', 'decisions'] as const;
+export type Tab = (typeof TABS)[number];
 /** How the lanes group. */
 export const GROUPINGS = ['status', 'milestone', 'actor'] as const;
 export type Grouping = (typeof GROUPINGS)[number];
