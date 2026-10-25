@@ -9,7 +9,7 @@ export const PREFERENCES_KEY = 'pjman.preferences';
 export interface Preferences {
   theme: ThemeId;
   railCollapsed: boolean;
-  /** Expanded tree nodes, remembered per container (`lens:container`). */
+  /** Expanded tree nodes per container (`lens:container`): kept while the page lives, not persisted. */
   expanded: Record<string, string[]>;
   /** Where the split between panes sits, per split id. */
   splits: Record<string, Record<string, number>>;
@@ -33,7 +33,12 @@ export const usePreferences = create<Preferences>()(
     }),
     {
       name: PREFERENCES_KEY,
-      partialize: (s) => ({ theme: s.theme, railCollapsed: s.railCollapsed, expanded: s.expanded, splits: s.splits }),
+      partialize: (s) => ({ theme: s.theme, railCollapsed: s.railCollapsed, splits: s.splits }),
+      // an older build persisted `expanded`; never let it back in
+      merge: (stored, current) => {
+        const { expanded: _dropped, ...rest } = (stored ?? {}) as Partial<Preferences>;
+        return { ...current, ...rest };
+      },
     },
   ),
 );

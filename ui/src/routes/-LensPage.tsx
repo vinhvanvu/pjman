@@ -78,10 +78,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const view: View = search.view ?? defaultView;
   const grouping: Grouping = search.group ?? 'status';
   const tab: Tab = search.tab ?? 'overview';
-  const filter = useMemo<MapFilter>(
-    () => ({ q: search.q, states: list(search.state), levels: list(search.level) }),
-    [search.q, search.state, search.level],
-  );
+  const filter = useMemo<MapFilter>(() => ({ q: search.q, states: list(search.state) }), [search.q, search.state]);
 
   // the rail drawer is open for one page only: any navigation closes it, no effect needed
   const pageKey = `${lens}|${node ?? ''}|${view}`;
@@ -122,12 +119,12 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         ...prev,
         q: f.q?.trim() ? f.q : undefined,
         state: f.states?.length ? f.states.join(',') : undefined,
-        level: f.levels?.length ? f.levels.join(',') : undefined,
       }),
       replace: true,
     });
 
-  // expansion is remembered per scope and lens; the path to the selection is always open
+  // expansion is kept per scope and lens for this page's life, never persisted: a dashboard reopened beside a fresh
+  // session opens collapsed. The path to the selection is always open.
   const expandedAll = usePreferences((s) => s.expanded);
   const setExpanded = usePreferences((s) => s.setExpanded);
   const splits = usePreferences((s) => s.splits);

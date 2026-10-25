@@ -12,10 +12,9 @@ export const pageSearch = z.object({
   done: z.boolean().optional().catch(undefined),
   retired: z.boolean().optional().catch(undefined),
   days: z.number().int().positive().optional().catch(undefined),
-  /** The filter: a text to match on name, title or key; states and levels as comma lists. */
+  /** The filter: a text to match on name, title or key; states as a comma list. */
   q: z.string().optional().catch(undefined),
   state: z.string().optional().catch(undefined),
-  level: z.string().optional().catch(undefined),
 });
 
 export type PageSearch = z.infer<typeof pageSearch>;

@@ -1,4 +1,4 @@
-// The filter bar above the product map: a text, the states, the levels. All of it is URL state, so a filtered map is
+// The filter bar above the product map: a text and the states. All of it is URL state, so a filtered map is
 // a link, and a saved view later is one of these links with a name.
 import { cn } from 'cn';
 import { Search, X } from 'lucide-react';
@@ -11,14 +11,12 @@ const STATES = ['live', 'building', 'planned', 'retired'] as const;
 export interface FilterBarProps {
   filter: MapFilter;
   onChange: (f: MapFilter) => void;
-  /** The level labels this product uses, top first. */
-  levels: string[];
   /** How many features match, when filtering. */
   matched?: number;
   className?: string;
 }
 
-export function FilterBar({ filter, onChange, levels, matched, className }: FilterBarProps) {
+export function FilterBar({ filter, onChange, matched, className }: FilterBarProps) {
   const toggle = (list: string[] | undefined, v: string) =>
     list?.includes(v) ? list.filter((x) => x !== v) : [...(list ?? []), v];
   const active = isFiltering(filter);
@@ -57,29 +55,6 @@ export function FilterBar({ filter, onChange, levels, matched, className }: Filt
           );
         })}
       </div>
-      {levels.length > 1 && (
-        <div className="flex items-center gap-1" role="group" aria-label="Level">
-          {levels.map((l) => {
-            const on = filter.levels?.includes(l);
-            return (
-              <button
-                key={l}
-                type="button"
-                aria-pressed={on}
-                onClick={() => onChange({ ...filter, levels: toggle(filter.levels, l) })}
-                className={cn(
-                  'inline-flex h-7 items-center rounded-row border px-2 text-xs',
-                  on
-                    ? 'border-primary/50 bg-selection text-ink'
-                    : 'border-line-strong text-ink-muted hover:bg-raised hover:text-ink',
-                )}
-              >
-                {l}
-              </button>
-            );
-          })}
-        </div>
-      )}
       {active && (
         <button
           type="button"

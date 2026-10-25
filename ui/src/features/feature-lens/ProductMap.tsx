@@ -1,5 +1,6 @@
-// The product map: features only, collapsed by default, state as a dot, counts faint and right-aligned, connectors from
-// parent to child. A click selects (the record pane shows it); the filter bar narrows the map and opens the matches.
+// The product map: features only, opening collapsed every time (only the path to the selection is open), state as a
+// dot, counts faint and right-aligned, connectors from parent to child. A click selects (the record pane shows it); the
+// filter bar narrows the map and opens the matches.
 import { useMemo } from 'react';
 import type { Scope, ScopeNode } from '@/data/contract';
 import { plural } from '@/lib/format';
@@ -63,17 +64,6 @@ export function ProductMap({
   const allOpen = all.length > 0 && all.every((k) => shownExpanded.includes(k));
   const top = map.children.get(MAP_ROOT) ?? [];
   const matched = filtering ? [...map.items.values()].filter((n) => matches(n, filter)).length : undefined;
-  const levels = useMemo(() => {
-    const seen = new Set<string>();
-    const walk = (list: ScopeNode[]) => {
-      for (const n of list) {
-        if (n.type === 'feature' && n.level) seen.add(n.level);
-        walk(n.children);
-      }
-    };
-    walk(scope.tree);
-    return [...seen];
-  }, [scope.tree]);
 
   return (
     <section aria-label="Product map" className="flex min-h-0 flex-1 flex-col">
@@ -95,7 +85,7 @@ export function ProductMap({
           </Button>
         )}
       </div>
-      <FilterBar filter={filter} onChange={onFilterChange} levels={levels} matched={matched} />
+      <FilterBar filter={filter} onChange={onFilterChange} matched={matched} />
       <div className="flex-1 px-3 pb-4">
         {top.length === 0 && (
           <p className="px-2 py-3 text-xs text-ink-faint">
