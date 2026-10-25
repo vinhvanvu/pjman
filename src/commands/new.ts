@@ -115,7 +115,7 @@ export function newFeature(store: Store, ident: string, flags: NewFlags): NewRes
   const rel = path.join('features', slug, 'feature.md');
   refuseExisting(store, rel);
   const data: Record<string, unknown> = {
-    title: flags.title, status: flags.status, level: flags.level, product: flags.product, parent: flags.parent,
+    title: flags.title, name: flags.name, status: flags.status, level: flags.level, product: flags.product, parent: flags.parent,
     owners: listOrNone(flags.owners), links: listOrNone(flags.links), ...stamp(flags),
   };
   let body = flags.summary ? section('Summary', flags.summary) : '';

@@ -16,7 +16,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:ui": "npm --prefix ui run build",
+    "build:ui": "npm run build && npm --prefix ui run build",
     "test": "npm run build && node --test dist/test/*.test.js",
     "prepare": "npm run build"
   },

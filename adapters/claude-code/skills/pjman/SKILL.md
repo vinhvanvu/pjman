@@ -69,7 +69,8 @@ specific node, the capability rather than the feature above it; state rolls up. 
 changes (live once an adding change is done, retired once a removing one is), so prefer the verb to writing a status.
 A parent change is a milestone: its progress is its children done; goals such as a release or a second user are
 milestones, not features. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
-beneath any node. Create a feature only when the person names a capability; a ticket label is not a feature.
+beneath any node. Create a feature only when the person names a capability; a ticket label is not a feature. Give it `--name`, one to
+three words: the label trees and chips show (the title stays the sentence).
 
 ## Commands you will use
 

@@ -8,7 +8,7 @@ export type RecordType = 'product' | 'feature' | 'project' | 'change' | 'decisio
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   product: ['title', 'owners', 'levels', 'links', 'writer', 'session', 'created', 'ext'],
-  feature: ['title', 'status', 'level', 'product', 'parent', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
+  feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   project: ['title', 'product', 'parent', 'tracker', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   change: ['title', 'status', 'project', 'parent', 'features', 'owners', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'writer', 'session', 'created', 'ext'],

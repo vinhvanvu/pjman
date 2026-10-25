@@ -55,6 +55,8 @@ export interface ScopeNode {
   key: string;
   type: 'product' | 'feature' | 'project' | 'change' | 'unassigned';
   title?: string;
+  /** A feature's short name, what trees and chips show; the title is the sentence. */
+  name?: string;
   level?: string;
   /** A feature's authored status, a change's status. */
   status?: string;
@@ -88,14 +90,24 @@ export interface LiveSession {
   lastLine?: string;
 }
 
+/** A proposed decision beneath a node: what waits on a person, with the agent's recommendation. */
+export interface WaitingDecision {
+  key: string;
+  title?: string;
+  change: string;
+  decision?: string;
+  why?: string;
+  created?: string;
+}
+
 export interface Scope {
   lens: Lens;
   days: number;
   /** The node stood on; null at the store root. */
-  node: (Row & { level?: string; derived?: string; summary?: string }) | null;
+  node: (Row & { name?: string; level?: string; derived?: string; summary?: string; progress?: { done: number; total: number } }) | null;
   /** The container whose tree is drawn: the node when it is one, else the nearest above it in this lens; null at the root. */
   container: string | null;
-  crumbs: { key: string; title?: string }[];
+  crumbs: { key: string; title?: string; name?: string }[];
   products: Row[];
   tree: ScopeNode[];
   /** Every change in the container's scope, creation order: the lanes view draws these. */
@@ -108,6 +120,8 @@ export interface Scope {
   health: Health;
   owners: { owners: string[]; from?: string };
   sessions: LiveSession[];
+  /** Proposed decisions beneath the node, oldest first: the inbox. */
+  waitingOn: WaitingDecision[];
   /** The last events beneath the node, oldest first. */
   recent: StoreEvent[];
   /** The change's full context when the node is one. */
@@ -315,7 +329,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     const children = featureChildren(f.key).map(featureNode).filter((n): n is ScopeNode => n !== null);
     const here = shown.filter((c) => names(c, f.key));
     const kids = rows(here, (k) => names(k, f.key) || namesNothing(k), true);
-    return { key: f.key, type: 'feature', title: str(f.data.title), level: levelOf(loaded, f), status: str(f.data.status), derived: d.status, childCount: children.length, ...facts(f), children: [...children, ...kids] };
+    return { key: f.key, type: 'feature', title: str(f.data.title), name: str(f.data.name), level: levelOf(loaded, f), status: str(f.data.status), derived: d.status, childCount: children.length, ...facts(f), children: [...children, ...kids] };
   };
   const projectChildren = (key: string) => loaded.records.filter((p) => p.type === 'project' && p.valid && structuralParent(loaded, p)?.key === key);
   const projectNode = (p: Rec): ScopeNode => {
@@ -378,11 +392,15 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     .sort((a, b) => b.last.localeCompare(a.last));
   const aliasKeys = new Set(nodeKeys);
   for (const k of nodeKeys) for (const a of list(live(loaded, k)?.data.aliases)) aliasKeys.add(`change:${a}`);
-  const recent = ix.events.filter((e) => aliasKeys.has(e.key) && e.op !== 'write' && e.op !== 'formatted').slice(-20);
+  const recent = ix.events.filter((e) => aliasKeys.has(e.key) && e.op !== 'write' && e.op !== 'formatted').slice(-60);
+  const waitingOn: WaitingDecision[] = loaded.records
+    .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && nodeKeys.has(d.key) && d.changeSlug)
+    .map((d) => ({ key: d.key, title: str(d.data.title), change: `change:${d.changeSlug}`, decision: d.sections.get('Decision'), why: d.sections.get('Why'), created: str(d.data.created) }))
+    .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
 
   // crumbs: the chain above the node in this lens, product first
   const crumbs: Scope['crumbs'] = [];
-  const crumb = (r: Rec | undefined) => r && crumbs.unshift({ key: r.key, title: str(r.data.title) });
+  const crumb = (r: Rec | undefined) => r && crumbs.unshift({ key: r.key, title: str(r.data.title), name: str(r.data.name) });
   const climb = (r: Rec | undefined) => {
     const seen = new Set<string>();
     while (r && !seen.has(r.key)) {
@@ -409,11 +427,13 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const changes = shown.map((c) => ix.row(c));
   return {
     lens, days,
-    node: node ? { ...row(node), level: node.type === 'change' ? undefined : levelOf(loaded, node), derived: node.type === 'feature' ? derivedStatus(loaded, node.key).status : undefined, summary: node.sections.get('Summary') } : null,
+    node: node
+      ? { ...row(node), name: str(node.data.name), level: node.type === 'change' ? undefined : levelOf(loaded, node), derived: node.type === 'feature' ? derivedStatus(loaded, node.key).status : undefined, summary: node.sections.get('Summary'), progress: node.type === 'project' ? facts(node).progress : undefined }
+      : null,
     container: container?.key ?? null,
     crumbs, products: products.map(row), tree, changes,
     projects: [...new Set(changes.map((c) => c.project).filter((p): p is string => !!p))].sort(),
-    doneHidden, retiredHidden, health, owners, sessions, recent,
+    doneHidden, retiredHidden, health, owners, sessions, waitingOn, recent,
     change: node?.type === 'change' ? changeContext(store, node.key, loaded) : undefined,
   };
 }

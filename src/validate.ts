@@ -17,7 +17,7 @@ const REQUIRED: Record<RecordType, string[]> = {
 
 const STRING_FIELDS: Record<RecordType, string[]> = {
   product: ['title', 'writer', 'session', 'created'],
-  feature: ['title', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
+  feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
   project: ['title', 'product', 'parent', 'tracker', 'writer', 'session', 'created'],
   change: ['title', 'status', 'project', 'parent', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
@@ -156,6 +156,7 @@ export function validate(loaded: Loaded): Problem[] {
       }
       case 'feature': {
         if (r.featureSlug && !SLUG_RE.test(r.featureSlug)) err(r, `folder name '${r.featureSlug}' is not a slug`);
+        if (typeof d.name === 'string' && (!d.name.trim() || d.name.trim().split(/\s+/).length > 3)) err(r, `name: one to three words, the label the tree shows ('${d.name}')`);
         if (typeof d.status === 'string' && !(FEATURE_STATUSES as readonly string[]).includes(d.status)) err(r, `status '${d.status}' is not one of ${FEATURE_STATUSES.join(', ')}`);
         if (typeof d.product !== 'string' && typeof d.parent !== 'string') err(r, `a feature names its 'product' (a top-level feature) or its 'parent' (a feature)`);
         if (typeof d.product === 'string') checkRef(r, 'product', d.product, ['product']);

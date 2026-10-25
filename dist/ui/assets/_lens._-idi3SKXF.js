@@ -1,0 +1,1 @@
+import{t as e}from"./jsx-runtime-BX5dh3L7.js";var t=e(),n=()=>(0,t.jsx)(`div`,{className:`p-6 text-sm text-ink-muted`,children:`No such lens. The lenses are feature, project and milestone.`});export{n as notFoundComponent};

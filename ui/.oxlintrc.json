@@ -6,9 +6,14 @@
     "suspicious": "warn",
     "perf": "warn"
   },
-  "env": { "browser": true, "es2024": true },
+  "env": {
+    "browser": true,
+    "es2024": true
+  },
   "settings": {
-    "react": { "version": "19" }
+    "react": {
+      "version": "19"
+    }
   },
   "rules": {
     "react/rules-of-hooks": "error",
@@ -19,63 +24,147 @@
     "import/no-duplicates": "error",
     "typescript/consistent-type-imports": "error",
     "typescript/no-explicit-any": "error",
-    "no-console": ["warn", { "allow": ["warn", "error"] }],
-    "eqeqeq": "error"
+    "no-console": [
+      "warn",
+      {
+        "allow": ["warn", "error"]
+      }
+    ],
+    "eqeqeq": "error",
+    "jsx-a11y/prefer-tag-over-role": "off",
+    "oxc/no-map-spread": "off",
+    "import/no-unassigned-import": "off",
+    "no-underscore-dangle": [
+      "warn",
+      {
+        "allow": ["_splat"]
+      }
+    ],
+    "react/no-array-index-key": "off"
   },
   "ignorePatterns": ["dist", "node_modules", "src/app/routeTree.gen.ts", "src/components/ui/**"],
   "overrides": [
     {
       "files": ["src/components/**/*.{ts,tsx}"],
       "rules": {
-        "no-restricted-imports": ["error", { "patterns": [
-          { "group": ["@/data/*", "@/features/*", "@/state/*", "@/routes/*", "@/app/*"], "message": "Components are presentational: data in, callbacks out. They never import data, features, state or routes." }
-        ] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@/data/client",
+                  "@/data/queries",
+                  "@/data/live",
+                  "@/features/*",
+                  "@/state/*",
+                  "@/routes/*",
+                  "@/app/*"
+                ],
+                "message": "Components are presentational: data in, callbacks out. They never fetch, and never import features, state or routes (the contract's types are fine)."
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "files": ["src/data/**/*.{ts,tsx}"],
       "rules": {
-        "no-restricted-imports": ["error", { "patterns": [
-          { "group": ["@/components/*", "@/features/*", "@/routes/*", "@/app/*"], "message": "The data layer never imports components, features or routes." }
-        ] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/components/*", "@/features/*", "@/routes/*", "@/app/*"],
+                "message": "The data layer never imports components, features or routes."
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "files": ["src/state/**/*.{ts,tsx}", "src/lib/**/*.{ts,tsx}", "src/themes/**/*.{ts,tsx}"],
       "rules": {
-        "no-restricted-imports": ["error", { "patterns": [
-          { "group": ["@/components/*", "@/features/*", "@/routes/*", "@/app/*", "@/data/*"], "message": "state, lib and themes are leaves: they import nothing above them." }
-        ] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": [
+                  "@/components/*",
+                  "@/features/*",
+                  "@/routes/*",
+                  "@/app/*",
+                  "@/data/client",
+                  "@/data/queries",
+                  "@/data/live"
+                ],
+                "message": "state, lib and themes are leaves: they import nothing above them (the contract's types are fine)."
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "files": ["src/features/**/*.{ts,tsx}"],
       "rules": {
-        "no-restricted-imports": ["error", { "patterns": [
-          { "group": ["@/features/*"], "message": "Features never import each other. Share through components, data or state." },
-          { "group": ["@/routes/*", "@/app/*"], "message": "Features are composed by routes, never the other way round." }
-        ] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@/features/*"],
+                "message": "Features never import each other. Share through components, data or state."
+              },
+              {
+                "group": ["@/routes/*", "@/app/*"],
+                "message": "Features are composed by routes, never the other way round."
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "files": ["src/features/*/*.{ts,tsx}"],
       "rules": {
-        "no-restricted-imports": ["error", { "patterns": [
-          { "group": ["../*"], "message": "A relative import that leaves the feature reaches another feature. Use an alias for shared code." }
-        ] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../*"],
+                "message": "A relative import that leaves the feature reaches another feature. Use an alias for shared code."
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "files": ["src/features/*/*/*.{ts,tsx}"],
       "rules": {
-        "no-restricted-imports": ["error", { "patterns": [
-          { "group": ["../../*"], "message": "A relative import that leaves the feature reaches another feature. Use an alias for shared code." }
-        ] }]
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../../*"],
+                "message": "A relative import that leaves the feature reaches another feature. Use an alias for shared code."
+              }
+            ]
+          }
+        ]
       }
     },
     {
       "files": ["src/**/*.test.{ts,tsx}"],
-      "rules": { "no-restricted-imports": "off" }
+      "rules": {
+        "no-restricted-imports": "off"
+      }
     }
   ]
 }
