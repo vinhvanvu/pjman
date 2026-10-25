@@ -73,3 +73,40 @@ export function changesBeneath(scope: Scope): { feature: ScopeNode; rows: Change
   walk(scope.tree);
   return groups;
 }
+
+// --- the filter ---------------------------------------------------------------------------------------------
+
+export interface MapFilter {
+  /** Matched against the name, the title and the key, case-insensitive. */
+  q?: string;
+  /** Derived states to keep: live, building, planned, retired. Empty keeps all. */
+  states?: string[];
+  /** Levels to keep: feature, capability. Empty keeps all. */
+  levels?: string[];
+}
+
+export const isFiltering = (f: MapFilter): boolean => !!f.q?.trim() || !!f.states?.length || !!f.levels?.length;
+
+export function matches(n: ScopeNode, f: MapFilter): boolean {
+  if (n.type !== 'feature' && n.type !== 'product') return false;
+  const q = f.q?.trim().toLowerCase();
+  if (q && ![n.name, n.title, n.key].some((s) => s?.toLowerCase().includes(q))) return false;
+  if (f.states?.length && !f.states.includes(n.derived ?? n.status ?? 'planned')) return false;
+  if (f.levels?.length && !f.levels.includes(n.level ?? '')) return false;
+  return true;
+}
+
+/** The tree narrowed to the features that match, with the ancestors that lead to them. */
+export function filterTree(tree: ScopeNode[], f: MapFilter): ScopeNode[] {
+  if (!isFiltering(f)) return tree;
+  const walk = (list: ScopeNode[]): ScopeNode[] =>
+    list.flatMap((n) => {
+      if (n.type !== 'feature' && n.type !== 'product') return [];
+      const kids = walk(n.children);
+      return matches(n, f) || kids.length ? [{ ...n, children: kids }] : [];
+    });
+  return walk(tree);
+}
+
+/** Every feature key in a tree: what to expand so the matches are visible. */
+export const keysIn = (tree: ScopeNode[]): string[] => allFeatureKeys(tree);

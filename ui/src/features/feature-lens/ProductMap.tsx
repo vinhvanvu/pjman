@@ -1,5 +1,5 @@
 // The product map: features only, collapsed by default, state as a dot, counts faint and right-aligned, connectors from
-// parent to child. A click selects (the record pane shows it); a double-click focuses (the map re-roots there).
+// parent to child. A click selects (the record pane shows it); the filter bar narrows the map and opens the matches.
 import { useMemo } from 'react';
 import type { Scope, ScopeNode } from '@/data/contract';
 import { plural } from '@/lib/format';
@@ -7,7 +7,17 @@ import { short } from '@/lib/keys';
 import { Chip, Label, StateDot } from '@/components/chips/Chip';
 import { Tree } from '@/components/tree/Tree';
 import { Button } from '@/components/ui/button';
-import { allFeatureKeys, MAP_ROOT, productMap, unassigned } from './model';
+import { FilterBar } from './FilterBar';
+import {
+  allFeatureKeys,
+  filterTree,
+  isFiltering,
+  MAP_ROOT,
+  matches,
+  productMap,
+  unassigned,
+  type MapFilter,
+} from './model';
 
 export interface ProductMapProps {
   scope: Scope;
@@ -15,7 +25,8 @@ export interface ProductMapProps {
   onExpandedChange: (ids: string[]) => void;
   selected?: string;
   onSelect: (key: string) => void;
-  onOpen: (key: string) => void;
+  filter: MapFilter;
+  onFilterChange: (f: MapFilter) => void;
   version: string | number;
 }
 
@@ -25,10 +36,13 @@ export function ProductMap({
   onExpandedChange,
   selected,
   onSelect,
-  onOpen,
+  filter,
+  onFilterChange,
   version,
 }: ProductMapProps) {
-  const map = useMemo(() => productMap(scope.tree), [scope.tree]);
+  const filtering = isFiltering(filter);
+  const tree = useMemo(() => filterTree(scope.tree, filter), [scope.tree, filter]);
+  const map = useMemo(() => productMap(tree), [tree]);
   const root = useMemo<ScopeNode>(
     () => ({
       key: MAP_ROOT,
@@ -38,14 +52,28 @@ export function ProductMap({
       inFlight: 0,
       projects: [],
       childCount: 0,
-      children: scope.tree,
+      children: tree,
     }),
-    [scope.tree],
+    [tree],
   );
   const left = unassigned(scope.tree);
-  const all = allFeatureKeys(scope.tree);
-  const allOpen = all.length > 0 && all.every((k) => expanded.includes(k));
+  const all = allFeatureKeys(tree);
+  // while filtering every match is visible: the whole narrowed tree is open
+  const shownExpanded = filtering ? all : expanded;
+  const allOpen = all.length > 0 && all.every((k) => shownExpanded.includes(k));
   const top = map.children.get(MAP_ROOT) ?? [];
+  const matched = filtering ? [...map.items.values()].filter((n) => matches(n, filter)).length : undefined;
+  const levels = useMemo(() => {
+    const seen = new Set<string>();
+    const walk = (list: ScopeNode[]) => {
+      for (const n of list) {
+        if (n.type === 'feature' && n.level) seen.add(n.level);
+        walk(n.children);
+      }
+    };
+    walk(scope.tree);
+    return [...seen];
+  }, [scope.tree]);
 
   return (
     <section aria-label="Product map" className="flex min-h-0 flex-1 flex-col">
@@ -56,7 +84,7 @@ export function ProductMap({
           {scope.doneHidden ? ` · ${scope.doneHidden} done hidden` : ''}
         </span>
         <div className="flex-1" />
-        {all.length > 0 && (
+        {all.length > 0 && !filtering && (
           <Button
             variant="outline"
             size="sm"
@@ -67,10 +95,13 @@ export function ProductMap({
           </Button>
         )}
       </div>
+      <FilterBar filter={filter} onChange={onFilterChange} levels={levels} matched={matched} />
       <div className="flex-1 px-3 pb-4">
         {top.length === 0 && (
           <p className="px-2 py-3 text-xs text-ink-faint">
-            No features beneath this one. Its changes are in the record pane.
+            {filtering
+              ? 'No feature matches the filter.'
+              : 'No features beneath this one. Its changes are in the record pane.'}
           </p>
         )}
         <Tree<ScopeNode>
@@ -79,18 +110,22 @@ export function ProductMap({
           getChildren={(id) => map.children.get(id) ?? []}
           isFolder={(n) => (map.children.get(n.key)?.length ?? 0) > 0}
           getName={(n) => n.name ?? n.title ?? n.key}
-          expanded={expanded}
-          onExpandedChange={onExpandedChange}
+          expanded={shownExpanded}
+          onExpandedChange={filtering ? () => undefined : onExpandedChange}
           selectedId={selected}
           onSelect={(n) => onSelect(n.key)}
-          onOpen={(n) => onOpen(n.key)}
-          version={version}
+          version={`${version}:${filtering ? JSON.stringify(filter) : ''}`}
           label="Product map"
           renderRow={({ data: n, level }) => (
-            <FeatureRow node={n} top={level === 0} capabilities={map.children.get(n.key)?.length ?? 0} />
+            <FeatureRow
+              node={n}
+              top={level === 0}
+              capabilities={map.children.get(n.key)?.length ?? 0}
+              dim={filtering && !matches(n, filter)}
+            />
           )}
         />
-        {left && (
+        {left && !filtering && (
           <div className="mx-2 mt-3.5 flex items-center gap-2 border-t border-dashed border-line-strong pt-3">
             <span className="text-xs text-ink-muted">{left.title}</span>
             <Chip tone="quiet">{plural(left.open, 'change')}</Chip>
@@ -112,17 +147,31 @@ export function ProductMap({
           <StateDot state="planned" /> planned
         </span>
         <div className="flex-1" />
-        <span className="text-ink-faint">click selects · double-click focuses</span>
-        {scope.retiredHidden > 0 && <span className="text-ink-faint">· {scope.retiredHidden} retired hidden</span>}
+        {scope.retiredHidden > 0 && <span className="text-ink-faint">{scope.retiredHidden} retired hidden</span>}
       </footer>
     </section>
   );
 }
 
-function FeatureRow({ node: n, top, capabilities }: { node: ScopeNode; top: boolean; capabilities: number }) {
+function FeatureRow({
+  node: n,
+  top,
+  capabilities,
+  dim,
+}: {
+  node: ScopeNode;
+  top: boolean;
+  capabilities: number;
+  dim?: boolean;
+}) {
   const label = n.name ?? n.title ?? short(n.key);
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 pr-2" title={n.title}>
+    <div
+      className={
+        dim ? 'flex min-w-0 flex-1 items-center gap-2 pr-2 opacity-50' : 'flex min-w-0 flex-1 items-center gap-2 pr-2'
+      }
+      title={n.title}
+    >
       <StateDot state={n.derived ?? n.status} title={n.derived ?? n.status} />
       <span className="min-w-0 truncate font-medium">{label}</span>
       {top && n.level && <Label>{n.level}</Label>}

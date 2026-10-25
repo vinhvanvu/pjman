@@ -1,6 +1,5 @@
 // A tree over scope nodes of any kind: projects and products as containers, changes nested by parent. The project
-// and milestone lenses draw their tree view with it; the feature lens has its own product map. A click selects, a
-// double-click focuses.
+// and milestone lenses draw their tree view with it; the feature lens has its own product map. A click selects.
 import { useMemo } from 'react';
 import type { ScopeNode } from '@/data/contract';
 import { short } from '@/lib/keys';
@@ -34,7 +33,6 @@ export function StructureTree({
   onExpandedChange,
   selected,
   onSelect,
-  onOpen,
   showProject,
   version,
 }: {
@@ -43,7 +41,6 @@ export function StructureTree({
   onExpandedChange: (ids: string[]) => void;
   selected?: string;
   onSelect: (key: string) => void;
-  onOpen: (key: string) => void;
   showProject?: boolean;
   version: string | number;
 }) {
@@ -73,7 +70,6 @@ export function StructureTree({
       onExpandedChange={onExpandedChange}
       selectedId={selected}
       onSelect={(n) => real(n) && onSelect(n.key)}
-      onOpen={(n) => real(n) && n.children.length > 0 && onOpen(n.key)}
       version={version}
       label="Structure"
       renderRow={({ data: n }) => <StructureRow node={n} showProject={showProject} />}

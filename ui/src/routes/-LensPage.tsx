@@ -1,11 +1,12 @@
 // The page: a scope in a lens, drawn in a view, with a selection in the record pane. Composes the shell and the
 // features; owns nothing but the composition. URL state comes in as props and search (the path is the scope, `sel`
-// the selection); server state through the scope hook, once for the scope and once for the selection; client state
-// from the stores.
+// the selection, the filter params the narrowing); server state through the scope hook, once for the scope and once
+// for the selection; client state from the stores.
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useMemo, useState } from 'react';
 import { User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
+import { SelectionBadge } from '@/components/SelectionBadge';
 import { Chip } from '@/components/chips/Chip';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
@@ -18,8 +19,8 @@ import type { ChangeContext, Grouping, Lens, Scope, Tab, View } from '@/data/con
 import { useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
-import { FeatureDetail, pathTo, ProductMap } from '@/features/feature-lens';
-import { MilestoneList, MilestonePage } from '@/features/milestone-lens';
+import { FeatureDetail, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
+import { MilestoneHome, MilestoneList, MilestonePage } from '@/features/milestone-lens';
 import { Inbox, inbox, WorkQueue } from '@/features/project-lens';
 import { ChangeRecord } from '@/features/record';
 import { FollowPill } from '@/features/session-follow';
@@ -54,6 +55,8 @@ function kindOf(s: Scope): string {
 const isContainer = (s: Scope): boolean =>
   !!s.node && (s.node.type !== 'change' || (s.change?.children.length ?? 0) > 0);
 
+const list = (v: string | undefined): string[] | undefined => (v ? v.split(',').filter(Boolean) : undefined);
+
 export function LensPage({ lens, node, following }: LensPageProps) {
   const search = useSearch({ strict: false }) as PageSearch;
   const navigate = useNavigate();
@@ -75,6 +78,10 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const view: View = search.view ?? defaultView;
   const grouping: Grouping = search.group ?? 'status';
   const tab: Tab = search.tab ?? 'overview';
+  const filter = useMemo<MapFilter>(
+    () => ({ q: search.q, states: list(search.state), levels: list(search.level) }),
+    [search.q, search.state, search.level],
+  );
 
   // the rail drawer is open for one page only: any navigation closes it, no effect needed
   const pageKey = `${lens}|${node ?? ''}|${view}`;
@@ -84,15 +91,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const openPalette = useCallback(() => setPalette(true), []);
   useCommandPaletteHotkey(openPalette);
 
-  // the acts: select (replace, the scope stays), focus (a new scope), clear
-  const select = useCallback(
-    (key: string) => void navigate({ to: '.', search: selectSearch(key), replace: true }),
-    [navigate],
-  );
-  const focus = useCallback(
-    (key: string) => void navigate({ to: '/$lens/$', params: { lens, _splat: key }, search: focusSearch }),
-    [navigate, lens],
-  );
+  // the acts: select (replace, the scope stays; selecting the selection again clears it), focus (a new scope), clear
   const clear = useCallback(
     () =>
       void navigate({
@@ -102,10 +101,29 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       }),
     [navigate],
   );
+  const select = useCallback(
+    (key: string) => (key === sel ? clear() : void navigate({ to: '.', search: selectSearch(key), replace: true })),
+    [navigate, sel, clear],
+  );
+  const focus = useCallback(
+    (key: string) => void navigate({ to: '/$lens/$', params: { lens, _splat: key }, search: focusSearch }),
+    [navigate, lens],
+  );
   const setGrouping = (g: Grouping) =>
     void navigate({
       to: '.',
       search: (prev: Record<string, unknown>) => ({ ...prev, group: g === 'status' ? undefined : g }),
+      replace: true,
+    });
+  const setFilter = (f: MapFilter) =>
+    void navigate({
+      to: '.',
+      search: (prev: Record<string, unknown>) => ({
+        ...prev,
+        q: f.q?.trim() ? f.q : undefined,
+        state: f.states?.length ? f.states.join(',') : undefined,
+        level: f.levels?.length ? f.levels.join(',') : undefined,
+      }),
       replace: true,
     });
 
@@ -171,6 +189,8 @@ export function LensPage({ lens, node, following }: LensPageProps) {
 
   // --- the record pane ---------------------------------------------------------------------------------------
   let pane: React.ReactNode;
+  let selectedLabel: string | undefined;
+  let selectedKind = 'entity';
   if (sel && selection.error) {
     pane = (
       <div className="flex flex-col">
@@ -178,10 +198,15 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         <EmptyState title={`Nothing at ${sel}.`} hint={selection.error.message} className="m-5" />
       </div>
     );
+    selectedLabel = sel;
   } else if (!shown) {
     pane = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
   } else {
     const kind = kindOf(shown);
+    if (!isScope) {
+      selectedLabel = shown.node?.name ?? shown.node?.title ?? (sel ? short(sel) : undefined);
+      selectedKind = kind;
+    }
     // the chain from the scope down to the selection, both excluded
     const at = node ? shown.crumbs.findIndex((c) => c.key === node) : -1;
     const path = isScope
@@ -200,13 +225,16 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       ) : (
         <ChangeRecord ctx={shown.change} lens={lens} liveSessions={live} />
       );
+    } else if (lens === 'milestone' && isScope) {
+      // nothing selected in the milestone lens: the goals across the scope
+      body = <MilestoneHome scope={shown} lens={lens} />;
     } else {
       body = <FeatureDetail scope={shown} lens={lens} />;
     }
     pane = (
       <div className="flex min-h-0 flex-1 flex-col">
         <RecordHeader
-          kind={kind}
+          kind={lens === 'milestone' && isScope ? 'scope' : kind}
           isScope={isScope}
           path={path}
           tab={tabs.includes(tab) ? tab : 'overview'}
@@ -252,7 +280,8 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         onExpandedChange={onExpandedChange}
         selected={sel}
         onSelect={select}
-        onOpen={focus}
+        filter={filter}
+        onFilterChange={setFilter}
         version={scope.dataUpdatedAt}
       />
     );
@@ -274,7 +303,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
             onExpandedChange={onExpandedChange}
             selected={sel}
             onSelect={select}
-            onOpen={focus}
             showProject={data.projects.length > 1}
             version={scope.dataUpdatedAt}
           />
@@ -283,20 +311,28 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     );
   }
 
+  // the badge floats over the structure pane whenever something is selected: one way to clear it in every lens
+  const primary = (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {structure}
+      {sel && selectedLabel && <SelectionBadge label={selectedLabel} kind={selectedKind} onClear={clear} />}
+    </div>
+  );
+
   const splitId = `pjman.split.${lens}.${view}`;
   const content =
     paneAlways || sel ? (
       <SplitPane
         wide={wide}
         id={splitId}
-        primary={structure}
+        primary={primary}
         secondary={pane}
         primarySize={view === 'tree' ? (lens === 'milestone' ? 38 : 55) : 62}
         layout={splits[splitId]}
         onLayoutChange={(l) => setSplit(splitId, l)}
       />
     ) : (
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">{structure}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto">{primary}</div>
     );
 
   return (
@@ -309,14 +345,14 @@ export function LensPage({ lens, node, following }: LensPageProps) {
 
 /** The decisions tab: proposed first, each with its recommendation and why. */
 function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
-  const list = [
+  const items = [
     ...ctx.decisions.filter((d) => d.status === 'proposed'),
     ...ctx.decisions.filter((d) => d.status !== 'proposed'),
   ];
-  if (list.length === 0) return <EmptyState title="No decisions on this change yet." className="m-5" />;
+  if (items.length === 0) return <EmptyState title="No decisions on this change yet." className="m-5" />;
   return (
     <ol className="flex flex-col gap-3 p-5 md:px-6">
-      {list.map((d) => (
+      {items.map((d) => (
         <li key={d.key} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5">
           <div className="flex items-center gap-2">
             <Chip className={d.status === 'proposed' ? 'text-status-review' : 'text-status-done'}>

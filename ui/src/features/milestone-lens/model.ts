@@ -54,3 +54,57 @@ export function childrenByStatus(ctx: ChangeContext): { status: string; rows: Ro
 
 export const decided = (ctx: ChangeContext) => ctx.decisions.filter((d) => d.status === 'decided');
 export const proposed = (ctx: ChangeContext) => ctx.decisions.filter((d) => d.status === 'proposed');
+
+// --- the home page ------------------------------------------------------------------------------------------
+
+export interface MilestoneSummary {
+  inFlight: number;
+  reached: number;
+  /** Children done over children, across every milestone in flight. */
+  progress: { done: number; total: number };
+  waiting: number;
+  live: number;
+  /** The milestones in flight, nearest to done first. */
+  list: {
+    key: string;
+    title?: string;
+    status?: string;
+    progress?: { done: number; total: number };
+    waiting: number;
+    live: boolean;
+    next?: string;
+  }[];
+  /** Changes that belong to no milestone. */
+  loose: number;
+}
+
+export function summarise(scope: Scope): MilestoneSummary {
+  const { list, left } = milestones(scope);
+  const rows = list.map((m) => {
+    const beneath = rowsBeneath(m);
+    const waiting = (m.row?.waiting ?? 0) + beneath.reduce((n, r) => n + r.waiting, 0);
+    return {
+      key: m.key,
+      title: m.title,
+      status: m.status,
+      progress: m.row?.progress,
+      waiting,
+      live: !!m.row?.live || beneath.some((r) => r.live),
+      next: m.row?.next,
+    };
+  });
+  const progress = rows.reduce(
+    (p, r) => ({ done: p.done + (r.progress?.done ?? 0), total: p.total + (r.progress?.total ?? 0) }),
+    { done: 0, total: 0 },
+  );
+  const share = (r: (typeof rows)[number]) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
+  return {
+    inFlight: rows.length,
+    reached: scope.doneHidden,
+    progress,
+    waiting: scope.waitingOn.length,
+    live: scope.sessions.length,
+    list: rows.toSorted((a, b) => share(b) - share(a) || (a.title ?? '').localeCompare(b.title ?? '')),
+    loose: left?.open ?? 0,
+  };
+}

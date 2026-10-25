@@ -34,8 +34,6 @@ export interface TreeProps<T> {
   selectedId?: string;
   /** A click on a row. */
   onSelect?: (data: T) => void;
-  /** A double-click on a row: the deliberate act of drilling in. */
-  onOpen?: (data: T) => void;
   renderRow: (ctx: TreeRowContext<T>) => ReactNode;
   /** Changes when the data behind the lookups changed, so the tree rebuilds. */
   version: string | number;
@@ -57,7 +55,6 @@ export function Tree<T>({
   onExpandedChange,
   selectedId,
   onSelect,
-  onOpen,
   renderRow,
   version,
   label,
@@ -99,7 +96,6 @@ export function Tree<T>({
             tabIndex={item.isSelected() ? 0 : -1}
             aria-selected={item.isSelected()}
             onClick={() => onSelect?.(data)}
-            onDoubleClick={() => onOpen?.(data)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onSelect?.(data);
             }}
