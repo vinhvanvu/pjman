@@ -37,7 +37,7 @@ before(() => {
   store = findStore(path.join(tmp, 'web'))!;
   newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
-  newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards', parent: 'feature:checkout' });
+  newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
   newRecord(store, 'feature', 'fax', { title: 'Fax orders', product: 'product:shop', status: 'retired' });
   set(store, 'project:web', ['product=product:shop'], {});
@@ -68,6 +68,7 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.deepEqual(checkout.owners, ['person:tester']);
   assert.equal(checkout.ownersFrom, 'product:shop');
   const saved = checkout.children[0];
+  assert.equal(saved.name, 'Saved cards'); // the short name the tree shows; the title stays the sentence
   assert.deepEqual(keys(saved.children), ['change:card-form', 'change:card-endpoint']);
   assert.deepEqual(keys(saved.children[0].children), ['change:card-tests']);
   // the same change again under the second feature it names; its child is not placed twice
@@ -85,6 +86,8 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.equal(s.tree[2].children[0].row!.progress?.total, 2);
   // the health of the node, the live session beneath it, the window
   assert.equal(s.health.waiting, 1);
+  // the inbox: the proposed decision beneath, with the recommendation and the change it is on
+  assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.decision]), [['decision:card-form/why', 'change:card-form', 'd']]);
   assert.equal(s.health.created, 6);
   assert.equal(s.health.staleDays, 0);
   assert.deepEqual(s.sessions.map((x) => [x.key, x.on]), [['session:live-1', 'change:card-form']]);
@@ -107,6 +110,7 @@ test('project lens: projects under the product, changes nested by parent within 
   assert.deepEqual(keys(s.tree[1].children[0].children[0].children), ['change:card-tests']);
   assert.deepEqual(s.tree[1].progress, { done: 1, total: 6 }); // card-endpoint counts beneath web through its parent milestone
   const web = scope(store, loadStore(store), { lens: 'project', node: 'project:web' });
+  assert.deepEqual(web.node?.progress, { done: 1, total: 6 }); // the project's own progress on the node, for the header
   // a child of a web milestone that lives in api is beneath web; the project lens cannot place it here, so it closes the list
   assert.deepEqual(keys(web.tree), ['change:cards', 'change:chore', 'unassigned']);
   assert.equal(web.tree[2].title, 'In other projects');
@@ -134,6 +138,7 @@ test('a leaf change stands in its container for the lens; the crumbs climb that 
   const f = scope(store, loaded, { lens: 'feature', node: 'change:card-tests' });
   assert.equal(f.container, 'feature:saved-cards'); // it names nothing; its parent's first feature files it
   assert.deepEqual(f.crumbs.map((c) => c.key), ['product:shop', 'feature:checkout', 'feature:saved-cards', 'change:cards', 'change:card-form']);
+  assert.equal(f.crumbs[2].name, 'Saved cards'); // crumbs carry the short name
   const p = scope(store, loaded, { lens: 'project', node: 'change:card-tests' });
   assert.equal(p.container, 'project:web');
   assert.deepEqual(p.crumbs.map((c) => c.key), ['product:shop', 'project:web', 'change:cards', 'change:card-form']);
