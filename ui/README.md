@@ -15,11 +15,11 @@ npm run build          # into ../dist/ui
 
 ## Three kinds of state, one owner each
 
-| State  | What                                                                                  | Owner                                                   |
-| ------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| URL    | lens, node, view, grouping, done and retired flags, window                            | TanStack Router; `routes/-search.ts` is the schema      |
-| Server | everything from the API                                                                | TanStack Query (`data/queries.ts`); `data/live.ts` invalidates from the event stream |
-| Client | theme, expanded tree nodes, pane splits, pinned session                               | zustand stores in `state/`, preferences persisted       |
+| State  | What                                                       | Owner                                                                                |
+| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| URL    | lens, node, view, grouping, done and retired flags, window | TanStack Router; `routes/-search.ts` is the schema                                   |
+| Server | everything from the API                                    | TanStack Query (`data/queries.ts`); `data/live.ts` invalidates from the event stream |
+| Client | theme, expanded tree nodes, pane splits, pinned session    | zustand stores in `state/`, preferences persisted                                    |
 
 A value lives in exactly one of the three and is derived elsewhere, never copied.
 

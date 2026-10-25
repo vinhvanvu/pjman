@@ -26,15 +26,35 @@ const feature = (key: string, children: ScopeNode[] = []): ScopeNode => ({
 });
 
 const tree: ScopeNode[] = [
-  feature('dashboard', [feature('board'), feature('navigation', [feature('auto-navigation', [change('auto')]), change('v2')]), change('here')]),
+  feature('dashboard', [
+    feature('board'),
+    feature('navigation', [feature('auto-navigation', [change('auto')]), change('v2')]),
+    change('here'),
+  ]),
   feature('store'),
-  { key: 'unassigned', type: 'unassigned', title: 'No feature named', owners: [], open: 1, inFlight: 0, projects: [], childCount: 0, children: [change('loose')] },
+  {
+    key: 'unassigned',
+    type: 'unassigned',
+    title: 'No feature named',
+    owners: [],
+    open: 1,
+    inFlight: 0,
+    projects: [],
+    childCount: 0,
+    children: [change('loose')],
+  },
 ];
 
 describe('the product map', () => {
   it('is features only, indexed by parent', () => {
     const map = productMap(tree);
-    expect([...map.items.keys()]).toEqual(['feature:dashboard', 'feature:board', 'feature:navigation', 'feature:auto-navigation', 'feature:store']);
+    expect([...map.items.keys()]).toEqual([
+      'feature:dashboard',
+      'feature:board',
+      'feature:navigation',
+      'feature:auto-navigation',
+      'feature:store',
+    ]);
     expect(map.children.get('feature:navigation')).toEqual(['feature:auto-navigation']);
     expect(allFeatureKeys(tree)).toHaveLength(5);
     expect(unassigned(tree)?.children.map((c) => c.key)).toEqual(['change:loose']);

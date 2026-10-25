@@ -81,7 +81,7 @@ export function CommandPalette({
                 {rows.map((r) => (
                   <CommandItem
                     key={r.key}
-                    value={`${r.key} ${r.title ?? ''} ${String(r.data.name ?? '')}`}
+                    value={`${r.key} ${r.title ?? ''} ${typeof r.data.name === 'string' ? r.data.name : ''}`}
                     onSelect={() => go(r.key)}
                     className="gap-2"
                   >

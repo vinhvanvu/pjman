@@ -23,13 +23,20 @@ describe('the link rule', () => {
   it('keeps the lens for a change or product, switches to the home lens otherwise', () => {
     expect(targetOf('change:crud', 'project')).toEqual({ kind: 'node', lens: 'project', node: 'change:crud' });
     expect(targetOf('product:pjman', 'milestone')).toEqual({ kind: 'node', lens: 'milestone', node: 'product:pjman' });
-    expect(targetOf('feature:navigation', 'project')).toEqual({ kind: 'node', lens: 'feature', node: 'feature:navigation' });
+    expect(targetOf('feature:navigation', 'project')).toEqual({
+      kind: 'node',
+      lens: 'feature',
+      node: 'feature:navigation',
+    });
     expect(targetOf('project:pjman', 'feature')).toEqual({ kind: 'node', lens: 'project', node: 'project:pjman' });
   });
 
   it('sends sessions, urls and everything else to their own routes', () => {
     expect(targetOf('session:abc', 'feature')).toEqual({ kind: 'session', id: 'abc' });
-    expect(targetOf('url:https://example.com/x', 'feature')).toEqual({ kind: 'external', url: 'https://example.com/x' });
+    expect(targetOf('url:https://example.com/x', 'feature')).toEqual({
+      kind: 'external',
+      url: 'https://example.com/x',
+    });
     expect(targetOf('decision:crud/why', 'feature')).toEqual({ kind: 'get', key: 'decision:crud/why' });
     expect(targetOf('file:src/scope.ts', 'feature')).toEqual({ kind: 'get', key: 'file:src/scope.ts' });
   });
