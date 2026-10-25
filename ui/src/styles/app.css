@@ -1,0 +1,137 @@
+/* The token contract. Every colour the app uses is a variable set by a theme (src/themes/*.css); this file maps those
+   variables onto Tailwind utilities and the names the copied-in components expect. Components never name a colour. */
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@import '../themes/graphite.css';
+@import '../themes/paper.css';
+@import '../themes/nord.css';
+@import '../themes/catppuccin.css';
+@import '../themes/tokyo.css';
+@import '../themes/gruvbox.css';
+
+/* `dark:` follows the theme, not the operating system. */
+@custom-variant dark (&:where([data-kind='dark'], [data-kind='dark'] *));
+
+@theme inline {
+  --font-sans: 'Inter Variable', Inter, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* surfaces and text, pjman's names */
+  --color-ground: var(--background);
+  --color-surface: var(--card);
+  --color-raised: var(--muted);
+  --color-line: var(--border);
+  --color-line-strong: var(--input);
+  --color-ink: var(--foreground);
+  --color-ink-muted: var(--muted-foreground);
+  --color-ink-faint: var(--faint);
+  --color-selection: var(--selection);
+
+  /* the names the copied-in components use */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* meanings: a change's status, a feature's state, presence */
+  --color-status-active: var(--status-active);
+  --color-status-review: var(--status-review);
+  --color-status-blocked: var(--status-blocked);
+  --color-status-planning: var(--status-planning);
+  --color-status-open: var(--status-open);
+  --color-status-done: var(--status-done);
+  --color-status-dropped: var(--status-dropped);
+  --color-state-live: var(--status-done);
+  --color-state-building: var(--status-review);
+  --color-state-planned: var(--faint);
+  --color-state-retired: var(--status-dropped);
+  --color-live: var(--live);
+
+  --radius-chip: 5px;
+  --radius-row: 6px;
+  --radius-card: 10px;
+  --radius-pane: 12px;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --text-label: 10.5px;
+  --text-label--line-height: 1.2;
+  --text-label--letter-spacing: 0.06em;
+  --text-label--font-weight: 600;
+  --text-meta: 11.5px;
+  --text-meta--line-height: 1.3;
+  --text-body: 13px;
+  --text-body--line-height: 1.45;
+  --text-section: 15px;
+  --text-section--line-height: 1.3;
+  --text-heading: 20px;
+  --text-heading--line-height: 1.25;
+  --text-title: 28px;
+  --text-title--line-height: 1.2;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  button {
+    font: inherit;
+  }
+  ::selection {
+    background: var(--selection);
+  }
+}
+
+@utility label {
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}

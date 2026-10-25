@@ -1,0 +1,41 @@
+/* Paper: the light theme. Warm white ground, ink text, the same indigo accent. */
+[data-theme='paper'] {
+  color-scheme: light;
+  --background: #f6f6f4;
+  --foreground: #1a1b1e;
+  --card: #ffffff;
+  --card-foreground: #1a1b1e;
+  --popover: #ffffff;
+  --popover-foreground: #1a1b1e;
+  --primary: #4b57d2;
+  --primary-foreground: #ffffff;
+  --secondary: #efefec;
+  --secondary-foreground: #1a1b1e;
+  --muted: #efefec;
+  --muted-foreground: #5f646e;
+  --accent: #efefec;
+  --accent-foreground: #1a1b1e;
+  --destructive: #cf3f38;
+  --border: #e3e3de;
+  --input: #d2d2cc;
+  --ring: #4b57d2;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1b1e;
+  --sidebar-primary: #4b57d2;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #efefec;
+  --sidebar-accent-foreground: #1a1b1e;
+  --sidebar-border: #e3e3de;
+  --sidebar-ring: #4b57d2;
+  --faint: #7d828c;
+  --selection: rgba(75, 87, 210, 0.1);
+  --status-active: #4b57d2;
+  --status-review: #a9700f;
+  --status-blocked: #cf3f38;
+  --status-planning: #7a56d4;
+  --status-open: #5f646e;
+  --status-done: #2b8a3e;
+  --status-dropped: #9a9ea6;
+  --live: #1f9d55;
+  --radius: 0.5rem;
+}

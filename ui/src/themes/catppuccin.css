@@ -1,0 +1,41 @@
+/* Catppuccin Mocha. */
+[data-theme='catppuccin'] {
+  color-scheme: dark;
+  --background: #1e1e2e;
+  --foreground: #cdd6f4;
+  --card: #181825;
+  --card-foreground: #cdd6f4;
+  --popover: #181825;
+  --popover-foreground: #cdd6f4;
+  --primary: #cba6f7;
+  --primary-foreground: #1e1e2e;
+  --secondary: #313244;
+  --secondary-foreground: #cdd6f4;
+  --muted: #313244;
+  --muted-foreground: #a6adc8;
+  --accent: #313244;
+  --accent-foreground: #cdd6f4;
+  --destructive: #f38ba8;
+  --border: #313244;
+  --input: #45475a;
+  --ring: #cba6f7;
+  --sidebar: #181825;
+  --sidebar-foreground: #cdd6f4;
+  --sidebar-primary: #cba6f7;
+  --sidebar-primary-foreground: #1e1e2e;
+  --sidebar-accent: #313244;
+  --sidebar-accent-foreground: #cdd6f4;
+  --sidebar-border: #313244;
+  --sidebar-ring: #cba6f7;
+  --faint: #7f849c;
+  --selection: rgba(203, 166, 247, 0.14);
+  --status-active: #89b4fa;
+  --status-review: #f9e2af;
+  --status-blocked: #f38ba8;
+  --status-planning: #cba6f7;
+  --status-open: #a6adc8;
+  --status-done: #a6e3a1;
+  --status-dropped: #6c7086;
+  --live: #a6e3a1;
+  --radius: 0.5rem;
+}

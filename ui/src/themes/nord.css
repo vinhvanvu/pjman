@@ -1,0 +1,41 @@
+/* Nord: the arctic palette many terminals ship with. */
+[data-theme='nord'] {
+  color-scheme: dark;
+  --background: #2e3440;
+  --foreground: #eceff4;
+  --card: #3b4252;
+  --card-foreground: #eceff4;
+  --popover: #3b4252;
+  --popover-foreground: #eceff4;
+  --primary: #88c0d0;
+  --primary-foreground: #2e3440;
+  --secondary: #434c5e;
+  --secondary-foreground: #eceff4;
+  --muted: #434c5e;
+  --muted-foreground: #b3bccb;
+  --accent: #434c5e;
+  --accent-foreground: #eceff4;
+  --destructive: #bf616a;
+  --border: #434c5e;
+  --input: #4c566a;
+  --ring: #88c0d0;
+  --sidebar: #3b4252;
+  --sidebar-foreground: #eceff4;
+  --sidebar-primary: #88c0d0;
+  --sidebar-primary-foreground: #2e3440;
+  --sidebar-accent: #434c5e;
+  --sidebar-accent-foreground: #eceff4;
+  --sidebar-border: #434c5e;
+  --sidebar-ring: #88c0d0;
+  --faint: #8891a3;
+  --selection: rgba(136, 192, 208, 0.16);
+  --status-active: #81a1c1;
+  --status-review: #ebcb8b;
+  --status-blocked: #bf616a;
+  --status-planning: #b48ead;
+  --status-open: #b3bccb;
+  --status-done: #a3be8c;
+  --status-dropped: #6b7489;
+  --live: #a3be8c;
+  --radius: 0.5rem;
+}

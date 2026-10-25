@@ -1,0 +1,41 @@
+/* Tokyo Night. */
+[data-theme='tokyo'] {
+  color-scheme: dark;
+  --background: #1a1b26;
+  --foreground: #c0caf5;
+  --card: #16161e;
+  --card-foreground: #c0caf5;
+  --popover: #16161e;
+  --popover-foreground: #c0caf5;
+  --primary: #7aa2f7;
+  --primary-foreground: #1a1b26;
+  --secondary: #24283b;
+  --secondary-foreground: #c0caf5;
+  --muted: #24283b;
+  --muted-foreground: #9aa5ce;
+  --accent: #24283b;
+  --accent-foreground: #c0caf5;
+  --destructive: #f7768e;
+  --border: #292e42;
+  --input: #3b4261;
+  --ring: #7aa2f7;
+  --sidebar: #16161e;
+  --sidebar-foreground: #c0caf5;
+  --sidebar-primary: #7aa2f7;
+  --sidebar-primary-foreground: #1a1b26;
+  --sidebar-accent: #24283b;
+  --sidebar-accent-foreground: #c0caf5;
+  --sidebar-border: #292e42;
+  --sidebar-ring: #7aa2f7;
+  --faint: #737aa2;
+  --selection: rgba(122, 162, 247, 0.14);
+  --status-active: #7aa2f7;
+  --status-review: #e0af68;
+  --status-blocked: #f7768e;
+  --status-planning: #bb9af7;
+  --status-open: #9aa5ce;
+  --status-done: #9ece6a;
+  --status-dropped: #565f89;
+  --live: #9ece6a;
+  --radius: 0.5rem;
+}

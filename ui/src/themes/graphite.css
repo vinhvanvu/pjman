@@ -1,0 +1,42 @@
+/* Graphite: the default. A near-black ground with a cool indigo accent. Also the fallback when no theme is set. */
+:root,
+[data-theme='graphite'] {
+  color-scheme: dark;
+  --background: #0e0f11;
+  --foreground: #e8e9eb;
+  --card: #141518;
+  --card-foreground: #e8e9eb;
+  --popover: #16181c;
+  --popover-foreground: #e8e9eb;
+  --primary: #6f7df5;
+  --primary-foreground: #ffffff;
+  --secondary: #1c1e23;
+  --secondary-foreground: #e8e9eb;
+  --muted: #1c1e23;
+  --muted-foreground: #8d929b;
+  --accent: #1c1e23;
+  --accent-foreground: #e8e9eb;
+  --destructive: #e5534b;
+  --border: #24272c;
+  --input: #32363d;
+  --ring: #6f7df5;
+  --sidebar: #141518;
+  --sidebar-foreground: #e8e9eb;
+  --sidebar-primary: #6f7df5;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1c1e23;
+  --sidebar-accent-foreground: #e8e9eb;
+  --sidebar-border: #24272c;
+  --sidebar-ring: #6f7df5;
+  --faint: #6a7079;
+  --selection: rgba(111, 125, 245, 0.14);
+  --status-active: #6f7df5;
+  --status-review: #d9a441;
+  --status-blocked: #e5534b;
+  --status-planning: #a78bfa;
+  --status-open: #8d929b;
+  --status-done: #3fb950;
+  --status-dropped: #5a5f68;
+  --live: #2fd27a;
+  --radius: 0.5rem;
+}
