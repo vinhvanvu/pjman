@@ -49,6 +49,8 @@ export interface ChangeRow {
   /** A session bound to it moved inside the live window. */
   live: boolean;
   children: number;
+  /** When the change itself last moved: its last event, under any of its keys. */
+  moved?: string;
 }
 
 export interface ScopeNode {
@@ -240,7 +242,15 @@ class Index {
       progress: progressOf(kids.map((k) => ({ status: str(k.data.status) }))),
       features: effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
       waiting: this.waiting.get(c.key) ?? 0, live: sessions.length > 0, children: kids.length,
+      moved: this.lastMoved(c),
     };
+  }
+
+  /** The instant of the change's last event, under its key or any alias; undefined when it never moved. */
+  lastMoved(c: Rec): string | undefined {
+    const keys = new Set<string>([c.key, ...list(c.data.aliases).map((a) => `change:${a}`)]);
+    for (let i = this.events.length - 1; i >= 0; i--) if (keys.has(this.events[i].key)) return this.events[i].at;
+    return undefined;
   }
 }
 

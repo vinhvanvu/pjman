@@ -52,11 +52,20 @@ describe('lanes', () => {
 });
 
 describe('inbox', () => {
-  it('is what only a person can move', () => {
-    const data = inbox({ waitingOn: [{ key: 'decision:b/why', change: 'change:b' }], changes: rows });
-    expect(data.decisions).toHaveLength(1);
-    expect(data.reviews.map((r) => r.key)).toEqual(['change:b']);
-    expect(data.blocked.map((r) => r.key)).toEqual(['change:c']);
-    expect(data.total).toBe(3);
+  it('is what only a person can move, indexed by change, each with its asks', () => {
+    const data = inbox({
+      waitingOn: [
+        { key: 'decision:b/why', change: 'change:b' },
+        { key: 'decision:gone/what', change: 'change:gone' },
+      ],
+      changes: rows,
+    });
+    expect(data.items.map((i) => [i.row.key, i.decisions.map((d) => d.key)])).toEqual([
+      ['change:b', ['decision:b/why']],
+      ['change:c', []],
+    ]);
+    expect(data.stray.map((d) => d.key)).toEqual(['decision:gone/what']);
+    // one decision and a review on b, a block on c, one stray decision
+    expect(data.total).toBe(4);
   });
 });

@@ -30,7 +30,10 @@ export function SplitPane({
 }: SplitPaneProps) {
   if (!wide || !secondary) {
     return (
-      <div className={cn('flex min-h-0 flex-1 flex-col overflow-auto', className)}>
+      <div
+        className={cn('flex min-h-0 flex-1 flex-col overflow-auto', className)}
+        data-scroll-restoration-id={id ? `${id}.stack` : undefined}
+      >
         <div className="min-h-0">{primary}</div>
         {secondary && <div className="min-h-0 border-t border-line">{secondary}</div>}
       </div>
@@ -49,6 +52,7 @@ export function SplitPane({
         defaultSize={`${primarySize}`}
         minSize="30"
         className="flex min-h-0 flex-col overflow-auto"
+        data-scroll-restoration-id={id ? `${id}.primary` : undefined}
       >
         {primary}
       </ResizablePanel>
@@ -58,6 +62,7 @@ export function SplitPane({
         defaultSize={`${100 - primarySize}`}
         minSize="25"
         className="flex min-h-0 flex-col overflow-auto"
+        data-scroll-restoration-id={id ? `${id}.secondary` : undefined}
       >
         {secondary}
       </ResizablePanel>

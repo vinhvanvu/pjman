@@ -1,5 +1,6 @@
 // The work queue's pure derivations: lanes by status, by milestone, by who moves it next; and the inbox.
 import type { ChangeRow, Grouping, Scope, WaitingDecision } from '@/data/contract';
+import { byMoved, decisionsByChange, needsPerson, strayDecisions } from '@/lib/work';
 
 export interface Lane {
   id: string;
@@ -100,20 +101,22 @@ export function lanesFor(grouping: Grouping, rows: ChangeRow[]): Lane[] {
 }
 
 export interface InboxData {
-  decisions: WaitingDecision[];
-  reviews: ChangeRow[];
-  blocked: ChangeRow[];
+  /** Every change that needs a person, most recently moved first, each with the decisions proposed on it. */
+  items: { row: ChangeRow; decisions: WaitingDecision[] }[];
+  /** Proposed decisions whose change is not in the scope's open changes. */
+  stray: WaitingDecision[];
+  /** Asks in all: decisions, reviews and blocks. */
   total: number;
 }
 
-/** Everything only a person can move. */
+/** Everything only a person can move, indexed by change. */
 export function inbox(scope: Pick<Scope, 'waitingOn' | 'changes'>): InboxData {
-  const reviews = scope.changes.filter((r) => r.status === 'review');
-  const blocked = scope.changes.filter((r) => r.status === 'blocked');
-  return {
-    decisions: scope.waitingOn,
-    reviews,
-    blocked,
-    total: scope.waitingOn.length + reviews.length + blocked.length,
-  };
+  const by = decisionsByChange(scope.waitingOn);
+  const items = byMoved(scope.changes.filter(needsPerson)).map((row) => ({ row, decisions: by.get(row.key) ?? [] }));
+  const stray = strayDecisions(scope.waitingOn, scope.changes);
+  const asks = items.reduce(
+    (n, i) => n + i.decisions.length + (i.row.status === 'review' || i.row.status === 'blocked' ? 1 : 0),
+    0,
+  );
+  return { items, stray, total: asks + stray.length };
 }

@@ -75,6 +75,7 @@ export function WorkQueue({ scope, lens, grouping, onGroupingChange, selected, s
         <Link
           to="."
           search={(prev: Record<string, unknown>) => ({ ...prev, done: showDone ? undefined : true })}
+          replace
           className="inline-flex h-7 items-center rounded-row border border-line-strong px-2.5 text-xs text-ink-muted hover:bg-raised hover:text-ink"
         >
           {showDone ? 'Hide done' : `${scope.doneHidden} done · show`}

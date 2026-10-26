@@ -129,25 +129,6 @@ export function bodyOf(scope: Pick<Scope, 'node' | 'crumbs'>): Body {
   return above === 0 ? 'feature' : 'capability';
 }
 
-/** The work grouped by intent: what waits on a person first, then what is moving, then what is next. Done and dropped
- *  only appear when the scope was asked to show them. */
-export type Intent = 'waiting' | 'progress' | 'upcoming' | 'done';
-
-export const INTENTS: readonly { id: Intent; label: string; statuses: readonly string[] }[] = [
-  { id: 'waiting', label: 'Waiting on you', statuses: ['review', 'blocked'] },
-  { id: 'progress', label: 'In progress', statuses: ['active', 'planning'] },
-  { id: 'upcoming', label: 'Coming up', statuses: ['open'] },
-  { id: 'done', label: 'Done', statuses: ['done', 'dropped'] },
-];
-
-export function byIntent(rows: ChangeRow[]): { intent: Intent; label: string; rows: ChangeRow[] }[] {
-  return INTENTS.map((i) => ({
-    intent: i.id,
-    label: i.label,
-    rows: rows.filter((r) => i.statuses.includes(r.status ?? 'open')),
-  })).filter((g) => g.rows.length > 0);
-}
-
 /** Every change at the node or beneath it, here first, then by feature in tree order. */
 export function allWork(scope: Pick<Scope, 'tree'>): ChangeRow[] {
   return [...changesHere(scope.tree), ...changesBeneath(scope as Scope).flatMap((g) => g.rows)];

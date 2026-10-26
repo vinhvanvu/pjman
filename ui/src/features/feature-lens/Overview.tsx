@@ -3,29 +3,19 @@
 // its capabilities and the work beneath, a capability is the work itself (with whatever nests under it listed first).
 // Work is grouped by intent, what waits on a person first.
 import { Link } from '@tanstack/react-router';
-import { cn } from 'cn';
-import { Check, ChevronRight, Copy } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import type { ChangeRow, Lens, Scope, ScopeNode, WaitingDecision } from '@/data/contract';
-import { ago, pct, plural, sinceDays, truncate } from '@/lib/format';
+import { ago, pct, plural, sinceDays } from '@/lib/format';
 import { short } from '@/lib/keys';
+import { byIntent, decisionsByChange, strayDecisions } from '@/lib/work';
 import { Chip, Label, StateDot, StatusChip } from '@/components/chips/Chip';
-import { ChangeCard } from '@/components/cards/ChangeCard';
+import { DecisionRows } from '@/components/cards/DecisionRows';
+import { WorkCard } from '@/components/cards/WorkCard';
 import { EmptyState } from '@/components/EmptyState';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { NodeHeader } from '@/components/record/NodeHeader';
-import {
-  allWork,
-  bodyOf,
-  byIntent,
-  byMotion,
-  featuresBelow,
-  featuresByState,
-  goals,
-  healthWord,
-  unassigned,
-} from './model';
+import { allWork, bodyOf, byMotion, featuresBelow, featuresByState, goals, healthWord, unassigned } from './model';
 
 const STATES = ['live', 'building', 'planned', 'retired'] as const;
 /** A level label in the plural: capability, capabilities. */
@@ -259,7 +249,8 @@ function FeatureList({ features, lens }: { features: ScopeNode[]; lens: Lens }) 
   );
 }
 
-/** The work grouped by intent. Proposed decisions open the waiting group. A cap per group points at the lanes. */
+/** The work grouped by intent, each change carrying its asks; a cap per group points at the lanes. A decision whose
+ *  change is not in the list is shown on its own, so nothing waiting is hidden. */
 function Work({
   scope,
   lens,
@@ -278,37 +269,46 @@ function Work({
   empty: string;
 }) {
   const groups = byIntent(rows);
+  const decisions = decisionsByChange(waiting);
+  const stray = strayDecisions(waiting, rows);
   const showProject = scope.projects.length > 1;
   const at = scope.node?.key;
-  if (groups.length === 0 && waiting.length === 0) {
+  if (groups.length === 0 && stray.length === 0) {
     return (
       <Section label={label}>
         <EmptyState title={empty} hint="A change names this feature with --features when it touches it." />
       </Section>
     );
   }
-  const hasWaiting = groups.some((g) => g.intent === 'waiting');
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center gap-2.5">
         <Label>{label}</Label>
         <span className="text-meta text-ink-faint">{plural(rows.length, 'change')}</span>
       </div>
-      {!hasWaiting && waiting.length > 0 && (
-        <Section label="Waiting on you" aside={String(waiting.length)}>
-          <Decisions items={waiting} lens={lens} />
+      {stray.length > 0 && !groups.some((g) => g.intent === 'waiting') && (
+        <Section label="Waiting on you" aside={String(stray.length)}>
+          <DecisionRows items={stray} lens={lens} />
         </Section>
       )}
       {groups.map((g) => (
         <Section
           key={g.intent}
           label={g.label}
-          aside={String(g.rows.length + (g.intent === 'waiting' ? waiting.length : 0))}
+          aside={String(g.rows.length + (g.intent === 'waiting' ? stray.length : 0))}
         >
-          {g.intent === 'waiting' && waiting.length > 0 && <Decisions items={waiting} lens={lens} />}
           {(cap ? g.rows.slice(0, cap) : g.rows).map((r) => (
-            <ChangeCard key={r.key} row={r} lens={lens} at={at} showProject={showProject} />
+            <WorkCard
+              key={r.key}
+              row={r}
+              lens={lens}
+              mode="peek"
+              decisions={decisions.get(r.key)}
+              at={at}
+              showProject={showProject}
+            />
           ))}
+          {g.intent === 'waiting' && stray.length > 0 && <DecisionRows items={stray} lens={lens} />}
           {cap && g.rows.length > cap && (
             <Link
               to="."
@@ -324,99 +324,12 @@ function Work({
   );
 }
 
-/** Proposed decisions as cards that open in place: the title and the change collapsed; the whole decision, the why, a
- *  copy of its reference and a way to the change's decisions tab when open. Nothing navigates on the first click. */
-function Decisions({ items, lens }: { items: WaitingDecision[]; lens: Lens }) {
-  const [open, setOpen] = useState<Set<string>>(() => new Set());
-  const toggle = (key: string) =>
-    setOpen((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  return (
-    <ol className="flex flex-col gap-2">
-      {items.map((d) => {
-        const isOpen = open.has(d.key);
-        return (
-          <li key={d.key} className="flex flex-col rounded-card border border-line bg-surface">
-            <button
-              type="button"
-              aria-expanded={isOpen}
-              onClick={() => toggle(d.key)}
-              className="flex w-full flex-col gap-1 px-3.5 py-3 text-left hover:bg-raised"
-            >
-              <div className="flex items-center gap-2">
-                <ChevronRight
-                  className={cn('size-3.5 shrink-0 text-ink-faint transition-transform', isOpen && 'rotate-90')}
-                  aria-hidden="true"
-                />
-                <Chip className="text-status-review">
-                  <span aria-hidden="true" className="size-[7px] rounded-full bg-current" />
-                  decide
-                </Chip>
-                <span className={cn('min-w-0 flex-1 font-medium', !isOpen && 'truncate')}>
-                  {d.title ?? short(d.key)}
-                </span>
-                <span className="shrink-0 text-meta text-ink-faint">{short(d.change)}</span>
-              </div>
-              {!isOpen && d.decision && (
-                <p className="truncate pl-[22px] text-xs text-ink-muted">{truncate(d.decision, 140)}</p>
-              )}
-            </button>
-            {isOpen && (
-              <div className="flex flex-col gap-2.5 border-t border-line px-3.5 py-3 pl-[36px]">
-                {d.decision && <p className="text-[13px] leading-relaxed text-ink-muted">{d.decision}</p>}
-                {d.why && (
-                  <p className="text-xs leading-relaxed text-ink-faint">
-                    <span className="label mr-1.5">Why</span>
-                    {d.why}
-                  </p>
-                )}
-                <div className="flex flex-wrap items-center gap-3 text-meta text-ink-faint">
-                  <span className="font-mono">{short(d.key)}</span>
-                  <CopyRef text={d.key} />
-                  <NodeLink to={d.key} lens={lens} className="ml-auto hover:text-ink">
-                    open on {short(d.change)} →
-                  </NodeLink>
-                </div>
-              </div>
-            )}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/** Copies a reference for pasting into a session; says so for a moment. */
-function CopyRef({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        void navigator.clipboard?.writeText(text).then(() => {
-          setDone(true);
-          setTimeout(() => setDone(false), 1500);
-        });
-      }}
-      className="inline-flex items-center gap-1 hover:text-ink"
-      title="Copy the reference"
-    >
-      {done ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
-      {done ? 'copied' : 'copy'}
-    </button>
-  );
-}
-
 function WaitingList({ items, lens }: { items: WaitingDecision[]; lens: Lens }) {
   if (items.length === 0) return null;
   const shown = items.slice(0, 3);
   return (
     <Section label="Waiting on you" aside={String(items.length)}>
-      <Decisions items={shown} lens={lens} />
+      <DecisionRows items={shown} lens={lens} />
       {items.length > shown.length && (
         <Link
           to="."

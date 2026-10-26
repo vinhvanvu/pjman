@@ -88,18 +88,19 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const openPalette = useCallback(() => setPalette(true), []);
   useCommandPaletteHotkey(openPalette);
 
-  // the acts: select (replace, the scope stays; selecting the selection again clears it), focus (a new scope), clear
+  // the acts. A history entry per place (scope, selection, view): select, clear and focus push, so Back undoes the last
+  // click; refinements of the same place (tab, grouping, filter, flags, window) replace. Components call these and
+  // never choose push or replace on their own.
   const clear = useCallback(
     () =>
       void navigate({
         to: '.',
         search: (prev: Record<string, unknown>) => ({ ...prev, sel: undefined, tab: undefined }),
-        replace: true,
       }),
     [navigate],
   );
   const select = useCallback(
-    (key: string) => (key === sel ? clear() : void navigate({ to: '.', search: selectSearch(key), replace: true })),
+    (key: string) => (key === sel ? clear() : void navigate({ to: '.', search: selectSearch(key) })),
     [navigate, sel, clear],
   );
   const focus = useCallback(
@@ -256,7 +257,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     structure = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
   } else if (view === 'inbox') {
     paneAlways = false;
-    structure = <Inbox data={inboxData!} lens={lens} selected={sel} />;
+    structure = <Inbox data={inboxData!} lens={lens} selected={sel} showProject={data.projects.length > 1} />;
   } else if (view === 'lanes') {
     paneAlways = false;
     structure = (
@@ -329,7 +330,9 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         onLayoutChange={(l) => setSplit(splitId, l)}
       />
     ) : (
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">{primary}</div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto" data-scroll-restoration-id={`${splitId}.only`}>
+        {primary}
+      </div>
     );
 
   return (

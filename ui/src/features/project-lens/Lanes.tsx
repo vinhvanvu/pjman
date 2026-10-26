@@ -57,7 +57,7 @@ export function Lanes({
               showStatus={showStatus}
               showProject={showProject}
               showMilestone={showMilestone}
-              moved={ago(r.created)}
+              moved={ago(r.moved ?? r.created)}
             />
           ))}
         </section>

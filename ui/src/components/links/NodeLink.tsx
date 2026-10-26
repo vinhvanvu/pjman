@@ -1,5 +1,5 @@
 // A link to any key, following the link rule. Two modes: `select` (the default) keeps the scope and puts the key in
-// the selection, with history replaced so Back steps between scopes, not clicks; `focus` makes the key the scope.
+// the selection; `focus` makes the key the scope. Both push a history entry: a place changed, so Back undoes it.
 // A key that lives in another lens is always a focus into that lens. Sessions and everything else go to their routes.
 import { Link, type LinkProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
@@ -36,7 +36,7 @@ export function NodeLink({ to, lens, mode = 'select', children, ...rest }: NodeL
   if (kindOf(to) === 'decision') {
     const change = `change:${restOf(to).split('/')[0]}`;
     return (
-      <Link to="." search={selectSearch(change, 'decisions')} replace {...rest}>
+      <Link to="." search={selectSearch(change, 'decisions')} {...rest}>
         {children}
       </Link>
     );
@@ -46,7 +46,7 @@ export function NodeLink({ to, lens, mode = 'select', children, ...rest }: NodeL
     case 'node':
       if (mode === 'select' && t.lens === lens) {
         return (
-          <Link to="." search={selectSearch(t.node)} replace {...rest}>
+          <Link to="." search={selectSearch(t.node)} {...rest}>
             {children}
           </Link>
         );

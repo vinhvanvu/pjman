@@ -4,7 +4,6 @@ import {
   allFeatureKeys,
   allWork,
   bodyOf,
-  byIntent,
   byMotion,
   changesBeneath,
   changesHere,
@@ -110,18 +109,6 @@ describe('the overview', () => {
     expect(bodyOf({ node: f, crumbs: crumbs('product:p') })).toBe('feature');
     expect(bodyOf({ node: f, crumbs: crumbs('product:p', 'feature:above') })).toBe('capability');
     expect(bodyOf({ node: f, crumbs: crumbs('product:p', 'feature:a', 'feature:b') })).toBe('capability');
-  });
-
-  it('groups work by intent, waiting first, done only when shown', () => {
-    const row = (key: string, status: string) => ({ ...change(key).row!, status });
-    const groups = byIntent([row('a', 'open'), row('b', 'active'), row('c', 'review'), row('d', 'planning')]);
-    expect(groups.map((g) => [g.intent, g.rows.map((r) => r.key)])).toEqual([
-      ['waiting', ['change:c']],
-      ['progress', ['change:b', 'change:d']],
-      ['upcoming', ['change:a']],
-    ]);
-    expect(byIntent([row('e', 'done')]).map((g) => g.intent)).toEqual(['done']);
-    expect(byIntent([])).toEqual([]);
   });
 
   it('counts features by state and orders them by motion', () => {
