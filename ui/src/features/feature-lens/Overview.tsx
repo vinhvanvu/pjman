@@ -1,7 +1,7 @@
 // The overview of the selected node of the product map. One header at every node; beneath it a body chosen by the
 // node's level in the template, so siblings always share one experience: the product is the portfolio, a feature is
-// its capabilities and the work beneath, a capability is the work itself. Work is grouped by intent, what waits on a
-// person first.
+// its capabilities and the work beneath, a capability is the work itself (with whatever nests under it listed first).
+// Work is grouped by intent, what waits on a person first.
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { ChangeRow, Lens, Scope, ScopeNode, WaitingDecision } from '@/data/contract';
@@ -187,8 +187,15 @@ function FeatureBody({ scope, lens }: { scope: Scope; lens: Lens }) {
 // --- capability: the work itself ----------------------------------------------------------------------------
 
 function CapabilityBody({ scope, lens }: { scope: Scope; lens: Lens }) {
+  // a capability may hold capabilities of its own: the same compact list a feature shows, only when there are any
+  const below = featuresBelow(scope.tree);
   return (
     <>
+      {below.length > 0 && (
+        <Section label={`${many(below[0]?.level ?? 'capability')} beneath`} aside={String(below.length)}>
+          <FeatureList features={below} lens={lens} />
+        </Section>
+      )}
       <Work
         scope={scope}
         lens={lens}
