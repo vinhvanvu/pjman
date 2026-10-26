@@ -54,7 +54,7 @@ The fixed root of the product tree. Projects and top-level features attach to it
 
 ### Feature — `features/<slug>/feature.md`
 
-One nestable kind for everything the product is and does, at any depth: a feature, a capability beneath it, a sub-capability beneath that. The level is a label, not a kind.
+One nestable kind for everything the product is and does, at any depth: a feature, a capability beneath it, a sub-capability beneath that. The level is a label, not a kind; each default label has one definition (a feature is what the product does for a person, nameable in a sentence a user would recognise; a capability is a distinct behaviour a change can add, change or remove, the most specific node a change names), and the README states them.
 
 | field | kind | meaning |
 |---|---|---|

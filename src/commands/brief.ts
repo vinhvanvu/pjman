@@ -32,7 +32,9 @@ decisions stay pjman's. A ticket named in a prompt binds its change when the sto
 read it and sync, which creates the change. \`pjman refs <text>\` shows what a text refers to.
 
 The product tree
-A product is the root; features nest beneath it (levels: feature, capability by default); projects attach to it.
+A product is the root; features nest beneath it; projects attach to it. Levels are defined by the question each answers:
+a feature is what the product does for a person, nameable in a sentence a user would recognise; a capability is a distinct
+behaviour a change can add, change or remove, the most specific node a change names (capabilities may nest).
 A change names the features it adds, changes or removes: \`--features "adds feature:<slug>"\` (a bare key means changes);
 name the most specific node. A parent change is a milestone; goals are milestones, not features. \`pjman tree\` shows the product by features with derived status, owners and backlog; \`pjman activity
 <key>\` the motion beneath any node. Create a feature only when the person names a capability, never from a ticket label.

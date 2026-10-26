@@ -62,7 +62,15 @@ signs in anywhere. When a ticket is named, or the project's board should reflect
 
 What the product *is* lives in a tree beside the work: a `product:<slug>` at the root, `feature:<slug>` records nested
 beneath it (`--product` for a top-level feature, `--parent` below; the level label comes from the template, feature then
-capability, or `--level`), projects attached to the product (`pjman set project:<slug> product=product:<slug>`). Owners
+capability, or `--level`), projects attached to the product (`pjman set project:<slug> product=product:<slug>`).
+
+The levels are defined by the question each answers and who asks it, never by size. **Product**: the thing with a name
+and users; asked about by everyone. **Feature**: what the product does for a person, nameable in a sentence a user
+would recognise; asked about by owners and users; the top level of the map. **Capability**: a distinct behaviour a
+change can add, change or remove; asked about by builders and agents; the most specific node a change names. A
+capability may hold capabilities (anything deeper keeps the last label); a product that outgrows one map may set its
+own levels (`--levels area feature capability`). File by these definitions: a new behaviour inside a feature is a
+capability beneath it, not a new feature; a thing a user would name on its own is a feature. Owners
 (`owners`, a list of actors) sit on any node and are inherited downward. A change names the features it adds, changes
 or removes: `--features "adds feature:<slug>"`, `"feature:<slug>"` (changes), `"removes feature:<slug>"`. Name the most
 specific node, the capability rather than the feature above it; state rolls up. A feature's state is derived from those
