@@ -20,6 +20,8 @@ export interface ChangeCardProps {
   showMilestone?: boolean;
   /** How the card's last-moved reads; passed in so a list computes it once. */
   moved?: string;
+  /** The node the card is seen at: when the change names it, the chip is the verb on it alone (adds, changes, removes). */
+  at?: string;
   dense?: boolean;
   className?: string;
 }
@@ -33,9 +35,12 @@ export function ChangeCard({
   showMilestone = true,
   moved,
   dense,
+  at,
   className,
 }: ChangeCardProps) {
-  const feature = row.features[0];
+  const here = at ? row.features.find((f) => f.key === at) : undefined;
+  const feature = here ?? row.features[0];
+  const others = row.features.length - 1;
   return (
     <NodeLink
       to={row.key}
@@ -67,9 +72,10 @@ export function ChangeCard({
         {showMilestone && row.parent && <Chip tone="quiet">↳ {short(row.parent)}</Chip>}
         {feature && (
           <Chip tone="quiet" title={row.features.map((f) => `${f.effect} ${f.key}`).join(', ')}>
-            {feature.effect !== 'changes' ? `${feature.effect} ` : ''}
-            {feature.title && feature.title.length <= 24 ? feature.title : short(feature.key)}
-            {row.features.length > 1 ? ` +${row.features.length - 1}` : ''}
+            {here
+              ? `${here.effect} this`
+              : `${feature.effect !== 'changes' ? `${feature.effect} ` : ''}${feature.title && feature.title.length <= 24 ? feature.title : short(feature.key)}`}
+            {others > 0 ? ` +${others}` : ''}
           </Chip>
         )}
         {showProject && row.project && <Chip tone="quiet">{short(row.project)}</Chip>}

@@ -1,6 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeRow, Scope, ScopeNode } from '@/data/contract';
-import { allFeatureKeys, changesBeneath, changesHere, pathTo, productMap, unassigned } from './model';
+import {
+  allFeatureKeys,
+  allWork,
+  bodyOf,
+  byIntent,
+  byMotion,
+  changesBeneath,
+  changesHere,
+  effectOn,
+  featuresBelow,
+  featuresByState,
+  goals,
+  healthWord,
+  pathTo,
+  productMap,
+  unassigned,
+} from './model';
 
 const change = (key: string): ScopeNode => ({
   key: `change:${key}`,
@@ -75,5 +91,68 @@ describe('changes at a node', () => {
       ['feature:navigation', ['change:v2']],
       ['feature:auto-navigation', ['change:auto']],
     ]);
+  });
+});
+
+describe('the overview', () => {
+  it('says one word for health', () => {
+    expect(healthWord({ staleDays: null, days: 14 })).toBe('not started');
+    expect(healthWord({ staleDays: 3, days: 14 })).toBe('active');
+    expect(healthWord({ staleDays: 14, days: 14 })).toBe('active');
+    expect(healthWord({ staleDays: 15, days: 14 })).toBe('stale');
+  });
+
+  it('picks the body by level, not by whether the node has children', () => {
+    const crumbs = (...keys: string[]) => keys.map((key) => ({ key }));
+    expect(bodyOf({ node: null, crumbs: [] })).toBe('product');
+    expect(bodyOf({ node: { key: 'product:p', type: 'product' } as Scope['node'], crumbs: [] })).toBe('product');
+    const f = { key: 'feature:f', type: 'feature' } as Scope['node'];
+    expect(bodyOf({ node: f, crumbs: crumbs('product:p') })).toBe('feature');
+    expect(bodyOf({ node: f, crumbs: crumbs('product:p', 'feature:above') })).toBe('capability');
+    expect(bodyOf({ node: f, crumbs: crumbs('product:p', 'feature:a', 'feature:b') })).toBe('capability');
+  });
+
+  it('groups work by intent, waiting first, done only when shown', () => {
+    const row = (key: string, status: string) => ({ ...change(key).row!, status });
+    const groups = byIntent([row('a', 'open'), row('b', 'active'), row('c', 'review'), row('d', 'planning')]);
+    expect(groups.map((g) => [g.intent, g.rows.map((r) => r.key)])).toEqual([
+      ['waiting', ['change:c']],
+      ['progress', ['change:b', 'change:d']],
+      ['upcoming', ['change:a']],
+    ]);
+    expect(byIntent([row('e', 'done')]).map((g) => g.intent)).toEqual(['done']);
+    expect(byIntent([])).toEqual([]);
+  });
+
+  it('counts features by state and orders them by motion', () => {
+    const live = { ...feature('live'), derived: 'live', health: { last: '2026-10-20' } as ScopeNode['health'] };
+    const planned = { ...feature('planned'), health: { last: null } as ScopeNode['health'] };
+    const building = {
+      ...feature('building'),
+      derived: 'building',
+      health: { last: '2026-10-24' } as ScopeNode['health'],
+    };
+    expect(featuresByState([live, planned, building])).toEqual({ live: 1, planned: 1, building: 1 });
+    expect(byMotion([live, planned, building]).map((f) => f.key)).toEqual([
+      'feature:building',
+      'feature:live',
+      'feature:planned',
+    ]);
+    expect(featuresBelow(tree).map((f) => f.key)).toEqual(['feature:dashboard', 'feature:store']);
+    expect(allWork({ tree: tree[0]!.children }).map((r) => r.key)).toEqual(['change:here', 'change:v2', 'change:auto']);
+  });
+
+  it('lists goals nearest to done first and the verb on a node', () => {
+    const m = (key: string, done: number, total: number, status = 'active') => ({
+      ...change(key).row!,
+      status,
+      progress: { done, total },
+    });
+    expect(
+      goals([m('far', 1, 4), m('near', 3, 4), m('over', 4, 4, 'done'), change('plain').row!]).map((r) => r.key),
+    ).toEqual(['change:near', 'change:far']);
+    const row = { ...change('x').row!, features: [{ effect: 'adds' as const, key: 'feature:f' }] };
+    expect(effectOn(row, 'feature:f')).toBe('adds');
+    expect(effectOn(row, 'feature:g')).toBeUndefined();
   });
 });

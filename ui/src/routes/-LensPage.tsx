@@ -19,7 +19,7 @@ import type { ChangeContext, Grouping, Lens, Scope, Tab, View } from '@/data/con
 import { useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
-import { FeatureDetail, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
+import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestoneHome, MilestoneList, MilestonePage } from '@/features/milestone-lens';
 import { Inbox, inbox, WorkQueue } from '@/features/project-lens';
 import { ChangeRecord } from '@/features/record';
@@ -226,7 +226,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       // nothing selected in the milestone lens: the goals across the scope
       body = <MilestoneHome scope={shown} lens={lens} />;
     } else {
-      body = <FeatureDetail scope={shown} lens={lens} />;
+      body = <Overview scope={shown} lens={lens} />;
     }
     pane = (
       <div className="flex min-h-0 flex-1 flex-col">

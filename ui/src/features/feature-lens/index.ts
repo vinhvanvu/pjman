@@ -1,3 +1,3 @@
 export { ProductMap } from './ProductMap';
-export { FeatureDetail } from './FeatureDetail';
+export { Overview } from './Overview';
 export { allFeatureKeys, isFiltering, pathTo, type MapFilter } from './model';
