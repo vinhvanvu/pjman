@@ -60,6 +60,15 @@ Every node beneath the top level is a capability (the last level label repeats b
 feature. Go no deeper than a change would name. Each capability gets `--name`, one to three words, and a title that is
 the sentence.
 
+Feature keys are global in a store, and a store holds every product a person has: check each slug before proposing it
+(`pjman show feature:<slug>`), and name a shared word for its product (`chunk-activity`, not `activity`, when another
+product's map already has activity). The batch refuses itself at a collision and writes nothing, so a miss costs one
+rerun, not a half-made map.
+
+For a cold start there are no done changes to derive a state from, so give each node its status from the documentation
+(`--status live` for what the ladder says shipped, `planned` for what is drafted or open, `building` for what is in
+hand). The authored status stands until a change names the node; from then on the derivation takes over.
+
 For a regrouping, draft the moves as well as the nodes: which existing node goes under which layer (`parent=` set,
 `product=` cleared), which is renamed (`pjman mv feature:<old> feature:<new>`, the old slug kept as an alias so every
 reference and every old link still resolves), which new nodes stand for things already built and which done change
@@ -68,7 +77,7 @@ Never replace a node by hand: a rename keeps the past true.
 
 ## 4. Propose, and wait
 
-Open a change for the map (`change:map` for a bare product; `change:map-by-layer` or the person's name for a regrouping)
+Open a change for the map (`change:<product>-map` for a bare product, since the store holds every project; `change:map-by-layer` or the person's name for a regrouping)
 and one decision `proposed` on it whose text is the whole tree: every node with its sentence, the moves, the renames,
 the new nodes and what names them. Put the tree in your reply as an indented list. Say what the dashboard will read
 differently (the roadmap's lanes are the top-level nodes; a bug's home is the top-level node above the one it names).

@@ -191,7 +191,11 @@ export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
   const childStates = children.map((c) => derivedStatus(loaded, c.key).status);
   if (childStates.includes('live')) return { status: 'live', because: 'a child is live' };
   if (childStates.includes('building')) return { status: 'building', because: 'a child is building' };
-  return { status: 'planned', because: affecting.length ? 'nothing affecting it is done or in flight' : 'no change affects it yet' };
+  if (affecting.length) return { status: 'planned', because: 'nothing affecting it is done or in flight' };
+  // nothing to derive from: the authored status stands (a cold-started map is read from the documentation until changes name it)
+  const authored = loaded.byKey.get(key)?.[0]?.data.status;
+  if (typeof authored === 'string' && (FEATURE_STATUSES as readonly string[]).includes(authored)) return { status: authored as DerivedStatus['status'], because: 'authored; no change affects it yet' };
+  return { status: 'planned', because: 'no change affects it yet' };
 }
 
 export interface TreeNode {

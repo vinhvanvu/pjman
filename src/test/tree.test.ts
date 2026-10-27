@@ -94,6 +94,20 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   newRecord(store, 'change', 'drop-scan', { title: 'Drop card scan', summary: 's', project: 'project:web', features: ['removes feature:card-scan'], status: 'done' });
   loaded = loadStore(store);
   assert.equal(derivedStatus(loaded, 'feature:card-scan').status, 'retired');
+  // nothing to derive from: the authored status stands (a cold-started map), and lifts its parent; a change that names it takes over
+  newRecord(store, 'feature', 'cold', { title: 'Cold', product: 'product:shop', status: 'live' });
+  newRecord(store, 'feature', 'cold-kid', { title: 'Cold kid', parent: 'feature:cold', status: 'live' });
+  newRecord(store, 'feature', 'cold-plan', { title: 'Cold plan', parent: 'feature:cold' });
+  loaded = loadStore(store);
+  assert.deepEqual(derivedStatus(loaded, 'feature:cold-kid'), { status: 'live', because: 'authored; no change affects it yet' });
+  assert.equal(derivedStatus(loaded, 'feature:cold').status, 'live');
+  assert.equal(derivedStatus(loaded, 'feature:cold-plan').status, 'planned');
+  newRecord(store, 'change', 'rework-kid', { title: 'Rework', summary: 's', project: 'project:web', features: ['feature:cold-kid'], status: 'open' });
+  assert.equal(derivedStatus(loadStore(store), 'feature:cold-kid').status, 'planned');
+  set(store, 'change:rework-kid', ['status=active'], {});
+  assert.equal(derivedStatus(loadStore(store), 'feature:cold-kid').status, 'building');
+  for (const k of ['change:rework-kid', 'feature:cold-plan', 'feature:cold-kid', 'feature:cold']) rm(store, k);
+  loaded = loadStore(store);
 
   // the tree with roll-ups
   const [shop] = tree(loaded);
