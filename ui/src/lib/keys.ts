@@ -12,16 +12,10 @@ export function short(key: string): string {
   return kindOf(key) === 'github-issue' && gh ? `#${gh[2]}` : rest;
 }
 
-/** Where a key lives. A change has no home lens of its own: it keeps the lens it is seen in. */
+/** Where a key lives. A change has no home lens of its own: it keeps the lens it is seen in. A project has no lens:
+ *  it is a record the getter page shows. */
 export function homeLens(key: string): Lens | undefined {
-  switch (kindOf(key)) {
-    case 'feature':
-      return 'feature';
-    case 'project':
-      return 'project';
-    default:
-      return undefined;
-  }
+  return kindOf(key) === 'feature' ? 'feature' : undefined;
 }
 
 export type Target =
@@ -42,4 +36,4 @@ export function targetOf(key: string, lens: Lens): Target {
 }
 
 /** Is this key a node of the tree a lens can stand on. */
-export const isNodeKey = (key: string): boolean => ['product', 'feature', 'project', 'change'].includes(kindOf(key));
+export const isNodeKey = (key: string): boolean => ['product', 'feature', 'change'].includes(kindOf(key));

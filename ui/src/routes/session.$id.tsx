@@ -21,6 +21,7 @@ function SessionPage() {
     );
   if (!data) return null;
   const key = data.showing.key ?? data.showing.board ?? undefined;
-  const lens = key && kindOf(key) === 'project' ? 'project' : 'feature';
-  return <LensPage lens={lens} node={key} following={{ session: id, on: data.showing.key }} />;
+  // a session on a project (no change yet) is followed at the product root
+  const node = key && kindOf(key) === 'project' ? undefined : key;
+  return <LensPage lens="feature" node={node} following={{ session: id, on: data.showing.key }} />;
 }

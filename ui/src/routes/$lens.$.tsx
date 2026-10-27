@@ -15,7 +15,7 @@ export const Route = createFileRoute('/$lens/$')({
   validateSearch: pageSearch,
   component: Page,
   notFoundComponent: () => (
-    <div className="p-6 text-sm text-ink-muted">No such lens. The lenses are feature, project and milestone.</div>
+    <div className="p-6 text-sm text-ink-muted">No such lens. The lenses are feature and milestone.</div>
   ),
 });
 

@@ -21,7 +21,7 @@ import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestoneHome, MilestoneList, MilestonePage } from '@/features/milestone-lens';
-import { Inbox, inbox, WorkQueue } from '@/features/project-lens';
+import { Inbox, inbox, WorkQueue } from '@/features/work';
 import { ChangeRecord } from '@/features/record';
 import { FollowPill } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
@@ -74,7 +74,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   // the record pane's subject: the selection when there is one, else the scope itself
   const shown = sel ? selection.data : scope.data;
 
-  const defaultView: View = lens === 'project' ? 'lanes' : 'tree';
+  const defaultView: View = 'tree';
   const view: View = search.view ?? defaultView;
   const grouping: Grouping = search.group ?? 'status';
   const tab: Tab = search.tab ?? 'overview';

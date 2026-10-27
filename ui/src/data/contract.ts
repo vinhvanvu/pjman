@@ -9,7 +9,9 @@ export type { RecordType } from '@contract/records';
 import type { Row } from '@contract/commands/view';
 import type { Lens } from '@contract/scope';
 
-export const LENSES = ['feature', 'project', 'milestone'] as const satisfies readonly Lens[];
+/** The lenses the dashboard shows: what the product does, and toward what. The server also answers `project`;
+ *  the dashboard treats a project as a chip on cards and a record on the getter page, never a place to stand. */
+export const LENSES = ['feature', 'milestone'] as const satisfies readonly Lens[];
 export const IN_FLIGHT = ['active', 'review', 'blocked'] as const;
 /** How the structure pane draws the scope. */
 export const VIEWS = ['tree', 'lanes', 'inbox'] as const;

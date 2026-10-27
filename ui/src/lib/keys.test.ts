@@ -14,21 +14,22 @@ describe('keys', () => {
     expect(isNodeKey('feature:navigation')).toBe(true);
     expect(isNodeKey('decision:a/b')).toBe(false);
     expect(homeLens('feature:navigation')).toBe('feature');
-    expect(homeLens('project:pjman')).toBe('project');
+    expect(homeLens('project:pjman')).toBeUndefined();
+    expect(isNodeKey('project:pjman')).toBe(false);
     expect(homeLens('change:crud')).toBeUndefined();
   });
 });
 
 describe('the link rule', () => {
   it('keeps the lens for a change or product, switches to the home lens otherwise', () => {
-    expect(targetOf('change:crud', 'project')).toEqual({ kind: 'node', lens: 'project', node: 'change:crud' });
+    expect(targetOf('change:crud', 'milestone')).toEqual({ kind: 'node', lens: 'milestone', node: 'change:crud' });
     expect(targetOf('product:pjman', 'milestone')).toEqual({ kind: 'node', lens: 'milestone', node: 'product:pjman' });
-    expect(targetOf('feature:navigation', 'project')).toEqual({
+    expect(targetOf('feature:navigation', 'milestone')).toEqual({
       kind: 'node',
       lens: 'feature',
       node: 'feature:navigation',
     });
-    expect(targetOf('project:pjman', 'feature')).toEqual({ kind: 'node', lens: 'project', node: 'project:pjman' });
+    expect(targetOf('project:pjman', 'feature')).toEqual({ kind: 'get', key: 'project:pjman' });
   });
 
   it('sends sessions, urls and everything else to their own routes', () => {

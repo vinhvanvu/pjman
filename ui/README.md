@@ -36,7 +36,7 @@ restore its scroll.
 src/
   app/         entry point, generated route tree, test setup
   routes/      one file per route; `-LensPage.tsx` composes a page from features
-  features/    one slice per lens or capability: components, hooks, a pure model.ts, index.ts
+  features/    one slice per lens or capability (feature-lens, milestone-lens, work: lanes and the inbox, …): components, hooks, a pure model.ts, index.ts
   components/  shell (rail, top bar, panes), tree, cards, chips, presence, stats, ui/ (shadcn, generated)
   data/        client, query hooks, event subscription, contract types (type-only, from the tool)
   state/       preferences, follow
@@ -66,5 +66,5 @@ maps the tokens onto Tailwind utilities (`bg-surface`, `text-status-review`, `bo
 - shadcn components are copied into `src/components/ui` by the CLI and left as generated (excluded from lint and
   format). Everything else is ours.
 - Key links go through `NodeLink`, which applies the link rule: a change or product keeps the current lens, a feature
-  or project opens its home lens, a session its page, anything else the getter.
+  opens the feature lens, a session its page, anything else (a project, a decision, a source) the getter.
 - Pure derivations live in a feature's `model.ts` and have tests beside them (`*.test.ts`, vitest).

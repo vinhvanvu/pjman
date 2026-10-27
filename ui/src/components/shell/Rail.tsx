@@ -2,7 +2,7 @@
 // view is a search param on the current route. Slots take what a feature owns (the theme picker, the person).
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { ChevronDown, Columns3, Flag, FolderGit2, Inbox, Layers, ListTree, type LucideIcon } from 'lucide-react';
+import { ChevronDown, Columns3, Flag, Inbox, Layers, ListTree, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Lens, View } from '@/data/contract';
 
@@ -27,7 +27,6 @@ export interface RailProps {
 
 const LENS_ITEMS: { lens: Lens; label: string; icon: LucideIcon }[] = [
   { lens: 'feature', label: 'Feature', icon: Layers },
-  { lens: 'project', label: 'Project', icon: FolderGit2 },
   { lens: 'milestone', label: 'Milestone', icon: Flag },
 ];
 

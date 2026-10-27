@@ -25,16 +25,10 @@ export function WorkQueue({ scope, lens, grouping, onGroupingChange, selected, s
     <section aria-label="Work queue" className="flex min-h-0 flex-1 flex-col">
       <header className="flex flex-wrap items-end gap-x-6 gap-y-3 px-5 pt-5 pb-3.5 md:px-6">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="truncate text-heading font-semibold tracking-tight">
-            {scope.lens === 'project' ? 'Work queue' : title}
-          </h1>
+          <h1 className="truncate text-heading font-semibold tracking-tight">{title}</h1>
           <div className="text-[12.5px] text-ink-muted">
             {plural(open, 'open change')}
-            {scope.projects.length > 1
-              ? ` across ${plural(scope.projects.length, 'project')}`
-              : scope.node?.type === 'project'
-                ? ` · ${short(scope.node.key)}`
-                : ''}
+            {scope.projects.length > 1 ? ` across ${plural(scope.projects.length, 'project')}` : ''}
           </div>
         </div>
         {progress && (

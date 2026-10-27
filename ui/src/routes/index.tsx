@@ -19,5 +19,5 @@ function Home() {
       <Navigate to="/$lens/$" params={{ lens: 'feature', _splat: products[0]!.key }} search={(prev) => prev} replace />
     );
   }
-  return <LensPage lens={products.length ? 'feature' : 'project'} />;
+  return <LensPage lens="feature" />;
 }
