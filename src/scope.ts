@@ -5,9 +5,11 @@
 import type { Store } from './config.js';
 import { readEvents, type StoreEvent } from './events.js';
 import { resolve, type Loaded, type Rec } from './records.js';
-import { changeContext, progressOf, row, type ChangeContext, type Row } from './commands/view.js';
-import { ancestorsOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
-import { CliError } from './util.js';
+import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row } from './commands/view.js';
+import { productOf, sequenceOf } from './commands/order.js';
+import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
+import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
+import { CliError, localDate } from './util.js';
 
 export const LENSES = ['project', 'feature', 'milestone'] as const;
 export type Lens = (typeof LENSES)[number];
@@ -51,6 +53,21 @@ export interface ChangeRow {
   children: number;
   /** When the change itself last moved: its last event, under any of its keys. */
   moved?: string;
+  /** `bug` for a reported fault against something live; absent for work. */
+  kind?: string;
+  /** A bug's severity: where on the tree the behaviour is lost. */
+  severity?: string;
+  /** A bug's home: the node on its path at the severity's level, where it is listed once. */
+  home?: string;
+  /** A milestone's target date, a person's. */
+  target?: string;
+  /** What must land before it, live keys. */
+  dependsOn: string[];
+  /** Its place in the product's sequence: its own index, else its nearest sequenced ancestor's; absent is later. */
+  position?: number;
+  /** When it first moved out of open (its first status change), and when it reached done. */
+  began?: string;
+  finished?: string;
 }
 
 export interface ScopeNode {
@@ -76,6 +93,8 @@ export interface ScopeNode {
   health?: Health;
   /** On a project: done over not dropped, every change beneath. */
   progress?: { done: number; total: number };
+  /** Open bugs: listed here (their home is this node), beneath (home here or below), and the worst among those. */
+  bugs?: { here: number; beneath: number; worst?: string };
   row?: ChangeRow;
   children: ScopeNode[];
 }
@@ -128,6 +147,11 @@ export interface Scope {
   recent: StoreEvent[];
   /** The change's full context when the node is one. */
   change?: ChangeContext;
+  /** Open bugs beneath the node, worst first then oldest: the bugs view. */
+  bugs: ChangeRow[];
+  /** The roadmap: the product's sequence as it falls in this scope, what comes after it, and where the order
+   *  contradicts a dependency or a date. */
+  roadmap: { product: string | null; sequence: string[]; later: string[]; violations: Violation[] };
 }
 
 export interface ScopeOpts {
@@ -201,6 +225,71 @@ class Index {
     return live(this.loaded, c.data.parent)?.key;
   }
 
+  private readonly products = new Map<string, Rec | undefined>();
+  productOf(c: Rec): Rec | undefined {
+    if (!this.products.has(c.key)) this.products.set(c.key, productOf(this.loaded, c));
+    return this.products.get(c.key);
+  }
+
+  private readonly sequences = new Map<string, Map<string, number>>();
+  /** change key → index in the product's sequence. */
+  sequenceIndex(product: Rec): Map<string, number> {
+    let m = this.sequences.get(product.key);
+    if (!m) {
+      m = new Map(sequenceOf(this.loaded, product).map((k, i) => [k, i]));
+      this.sequences.set(product.key, m);
+    }
+    return m;
+  }
+
+  /** The change's own place in the sequence, else its nearest sequenced ancestor's. */
+  positionOf(c: Rec): number | undefined {
+    const product = this.productOf(c);
+    if (!product) return undefined;
+    const ix = this.sequenceIndex(product);
+    const seen = new Set<string>();
+    for (let cur: Rec | undefined = c; cur && !seen.has(cur.key); cur = live(this.loaded, cur.data.parent)) {
+      seen.add(cur.key);
+      const i = ix.get(cur.key);
+      if (i !== undefined) return i;
+    }
+    return undefined;
+  }
+
+  /** A bug's home: the node on its path at the severity's level. Product severity lands on the product; feature
+   *  severity on the top-level feature above the node it names; anything else on the node itself. */
+  homeOf(c: Rec): string | undefined {
+    if (c.data.kind !== 'bug') return undefined;
+    const named = effectsOf(c).map((e) => live(this.loaded, e.key)).find((f) => f);
+    const sev = str(c.data.severity);
+    if (sev === 'product') return (named && rootProductOf(this.loaded, named))?.key ?? this.productOf(c)?.key;
+    if (!named) return undefined;
+    if (sev === 'feature') {
+      let cur: Rec = named;
+      while (depthOf(this.loaded, cur) > 1) {
+        const up = structuralParent(this.loaded, cur);
+        if (!up || up.type !== 'feature') break;
+        cur = up;
+      }
+      return cur.key;
+    }
+    return named.key;
+  }
+
+  /** The first status change (when it began) and, for a done change, the last one (when it finished). */
+  span(c: Rec): { began?: string; finished?: string } {
+    const keys = new Set<string>([c.key, ...list(c.data.aliases).map((a) => `change:${a}`)]);
+    let began: string | undefined;
+    let last: string | undefined;
+    for (const e of this.events) {
+      if (!keys.has(e.key) || e.op !== 'set' || !e.fields?.includes('status')) continue;
+      began ??= e.at;
+      last = e.at;
+    }
+    const done = c.data.status === 'done';
+    return { began, finished: done ? last ?? (str(c.data.created) ? `${str(c.data.created)}T00:00:00.000Z` : undefined) : undefined };
+  }
+
   /** The keys beneath a node, the node included; every key when the node is the root. */
   beneath(key: string | null): Set<string> {
     if (key === null) return new Set(this.ancestors.keys());
@@ -243,6 +332,10 @@ class Index {
       features: effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
       waiting: this.waiting.get(c.key) ?? 0, live: sessions.length > 0, children: kids.length,
       moved: this.lastMoved(c),
+      kind: str(c.data.kind), severity: str(c.data.severity), home: this.homeOf(c), target: str(c.data.target),
+      dependsOn: list(c.data.depends_on).map((k) => live(this.loaded, k)?.key).filter((k): k is string => !!k),
+      position: this.positionOf(c),
+      ...this.span(c),
     };
   }
 
@@ -313,17 +406,23 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     const top = here.filter((c) => keys.has(c.key) && !(ix.parentOf(c) && keys.has(ix.parentOf(c)!) && canNest(c)));
     return top.map((c) => changeNode(c, canNest));
   };
-  const facts = (rec: Rec): Pick<ScopeNode, 'owners' | 'ownersFrom' | 'open' | 'inFlight' | 'projects' | 'health' | 'progress'> => {
+  const openBugs = ix.changes.filter((c) => isOpen(c) && c.data.kind === 'bug');
+  const facts = (rec: Rec): Pick<ScopeNode, 'owners' | 'ownersFrom' | 'open' | 'inFlight' | 'projects' | 'health' | 'progress' | 'bugs'> => {
     const keys = ix.beneath(rec.key);
     const mine = ix.changes.filter((c) => keys.has(c.key) && c.key !== rec.key);
     const open = mine.filter(isOpen);
     const eo = effectiveOwners(loaded, rec.key);
     const counted = mine.filter((c) => c.data.status !== 'dropped');
+    const homed = openBugs.filter((b) => { const h = ix.homeOf(b); return h !== undefined && keys.has(h); });
+    const bugs = rec.type === 'product' || rec.type === 'feature'
+      ? { here: homed.filter((b) => ix.homeOf(b) === rec.key).length, beneath: homed.length, worst: homed.reduce<string | undefined>((w, b) => worstSeverity(w, str(b.data.severity)), undefined) }
+      : undefined;
     return {
       owners: eo.owners, ownersFrom: eo.from, open: open.length, inFlight: open.filter((c) => IN_FLIGHT.includes(String(c.data.status))).length,
       projects: [...new Set(open.map((c) => live(loaded, c.data.project)?.key).filter((p): p is string => !!p))].sort(),
       health: ix.health(keys, days),
       progress: rec.type === 'project' && counted.length ? { done: counted.filter((c) => c.data.status === 'done').length, total: counted.length } : undefined,
+      bugs,
     };
   };
   const names = (c: Rec, key: string) => effectsOf(c).some((e) => live(loaded, e.key)?.key === key);
@@ -435,6 +534,25 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   }
 
   const changes = shown.map((c) => ix.row(c));
+
+  // bugs beneath the node, the queue's order
+  const bugs = openBugs.filter((c) => nodeKeys.has(c.key)).map((c) => ix.row(c)).sort(bugOrder);
+
+  // the roadmap: the product's sequence as it falls in this scope, what comes after, and the checks
+  let product: Rec | undefined;
+  if (node?.type === 'product') product = node;
+  else if (node?.type === 'feature' || node?.type === 'project') product = rootProductOf(loaded, node);
+  else if (node?.type === 'change') product = ix.productOf(node);
+  else if (products.length === 1) product = products[0];
+  const inScopeKeys = new Set(inScope.map((c) => c.key));
+  const sequence = product ? sequenceOf(loaded, product).filter((k) => inScopeKeys.has(k)) : [];
+  const loose = new Set(shown.filter((c) => isOpen(c) && c.data.kind !== 'bug' && ix.positionOf(c) === undefined).map((c) => c.key));
+  const later = [...loose].filter((k) => { const p = ix.parentOf(loaded.byKey.get(k)![0]); return !p || !loose.has(p); });
+  const roadmapRows: RoadmapRow[] = inScope.map((c) => ({
+    key: c.key, status: str(c.data.status), parent: ix.parentOf(c), target: str(c.data.target), position: ix.positionOf(c),
+    dependsOn: list(c.data.depends_on).map((k) => live(loaded, k)?.key).filter((k): k is string => !!k),
+  }));
+  const roadmap = { product: product?.key ?? null, sequence, later, violations: violations(roadmapRows, localDate(new Date(ix.now))) };
   return {
     lens, days,
     node: node
@@ -445,5 +563,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     projects: [...new Set(changes.map((c) => c.project).filter((p): p is string => !!p))].sort(),
     doneHidden, retiredHidden, health, owners, sessions, waitingOn, recent,
     change: node?.type === 'change' ? changeContext(store, node.key, loaded) : undefined,
+    bugs, roadmap,
   };
 }

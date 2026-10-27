@@ -154,3 +154,30 @@ test('the scope: one page as data, in a lens, at a node; a bad lens or node is a
   assert.equal((await getJson('/api/v1/scope?lens=colour')).status, 400);
   assert.equal((await getJson('/api/v1/scope?node=change:nope')).status, 400);
 });
+
+test('the one write: POST /order moves a change in its product\'s sequence as the person signed in; anything else is refused', async () => {
+  newRecord(store, 'product', 'app', { title: 'App' });
+  const { set } = await import('../commands/set.js');
+  set(store, 'project:app', ['product=product:app'], {});
+  newRecord(store, 'change', 'second', { title: 'Second', summary: 's' });
+  const post = async (body: unknown) => {
+    const res = await fetch(base + '/api/v1/order', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: res.status, body: (await res.json()) as { data?: { sequence: string[] }; error?: { code: string; message: string } } };
+  };
+  let r = await post({ change: 'change:login', last: true });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.body.data?.sequence, ['change:login']);
+  r = await post({ change: 'change:second', before: 'change:login' });
+  assert.deepEqual(r.body.data?.sequence, ['change:second', 'change:login']);
+  r = await post({ change: 'change:second', later: true });
+  assert.deepEqual(r.body.data?.sequence, ['change:login']);
+  r = await post({ change: 'change:nope', first: true });
+  assert.equal(r.status, 400);
+  r = await post({ change: 'change:login' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error?.message ?? '', /say where/);
+  const other = await fetch(base + '/api/v1/records', { method: 'POST' });
+  assert.equal(other.status, 405);
+  const scope = await getJson('/api/v1/scope?node=product:app');
+  assert.deepEqual((scope.body.data as { roadmap: { sequence: string[] } }).roadmap.sequence, ['change:login']);
+});

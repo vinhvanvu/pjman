@@ -12,6 +12,7 @@ import { scope } from './scope.js';
 import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
+import { order } from './commands/order.js';
 import { CliError } from './util.js';
 
 export interface ServeOpts {
@@ -85,8 +86,35 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     send(res, 500, { error: { code: 'internal', message: (e as Error).message } });
   };
 
+  /** The one write: reorder the roadmap, through the same function the command uses, as the person signed in. */
+  const write = (req: http.IncomingMessage, res: http.ServerResponse, route: string): void => {
+    if (route !== '/order') throw new HttpError(405, 'method-not-allowed', `${req.method} ${route} is not allowed; the only write is POST /order`);
+    let text = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk: string) => { text += chunk; });
+    req.on('end', () => {
+      try {
+        const body = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
+        const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
+        if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
+        const writer = readUserConfig().actor;
+        if (!writer) throw new HttpError(403, 'no-actor', 'no person is signed in: set actor in ~/.pjman/config.yaml');
+        const r = order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer });
+        send(res, 200, { data: r });
+      } catch (e) {
+        fail(res, e);
+      }
+    });
+  };
+
   const api = (req: http.IncomingMessage, res: http.ServerResponse, route: string, url: URL): void => {
-    if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API is read-only in this version`);
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, HEAD, POST, OPTIONS', 'access-control-allow-headers': 'content-type' });
+      res.end();
+      return;
+    }
+    if (req.method === 'POST') return write(req, res, route);
+    if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API reads, and writes only through POST /order`);
     const loaded = loadStore(store);
     const getOpts = { cwd: store.projectDir ?? process.cwd(), projectDir: store.projectDir, project: store.project };
     let m: RegExpExecArray | null;
@@ -205,7 +233,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since='] } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since=', 'POST /order {change, before|after|first|last|later}'] } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

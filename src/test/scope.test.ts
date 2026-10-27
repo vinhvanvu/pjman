@@ -171,3 +171,54 @@ test('health reads the window: a change done today counts, blocked counts as it 
   assert.equal(stale.health.staleDays, 30);
   assert.deepEqual(stale.sessions, []);
 });
+
+test('bugs: one home at the severity level, counts roll up with the worst named, the queue worst first; the roadmap: the sequence, later, the checks', () => {
+  // a capability bug with feature severity is listed at the feature; a product one at the root; a nuisance where named
+  newRecord(store, 'change', 'cards-crash', { title: 'Saving a card crashes', summary: 'b', project: 'project:web', kind: 'bug', severity: 'feature', features: ['feature:saved-cards'] });
+  newRecord(store, 'change', 'down', { title: 'Nothing loads', summary: 'b', project: 'project:web', kind: 'bug', severity: 'product', features: ['feature:search'] });
+  newRecord(store, 'change', 'typo', { title: 'Typo in search', summary: 'b', project: 'project:web', kind: 'bug', severity: 'cosmetic', features: ['feature:search'], created: '2026-01-01' });
+  newRecord(store, 'change', 'slow-search', { title: 'Search is slow', summary: 'b', project: 'project:web', kind: 'bug', severity: 'nuisance', features: ['feature:search'] });
+  set(store, 'product:shop', ['sequence=change:cards,change:old'], {});
+  set(store, 'change:cards', ['target=2026-12-01'], {});
+  set(store, 'change:chore', ['status=open', 'depends_on=change:cards'], {});
+  const s = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop' });
+  const byKey = Object.fromEntries(s.changes.map((c) => [c.key, c]));
+  assert.equal(byKey['change:cards-crash'].home, 'feature:checkout');
+  assert.equal(byKey['change:down'].home, 'product:shop');
+  assert.equal(byKey['change:typo'].home, 'feature:search');
+  assert.equal(byKey['change:slow-search'].home, 'feature:search');
+  const checkout = find(s.tree, 'feature:checkout')!;
+  assert.deepEqual(checkout.bugs, { here: 1, beneath: 1, worst: 'feature' });
+  assert.deepEqual(find(s.tree, 'feature:saved-cards')!.bugs, { here: 0, beneath: 0, worst: undefined });
+  assert.deepEqual(find(s.tree, 'feature:search')!.bugs, { here: 2, beneath: 2, worst: 'nuisance' });
+  // the queue beneath the product: product, feature, nuisance, cosmetic
+  assert.deepEqual(s.bugs.map((b) => b.key), ['change:down', 'change:cards-crash', 'change:slow-search', 'change:typo']);
+  const search = scope(store, loadStore(store), { lens: 'feature', node: 'feature:search' });
+  assert.deepEqual(search.bugs.map((b) => b.key), ['change:down', 'change:slow-search', 'change:typo']);
+  // the roadmap: the sequence in scope, children take their milestone's place, the loose come after, bugs never
+  assert.equal(s.roadmap.product, 'product:shop');
+  assert.deepEqual(s.roadmap.sequence, ['change:cards', 'change:old']);
+  assert.equal(byKey['change:card-form'].position, 0);
+  assert.equal(byKey['change:card-tests'].position, 0);
+  assert.equal(byKey['change:chore'].position, undefined);
+  assert.deepEqual(s.roadmap.later, ['change:chore']);
+  assert.equal(byKey['change:cards'].target, '2026-12-01');
+  assert.deepEqual(byKey['change:chore'].dependsOn, ['change:cards']);
+  assert.deepEqual(s.roadmap.violations, []);
+  // a dependant placed before what it depends on; an overdue target
+  set(store, 'product:shop', ['sequence=change:chore,change:cards,change:old'], {});
+  set(store, 'change:card-form', ['target=2020-01-01'], {});
+  const v = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop' }).roadmap.violations;
+  assert.deepEqual(v, [
+    { kind: 'overdue', change: 'change:card-form' },
+    { kind: 'order', change: 'change:chore', against: 'change:cards' },
+  ]);
+  // began and finished come from the status events
+  assert.ok(byKey['change:card-endpoint'].began);
+  assert.equal(byKey['change:card-endpoint'].finished, undefined);
+  const done = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true }).changes.find((c) => c.key === 'change:chore')!;
+  assert.equal(done.finished, undefined);
+  set(store, 'change:chore', ['status=done'], {});
+  const fin = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true }).changes.find((c) => c.key === 'change:chore')!;
+  assert.ok(fin.finished && fin.began && fin.began <= fin.finished);
+});

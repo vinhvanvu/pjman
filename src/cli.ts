@@ -24,6 +24,7 @@ import { formatTree, tree } from './tree.js';
 import { formatReceipt, receipt } from './receipt.js';
 import { activity, formatActivity } from './activity.js';
 import { set } from './commands/set.js';
+import { order } from './commands/order.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
 
 import { createRequire } from 'node:module';
@@ -52,6 +53,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     ] },
   { name: 'set', about: 'change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section)',
     usage: ['pjman set <key> <field>=<value>...'] },
+  { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
+    usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge',
     usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },
   { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
@@ -164,6 +167,11 @@ function parse() {
     watch: { type: 'boolean' },
     detach: { type: 'boolean' },
     receipt: { type: 'boolean' },
+    before: { type: 'string' },
+    after: { type: 'string' },
+    first: { type: 'boolean' },
+    last: { type: 'boolean' },
+    later: { type: 'boolean' },
   },
     });
   } catch (e) {
@@ -364,6 +372,13 @@ function main(): number {
       if (!pos[1] || !pos[2]) throw new CliError('usage: pjman set <key> <field>=<value>...');
       const r = set(store, pos[1], pos.slice(2), { session: v.session });
       v.json ? json(r) : out(`set ${r.changed.join(', ')} on ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}`);
+      return 0;
+    }
+    case 'order': {
+      const store = requireStore(cwd, v.store);
+      if (!pos[1]) throw new CliError('usage: pjman order <change> --before <change> | --after <change> | --first | --last | --later');
+      const r = order(store, pos[1], { before: v.before, after: v.after, first: v.first, last: v.last, later: v.later, session: v.session, writer: v.writer });
+      v.json ? json(r) : out(`${r.product} sequence: ${r.sequence.length ? r.sequence.join(' → ') : '(empty)'}${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'mv': {
