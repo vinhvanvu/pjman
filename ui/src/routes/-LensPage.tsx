@@ -3,7 +3,7 @@
 // the selection, the filter params the narrowing); server state through the scope hook, once for the scope and once
 // for the selection; client state from the stores.
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { SelectionBadge } from '@/components/SelectionBadge';
@@ -39,6 +39,9 @@ export interface LensPageProps {
   /** The session this page follows, when it does. */
   following?: { session: string; on?: string };
 }
+
+/** What the top bar calls the product's own page in each lens: the rail already names the product. */
+const LENS_HOME: Partial<Record<Lens, string>> = { feature: 'Product map', roadmap: 'Roadmap' };
 
 const VIEWS_BY_LENS: Record<Lens, readonly View[]> = {
   feature: ['tree', 'lanes', 'inbox', 'bugs'],
@@ -165,6 +168,13 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       ? data.node
       : store?.products[0];
   const inboxData = data ? inbox(data) : undefined;
+  const setLastProduct = usePreferences((s) => s.setLastProduct);
+  useEffect(() => {
+    if (product?.key) setLastProduct(product.key);
+  }, [product?.key, setLastProduct]);
+  // the rail names the product, so the crumb starts beneath it; on the product's own page the bar names the lens
+  const onProduct = data?.node?.key.startsWith('product:') ?? false;
+  const crumbsBeneath = (data?.crumbs ?? []).filter((c) => !c.key.startsWith('product:'));
   const railProduct = (p: { key: string; title?: string; name?: string }, health?: ProductRow): RailProduct => ({
     key: p.key,
     name: p.name ?? health?.name ?? short(p.key),
@@ -206,9 +216,16 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const bar = (
     <TopBar
       lens={lens}
-      crumbs={data?.crumbs ?? []}
-      current={data?.node ? { key: data.node.key, title: data.node.name ?? data.node.title } : undefined}
-      kind={data ? kindOf(data) : undefined}
+      crumbs={crumbsBeneath}
+      current={
+        data?.node
+          ? {
+              key: data.node.key,
+              title: onProduct ? (LENS_HOME[lens] ?? data.node.name) : (data.node.name ?? data.node.title),
+            }
+          : undefined
+      }
+      kind={data && !onProduct ? kindOf(data) : undefined}
       liveSessions={data?.sessions.length ?? 0}
       onOpenPalette={openPalette}
       onOpenRail={wide ? undefined : () => setRailOpenFor(pageKey)}

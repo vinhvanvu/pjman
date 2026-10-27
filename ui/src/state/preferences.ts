@@ -13,10 +13,13 @@ export interface Preferences {
   expanded: Record<string, string[]>;
   /** Where the split between panes sits, per split id. */
   splits: Record<string, Record<string, number>>;
+  /** The product last opened: where the root of the app goes. */
+  lastProduct?: string;
   setTheme: (theme: ThemeId) => void;
   setRailCollapsed: (collapsed: boolean) => void;
   setExpanded: (scope: string, ids: string[]) => void;
   setSplit: (id: string, layout: Record<string, number>) => void;
+  setLastProduct: (key: string) => void;
 }
 
 export const usePreferences = create<Preferences>()(
@@ -30,10 +33,16 @@ export const usePreferences = create<Preferences>()(
       setRailCollapsed: (railCollapsed) => set({ railCollapsed }),
       setExpanded: (scope, ids) => set((s) => ({ expanded: { ...s.expanded, [scope]: ids } })),
       setSplit: (id, layout) => set((s) => ({ splits: { ...s.splits, [id]: layout } })),
+      setLastProduct: (lastProduct) => set({ lastProduct }),
     }),
     {
       name: PREFERENCES_KEY,
-      partialize: (s) => ({ theme: s.theme, railCollapsed: s.railCollapsed, splits: s.splits }),
+      partialize: (s) => ({
+        theme: s.theme,
+        railCollapsed: s.railCollapsed,
+        splits: s.splits,
+        lastProduct: s.lastProduct,
+      }),
       // an older build persisted `expanded`; never let it back in
       merge: (stored, current) => {
         const { expanded: _dropped, ...rest } = (stored ?? {}) as Partial<Preferences>;
