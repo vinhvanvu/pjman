@@ -1,6 +1,7 @@
 // The milestone as a goal page: a large ring, the next line first, what leads to completion from three sides (changes
 // beneath, features touched, projects involved), the decisions, and what blocks it.
-import { Check } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { Check, Map } from 'lucide-react';
 import type { ChangeContext, Lens, Scope, ScopeNode } from '@/data/contract';
 import { plural, sinceDays } from '@/lib/format';
 import { short } from '@/lib/keys';
@@ -55,6 +56,15 @@ export function MilestonePage({
           </div>
           <h1 className="text-[22px] leading-tight font-semibold tracking-tight">{c.title}</h1>
           {ctx.summary && <p className="max-w-[640px] text-ink-muted">{ctx.summary}</p>}
+          <Link
+            to="/$lens/$"
+            params={{ lens: 'feature', _splat: scope.crumbs[0]?.key.startsWith('product:') ? scope.crumbs[0].key : '' }}
+            search={{ milestone: c.key }}
+            className="inline-flex w-fit items-center gap-1.5 text-xs text-ink-muted hover:text-ink"
+          >
+            <Map className="size-3.5" aria-hidden="true" />
+            See its work on the product map →
+          </Link>
         </div>
       </header>
 

@@ -81,9 +81,11 @@ export interface MapFilter {
   q?: string;
   /** Derived states to keep: live, building, planned, retired. Empty keeps all. */
   states?: string[];
+  /** A milestone (change key): the lens is narrowed to the work beneath it before the map is drawn. */
+  milestone?: string;
 }
 
-export const isFiltering = (f: MapFilter): boolean => !!f.q?.trim() || !!f.states?.length;
+export const isFiltering = (f: MapFilter): boolean => !!f.q?.trim() || !!f.states?.length || !!f.milestone;
 
 export function matches(n: ScopeNode, f: MapFilter): boolean {
   if (n.type !== 'feature' && n.type !== 'product') return false;

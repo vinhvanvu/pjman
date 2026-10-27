@@ -26,7 +26,7 @@ A value lives in exactly one of the three and is derived elsewhere, never copied
 History follows places. A place is what the two panes show: the scope, the selection and the view. Moving to another
 place pushes an entry (focus, select, clear, a lens or view switch, a palette jump, a link out of the pane), so Back
 undoes the last click. Refining how the same place is shown replaces (the record tab, the lanes' grouping, the filter,
-the done and retired flags, the window). The acts live in `routes/-LensPage.tsx` and `components/links/NodeLink.tsx`;
+the done and retired flags, the window, the milestone filter). The acts live in `routes/-LensPage.tsx` and `components/links/NodeLink.tsx`;
 no component chooses push or replace on its own. Each pane carries a `data-scroll-restoration-id`, so Back and Forward
 restore its scroll.
 

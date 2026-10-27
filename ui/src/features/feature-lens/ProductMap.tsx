@@ -2,7 +2,7 @@
 // dot, counts faint and right-aligned, connectors from parent to child. A click selects (the record pane shows it); the
 // filter bar narrows the map and opens the matches.
 import { useMemo } from 'react';
-import type { Scope, ScopeNode } from '@/data/contract';
+import type { ChangeRow, Scope, ScopeNode } from '@/data/contract';
 import { plural } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Chip, Label, StateDot } from '@/components/chips/Chip';
@@ -28,6 +28,8 @@ export interface ProductMapProps {
   onSelect: (key: string) => void;
   filter: MapFilter;
   onFilterChange: (f: MapFilter) => void;
+  /** The scope's changes before narrowing: the goals the milestone picker lists. */
+  goals: ChangeRow[];
   version: string | number;
 }
 
@@ -39,6 +41,7 @@ export function ProductMap({
   onSelect,
   filter,
   onFilterChange,
+  goals,
   version,
 }: ProductMapProps) {
   const filtering = isFiltering(filter);
@@ -85,7 +88,7 @@ export function ProductMap({
           </Button>
         )}
       </div>
-      <FilterBar filter={filter} onChange={onFilterChange} matched={matched} />
+      <FilterBar filter={filter} onChange={onFilterChange} matched={matched} goals={goals} />
       <div className="flex-1 px-3 pb-4">
         {top.length === 0 && (
           <p className="px-2 py-3 text-xs text-ink-faint">
@@ -115,10 +118,13 @@ export function ProductMap({
             />
           )}
         />
-        {left && !filtering && (
+        {left && (!filtering || filter.milestone) && (
           <div className="mx-2 mt-3.5 flex items-center gap-2 border-t border-dashed border-line-strong pt-3">
             <span className="text-xs text-ink-muted">{left.title}</span>
-            <Chip tone="quiet">{plural(left.open, 'change')}</Chip>
+            <Chip tone="quiet">
+              {plural(left.children.length, 'change')}
+              {filter.milestone ? ' in this milestone' : ''}
+            </Chip>
             <div className="flex-1" />
             <span className="truncate text-xs text-ink-faint">
               {left.children.map((c) => short(c.key)).join(' · ')}

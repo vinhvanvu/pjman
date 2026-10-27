@@ -4,7 +4,7 @@
 // for the selection; client state from the stores.
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useMemo, useState } from 'react';
-import { User } from 'lucide-react';
+import { Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { SelectionBadge } from '@/components/SelectionBadge';
 import { Chip } from '@/components/chips/Chip';
@@ -22,6 +22,7 @@ import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-pale
 import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestoneHome, MilestoneList, MilestonePage } from '@/features/milestone-lens';
 import { Inbox, inbox, WorkQueue } from '@/features/work';
+import { narrowToMilestone } from '@/lib/narrow';
 import { ChangeRecord } from '@/features/record';
 import { FollowPill } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
@@ -71,14 +72,28 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const sel = search.sel && search.sel !== node ? search.sel : undefined;
   const selection = useScope({ lens, node: sel, ...flags }, !!sel);
   const isScope = !sel;
+  // the milestone filter narrows everything the lens shows, the scope and the selection alike, before anything is drawn
+  const milestone = lens === 'feature' ? search.milestone : undefined;
+  const narrowed = useMemo(
+    () => (scope.data && milestone ? narrowToMilestone(scope.data, milestone) : scope.data),
+    [scope.data, milestone],
+  );
+  const narrowedSelection = useMemo(
+    () => (selection.data && milestone ? narrowToMilestone(selection.data, milestone) : selection.data),
+    [selection.data, milestone],
+  );
+  const goal = milestone ? scope.data?.changes.find((r) => r.key === milestone) : undefined;
   // the record pane's subject: the selection when there is one, else the scope itself
-  const shown = sel ? selection.data : scope.data;
+  const shown = sel ? narrowedSelection : narrowed;
 
   const defaultView: View = 'tree';
   const view: View = search.view ?? defaultView;
   const grouping: Grouping = search.group ?? 'status';
   const tab: Tab = search.tab ?? 'overview';
-  const filter = useMemo<MapFilter>(() => ({ q: search.q, states: list(search.state) }), [search.q, search.state]);
+  const filter = useMemo<MapFilter>(
+    () => ({ q: search.q, states: list(search.state), milestone: search.milestone }),
+    [search.q, search.state, search.milestone],
+  );
 
   // the rail drawer is open for one page only: any navigation closes it, no effect needed
   const pageKey = `${lens}|${node ?? ''}|${view}`;
@@ -120,6 +135,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         ...prev,
         q: f.q?.trim() ? f.q : undefined,
         state: f.states?.length ? f.states.join(',') : undefined,
+        milestone: f.milestone || undefined,
       }),
       replace: true,
     });
@@ -138,7 +154,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   }, [remembered, scope.data, sel]);
   const onExpandedChange = useCallback((ids: string[]) => setExpanded(scopeKey, ids), [setExpanded, scopeKey]);
 
-  const data = scope.data;
+  const data = narrowed;
   const product = data?.crumbs[0]?.key.startsWith('product:')
     ? data.crumbs[0]
     : data?.node?.key.startsWith('product:')
@@ -241,6 +257,19 @@ export function LensPage({ lens, node, following }: LensPageProps) {
           onFocus={!isScope && isContainer(shown) && sel ? () => focus(sel) : undefined}
           onClose={isScope ? undefined : clear}
         />
+        {milestone && (
+          <div className="flex items-center gap-2 border-b border-line bg-raised px-5 py-1.5 text-xs text-ink-muted">
+            <Flag className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
+            <span className="min-w-0 truncate">Showing only work toward {goal?.title ?? short(milestone)}</span>
+            <button
+              type="button"
+              onClick={() => setFilter({ ...filter, milestone: undefined })}
+              className="ml-auto shrink-0 hover:text-ink"
+            >
+              clear
+            </button>
+          </div>
+        )}
         <div className="min-h-0 flex-1">{body}</div>
       </div>
     );
@@ -280,6 +309,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         onSelect={select}
         filter={filter}
         onFilterChange={setFilter}
+        goals={scope.data?.changes ?? []}
         version={scope.dataUpdatedAt}
       />
     );
