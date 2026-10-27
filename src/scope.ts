@@ -1,4 +1,4 @@
-// The scope: what one page of the dashboard shows. A lens (project, feature, milestone) decides the structure the
+// The scope: what one page of the dashboard shows. A lens (project, feature, milestone, roadmap) decides the structure the
 // same changes group under; a node narrows to a subtree; a view (tree, lanes) is the client's business. The result is
 // one tree of structure nodes with change rows, the flat list of the same changes for lanes, and the health, owners,
 // live sessions and activity of the node stood on. Everything here is derived from the records and the event stream.
@@ -11,7 +11,8 @@ import { violations, worstSeverity, type RoadmapRow, type Violation } from './ro
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
 
-export const LENSES = ['project', 'feature', 'milestone'] as const;
+/** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
+export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
 export type Lens = (typeof LENSES)[number];
 export const IN_FLIGHT = ['active', 'review', 'blocked'];
 /** A session is live while something it did reached the stream inside this window. */
@@ -381,7 +382,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     const project = live(loaded, node.data.project);
     const parent = live(loaded, node.data.parent);
     const top = project && (rootProductOf(loaded, project) ?? project);
-    container = lens === 'project' ? project : lens === 'feature' ? nearestFeature(node) ?? top : parent ?? top;
+    container = lens === 'project' ? project : lens === 'feature' || lens === 'roadmap' ? nearestFeature(node) ?? top : parent ?? top;
   }
 
   const beneath = ix.beneath(container?.key ?? null);
@@ -456,7 +457,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
 
   let tree: ScopeNode[] = [];
   const products = loaded.records.filter((r) => r.type === 'product' && r.valid);
-  if (lens === 'feature') {
+  if (lens === 'feature' || lens === 'roadmap') {
     if (!container) tree = products.map((p) => productNode(p, 'feature'));
     else if (container.type === 'product' || container.type === 'feature') {
       const children = featureChildren(container.key).map(featureNode).filter((n): n is ScopeNode => n !== null);
@@ -528,7 +529,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     }
     const project = live(loaded, node.data.project);
     const top = project && (rootProductOf(loaded, project) ?? project);
-    climb(lens === 'project' ? project : lens === 'feature' ? nearestFeature(node) ?? top : top);
+    climb(lens === 'project' ? project : lens === 'feature' || lens === 'roadmap' ? nearestFeature(node) ?? top : top);
   } else if (node) {
     climb(structuralParent(loaded, node));
   }

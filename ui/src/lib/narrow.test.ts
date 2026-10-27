@@ -10,6 +10,7 @@ const row = (key: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   waiting: 0,
   live: false,
   children: 0,
+  dependsOn: [],
   ...extra,
 });
 const changeNode = (r: ChangeRow): ScopeNode => ({

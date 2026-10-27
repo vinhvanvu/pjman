@@ -29,6 +29,8 @@ export interface NodeHeaderProps {
   inFlight: number;
   /** Decisions waiting on a person beneath; shown only when not zero. */
   waiting: number;
+  /** Open bugs beneath and the worst of them; shown only when there are any. */
+  bugs?: { count: number; worst?: string };
   className?: string;
   children?: ReactNode;
 }
@@ -58,6 +60,7 @@ export function NodeHeader({
   open,
   inFlight,
   waiting,
+  bugs,
   className,
   children,
 }: NodeHeaderProps) {
@@ -105,6 +108,29 @@ export function NodeHeader({
           <>
             {sep}
             <span className="font-medium text-status-review">{waiting} waiting on you</span>
+          </>
+        )}
+        {bugs && bugs.count > 0 && (
+          <>
+            {sep}
+            <Link
+              to="."
+              search={(prev: Record<string, unknown>) => ({ ...prev, view: 'bugs' as const })}
+              className={cn(
+                'hover:underline',
+                bugs.worst === 'product' || bugs.worst === 'feature'
+                  ? 'font-medium text-status-blocked'
+                  : bugs.worst === 'capability'
+                    ? 'text-status-review'
+                    : '',
+              )}
+            >
+              {plural(bugs.count, 'bug')}
+              {bugs.worst &&
+                (bugs.worst === 'nuisance' || bugs.worst === 'cosmetic'
+                  ? `, worst ${bugs.worst}`
+                  : `, ${bugs.worst} out`)}
+            </Link>
           </>
         )}
       </p>

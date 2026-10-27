@@ -1,0 +1,228 @@
+// The roadmap's pure derivations: lanes (the features of the map, flattened by the expansion), where each change sits
+// (its first feature's lane, or the nearest open ancestor's, or the foundations), the columns of the future (the
+// sequence, then later), the past's span and ticks, and which rows draw as bars. Nothing here knows pixels except the
+// scale it is handed.
+import type { ChangeRow, Scope, ScopeNode, Violation } from '@/data/contract';
+
+export const FOUNDATIONS = '__foundations__';
+export const LATER = '__later__';
+const DAY = 86_400_000;
+
+export interface Lane {
+  key: string;
+  label: string;
+  level?: string;
+  depth: number;
+  state?: string;
+  parent?: string;
+  /** Lanes beneath it, shown or not. */
+  children: number;
+  expanded: boolean;
+  bugs?: ScopeNode['bugs'];
+}
+
+/** Every feature of the map as a lane, depth first; a collapsed feature's descendants are left out. The foundations
+ *  lane closes the list when any change names nothing. */
+export function lanes(tree: ScopeNode[], expanded: Set<string>, withFoundations: boolean): Lane[] {
+  const out: Lane[] = [];
+  const walk = (list: ScopeNode[], depth: number, parent?: string) => {
+    for (const n of list) {
+      if (n.type !== 'feature') continue;
+      const kids = n.children.filter((c) => c.type === 'feature');
+      const open = expanded.has(n.key);
+      out.push({
+        key: n.key,
+        label: n.name ?? n.title ?? n.key,
+        level: n.level,
+        depth,
+        state: n.derived ?? n.status,
+        parent,
+        children: kids.length,
+        expanded: open,
+        bugs: n.bugs,
+      });
+      if (open) walk(kids, depth + 1, n.key);
+    }
+  };
+  // the product node at the root holds the features; a feature scope holds them directly
+  const top = tree.length === 1 && tree[0]?.type === 'product' ? tree[0].children : tree;
+  walk(top, 0);
+  if (withFoundations) out.push({ key: FOUNDATIONS, label: 'Foundations', depth: 0, children: 0, expanded: false });
+  return out;
+}
+
+/** feature key → its parent feature key, from the whole tree (expanded or not). */
+export function featureParents(tree: ScopeNode[]): Map<string, string | undefined> {
+  const m = new Map<string, string | undefined>();
+  const walk = (list: ScopeNode[], parent?: string) => {
+    for (const n of list) {
+      if (n.type === 'feature') {
+        m.set(n.key, parent);
+        walk(n.children, n.key);
+      } else if (n.type === 'product') walk(n.children, undefined);
+    }
+  };
+  walk(tree);
+  return m;
+}
+
+/** The lane a change sits in: its first feature's, else the nearest shown ancestor's, else the foundations. */
+export function laneOf(row: ChangeRow, shown: Set<string>, parents: Map<string, string | undefined>): string {
+  let cur = row.features[0]?.key;
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    if (shown.has(cur)) return cur;
+    seen.add(cur);
+    cur = parents.get(cur);
+  }
+  return FOUNDATIONS;
+}
+
+export interface Column {
+  kind: 'milestone' | 'single' | 'later';
+  key: string;
+  row?: ChangeRow;
+  title: string;
+  progress?: { done: number; total: number };
+  target?: string;
+  /** The open entries drawn in this column, in creation order. */
+  entries: ChangeRow[];
+  violations: Violation[];
+}
+
+const isOpen = (r: ChangeRow) => r.status !== 'done' && r.status !== 'dropped';
+const isWork = (r: ChangeRow) => isOpen(r) && r.kind !== 'bug';
+
+/** The future: one column per entry of the sequence in scope, a milestone holding its open descendants, a loose
+ *  change holding itself; then later, everything open and unsequenced, parents left out when their children are in. */
+export function columns(scope: Scope): Column[] {
+  const rows = scope.changes;
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const violationsOn = (key: string) => scope.roadmap.violations.filter((v) => v.change === key);
+  const out: Column[] = scope.roadmap.sequence.map((key, i) => {
+    const row = byKey.get(key);
+    const beneath = rows.filter((r) => r.key !== key && r.position === i && isWork(r));
+    const milestone = (row?.children ?? 0) > 0 || beneath.length > 0;
+    return {
+      kind: milestone ? 'milestone' : 'single',
+      key,
+      row,
+      title: row?.title ?? key.slice('change:'.length),
+      progress: row?.progress,
+      target: row?.target,
+      entries: milestone ? beneath : row && isWork(row) ? [row] : [],
+      violations: violationsOn(key),
+    };
+  });
+  const loose = rows.filter((r) => r.position === undefined && isWork(r));
+  const looseKeys = new Set(loose.map((r) => r.key));
+  const later = loose.filter((r) => !loose.some((x) => x.parent === r.key && looseKeys.has(x.key)));
+  if (later.length || out.length === 0) {
+    out.push({ kind: 'later', key: LATER, title: 'Later', entries: later, violations: [] });
+  }
+  return out;
+}
+
+/** The past's span: from the earliest beginning or finish on show, no earlier than `maxDays` ago, no shorter than
+ *  `minDays`; to now. */
+export function pastSpan(rows: ChangeRow[], now: number, minDays = 14, maxDays = 120): { from: number; to: number } {
+  let from = now - minDays * DAY;
+  for (const r of rows) {
+    for (const t of [r.began, r.finished]) {
+      if (!t) continue;
+      const ms = Date.parse(t);
+      if (Number.isFinite(ms) && ms < from) from = ms;
+    }
+  }
+  return { from: Math.max(from, now - maxDays * DAY), to: now };
+}
+
+/** Weekly ticks across the span, each on a Monday, labelled by month and day; a month boundary shows the month. */
+export function ticks(from: number, to: number): { t: number; label: string; month: boolean }[] {
+  const out: { t: number; label: string; month: boolean }[] = [];
+  const d = new Date(from);
+  d.setHours(0, 0, 0, 0);
+  // forward to the next Monday
+  d.setDate(d.getDate() + ((8 - d.getDay()) % 7));
+  let lastMonth = -1;
+  while (d.getTime() < to) {
+    const month = d.getMonth() !== lastMonth;
+    lastMonth = d.getMonth();
+    out.push({
+      t: d.getTime(),
+      label: month ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : String(d.getDate()),
+      month,
+    });
+    d.setDate(d.getDate() + 7);
+  }
+  return out;
+}
+
+export interface Bar {
+  row: ChangeRow;
+  /** Instants; `to` is now for work still in flight. */
+  from: number;
+  to: number;
+  done: boolean;
+}
+
+/** The rows that draw in the past: anything that began (in flight reaches now) or finished. A bug does too: a fix
+ *  had a duration. */
+export function bars(rows: ChangeRow[], now: number): Bar[] {
+  const out: Bar[] = [];
+  for (const r of rows) {
+    if (r.status === 'dropped') continue;
+    const began = r.began ? Date.parse(r.began) : undefined;
+    const finished = r.finished ? Date.parse(r.finished) : undefined;
+    if (r.status === 'done') {
+      if (finished === undefined) continue;
+      out.push({ row: r, from: Math.min(began ?? finished, finished), to: finished, done: true });
+    } else if (began !== undefined) {
+      out.push({ row: r, from: began, to: now, done: false });
+    }
+  }
+  return out;
+}
+
+/** Where a violation's warning reads from, one line. */
+export function violationText(v: Violation, titles: Map<string, string | undefined>): string {
+  const name = (k?: string) => (k ? (titles.get(k) ?? k.slice('change:'.length)) : '');
+  switch (v.kind) {
+    case 'order':
+      return `placed before ${name(v.against)}, which it depends on`;
+    case 'target-order':
+      return `targeted earlier than ${name(v.against)}, which comes before it`;
+    case 'target-dependency':
+      return `targeted earlier than ${name(v.against)}, which it depends on`;
+    case 'overdue':
+      return 'its target has passed';
+    default:
+      return '';
+  }
+}
+
+/** Bugs by severity, worst first, each group labelled by what is lost. */
+export const SEVERITY_LABEL: Record<string, string> = {
+  product: 'Product out',
+  feature: 'Feature out',
+  capability: 'Capability out',
+  nuisance: 'Nuisance',
+  cosmetic: 'Cosmetic',
+};
+export const SEVERITIES = ['product', 'feature', 'capability', 'nuisance', 'cosmetic'] as const;
+
+export function bySeverity(bugs: ChangeRow[]): { severity: string; label: string; rows: ChangeRow[] }[] {
+  const groups = [...SEVERITIES, 'unset'].map((s) => ({
+    severity: s,
+    label: SEVERITY_LABEL[s] ?? 'No severity yet',
+    rows: bugs.filter((b) => (b.severity ?? 'unset') === s),
+  }));
+  return groups.filter((g) => g.rows.length > 0);
+}
+
+/** The worst severity among bugs, or undefined. */
+export const worstOf = (bugs: ChangeRow[]): string | undefined => bugs[0]?.severity;
+
+/** Loud only when a product or a feature is out. */
+export const loud = (bugs: ChangeRow[]): number =>
+  bugs.filter((b) => b.severity === 'product' || b.severity === 'feature').length;

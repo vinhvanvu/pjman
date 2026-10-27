@@ -20,7 +20,8 @@ import { useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
-import { MilestoneHome, MilestoneList, MilestonePage } from '@/features/milestone-lens';
+import { MilestonePage } from '@/features/milestone-lens';
+import { BugsView, loud, RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
 import { Inbox, inbox, WorkQueue } from '@/features/work';
 import { narrowToMilestone } from '@/lib/narrow';
 import { ChangeRecord } from '@/features/record';
@@ -40,9 +41,10 @@ export interface LensPageProps {
 }
 
 const VIEWS_BY_LENS: Record<Lens, readonly View[]> = {
-  feature: ['tree', 'lanes', 'inbox'],
-  project: ['lanes', 'tree', 'inbox'],
-  milestone: ['tree', 'lanes', 'inbox'],
+  feature: ['tree', 'lanes', 'inbox', 'bugs'],
+  project: ['lanes', 'tree', 'inbox', 'bugs'],
+  milestone: ['tree', 'lanes', 'inbox', 'bugs'],
+  roadmap: ['tree', 'lanes', 'inbox', 'bugs'],
 };
 
 /** A node's kind as a word for the record header. */
@@ -64,9 +66,13 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const wide = useWide();
   const { data: store } = useStore();
 
+  const defaultView: View = 'tree';
+  const view: View = search.view ?? defaultView;
+  // the roadmap's chart draws the past, so its scope always carries the done changes
+  const withDone = (lens === 'roadmap' && view === 'tree') || search.done;
   const flags = useMemo(
-    () => ({ days: search.days, done: search.done, retired: search.retired }),
-    [search.days, search.done, search.retired],
+    () => ({ days: search.days, done: withDone, retired: search.retired }),
+    [search.days, withDone, search.retired],
   );
   const scope = useScope({ lens, node, ...flags });
   const sel = search.sel && search.sel !== node ? search.sel : undefined;
@@ -86,8 +92,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   // the record pane's subject: the selection when there is one, else the scope itself
   const shown = sel ? narrowedSelection : narrowed;
 
-  const defaultView: View = 'tree';
-  const view: View = search.view ?? defaultView;
   const grouping: Grouping = search.group ?? 'status';
   const tab: Tab = search.tab ?? 'overview';
   const filter = useMemo<MapFilter>(
@@ -171,7 +175,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       view={view}
       views={VIEWS_BY_LENS[lens]}
       defaultView={defaultView}
-      viewCounts={{ inbox: inboxData?.total }}
+      viewCounts={{ inbox: inboxData?.total, bugs: data ? loud(data.bugs) : undefined }}
       themeSlot={<ThemePicker />}
       personSlot={
         store?.actor ? (
@@ -239,16 +243,16 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       ) : (
         <ChangeRecord ctx={shown.change} lens={lens} liveSessions={live} />
       );
-    } else if (lens === 'milestone' && isScope) {
-      // nothing selected in the milestone lens: the milestones across the scope
-      body = <MilestoneHome scope={shown} lens={lens} />;
+    } else if (lens === 'roadmap' && isScope) {
+      // nothing selected in the roadmap lens: the order as a list
+      body = <RoadmapHome scope={shown} lens={lens} />;
     } else {
       body = <Overview scope={shown} lens={lens} />;
     }
     pane = (
       <div className="flex min-h-0 flex-1 flex-col">
         <RecordHeader
-          kind={lens === 'milestone' && isScope ? 'scope' : kind}
+          kind={lens === 'roadmap' && isScope ? 'scope' : kind}
           isScope={isScope}
           path={path}
           tab={tabs.includes(tab) ? tab : 'overview'}
@@ -289,6 +293,9 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   } else if (view === 'inbox') {
     paneAlways = false;
     structure = <Inbox data={inboxData!} lens={lens} selected={sel} showProject={data.projects.length > 1} />;
+  } else if (view === 'bugs') {
+    paneAlways = false;
+    structure = <BugsView scope={data} lens={lens} selected={sel} showProject={data.projects.length > 1} />;
   } else if (view === 'lanes') {
     paneAlways = false;
     structure = (
@@ -315,8 +322,17 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         version={scope.dataUpdatedAt}
       />
     );
-  } else if (lens === 'milestone' && data.node?.type !== 'change') {
-    structure = <MilestoneList scope={data} lens={lens} selected={sel} />;
+  } else if (lens === 'roadmap' && data.node?.type !== 'change') {
+    structure = (
+      <RoadmapChart
+        scope={data}
+        lens={lens}
+        expanded={expanded}
+        onExpandedChange={onExpandedChange}
+        selected={sel}
+        onSelect={select}
+      />
+    );
   } else {
     structure = (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -357,7 +373,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         id={splitId}
         primary={primary}
         secondary={pane}
-        primarySize={view === 'tree' ? (lens === 'milestone' ? 38 : 55) : 62}
+        primarySize={view === 'tree' ? (lens === 'roadmap' ? 64 : 55) : 62}
         layout={splits[splitId]}
         onLayoutChange={(l) => setSplit(splitId, l)}
       />

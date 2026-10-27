@@ -28,9 +28,21 @@ export function ChangeRecord({
     <article className="flex flex-col gap-5 p-5 md:px-6">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <Label>change</Label>
+          <Label>{c.data.kind === 'bug' ? 'bug' : 'change'}</Label>
           <span className="text-ink-faint">·</span>
           <StatusChip status={c.status} />
+          {c.data.kind === 'bug' && typeof c.data.severity === 'string' && (
+            <Chip
+              tone="quiet"
+              className={c.data.severity === 'product' || c.data.severity === 'feature' ? 'text-status-blocked' : ''}
+              title="severity: where on the tree the behaviour is lost"
+            >
+              {c.data.severity === 'nuisance' || c.data.severity === 'cosmetic'
+                ? c.data.severity
+                : `${c.data.severity} out`}
+            </Chip>
+          )}
+          {typeof c.data.target === 'string' && <Chip tone="quiet">target {c.data.target}</Chip>}
           {ticket && (
             <NodeLink to={ticket} lens={lens}>
               <Chip tone="quiet" mono>
@@ -136,6 +148,33 @@ export function ChangeRecord({
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {(ctx.dependsOn.length > 0 || ctx.neededBy.length > 0) && (
+        <section className="flex flex-col gap-2">
+          {ctx.dependsOn.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Label>Depends on</Label>
+              {ctx.dependsOn.map((d) => (
+                <NodeLink key={d.key} to={d.key} lens={lens}>
+                  <Chip tone="quiet" className={d.status === 'done' ? 'text-status-done' : ''}>
+                    {d.title && d.title.length <= 32 ? d.title : short(d.key)}
+                  </Chip>
+                </NodeLink>
+              ))}
+            </div>
+          )}
+          {ctx.neededBy.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Label>Needed by</Label>
+              {ctx.neededBy.map((d) => (
+                <NodeLink key={d.key} to={d.key} lens={lens}>
+                  <Chip tone="quiet">{d.title && d.title.length <= 32 ? d.title : short(d.key)}</Chip>
+                </NodeLink>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

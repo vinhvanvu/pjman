@@ -2,6 +2,8 @@
 // definition. Build the tool first (`npm run build` at the root). The constants are repeated on purpose: a value import
 // would pull server code into the bundle.
 export type { ChangeRow, Health, Lens, LiveSession, Scope, ScopeNode, WaitingDecision } from '@contract/scope';
+export type { Violation } from '@contract/roadmap';
+export type { OrderResult } from '@contract/commands/order';
 export type { ChangeContext, Row } from '@contract/commands/view';
 export type { StoreEvent } from '@contract/events';
 export type { RecordType } from '@contract/records';
@@ -9,12 +11,13 @@ export type { RecordType } from '@contract/records';
 import type { Row } from '@contract/commands/view';
 import type { Lens } from '@contract/scope';
 
-/** The lenses the dashboard shows: what the product does, and toward what. The server also answers `project`;
- *  the dashboard treats a project as a chip on cards and a record on the getter page, never a place to stand. */
-export const LENSES = ['feature', 'milestone'] as const satisfies readonly Lens[];
+/** The lenses the dashboard shows: what the product is (the map), and in what order it comes (the roadmap). The
+ *  server also answers `project` and `milestone`; the dashboard treats a project as a chip on cards and a record on
+ *  the getter page, and a milestone as an entry on the roadmap. */
+export const LENSES = ['feature', 'roadmap'] as const satisfies readonly Lens[];
 export const IN_FLIGHT = ['active', 'review', 'blocked'] as const;
 /** How the structure pane draws the scope. */
-export const VIEWS = ['tree', 'lanes', 'inbox'] as const;
+export const VIEWS = ['tree', 'lanes', 'inbox', 'bugs'] as const;
 export type View = (typeof VIEWS)[number];
 /** The record pane's tabs, for the selected entity. */
 export const TABS = ['overview', 'activity', 'decisions'] as const;
@@ -46,6 +49,16 @@ export interface Resolution {
   input: string;
   resolution: { status: 'record' | 'alias' | 'invalid' | 'key' | 'none'; key?: string; tried: string[] };
   changes: { change: Row }[];
+}
+
+/** The one write: where a change goes in its product's sequence. */
+export interface OrderBody {
+  change: string;
+  before?: string;
+  after?: string;
+  first?: boolean;
+  last?: boolean;
+  later?: boolean;
 }
 
 export interface ScopeQuery {

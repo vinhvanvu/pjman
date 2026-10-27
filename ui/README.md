@@ -17,7 +17,7 @@ npm run build          # into ../dist/ui
 
 | State  | What                                                       | Owner                                                                                |
 | ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| URL    | lens, node, view, grouping, done and retired flags, window | TanStack Router; `routes/-search.ts` is the schema                                   |
+| URL    | lens, node, view, grouping, filter, done and retired flags, window | TanStack Router; `routes/-search.ts` is the schema                                   |
 | Server | everything from the API                                    | TanStack Query (`data/queries.ts`); `data/live.ts` invalidates from the event stream |
 | Client | theme, pane splits, pinned session, expanded tree nodes    | zustand stores in `state/`, preferences persisted (expanded nodes are not)           |
 
@@ -30,13 +30,17 @@ the done and retired flags, the window, the milestone filter). The acts live in 
 no component chooses push or replace on its own. Each pane carries a `data-scroll-restoration-id`, so Back and Forward
 restore its scroll.
 
+The app writes once: reordering the roadmap. Dragging a column, or a loose entry onto one, calls `POST /order` through
+`useOrder` (`data/queries.ts`), the same library function `pjman order` runs, as the person signed in; the event stream
+then invalidates everything. Nothing else writes, and no component calls the client directly.
+
 ## Folders and boundaries
 
 ```
 src/
   app/         entry point, generated route tree, test setup
   routes/      one file per route; `-LensPage.tsx` composes a page from features
-  features/    one slice per lens or capability (feature-lens, milestone-lens, work: lanes and the inbox, …): components, hooks, a pure model.ts, index.ts
+  features/    one slice per lens or capability (feature-lens, roadmap-lens: the chart, the home and the bugs view; milestone-lens: the milestone page; work: lanes and the inbox; …): components, hooks, a pure model.ts, index.ts
   components/  shell (rail, top bar, panes), tree, cards, chips, presence, stats, ui/ (shadcn, generated)
   data/        client, query hooks, event subscription, contract types (type-only, from the tool)
   state/       preferences, follow

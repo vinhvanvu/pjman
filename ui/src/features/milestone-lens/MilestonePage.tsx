@@ -8,7 +8,7 @@ import { short } from '@/lib/keys';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Figures } from '@/components/stats/Figures';
-import { Ring } from './Ring';
+import { Ring } from '@/components/stats/Ring';
 import { childrenByStatus, decided, featuresTouched, projectsInvolved, proposed, rowsBeneath } from './model';
 
 export function MilestonePage({
@@ -53,6 +53,7 @@ export function MilestonePage({
               </NodeLink>
             )}
             {typeof c.data.project === 'string' && <Chip tone="quiet">{short(c.data.project)}</Chip>}
+            {typeof c.data.target === 'string' && <Chip tone="quiet">target {c.data.target}</Chip>}
           </div>
           <h1 className="text-[22px] leading-tight font-semibold tracking-tight">{c.title}</h1>
           {ctx.summary && <p className="max-w-[640px] text-ink-muted">{ctx.summary}</p>}
@@ -161,6 +162,22 @@ export function MilestonePage({
                 {t.effects.has('adds') ? 'adds ' : t.effects.has('removes') ? 'removes ' : ''}
                 {t.title && t.title.length <= 28 ? t.title : short(t.key)}
               </Chip>
+            </NodeLink>
+          ))}
+        </section>
+      )}
+      {(ctx.dependsOn.length > 0 || ctx.neededBy.length > 0) && (
+        <section className="flex flex-wrap items-center gap-2">
+          {ctx.dependsOn.length > 0 && <Label>Depends on</Label>}
+          {ctx.dependsOn.map((d) => (
+            <NodeLink key={d.key} to={d.key} lens={lens}>
+              <Chip tone="quiet">{d.title && d.title.length <= 28 ? d.title : short(d.key)}</Chip>
+            </NodeLink>
+          ))}
+          {ctx.neededBy.length > 0 && <Label className="ml-2">Needed by</Label>}
+          {ctx.neededBy.map((d) => (
+            <NodeLink key={d.key} to={d.key} lens={lens}>
+              <Chip tone="quiet">{d.title && d.title.length <= 28 ? d.title : short(d.key)}</Chip>
             </NodeLink>
           ))}
         </section>

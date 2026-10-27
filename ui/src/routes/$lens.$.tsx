@@ -7,15 +7,17 @@ import { pageSearch } from './-search';
 export const Route = createFileRoute('/$lens/$')({
   params: {
     parse: (raw) => {
-      if (!(LENSES as readonly string[]).includes(raw.lens)) throw notFound();
-      return { lens: raw.lens as Lens, _splat: raw._splat ?? '' };
+      // the milestone lens became the roadmap; old links still open
+      const lens = raw.lens === 'milestone' ? 'roadmap' : raw.lens;
+      if (!(LENSES as readonly string[]).includes(lens)) throw notFound();
+      return { lens: lens as Lens, _splat: raw._splat ?? '' };
     },
     stringify: (p) => ({ lens: p.lens, _splat: p._splat }),
   },
   validateSearch: pageSearch,
   component: Page,
   notFoundComponent: () => (
-    <div className="p-6 text-sm text-ink-muted">No such lens. The lenses are feature and milestone.</div>
+    <div className="p-6 text-sm text-ink-muted">No such lens. The lenses are feature and roadmap.</div>
   ),
 });
 

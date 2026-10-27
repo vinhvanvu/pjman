@@ -1,5 +1,5 @@
 // The client for /api/v1: one function per route. Nothing here is called from a component; the hooks in queries.ts are.
-import type { Resolution, Row, Scope, ScopeQuery, SessionView, StoreInfo } from './contract';
+import type { OrderBody, OrderResult, Resolution, Row, Scope, ScopeQuery, SessionView, StoreInfo } from './contract';
 
 export class ApiError extends Error {
   constructor(
@@ -34,6 +34,24 @@ async function call<T>(route: string): Promise<T> {
   return body.data as T;
 }
 
+async function post<T>(route: string, body: unknown): Promise<T> {
+  const res = await fetch(BASE + route, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const json = (await res.json()) as Envelope<T>;
+  if (!res.ok || json.error) {
+    throw new ApiError(
+      res.status,
+      json.error?.code ?? 'error',
+      json.error?.message ?? res.statusText,
+      json.error?.tried,
+    );
+  }
+  return json.data as T;
+}
+
 /** `kind:rest` → `/records/kind/rest`, each path segment encoded. */
 const recordPath = (key: string) => {
   const i = key.indexOf(':');
@@ -61,4 +79,6 @@ export const api = {
     if (q.retired) p.set('retired', '1');
     return call<Scope>(`/scope?${p}`);
   },
+  /** The one write: reorder the roadmap, as the person signed in. */
+  order: (body: OrderBody) => post<OrderResult>('/order', body),
 };

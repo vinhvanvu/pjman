@@ -10,6 +10,7 @@ const row = (key: string, over: Partial<ChangeRow> = {}): ChangeRow => ({
   waiting: 0,
   live: false,
   children: 0,
+  dependsOn: [],
   ...over,
 });
 

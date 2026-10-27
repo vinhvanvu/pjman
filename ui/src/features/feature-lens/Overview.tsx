@@ -46,6 +46,7 @@ export function Overview({ scope, lens }: { scope: Scope; lens: Lens }) {
         open={open.length}
         inFlight={inFlight.length}
         waiting={scope.waitingOn.length}
+        bugs={{ count: scope.bugs.length, worst: scope.bugs[0]?.severity }}
       />
       {body === 'product' && <ProductBody scope={scope} lens={lens} />}
       {body === 'feature' && <FeatureBody scope={scope} lens={lens} />}
@@ -115,7 +116,7 @@ function ProductBody({ scope, lens }: { scope: Scope; lens: Lens }) {
           {g.length > 5 && (
             <Link
               to="/$lens/$"
-              params={{ lens: 'milestone', _splat: scope.node?.key ?? '' }}
+              params={{ lens: 'roadmap', _splat: scope.node?.key ?? '' }}
               className="text-xs text-ink-muted hover:text-ink"
             >
               and {g.length - 5} more in the milestone lens

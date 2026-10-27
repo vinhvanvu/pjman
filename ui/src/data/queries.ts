@@ -1,8 +1,8 @@
 // Server state: every piece of data a component shows comes through one of these hooks. Keys are structured so the
 // event stream can invalidate by prefix (see live.ts); nothing is ever copied out of the cache into other state.
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from './client';
-import type { ScopeQuery } from './contract';
+import type { OrderBody, ScopeQuery } from './contract';
 
 export const queryKeys = {
   all: ['pjman'] as const,
@@ -42,6 +42,15 @@ export function useResolve(ref: string | undefined) {
     queryFn: () => api.resolve(ref!),
     enabled: !!ref,
     retry: false,
+  });
+}
+
+/** The one write: the roadmap's order. The stream invalidates too; this makes the refetch immediate. */
+export function useOrder() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrderBody) => api.order(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }
 

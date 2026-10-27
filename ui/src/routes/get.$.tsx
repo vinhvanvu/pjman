@@ -1,5 +1,5 @@
 // /get/*: anything in, the right page out. A node key opens its lens; a ticket or file opens the change in reach;
-// a decision opens its change in the milestone lens; a project, which has no lens, is shown here with its changes.
+// a decision opens its change in the feature lens; a project, which has no lens, is shown here with its changes.
 // What cannot be resolved says what was tried.
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useResolve, useScope } from '@/data/queries';
@@ -27,7 +27,7 @@ function Get() {
   const key = data.resolution.key;
   if (key && kindOf(key) === 'decision') {
     const change = `change:${restOf(key).split('/')[0]}`;
-    return <Navigate to="/$lens/$" params={{ lens: 'milestone', _splat: change }} replace />;
+    return <Navigate to="/$lens/$" params={{ lens: 'feature', _splat: change }} replace />;
   }
   if (key && isNodeKey(key)) {
     const t = targetOf(key, 'feature');
@@ -57,7 +57,7 @@ function ProjectPage({ project }: { project: string }) {
         <span className="label">project</span>
         <h1 className="text-heading font-semibold tracking-tight">{short(project)}</h1>
         <p className="text-xs text-ink-muted">
-          A project is where the code lives. Its work is seen through the feature and milestone lenses; these are its
+          A project is where the code lives. Its work is seen through the product map and the roadmap; these are its
           open changes.
         </p>
       </header>

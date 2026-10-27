@@ -25,7 +25,15 @@ const change = (key: string): ScopeNode => ({
   inFlight: 0,
   projects: [],
   childCount: 0,
-  row: { key: `change:${key}`, title: key, features: [], waiting: 0, live: false, children: 0 } as ChangeRow,
+  row: {
+    key: `change:${key}`,
+    title: key,
+    features: [],
+    waiting: 0,
+    live: false,
+    children: 0,
+    dependsOn: [],
+  } as ChangeRow,
   children: [],
 });
 const feature = (key: string, children: ScopeNode[] = []): ScopeNode => ({

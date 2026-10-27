@@ -2,7 +2,7 @@
 // view is a search param on the current route. Slots take what a feature owns (the theme picker, the person).
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { ChevronDown, Columns3, Flag, Inbox, Layers, ListTree, type LucideIcon } from 'lucide-react';
+import { Bug, ChartGantt, ChevronDown, Columns3, Inbox, Layers, ListTree, Route, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { Lens, View } from '@/data/contract';
 
@@ -26,14 +26,18 @@ export interface RailProps {
 }
 
 const LENS_ITEMS: { lens: Lens; label: string; icon: LucideIcon }[] = [
-  { lens: 'feature', label: 'Feature', icon: Layers },
-  { lens: 'milestone', label: 'Milestone', icon: Flag },
+  { lens: 'feature', label: 'Product map', icon: Layers },
+  { lens: 'roadmap', label: 'Roadmap', icon: Route },
 ];
 
-const VIEW_ITEMS: { view: View; label: string; icon: LucideIcon }[] = [
-  { view: 'tree', label: 'Tree', icon: ListTree },
+/** The tree view is the lens's own structure: the map in the feature lens, the chart in the roadmap lens. */
+const viewItems = (lens: Lens): { view: View; label: string; icon: LucideIcon }[] => [
+  lens === 'roadmap'
+    ? { view: 'tree', label: 'Chart', icon: ChartGantt }
+    : { view: 'tree', label: 'Map', icon: ListTree },
   { view: 'lanes', label: 'Lanes', icon: Columns3 },
   { view: 'inbox', label: 'Inbox', icon: Inbox },
+  { view: 'bugs', label: 'Bugs', icon: Bug },
 ];
 
 export function Rail({
@@ -86,20 +90,28 @@ export function Rail({
       ))}
 
       <RailHeading>View</RailHeading>
-      {VIEW_ITEMS.filter((v) => views.includes(v.view)).map(({ view: v, label, icon: Icon }) => (
-        <Link
-          key={v}
-          to="/$lens/$"
-          params={{ lens, _splat: node ?? '' }}
-          search={(prev: Record<string, unknown>) => ({ ...prev, view: v === defaultView ? undefined : v })}
-          className={cn(railItem, v === view && railItemOn)}
-          aria-current={v === view ? 'page' : undefined}
-        >
-          <Icon className="size-[15px] shrink-0" />
-          {label}
-          {viewCounts?.[v] ? <span className="ml-auto text-xs font-normal text-ink-faint">{viewCounts[v]}</span> : null}
-        </Link>
-      ))}
+      {viewItems(lens)
+        .filter((v) => views.includes(v.view))
+        .map(({ view: v, label, icon: Icon }) => (
+          <Link
+            key={v}
+            to="/$lens/$"
+            params={{ lens, _splat: node ?? '' }}
+            search={(prev: Record<string, unknown>) => ({ ...prev, view: v === defaultView ? undefined : v })}
+            className={cn(railItem, v === view && railItemOn)}
+            aria-current={v === view ? 'page' : undefined}
+          >
+            <Icon className="size-[15px] shrink-0" />
+            {label}
+            {viewCounts?.[v] ? (
+              <span
+                className={cn('ml-auto text-xs font-normal', v === 'bugs' ? 'text-status-blocked' : 'text-ink-faint')}
+              >
+                {viewCounts[v]}
+              </span>
+            ) : null}
+          </Link>
+        ))}
 
       <div className="flex-1" />
       {themeSlot}
