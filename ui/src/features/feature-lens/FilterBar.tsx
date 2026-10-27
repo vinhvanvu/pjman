@@ -1,5 +1,5 @@
 // The filter bar above the product map: a text, the states, and a milestone that narrows the whole lens to the work
-// beneath one goal. All of it is URL state, so a filtered map is a link, and a saved view later is one of these links
+// beneath one milestone. All of it is URL state, so a filtered map is a link, and a saved view later is one of these links
 // with a name.
 import { cn } from 'cn';
 import { ChevronDown, Flag, Search, X } from 'lucide-react';
@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import type { MapFilter } from './model';
-import { goals as goalsOf, isFiltering } from './model';
+import { inFlight, isFiltering } from './model';
 
 const STATES = ['live', 'building', 'planned', 'retired'] as const;
 
@@ -24,14 +24,14 @@ export interface FilterBarProps {
   onChange: (f: MapFilter) => void;
   /** How many features match, when filtering. */
   matched?: number;
-  /** The scope's changes before narrowing; the milestones among them are what the picker lists. */
-  goals: ChangeRow[];
+  /** The scope's changes before narrowing; the milestones in flight among them are what the picker lists. */
+  changes: ChangeRow[];
   className?: string;
 }
 
-export function FilterBar({ filter, onChange, matched, goals, className }: FilterBarProps) {
-  const milestones = goalsOf(goals);
-  const chosen = filter.milestone ? goals.find((r) => r.key === filter.milestone) : undefined;
+export function FilterBar({ filter, onChange, matched, changes, className }: FilterBarProps) {
+  const milestones = inFlight(changes);
+  const chosen = filter.milestone ? changes.find((r) => r.key === filter.milestone) : undefined;
   const toggle = (list: string[] | undefined, v: string) =>
     list?.includes(v) ? list.filter((x) => x !== v) : [...(list ?? []), v];
   const active = isFiltering(filter);
@@ -99,7 +99,7 @@ export function FilterBar({ filter, onChange, matched, goals, className }: Filte
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[320px]">
               <DropdownMenuLabel className="text-meta text-ink-faint">
-                Goals in flight · nearest to done first
+                Milestones in flight · nearest to done first
               </DropdownMenuLabel>
               {milestones.map((m) => (
                 <DropdownMenuItem

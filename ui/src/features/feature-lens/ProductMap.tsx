@@ -28,8 +28,8 @@ export interface ProductMapProps {
   onSelect: (key: string) => void;
   filter: MapFilter;
   onFilterChange: (f: MapFilter) => void;
-  /** The scope's changes before narrowing: the goals the milestone picker lists. */
-  goals: ChangeRow[];
+  /** The scope's changes before narrowing: the milestones the picker lists. */
+  changes: ChangeRow[];
   version: string | number;
 }
 
@@ -41,7 +41,7 @@ export function ProductMap({
   onSelect,
   filter,
   onFilterChange,
-  goals,
+  changes,
   version,
 }: ProductMapProps) {
   const filtering = isFiltering(filter);
@@ -88,7 +88,7 @@ export function ProductMap({
           </Button>
         )}
       </div>
-      <FilterBar filter={filter} onChange={onFilterChange} matched={matched} goals={goals} />
+      <FilterBar filter={filter} onChange={onFilterChange} matched={matched} changes={changes} />
       <div className="flex-1 px-3 pb-4">
         {top.length === 0 && (
           <p className="px-2 py-3 text-xs text-ink-faint">

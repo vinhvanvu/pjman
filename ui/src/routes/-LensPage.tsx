@@ -82,7 +82,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     () => (selection.data && milestone ? narrowToMilestone(selection.data, milestone) : selection.data),
     [selection.data, milestone],
   );
-  const goal = milestone ? scope.data?.changes.find((r) => r.key === milestone) : undefined;
+  const chosenMilestone = milestone ? scope.data?.changes.find((r) => r.key === milestone) : undefined;
   // the record pane's subject: the selection when there is one, else the scope itself
   const shown = sel ? narrowedSelection : narrowed;
 
@@ -240,7 +240,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         <ChangeRecord ctx={shown.change} lens={lens} liveSessions={live} />
       );
     } else if (lens === 'milestone' && isScope) {
-      // nothing selected in the milestone lens: the goals across the scope
+      // nothing selected in the milestone lens: the milestones across the scope
       body = <MilestoneHome scope={shown} lens={lens} />;
     } else {
       body = <Overview scope={shown} lens={lens} />;
@@ -260,7 +260,9 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         {milestone && (
           <div className="flex items-center gap-2 border-b border-line bg-raised px-5 py-1.5 text-xs text-ink-muted">
             <Flag className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
-            <span className="min-w-0 truncate">Showing only work toward {goal?.title ?? short(milestone)}</span>
+            <span className="min-w-0 truncate">
+              Showing only work toward {chosenMilestone?.title ?? short(milestone)}
+            </span>
             <button
               type="button"
               onClick={() => setFilter({ ...filter, milestone: undefined })}
@@ -309,7 +311,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         onSelect={select}
         filter={filter}
         onFilterChange={setFilter}
-        goals={scope.data?.changes ?? []}
+        changes={scope.data?.changes ?? []}
         version={scope.dataUpdatedAt}
       />
     );

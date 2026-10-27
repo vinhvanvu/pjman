@@ -1,4 +1,4 @@
-// The milestone as a goal page: a large ring, the next line first, what leads to completion from three sides (changes
+// The milestone page: a large ring, the next line first, what leads to completion from three sides (changes
 // beneath, features touched, projects involved), the decisions, and what blocks it.
 import { Link } from '@tanstack/react-router';
 import { Check, Map } from 'lucide-react';

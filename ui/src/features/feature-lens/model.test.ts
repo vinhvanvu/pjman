@@ -10,7 +10,7 @@ import {
   effectOn,
   featuresBelow,
   featuresByState,
-  goals,
+  inFlight,
   healthWord,
   pathTo,
   productMap,
@@ -129,14 +129,14 @@ describe('the overview', () => {
     expect(allWork({ tree: tree[0]!.children }).map((r) => r.key)).toEqual(['change:here', 'change:v2', 'change:auto']);
   });
 
-  it('lists goals nearest to done first and the verb on a node', () => {
+  it('lists milestones in flight nearest to done first and the verb on a node', () => {
     const m = (key: string, done: number, total: number, status = 'active') => ({
       ...change(key).row!,
       status,
       progress: { done, total },
     });
     expect(
-      goals([m('far', 1, 4), m('near', 3, 4), m('over', 4, 4, 'done'), change('plain').row!]).map((r) => r.key),
+      inFlight([m('far', 1, 4), m('near', 3, 4), m('over', 4, 4, 'done'), change('plain').row!]).map((r) => r.key),
     ).toEqual(['change:near', 'change:far']);
     const row = { ...change('x').row!, features: [{ effect: 'adds' as const, key: 'feature:f' }] };
     expect(effectOn(row, 'feature:f')).toBe('adds');

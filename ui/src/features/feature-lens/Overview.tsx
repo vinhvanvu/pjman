@@ -15,7 +15,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { NodeHeader } from '@/components/record/NodeHeader';
-import { allWork, bodyOf, byMotion, featuresBelow, featuresByState, goals, healthWord, unassigned } from './model';
+import { allWork, bodyOf, byMotion, featuresBelow, featuresByState, healthWord, inFlight, unassigned } from './model';
 
 const STATES = ['live', 'building', 'planned', 'retired'] as const;
 /** A level label in the plural: capability, capabilities. */
@@ -60,7 +60,7 @@ function ProductBody({ scope, lens }: { scope: Scope; lens: Lens }) {
   const states = featuresByState(scope.tree);
   const total = Object.values(states).reduce((n, c) => n + c, 0);
   const top = byMotion(featuresBelow(scope.tree));
-  const g = goals(scope.changes);
+  const g = inFlight(scope.changes);
   const left = unassigned(scope.tree);
   return (
     <>
@@ -86,7 +86,7 @@ function ProductBody({ scope, lens }: { scope: Scope; lens: Lens }) {
       </Section>
 
       {g.length > 0 && (
-        <Section label="Goals" aside="nearest to done first">
+        <Section label="Milestones" aside="in flight · nearest to done first">
           <ol className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
             {g.slice(0, 5).map((m) => {
               const p = m.progress ?? { done: 0, total: 0 };

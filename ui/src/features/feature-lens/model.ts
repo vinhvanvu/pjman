@@ -169,7 +169,7 @@ export const byMotion = (features: ScopeNode[]): ScopeNode[] =>
   });
 
 /** Milestones in the scope that are not finished, nearest to done first. */
-export const goals = (changes: ChangeRow[]): ChangeRow[] => {
+export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
   const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
   return changes
     .filter((r) => r.progress && r.status !== 'done' && r.status !== 'dropped')

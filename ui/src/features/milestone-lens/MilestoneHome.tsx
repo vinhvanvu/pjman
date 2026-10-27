@@ -1,4 +1,4 @@
-// The milestone lens with nothing selected: the goals across the whole scope. How many are in flight and reached, how
+// The milestone lens with nothing selected: the milestones across the whole scope. How many are in flight and reached, how
 // far along they are together, what waits on a person, which ones are moving right now, and each one's next line.
 import type { Lens, Scope } from '@/data/contract';
 import { pct, plural, truncate } from '@/lib/format';
@@ -18,7 +18,7 @@ export function MilestoneHome({ scope, lens }: { scope: Scope; lens: Lens }) {
       <header className="flex flex-col gap-2">
         <Label>milestones · {title}</Label>
         <h1 className="text-heading font-semibold tracking-tight">
-          {s.inFlight ? `${plural(s.inFlight, 'goal')} in flight` : 'No goals in flight'}
+          {s.inFlight ? `${plural(s.inFlight, 'milestone')} in flight` : 'No milestones in flight'}
         </h1>
         <p className="text-[13.5px] text-ink-muted">
           A milestone is a change with children; its progress is its children done. Select one to see what leads to it.

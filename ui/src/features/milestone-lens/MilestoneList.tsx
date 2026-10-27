@@ -1,4 +1,4 @@
-// The milestone list: each goal with a small ring, its status and its progress. Short, because the page is the point.
+// The milestone list: each milestone with a small ring, its status and its progress. Short, because the page is the point.
 import { cn } from 'cn';
 import { ChevronRight } from 'lucide-react';
 import type { Lens, Scope } from '@/data/contract';
