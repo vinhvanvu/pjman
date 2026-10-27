@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "A context graph for product development: typed records in git under one schema, and the tool that is the schema.",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "pjman": "./bin/pjman.js"

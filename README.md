@@ -118,3 +118,7 @@ claude --plugin-dir /path/to/pjman/adapters/claude-code
 ```bash
 npm test
 ```
+
+## License
+
+Apache License 2.0. See `LICENSE` and `NOTICE`.
