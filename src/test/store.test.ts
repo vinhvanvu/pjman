@@ -528,3 +528,48 @@ test('the receipt: what the store received since a point, one line per record, d
   assert.deepEqual(receipt(store, { since: mid, session: 'session:nobody' }).lines, []);
   rm(store, 'change:receipt-b');
 });
+
+test('depends_on, kind, severity, target and the sequence: validated, refused when wrong, dropped by rm --detach', () => {
+  const project = loadStore(store).records.find((r) => r.type === 'project')!.key;
+  newRecord(store, 'change', 'base', { title: 'Base', summary: 'b', project });
+  newRecord(store, 'change', 'on-base', { title: 'On base', summary: 'o', project, dependsOn: ['change:base'], target: '2026-12-01' });
+  const rec = loadStore(store).byKey.get('change:on-base')![0];
+  assert.deepEqual(rec.data.depends_on, ['change:base']);
+  assert.equal(rec.data.target, '2026-12-01');
+  const ctx = changeContext(store, 'change:on-base');
+  assert.deepEqual(ctx.dependsOn.map((r) => r.key), ['change:base']);
+  assert.deepEqual(changeContext(store, 'change:base').neededBy.map((r) => r.key), ['change:on-base']);
+  assert.match(formatChangeContext(ctx), /## Depends on\n- change:base/);
+  // a cycle, a self-dependency, a missing target, a bad date: refused
+  assert.throws(() => set(store, 'change:base', ['depends_on=change:on-base'], {}), /depends_on cycles/);
+  assert.throws(() => set(store, 'change:base', ['depends_on=change:base'], {}), /is the change itself/);
+  assert.throws(() => set(store, 'change:base', ['depends_on=change:nowhere'], {}), /does not resolve/);
+  assert.throws(() => set(store, 'change:base', ['target=soon'], {}), /must be a date/);
+  // a bug carries kind and severity; severity without the kind is refused
+  newRecord(store, 'change', 'crash', { title: 'Crash on save', summary: 'c', project, kind: 'bug', severity: 'feature' });
+  assert.equal(loadStore(store).byKey.get('change:crash')![0].data.severity, 'feature');
+  assert.throws(() => set(store, 'change:base', ['severity=cosmetic'], {}), /a bug's field/);
+  assert.throws(() => set(store, 'change:crash', ['severity=huge'], {}), /not one of product, feature/);
+  assert.throws(() => set(store, 'change:crash', ['kind=chore'], {}), /not one of work, bug/);
+  newRecord(store, 'change', 'typo', { title: 'Typo', summary: 't', project, kind: 'bug', severity: 'cosmetic', created: '2026-01-01' });
+  newRecord(store, 'change', 'slow', { title: 'Slow', summary: 's', project, kind: 'bug' });
+  assert.deepEqual(ls(store, { type: 'change', kind: 'bug' }).map((r) => r.key), ['change:crash', 'change:typo', 'change:slow']);
+  assert.ok(!ls(store, { type: 'change', kind: 'work' }).some((r) => r.key === 'change:crash'));
+  // the product's sequence: change keys, no repeats
+  newRecord(store, 'product', 'seq', { title: 'Seq', sequence: ['change:base', 'change:on-base'] });
+  assert.deepEqual(loadStore(store).byKey.get('product:seq')![0].data.sequence, ['change:base', 'change:on-base']);
+  assert.throws(() => set(store, 'product:seq', ['sequence=change:base,change:base'], {}), /appears twice/);
+  assert.throws(() => set(store, 'product:seq', ['sequence=feature:nope'], {}), /must be a change key/);
+  // the getter sees the edges
+  const n = get(loadStore(store), 'change:base');
+  assert.ok(n.in.some((e) => e.edge === 'depends_on' && e.from === 'change:on-base'));
+  assert.ok(n.in.some((e) => e.edge === 'sequence' && e.from === 'product:seq'));
+  // rm --detach drops the dependency and the sequence entry
+  assert.throws(() => rm(store, 'change:base'), /change:on-base  depends_on/);
+  const r = rm(store, 'change:base', { detach: true });
+  assert.ok(r.detached.some((d) => d.key === 'change:on-base' && d.fields.includes('depends_on')));
+  assert.ok(r.detached.some((d) => d.key === 'product:seq' && d.fields.includes('sequence')));
+  assert.equal(loadStore(store).byKey.get('change:on-base')![0].data.depends_on, undefined);
+  assert.deepEqual(loadStore(store).byKey.get('product:seq')![0].data.sequence, ['change:on-base']);
+  assert.deepEqual(errors(store), []);
+});

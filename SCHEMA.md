@@ -49,6 +49,7 @@ The fixed root of the product tree. Projects and top-level features attach to it
 | `title` | A | Required. |
 | `owners` | A | Optional list of actor keys; inherited by every node beneath that names none. |
 | `levels` | A | Optional list of level labels for the features beneath, by depth (default: the store's `tree_levels`, `feature` then `capability`; anything deeper takes the last label). |
+| `sequence` | A | Optional ordered list of change keys: the roadmap's order, the deliverables as the person arranged them. A milestone on it is a column holding its children; a loose change is a column of one; a change not on it comes after, as later. No repeats; `pjman order` moves an entry. |
 | `links` | A | Optional source keys. |
 | body | A | `## Summary`, optional: the product in a paragraph. |
 
@@ -174,6 +175,10 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 | `owners` | A | Optional list of actor keys; a change without owners answers to its feature's or project's. |
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
+| `kind` | A | Optional. `bug`: a change against something live, reported rather than planned. Absent means work. A sync sets it from the tracker's own issue type or label; it never sets the feature or the severity |
+| `severity` | A | A bug's only. Where on the tree the behaviour is lost, from worst: `product` (nobody can use it), `feature` (a feature's sentence is false), `capability` (one behaviour is gone; deeper nesting reads as capability), `nuisance` (it works with a workaround), `cosmetic` (nothing is lost). Set at intake from the level of the node the bug names, raised when the blast radius is wider. Orders the bug pool, worst first then oldest; never a priority beside the sequence |
+| `depends_on` | A | Optional list of change keys: what must land before this one. A cycle and a self-dependency are refused. The roadmap draws the edge on focus and checks it against the order; it warns and never reorders |
+| `target` | A | Optional date: a milestone's target, set by a person, shown where present, never required and never inferred |
 | `next` | A | The handoff: the next action. What resume reads first |
 | `parent` | A | Optional. The change this one is part of. Depth is unbounded; a cycle is an error; the parent may be in another project. Children are derived, never written. A change with children is a milestone: its progress is the children done over children, dropped excluded, derived |
 | `aliases` | A | Former slugs, appended by `pjman mv`. A reference to an alias resolves and is reported as "resolves via alias" |
@@ -217,6 +222,8 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 |---|---|---|---|
 | `project` | change → project | change | the project must exist |
 | `parent` | change → change | change | the parent must exist; no cycles; any depth; any project |
+| `depends_on` | change → change | change | every key must exist; no cycles; a constraint on the order, never a scheduler |
+| `sequence` | product → change | product | the roadmap's order; every key must exist; no repeats |
 | `binds` | change → source | change | a source binds at most one change |
 | `product` | feature, project → product | the child | the fixed root of the product tree |
 | `owners` | product, feature, project, change → actor | the node | inherited downward when a node names none |

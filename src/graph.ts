@@ -44,6 +44,7 @@ export function allEdges(loaded: Loaded): Edge[] {
     for (const k of list(d.owners)) edge('owners', r.key, k, r);
     switch (r.type) {
       case 'product':
+        for (const k of list(d.sequence)) edge('sequence', r.key, live(k), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'feature':
@@ -59,6 +60,7 @@ export function allEdges(loaded: Loaded): Edge[] {
       case 'change':
         if (typeof d.project === 'string') edge('project', r.key, d.project, r);
         if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
+        for (const k of list(d.depends_on)) edge('depends_on', r.key, live(k), r);
         for (const f of list(d.features)) {
           const e = parseEffect(f);
           if (e) edge(e.effect, r.key, live(e.key), r);

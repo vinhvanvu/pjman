@@ -16,6 +16,7 @@ export interface Issue {
   parent?: string;
   updatedAt?: string;
   team?: string;
+  labels: string[];
 }
 
 export interface SyncOpts {
@@ -62,6 +63,7 @@ export function toIssue(raw: unknown): Issue | null {
     parent: str(parent?.identifier) ?? str(r.parentIdentifier) ?? (typeof r.parent === 'string' ? r.parent : undefined),
     updatedAt: str(r.updatedAt),
     team: str(team?.key) ?? str(r.teamKey) ?? id.slice(0, id.indexOf('-')),
+    labels: (Array.isArray(r.labels) ? (r.labels as unknown[]) : Array.isArray(obj(r.labels)?.nodes) ? (obj(r.labels)!.nodes as unknown[]) : []).map((l) => (typeof l === 'string' ? l : str(obj(l)?.name))).filter((x): x is string => !!x),
   };
 }
 
@@ -94,8 +96,8 @@ export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
       continue;
     }
     tickets.push({
-      id: issue.id, slug: slugFor('linear', issue.id), title: issue.title, url: issue.url, status: mapStatus(store, issue.state, issue.stateType), parent: issue.parent,
-      observed: { state: issue.state, state_type: issue.stateType, team: issue.team, parent: issue.parent, updated_at: issue.updatedAt },
+      id: issue.id, slug: slugFor('linear', issue.id), title: issue.title, url: issue.url, status: mapStatus(store, issue.state, issue.stateType), parent: issue.parent, kind: issue.labels.some((l) => l.toLowerCase() === 'bug') ? 'bug' : undefined,
+      observed: { state: issue.state, state_type: issue.stateType, team: issue.team, parent: issue.parent, labels: issue.labels, updated_at: issue.updatedAt },
     });
   }
   const r = applyTickets(store, { project, kind: 'linear', owner: 'linear', writer: WRITER, tickets, session: opts.session, label: `linear ${team}` });

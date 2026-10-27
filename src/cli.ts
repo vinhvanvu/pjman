@@ -39,10 +39,11 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'brief', about: 'print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md)', usage: ['pjman brief'] },
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
-      'pjman new product <slug> --title <t> [--owners <actor>]... [--levels <label>]... [--summary <s>]',
+      'pjman new product <slug> --title <t> [--owners <actor>]... [--levels <label>]... [--sequence <change>]... [--summary <s>]',
       'pjman new feature <slug> --title <t> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>]',
       'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...',
-      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]... [--owners <actor>]... [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
+      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
+      '                                [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date)',
       'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
       '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
@@ -55,7 +56,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },
   { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
     usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
-  { name: 'ls', about: 'list records, by type, status and project', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--json]'] },
+  { name: 'ls', about: 'list records, by type, status, project and kind; bugs come worst first, then oldest', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--kind bug|work] [--json]'] },
   { name: 'refs', about: "every reference in a text that resolves to something, in order, each with the change it leads to: change:<slug>, a URL, a ticket in any shape the store's source kinds know, an existing slug; the last mention is what a prompt is about. Never writes",
     usage: ['pjman refs <text> [--json]', 'pjman refs - [--json]   (text on stdin)'] },
   { name: 'tree', about: "the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature",
@@ -131,6 +132,11 @@ function parse() {
     links: { type: 'string', multiple: true },
     owners: { type: 'string', multiple: true },
     features: { type: 'string', multiple: true },
+    'depends-on': { type: 'string', multiple: true },
+    kind: { type: 'string' },
+    severity: { type: 'string' },
+    target: { type: 'string' },
+    sequence: { type: 'string', multiple: true },
     levels: { type: 'string', multiple: true },
     level: { type: 'string' },
     product: { type: 'string' },
@@ -209,6 +215,7 @@ function main(): number {
         supersedes: v.supersedes, decision: v.decision, why: v.why, name: v.name, url: v.url,
         agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, started: v.started,
         product: v.product, owners: v.owners, features: v.features, level: v.level, levels: v.levels,
+        dependsOn: v['depends-on'], kind: v.kind, severity: v.severity, target: v.target, sequence: v.sequence,
         created: v.created, body: v.body, writer: v.writer, session: v.session,
       };
       const r = newRecord(store, type, ident, flags);
@@ -262,7 +269,7 @@ function main(): number {
     }
     case 'ls': {
       const store = requireStore(cwd, v.store);
-      const rows = ls(store, { type: pos[1], status: v.status, project: v.project });
+      const rows = ls(store, { type: pos[1], status: v.status, project: v.project, kind: v.kind });
       v.json ? json(rows) : out(formatLs(rows));
       return 0;
     }

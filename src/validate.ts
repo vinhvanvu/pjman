@@ -1,4 +1,4 @@
-import { ACTOR_KINDS, CANONICAL_STATUSES, DECISION_STATUSES } from './config.js';
+import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, SEVERITIES } from './config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
@@ -19,7 +19,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   product: ['title', 'writer', 'session', 'created'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
   project: ['title', 'product', 'parent', 'tracker', 'writer', 'session', 'created'],
-  change: ['title', 'status', 'project', 'parent', 'next', 'writer', 'session', 'created'],
+  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'writer', 'created'],
@@ -27,10 +27,10 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
 };
 
 const LIST_FIELDS: Record<RecordType, string[]> = {
-  product: ['owners', 'levels', 'links'],
+  product: ['owners', 'levels', 'sequence', 'links'],
   feature: ['owners', 'links'],
   project: ['owners', 'links'],
-  change: ['features', 'owners', 'binds', 'links', 'aliases'],
+  change: ['depends_on', 'features', 'owners', 'binds', 'links', 'aliases'],
   decision: ['links'],
   source: ['links'],
   session: ['changes'],
@@ -48,6 +48,8 @@ export const EDGES: Record<string, [string[], string[]]> = {
   links: [['product', 'feature', 'project', 'change', 'decision', 'source'], ['source']],
   supersedes: [['decision'], ['decision']],
   parent: [['session', 'change', 'feature', 'project'], ['session', 'change', 'feature', 'project']],
+  depends_on: [['change'], ['change']],
+  sequence: [['product'], ['change']],
   changes: [['session'], ['change']],
   project: [['change'], ['project']],
   product: [['feature', 'project'], ['product']],
@@ -152,6 +154,16 @@ export function validate(loaded: Loaded): Problem[] {
       case 'product': {
         if (r.productSlug && !SLUG_RE.test(r.productSlug)) err(r, `file name '${r.productSlug}' is not a slug`);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        {
+          const seen = new Set<string>();
+          for (const k of listOf(d.sequence)) {
+            checkRef(r, 'sequence', k, ['change']);
+            const res = resolve(loaded, k);
+            const key = res.status === 'ok' || res.status === 'alias' ? res.rec.key : k;
+            if (seen.has(key)) err(r, `sequence: '${k}' appears twice`);
+            seen.add(key);
+          }
+        }
         break;
       }
       case 'feature': {
@@ -187,10 +199,42 @@ export function validate(loaded: Loaded): Problem[] {
             ? `status '${d.status}' is not canonical; the vocabulary maps it to '${mapped}', which is what the file must say`
             : `status '${d.status}' is not in the vocabulary (${CANONICAL_STATUSES.join(', ')})`);
         }
+        if (typeof d.kind === 'string' && !(CHANGE_KINDS as readonly string[]).includes(d.kind)) err(r, `kind '${d.kind}' is not one of ${CHANGE_KINDS.join(', ')}`);
+        if (typeof d.severity === 'string') {
+          if (!(SEVERITIES as readonly string[]).includes(d.severity)) err(r, `severity '${d.severity}' is not one of ${SEVERITIES.join(', ')}`);
+          if (d.kind !== 'bug') err(r, `severity is a bug's field; this change's kind is '${String(d.kind ?? 'work')}'`);
+        }
+        if (d.target !== undefined && !isDateString(d.target)) err(r, `'target' must be a date (yyyy-mm-dd)`);
         if (typeof d.project === 'string') checkRef(r, 'project', d.project, ['project']);
         if (typeof d.parent === 'string') {
           checkRef(r, 'parent', d.parent, ['change']);
           parentCycle('parent');
+        }
+        if (listOf(d.depends_on).length) {
+          for (const k of listOf(d.depends_on)) {
+            checkRef(r, 'depends_on', k, ['change']);
+            const res = resolve(loaded, k);
+            if ((res.status === 'ok' || res.status === 'alias') && res.rec.key === r.key) err(r, `depends_on: '${k}' is the change itself`);
+          }
+          // a chain of dependencies that returns to this change is a cycle
+          const path: string[] = [r.key];
+          const visit = (rec: Rec, depth: number): boolean => {
+            if (depth > 64) return false;
+            for (const k of listOf(rec.data.depends_on)) {
+              const res = resolve(loaded, k);
+              if (res.status !== 'ok' && res.status !== 'alias') continue;
+              if (res.rec.key === r.key) {
+                err(r, `depends_on cycles: ${[...path, r.key].join(' → ')}`);
+                return true;
+              }
+              if (path.includes(res.rec.key)) continue;
+              path.push(res.rec.key);
+              if (visit(res.rec, depth + 1)) return true;
+              path.pop();
+            }
+            return false;
+          };
+          visit(r, 0);
         }
         for (const f of listOf(d.features)) {
           const e = parseEffect(f);

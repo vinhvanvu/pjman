@@ -7,16 +7,16 @@ import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
 
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
-  product: ['title', 'owners', 'levels', 'links', 'summary'],
+  product: ['title', 'owners', 'levels', 'sequence', 'links', 'summary'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'summary'],
   project: ['title', 'product', 'parent', 'tracker', 'owners', 'links'],
-  change: ['title', 'status', 'project', 'parent', 'features', 'owners', 'next', 'binds', 'links', 'summary', 'plan'],
+  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'summary', 'plan'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'links', 'decision', 'why'],
   source: ['title', 'url', 'links'],
   actor: ['name', 'url'],
   session: [],
 };
-const LISTS = new Set(['binds', 'links', 'owners', 'features', 'levels']);
+const LISTS = new Set(['binds', 'links', 'owners', 'features', 'levels', 'depends_on', 'sequence']);
 const SECTIONS: Record<string, string> = { summary: 'Summary', plan: 'Plan', decision: 'Decision', why: 'Why' };
 
 export interface SetResult {

@@ -39,10 +39,11 @@ index.db                                     derived, git-ignored, rebuilt by `p
 
 ```
 pjman init [--name <project-name>] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]
-pjman new product <slug> --title … [--owners <actor>]… [--levels <label>]… [--summary …]
+pjman new product <slug> --title … [--owners <actor>]… [--levels <label>]… [--sequence <change>]… [--summary …]
 pjman new feature <slug> --title … --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]…
 pjman new project <slug> --title … [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]… [--links <key>]…
-pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
+pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
+                                [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]
 pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
 pjman new source <kind>:<key> [--title …] [--url …]
 pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
@@ -52,7 +53,7 @@ pjman session bind <id> <change>       record that the run worked on a change
 pjman session observe <id> <edge> <from> <to>   record an observed edge (evidence)
 pjman validate [--json]                every record, every reference; errors are reported, never dropped
 pjman fmt [--check]                    canonical field order, the YAML rule, repaired quoting
-pjman ls [type] [--status s] [--project <key>] [--json]   records in creation order, with their date
+pjman ls [type] [--status s] [--project <key>] [--kind bug|work] [--json]   records in creation order, with their date; bugs worst first, then oldest
 pjman events --receipt [--since <seq>]  what the store received, one line per record, for a person (the adapter shows it after every turn)
 pjman tree [product:<slug>|feature:<slug>]   the product tree: features at labelled levels, derived status, owners, backlog by project
 pjman activity <key> [--days 14]       the events beneath a node, through every chain, and what they say about health
@@ -61,7 +62,7 @@ pjman get <ref>                        the getter: a key, a URL, a ticket id, a 
 pjman refs <text|->                    every reference in a text, in order, with the change it leads to; what a prompt is about
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>
-pjman set <key> <field>=<value>…   change an authored field (title, status, project, parent, next, links, binds, summary, plan; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
+pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; sequence on a product; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
 pjman mv <key> <new key>               rename a change (alias kept), a project or a decision; every reference rewritten
 pjman rm <key> [--detach]              remove a record (a change with its decisions); refused while referenced, --detach drops droppable references
 pjman events [--since <seq>] [--json]   the store's event stream, one event per write; `pjman events rebuild` derives it from git history

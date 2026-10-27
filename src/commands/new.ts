@@ -30,6 +30,11 @@ export interface NewFlags {
   product?: string;
   owners?: string[];
   features?: string[];
+  dependsOn?: string[];
+  kind?: string;
+  severity?: string;
+  target?: string;
+  sequence?: string[];
   level?: string;
   levels?: string[];
   started?: string;
@@ -100,7 +105,7 @@ export function newProduct(store: Store, ident: string, flags: NewFlags): NewRes
   if (!flags.title) throw new CliError('--title is required');
   const rel = path.join('products', `${slug}.md`);
   refuseExisting(store, rel);
-  const data: Record<string, unknown> = { title: flags.title, owners: listOrNone(flags.owners), levels: listOrNone(flags.levels), links: listOrNone(flags.links), ...stamp(flags) };
+  const data: Record<string, unknown> = { title: flags.title, owners: listOrNone(flags.owners), levels: listOrNone(flags.levels), sequence: listOrNone(flags.sequence), links: listOrNone(flags.links), ...stamp(flags) };
   let body = flags.summary ? section('Summary', flags.summary) : '';
   if (flags.body) body += (body ? '\n' : '') + flags.body.trim() + '\n';
   writeFile(store, rel, render('product', data, body));
@@ -146,10 +151,14 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
   const data: Record<string, unknown> = {
     title: flags.title,
     status: flags.status ?? 'open',
+    kind: flags.kind,
+    severity: flags.severity,
     project: flags.project ?? store.project,
     parent: flags.parent,
+    depends_on: listOrNone(flags.dependsOn),
     features: listOrNone(flags.features),
     owners: listOrNone(flags.owners),
+    target: flags.target,
     next: flags.next,
     binds: flags.binds?.length ? flags.binds : undefined,
     links: flags.links?.length ? flags.links : undefined,

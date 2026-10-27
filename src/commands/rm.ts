@@ -26,7 +26,7 @@ export interface RmResult {
   commit: string | null;
 }
 
-const LISTS = ['binds', 'links', 'changes', 'owners', 'features'];
+const LISTS = ['binds', 'links', 'changes', 'owners', 'features', 'depends_on', 'sequence'];
 const SINGLE = ['parent', 'supersedes'];
 
 /** Drop `key` from the fields that may lose a reference. Returns the fields changed. */

@@ -21,7 +21,7 @@ delete process.env.PJMAN_STORE;
 // gh issue list --json number,title,state,stateReason,url,labels,milestone
 const issues = [
   { number: 1, title: 'Login', state: 'OPEN', stateReason: '', url: 'https://github.com/acme/app/issues/1', labels: [{ name: 'in progress' }], milestone: { title: 'v1' } },
-  { number: 2, title: 'Signup', state: 'OPEN', stateReason: '', url: 'https://github.com/acme/app/issues/2', labels: [], milestone: null, parent: { number: 1 } },
+  { number: 2, title: 'Signup', state: 'OPEN', stateReason: '', url: 'https://github.com/acme/app/issues/2', labels: [{ name: 'Bug' }], milestone: null, parent: { number: 1 } },
   { number: 3, title: 'Old', state: 'CLOSED', stateReason: 'COMPLETED', url: 'https://github.com/acme/app/issues/3', labels: [] },
   { number: 4, title: 'Nope', state: 'CLOSED', stateReason: 'NOT_PLANNED', url: 'https://github.com/acme/app/issues/4', labels: [] },
   { number: 5, title: 'A PR', state: 'OPEN', url: 'https://github.com/acme/app/pull/5', pull_request: {} },
@@ -78,6 +78,8 @@ test('a sync applies the repository from the project link: sources, changes, par
   assert.deepEqual(c1.data.binds, ['github-issue:acme/app#1']);
   assert.equal(c1.data.status, 'open');
   assert.equal(loaded.byKey.get('change:app-2')![0].data.parent, 'change:app-1');
+  assert.equal(loaded.byKey.get('change:app-2')![0].data.kind, 'bug');
+  assert.equal(loaded.byKey.get('change:app-1')![0].data.kind, undefined);
   assert.equal(loaded.byKey.get('change:app-3')![0].data.status, 'done');
   assert.equal(loaded.byKey.get('change:app-4')![0].data.status, 'dropped');
   const s1 = loaded.byKey.get('github-issue:acme/app#1')![0];

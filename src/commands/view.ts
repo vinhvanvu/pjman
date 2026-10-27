@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
+import { SEVERITIES } from '../config.js';
 import { loadStore, resolve, type Loaded, type Rec, type RecordType } from '../records.js';
 import { CliError } from '../util.js';
 
@@ -31,7 +32,13 @@ const TYPE_ALIASES: Record<string, RecordType> = {
   source: 'source', sources: 'source', session: 'session', sessions: 'session', actor: 'actor', actors: 'actor',
 };
 
-export function ls(store: Store, opts: { type?: string; status?: string; project?: string }): Row[] {
+/** Bugs in queue order: the worst severity first, an unset severity last, then the oldest. */
+export function bugOrder(a: { severity?: string; created?: string; key: string }, b: { severity?: string; created?: string; key: string }): number {
+  const rank = (s?: string) => { const i = (SEVERITIES as readonly string[]).indexOf(s ?? ''); return i < 0 ? SEVERITIES.length : i; };
+  return rank(a.severity) - rank(b.severity) || (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key);
+}
+
+export function ls(store: Store, opts: { type?: string; status?: string; project?: string; kind?: string }): Row[] {
   const loaded = loadStore(store);
   let recs = loaded.records;
   if (opts.type) {
@@ -41,6 +48,11 @@ export function ls(store: Store, opts: { type?: string; status?: string; project
   }
   if (opts.status) recs = recs.filter((r) => r.data.status === opts.status);
   if (opts.project) recs = recs.filter((r) => r.type !== 'change' || r.data.project === opts.project);
+  if (opts.kind) recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
+  if (opts.kind === 'bug') {
+    const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
+    return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(row);
+  }
   const typeOrder: RecordType[] = ['product', 'feature', 'project', 'change', 'decision', 'source', 'session', 'actor'];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
@@ -80,6 +92,9 @@ export interface ChangeContext {
   /** The parent change, resolved, and the changes whose parent this is. */
   parent?: Row;
   children: Row[];
+  /** What must land before this change, resolved; and the changes that say they need this one. */
+  dependsOn: Row[];
+  neededBy: Row[];
   /** A parent change is a milestone: done children over children, dropped excluded. */
   progress?: { done: number; total: number };
   /** Edges sessions observed from this change (the files it touched), with the session that saw each. */
@@ -171,7 +186,13 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
       return (p.status === 'ok' || p.status === 'alias') && p.rec.key === rec.key;
     })
     .map(row);
-  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, parent, children, progress: progressOf(children), observed };
+  const liveKey = (k: unknown): string | undefined => {
+    const r = typeof k === 'string' ? resolve(loaded, k) : null;
+    return r && (r.status === 'ok' || r.status === 'alias') ? r.rec.key : undefined;
+  };
+  const dependsOn = list(rec.data.depends_on).map((k) => liveKey(k)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => !!r).map(row);
+  const neededBy = loaded.records.filter((r) => r.type === 'change' && r.valid && list(r.data.depends_on).some((k) => liveKey(k) === rec.key)).map(row);
+  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed };
 }
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
@@ -190,7 +211,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
   out.push(`# ${c.change.key} — ${c.change.title ?? ''}`);
-  out.push(`status: ${c.change.status ?? '?'}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.title ?? ''}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}`);
+  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}`);
   if (c.summary) out.push(`\n## Summary\n\n${c.summary}`);
   if (c.plan) out.push(`\n## Plan\n\n${c.plan}`);
   for (const [k, v] of Object.entries(c.sections)) if (v) out.push(`\n## ${k}\n\n${v}`);
@@ -213,6 +234,14 @@ export function formatChangeContext(c: ChangeContext): string {
   if (c.children.length) {
     out.push(`\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} done)` : ''}`);
     for (const ch of c.children) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
+  }
+  if (c.dependsOn.length) {
+    out.push('\n## Depends on');
+    for (const ch of c.dependsOn) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
+  }
+  if (c.neededBy.length) {
+    out.push('\n## Needed by');
+    for (const ch of c.neededBy) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
   }
   if (c.observed.length) {
     out.push('\n## Observed');

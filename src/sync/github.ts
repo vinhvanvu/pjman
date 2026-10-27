@@ -100,7 +100,7 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
     }
     tickets.push({
       id: `${repo}#${i.number}`, slug: slugFor('github-issue', `${repo}#${i.number}`), title: i.title, url: i.url ?? `https://github.com/${repo}/issues/${i.number}`,
-      status: mapGhStatus(store, i), parent: i.parent !== undefined ? `${repo}#${i.parent}` : undefined,
+      status: mapGhStatus(store, i), parent: i.parent !== undefined ? `${repo}#${i.parent}` : undefined, kind: i.labels.some((l) => l.toLowerCase() === 'bug') ? 'bug' : undefined,
       observed: { state: i.state, state_reason: i.stateReason, labels: i.labels, milestone: i.milestone, parent: i.parent, updated_at: i.updatedAt },
     });
   }

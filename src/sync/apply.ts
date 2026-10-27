@@ -24,6 +24,8 @@ export interface Ticket {
   observed: Record<string, unknown>;
   /** The parent ticket's id, when the tracker has one. */
   parent?: string;
+  /** `bug` when the tracker's own issue type or label says so; the sync never sets the feature or the severity. */
+  kind?: 'bug';
 }
 
 export interface ApplyOpts {
@@ -107,9 +109,9 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     const rel = existing?.path ?? path.join('changes', t.slug, 'change.md');
     if (existing) {
       const binds = Array.isArray(existing.data.binds) ? (existing.data.binds as string[]) : [];
-      write(existing, 'change', rel, changeKey, { ...existing.data, title: t.title, status: t.status, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['title', 'status']);
+      write(existing, 'change', rel, changeKey, { ...existing.data, title: t.title, status: t.status, kind: t.kind ?? existing.data.kind, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['title', 'status', 'kind']);
     } else {
-      write(undefined, 'change', rel, changeKey, { title: t.title, status: t.status, project: project.key, binds: [sourceKey], ...stamp }, '## Summary\n\n\n', []);
+      write(undefined, 'change', rel, changeKey, { title: t.title, status: t.status, kind: t.kind, project: project.key, binds: [sourceKey], ...stamp }, '## Summary\n\n\n', []);
     }
   }
   if (touched.length) validateOrUndo(store, touched, events.filter((e) => e.op === 'created').map((e) => e.path));
