@@ -162,19 +162,27 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const onExpandedChange = useCallback((ids: string[]) => setExpanded(scopeKey, ids), [setExpanded, scopeKey]);
 
   const data = narrowed;
-  const product = data?.crumbs[0]?.key.startsWith('product:')
-    ? data.crumbs[0]
-    : data?.node?.key.startsWith('product:')
-      ? data.node
-      : store?.products[0];
+  // One source of truth for which product this page is in: the URL. A product key in it names the product at once;
+  // anything else waits for its own scope (never a previous page's, kept as placeholder) to say which product it is
+  // beneath. Nothing is guessed from the store's list, so the rail never shows a product this page is not in.
+  const fresh = scope.isPlaceholderData ? undefined : data;
+  const urlProduct = node?.startsWith('product:') ? node : undefined;
+  const scopeProduct = fresh?.crumbs[0]?.key.startsWith('product:')
+    ? fresh.crumbs[0]
+    : fresh?.node?.key.startsWith('product:')
+      ? fresh.node
+      : undefined;
+  const product = urlProduct
+    ? (store?.products.find((p) => p.key === urlProduct) ?? { key: urlProduct })
+    : scopeProduct;
   const inboxData = data ? inbox(data) : undefined;
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
     if (product?.key) setLastProduct(product.key);
   }, [product?.key, setLastProduct]);
   // the rail names the product, so the crumb starts beneath it; on the product's own page the bar names the lens
-  const onProduct = data?.node?.key.startsWith('product:') ?? false;
-  const crumbsBeneath = (data?.crumbs ?? []).filter((c) => !c.key.startsWith('product:'));
+  const onProduct = fresh?.node?.key.startsWith('product:') ?? false;
+  const crumbsBeneath = (fresh?.crumbs ?? []).filter((c) => !c.key.startsWith('product:'));
   const railProduct = (p: { key: string; title?: string; name?: string }, health?: ProductRow): RailProduct => ({
     key: p.key,
     name: p.name ?? health?.name ?? short(p.key),
@@ -218,14 +226,14 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       lens={lens}
       crumbs={crumbsBeneath}
       current={
-        data?.node
+        fresh?.node
           ? {
-              key: data.node.key,
-              title: onProduct ? (LENS_HOME[lens] ?? data.node.name) : (data.node.name ?? data.node.title),
+              key: fresh.node.key,
+              title: onProduct ? (LENS_HOME[lens] ?? fresh.node.name) : (fresh.node.name ?? fresh.node.title),
             }
           : undefined
       }
-      kind={data && !onProduct ? kindOf(data) : undefined}
+      kind={fresh && !onProduct ? kindOf(fresh) : undefined}
       liveSessions={data?.sessions.length ?? 0}
       onOpenPalette={openPalette}
       onOpenRail={wide ? undefined : () => setRailOpenFor(pageKey)}
