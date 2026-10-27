@@ -30,6 +30,7 @@ import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
 import { short } from '@/lib/keys';
 import { usePreferences } from '@/state/preferences';
+import { freshScope, pageProduct } from '@/lib/identity';
 import type { PageSearch } from './-search';
 
 export interface LensPageProps {
@@ -162,19 +163,9 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const onExpandedChange = useCallback((ids: string[]) => setExpanded(scopeKey, ids), [setExpanded, scopeKey]);
 
   const data = narrowed;
-  // One source of truth for which product this page is in: the URL. A product key in it names the product at once;
-  // anything else waits for its own scope (never a previous page's, kept as placeholder) to say which product it is
-  // beneath. Nothing is guessed from the store's list, so the rail never shows a product this page is not in.
-  const fresh = scope.isPlaceholderData ? undefined : data;
-  const urlProduct = node?.startsWith('product:') ? node : undefined;
-  const scopeProduct = fresh?.crumbs[0]?.key.startsWith('product:')
-    ? fresh.crumbs[0]
-    : fresh?.node?.key.startsWith('product:')
-      ? fresh.node
-      : undefined;
-  const product = urlProduct
-    ? (store?.products.find((p) => p.key === urlProduct) ?? { key: urlProduct })
-    : scopeProduct;
+  // identity has one source (lib/identity.ts): the URL, else this page's own scope; never a guess
+  const fresh = freshScope(data, scope.isPlaceholderData);
+  const product = pageProduct(node, fresh, store?.products);
   const inboxData = data ? inbox(data) : undefined;
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {

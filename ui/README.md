@@ -23,6 +23,13 @@ npm run build          # into ../dist/ui
 
 A value lives in exactly one of the three and is derived elsewhere, never copied.
 
+**Identity has one source.** Which product a page is in, which node it stands on and what the crumb says come from the
+URL, or from the page's own scope once it has arrived, through `lib/identity.ts` and nowhere else. Never from a guess:
+not the store's list of products, not a previous page's scope kept as placeholder while the next loads. Content may
+show a placeholder while it loads; identity may not, so the rail and the crumb show nothing rather than a likely
+product. The rule came from the rail flashing the store's first product before the scope landed, and recording it as
+the last opened (change:rail-product-flash).
+
 History follows places. A place is what the two panes show: the scope, the selection and the view. Moving to another
 place pushes an entry (focus, select, clear, a lens or view switch, a palette jump, a link out of the pane), so Back
 undoes the last click. Refining how the same place is shown replaces (the record tab, the lanes' grouping, the filter,
