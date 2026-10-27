@@ -1,5 +1,5 @@
-// pjman mv: rename a change, a project or a decision. The file or folder moves, every reference in the store is
-// rewritten in the same commit, and a change keeps its old slug as an alias. Sources, actors and sessions are not
+// pjman mv: rename a product, a feature, a project, a change or a decision. The file or folder moves, every reference
+// in the store is rewritten in the same commit, and a change or a feature keeps its old slug as an alias. Sources, actors and sessions are not
 // renamed: their keys are external.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -112,12 +112,20 @@ function mvFeature(store: Store, loaded: Loaded, from: string, to: string, opts:
   if (!rec || rec.type !== 'feature') throw new CliError(`${from} does not exist`);
   if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before renaming`);
   if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
-  const oldDir = path.join('features', from.slice('feature:'.length));
+  if (loaded.featureAliasOf.has(toSlug)) throw new CliError(`'${toSlug}' is an alias of ${loaded.featureAliasOf.get(toSlug)}`);
+  const fromSlug = from.slice('feature:'.length);
+  const oldDir = path.join('features', fromSlug);
   const newDir = path.join('features', toSlug);
   move(store, oldDir, newDir);
   const pathAfter = (rel: string) => (rel.startsWith(oldDir + '/') ? newDir + rel.slice(oldDir.length) : rel);
-  const rewritten = rewriteAll(store, loaded, pathAfter, (text) => rewriteKey(text, from, to));
-  return finish(store, loaded, from, to, 'feature', path.join(newDir, 'feature.md'), rewritten, pathAfter, opts);
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) => {
+    if (r !== rec) return rewriteKey(text, from, to);
+    const aliases = Array.isArray(r.data.aliases) ? [...(r.data.aliases as string[])] : [];
+    if (!aliases.includes(fromSlug)) aliases.push(fromSlug);
+    const data = JSON.parse(rewriteKey(JSON.stringify({ ...r.data, aliases }), from, to)) as Record<string, unknown>;
+    return render('feature', data, rewriteKey(r.body, from, to));
+  });
+  return finish(store, loaded, from, to, 'feature', path.join(newDir, 'feature.md'), rewritten, pathAfter, opts, ['aliases']);
 }
 
 function mvProject(store: Store, loaded: Loaded, from: string, to: string, opts: { session?: string }): MvResult {

@@ -66,6 +66,7 @@ One nestable kind for everything the product is and does, at any depth: a featur
 | `parent` | A | The feature above. Unbounded depth; a cycle is refused. |
 | `owners` | A | Optional list of actor keys; inherited downward. |
 | `links` | A | Optional source keys. |
+| `aliases` | A | Former slugs, appended by `pjman mv`; a reference to one resolves and is reported as "resolves via alias". |
 | body | A | `## Summary`, optional. |
 
 Derived state: `retired` once a change that `removes` the feature is done; else `live` once a change that `adds` it is done; else `building` while any change affecting it is in flight (`active`, `review` or `blocked`; `planning` and `open` are not building); a child's `live` or `building` lifts its parent; else `planned`. The tree at any release is a replay of the done changes up to it.
@@ -81,6 +82,7 @@ A repository, registered in the store by `pjman init`. The unit a change belongs
 | `parent` | A | Optional. The project above (a platform over web and api); unbounded depth, cycles refused. |
 | `owners` | A | Optional list of actor keys; inherited downward. |
 | `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). A bare ticket id with no references resolves through it; an adapter creates a change for a ticket only in a project that names one. The tracker's own binding sits under `ext.<tracker>` (`ext.linear.team: ABC` names the Linear team the sync pulls) |
+| `map` | A | Optional. `propose` (the default `pjman init` records after asking): while the project's product has no feature, `pjman context` opens with one line saying the product has no map and the map skill proposes one. `skip` ends the line. |
 | `links` | A | Optional. Source keys: the repository (`git-repo:owner/name`), its tracker, its docs |
 
 The path of the repository on a machine is not in the record; it is in the user config's map (below).
@@ -116,7 +118,8 @@ Body: `## Log`, append-only, one entry per turn that took action. Code decides w
 - Required fields present; enums in range; every referenced key resolves (sources exempt); a `superseded` decision is pointed at by a newer decision's `supersedes`; a `decided` decision has `decided_by` and `decided_on`.
 - Uniqueness: one folder per change slug (the tool refuses a second; two machines creating the same slug meet a git add/add conflict at merge, visible, never silent); one decision slug per change folder; one source per canonical key (kind lower-cased; URL keys normalised; ticket keys verbatim); one actor record per handle.
 - Removals go through `pjman rm <key>`: a change takes its decisions with it; the command is refused while any other record refers to the key, naming each referrer and field, and `--detach` drops the references that can be dropped (a key in `binds`, `links` or a session's `changes`; a `parent`; a `supersedes`; an observed edge) in the same commit. A change's `project`, a record's `writer` or `session` can never be dropped: remove or move those records first. The event is `removed`; the git history keeps the record.
-- Renames go through `pjman mv`. A change (`change:<old> change:<new>`): the folder moves, the old slug is appended to `aliases`, and every reference in the store is rewritten in one commit. A project: the file moves, every `project:` field follows, and the directories bound to it in the user config follow. A decision (`decision:<change>/<old> decision:<change>/<new>`, or to another change): the file moves, its date prefix kept, and every `supersedes` and link follows. Sources, actors and sessions are not renamed: their keys are external. Keys make renames a tool operation where ids made them free; `aliases` keeps stale references resolvable in between.
+- Renames go through `pjman mv`. A change (`change:<old> change:<new>`) or a feature (`feature:<old> feature:<new>`): the folder moves, the old slug is appended to `aliases`, and every reference in the store (a feature's effects included) is rewritten in one commit. A product: the file moves and every `product:` field follows. A project: the file moves, every `project:` field follows, and the directories bound to it in the user config follow. A decision (`decision:<change>/<old> decision:<change>/<new>`, or to another change): the file moves, its date prefix kept, and every `supersedes` and link follows. Sources, actors and sessions are not renamed: their keys are external. Keys make renames a tool operation where ids made them free; `aliases` keeps stale references resolvable in between.
+- Many writes as one commit go through `pjman apply [<file>|-] [--for <key>]`: the commands one per line as typed after `pjman` (`new`, `set`, `mv`, `rm`, `order`, `session`; blank lines and `#` comments skipped), run in order with every commit and event held, then one commit (`pjman: apply <n> writes for <key>`, the key as the `Pjman-For` trailer) and the held events with it, closed by one `applied` event on the record `--for` names (`store` when none). A line that fails refuses the whole batch: the store is reset to the commit before it and nothing is written. `pjman undo [<commit>]` reverts the last batch, or the commit named, as one commit (`pjman: undo <sha> (<subject>)`, trailers `Pjman-Undoes` and `Pjman-For`), emitting `removed`, `created` or `set` for each record put back and one `reverted` event; it is refused while a later commit touched a record of that batch. Both need a store the tool commits. A proposed product map is applied this way, so one commit is its boundary and one undo its rollback.
 - An invalid record is reported with its path and reason, never dropped silently; a reference to a record that exists but fails to parse is "resolved, invalid", not "missing".
 - Nothing in `ext` is validated.
 
@@ -244,7 +247,7 @@ Every write the tool makes appends one event per record written to `events.jsonl
 |---|---|
 | `seq` | Position in the stream, from 1; a rebuild renumbers |
 | `at` | UTC instant of the write |
-| `op` | `created` · `set` · `log` · `bind` · `observe` · `moved` · `formatted` · `init` · `write` (a rebuild's word for a commit it cannot classify) |
+| `op` | `created` · `set` · `log` · `bind` · `observe` · `moved` · `formatted` · `init` · `write` (a rebuild's word for a commit it cannot classify) · `applied` (a batch landed: the key is what it was for, `fields` its size) · `reverted` (a batch undone) |
 | `key` | The record written; `store` for `init` |
 | `type` | The record type; `store` for `init` |
 | `path` | The record's path |

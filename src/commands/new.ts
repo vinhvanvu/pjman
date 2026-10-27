@@ -11,6 +11,8 @@ export interface NewFlags {
   title?: string;
   project?: string;
   tracker?: string;
+  /** A project's answer to the map question: propose (the first session proposes a product map) or skip. */
+  map?: string;
   status?: string;
   summary?: string;
   plan?: string;
@@ -135,7 +137,7 @@ export function newProject(store: Store, ident: string, flags: NewFlags): NewRes
   if (!flags.title) throw new CliError('--title is required');
   const rel = path.join('projects', `${slug}.md`);
   refuseExisting(store, rel);
-  const data: Record<string, unknown> = { title: flags.title, product: flags.product, parent: flags.parent, tracker: flags.tracker, owners: listOrNone(flags.owners), links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
+  const data: Record<string, unknown> = { title: flags.title, product: flags.product, parent: flags.parent, tracker: flags.tracker, map: flags.map, owners: listOrNone(flags.owners), links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
   writeFile(store, rel, render('project', data, flags.body ? flags.body.trim() + '\n' : ''));
   return finish(store, 'project', `project:${slug}`, rel, [rel], flags);
 }

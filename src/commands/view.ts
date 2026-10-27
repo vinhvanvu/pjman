@@ -109,6 +109,8 @@ export interface StoreContext {
   changes: Row[];
   proposed: Row[];
   counts: Record<string, number>;
+  /** One line when the project's product has no map yet and the project did not decline one. */
+  mapPrompt?: string;
 }
 
 /** Milestone progress: done children over children that were not dropped; undefined without children. */
@@ -276,7 +278,16 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
     .filter((r) => r.type === 'decision' && r.data.status === 'proposed')
     .filter((r) => !project || !r.changeSlug || loaded.byKey.get(`change:${r.changeSlug}`)?.[0]?.data.project === project.key)
     .map(row);
-  return { store: { name: store.config.name, mode: store.mode, root: store.root }, project, projects, changes, proposed, counts };
+  return { store: { name: store.config.name, mode: store.mode, root: store.root }, project, projects, changes, proposed, counts, mapPrompt: project ? mapPrompt(loaded, project) : undefined };
+}
+
+/** The project has no product, or its product has no feature: the map skill proposes one, unless the project said skip. */
+export function mapPrompt(loaded: Loaded, project: Row): string | undefined {
+  if (project.data.map === 'skip') return undefined;
+  const product = typeof project.data.product === 'string' ? project.data.product : undefined;
+  if (product && loaded.records.some((r) => r.type === 'feature' && r.data.product === product)) return undefined;
+  const what = product ? `${product} has no map yet` : `${project.key} has no product yet`;
+  return `${what}: survey the repository (what the person said, the documentation, the code's split, the store) and propose a product map, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure. \`pjman set ${project.key} map=skip\` stops this line.`;
 }
 
 export function formatStoreContext(c: StoreContext): string {
@@ -284,6 +295,7 @@ export function formatStoreContext(c: StoreContext): string {
     ? `# ${c.project.key} — ${c.project.title ?? ''} (${c.store.name} store)`
     : `# ${c.store.name} (${c.store.mode} store)${c.projects.length ? `\nprojects: ${c.projects.map((p) => p.key).join(', ')}` : ''}`;
   const out: string[] = [head];
+  if (c.mapPrompt) out.push(`no product map: ${c.mapPrompt}`);
   const tag = (r: Row) => (!c.project && r.data.project ? ` [${String(r.data.project)}]` : '');
   const order = ['active', 'blocked', 'review', 'planning', 'open'];
   const onBoard = new Set(c.changes.map((r) => r.key));

@@ -21,8 +21,7 @@ Rules
    as change:<slug>. A bug is \`--kind bug --severity <product|feature|capability|nuisance|cosmetic>\` on the live node it breaks.
 4. Before you stop on a change, set the handoff: \`pjman set change:<slug> "next=…"\` and the status if it moved
    (open, planning, active, blocked, review, done, dropped).
-5. Things outside the store are sources, linked by key: \`--links file:<path>\`, \`github-pr:<owner>/<repo>#<n>\`,
-   \`url:<https://…>\`; a record for a source is optional.
+5. Things outside the store are sources, linked by key: \`--links file:<path>\`, \`github-pr:<owner>/<repo>#<n>\`, \`url:<https://…>\`; a record for a source is optional.
 6. Nothing harness-specific in a record: no tool, model or session mechanics in titles, summaries or decisions.
 
 Tickets
@@ -40,9 +39,10 @@ behaviour a change can add, change or remove, the most specific node a change na
 A change names the features it adds, changes or removes: \`--features "adds feature:<slug>"\` (a bare key means changes);
 name the most specific node. A parent change is a milestone; goals are milestones, not features. \`pjman tree\` shows the product by features with derived status, owners and backlog; \`pjman activity
 <key>\` the motion beneath any node. Create a feature only when the person names a capability, never from a ticket label.
+A product with no map is said so at the top of the context: the map skill surveys the repository, proposes the whole tree
+in a proposed decision, and applies it only on the go as one batch (\`pjman apply\`; \`pjman undo\` reverts it); a map that has outgrown its shape is regrouped the same way, when asked.
 
-Also: \`pjman ls decision --status proposed\` (what waits on a person) · \`pjman show <key>\` · \`pjman validate\` ·
-the dashboard: \`pjman start\` prints its URL (also in ~/.pjman/serve.json).
+Also: \`pjman ls decision --status proposed\` (what waits on a person) · \`pjman show <key>\` · \`pjman validate\` · the dashboard: \`pjman start\` prints its URL (also in ~/.pjman/serve.json).
 `;
 
 const OPEN = '<!-- pjman:brief -->';

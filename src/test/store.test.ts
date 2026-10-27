@@ -7,6 +7,7 @@ import { before, test } from 'node:test';
 import { fmt } from '../commands/fmt.js';
 import { init } from '../commands/init.js';
 import { mv } from '../commands/mv.js';
+import { apply, undo } from '../commands/apply.js';
 import { rm } from '../commands/rm.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../commands/session.js';
@@ -21,7 +22,7 @@ import { readServeAddress } from '../server.js';
 import { follow, readEvents, rebuildEvents } from '../events.js';
 import { receipt } from '../receipt.js';
 import { buildIndex } from '../indexdb.js';
-import { loadStore } from '../records.js';
+import { loadStore, resolve as resolveKey } from '../records.js';
 import { localDate, today } from '../util.js';
 import { validate } from '../validate.js';
 
@@ -571,5 +572,111 @@ test('depends_on, kind, severity, target and the sequence: validated, refused wh
   assert.ok(r.detached.some((d) => d.key === 'product:seq' && d.fields.includes('sequence')));
   assert.equal(loadStore(store).byKey.get('change:on-base')![0].data.depends_on, undefined);
   assert.deepEqual(loadStore(store).byKey.get('product:seq')![0].data.sequence, ['change:on-base']);
+  assert.deepEqual(errors(store), []);
+});
+
+test('a feature rename keeps the old slug as an alias; apply lands a batch as one commit and refuses it whole; undo puts it back', () => {
+  const project = loadStore(store).records.find((r) => r.type === 'project')!.key;
+  newRecord(store, 'product', 'shop', { title: 'Shop' });
+  newRecord(store, 'feature', 'board', { title: 'The board', name: 'Board', product: 'product:shop' });
+  newRecord(store, 'change', 'board-work', { title: 'Board work', summary: 'b', project, features: ['adds feature:board'] });
+  // mv feature: the folder moves, the effect follows, the old slug resolves via the alias
+  const m = mv(store, 'feature:board', 'feature:lanes', {});
+  assert.equal(m.to, 'feature:lanes');
+  const after = loadStore(store);
+  assert.deepEqual(after.byKey.get('feature:lanes')![0].data.aliases, ['board']);
+  assert.deepEqual(after.byKey.get('change:board-work')![0].data.features, ['adds feature:lanes']);
+  const viaAlias = resolveKey(after, 'feature:board');
+  assert.equal(viaAlias.status, 'alias');
+  assert.throws(() => mv(store, 'feature:lanes', 'feature:board', {}), /is an alias of feature:lanes/);
+  assert.deepEqual(errors(store), []);
+
+  // apply: a small dispatcher stands in for the CLI's
+  const run = (argv: string[]) => {
+    const [cmd, ...rest] = argv;
+    if (cmd === 'new') {
+      const [type, ident, ...flags] = rest;
+      const f: Record<string, unknown> = {};
+      for (let i = 0; i < flags.length; i += 2) {
+        const name = flags[i]!.replace(/^--/, '');
+        if (name === 'features') f.features = [...((f.features as string[] | undefined) ?? []), flags[i + 1]!];
+        else f[name] = flags[i + 1];
+      }
+      newRecord(store, type as 'feature', ident!, f);
+    } else if (cmd === 'set') set(store, rest[0]!, rest.slice(1), {});
+    else if (cmd === 'mv') mv(store, rest[0]!, rest[1]!, {});
+    else throw new Error(`no ${cmd}`);
+  };
+  const before = git(store.root, 'rev-parse', 'HEAD');
+  const seqBefore = readEvents(store).at(-1)!.seq;
+  const batch = [
+    '# the map, regrouped',
+    'new feature io --title "Ways in and out" --name I/O --product product:shop',
+    "set feature:lanes parent=feature:io product=",
+    'pjman set change:board-work "next=after the batch"',
+  ].join('\n');
+  const a = apply(store, batch, run, { for: 'change:board-work' });
+  assert.equal(a.lines, 3);
+  assert.equal(a.writes, 3);
+  assert.ok(a.commit);
+  assert.equal(git(store.root, 'rev-list', '--count', `${before}..HEAD`), '1');
+  assert.match(git(store.root, 'log', '-1', '--format=%s%n%(trailers:key=Pjman-For,valueonly)'), /^pjman: apply 3 writes for change:board-work\nchange:board-work/);
+  assert.equal(loadStore(store).byKey.get('feature:lanes')![0].data.parent, 'feature:io');
+  const evs = readEvents(store, seqBefore);
+  assert.deepEqual(evs.map((e) => e.op), ['created', 'set', 'set', 'applied']);
+  assert.ok(evs.every((e) => e.commit === a.commit));
+  assert.deepEqual(evs.at(-1)!.fields, ['3 writes']);
+  // a line that fails refuses the whole batch: nothing written, nothing committed
+  assert.throws(() => apply(store, 'set feature:io title=Changed\nset feature:nope title=x', run), /refused at line 2 .*nothing was written/s);
+  assert.equal(git(store.root, 'rev-parse', 'HEAD'), git(store.root, 'rev-parse', 'HEAD'));
+  assert.equal(loadStore(store).byKey.get('feature:io')![0].data.title, 'Ways in and out');
+  assert.equal(git(store.root, 'status', '--porcelain'), '');
+  assert.throws(() => apply(store, 'start --port 1', run), /does not go in a batch/);
+  assert.throws(() => apply(store, '', run), /empty/);
+  // undo: the batch reverted as one commit, the events say what came back
+  const u = undo(store, {});
+  assert.equal(u.reverted, a.commit);
+  assert.equal(u.for, 'change:board-work');
+  const back = loadStore(store);
+  assert.equal(back.byKey.has('feature:io'), false);
+  assert.equal(back.byKey.get('feature:lanes')![0].data.product, 'product:shop');
+  assert.equal(back.byKey.get('change:board-work')![0].data.next, undefined);
+  const undone = readEvents(store, evs.at(-1)!.seq);
+  assert.deepEqual(undone.map((e) => [e.op, e.key]).sort(), [['removed', 'feature:io'], ['reverted', 'change:board-work'], ['set', 'change:board-work'], ['set', 'feature:lanes']]);
+  assert.deepEqual(errors(store), []);
+  // a later write on a record of the batch refuses the undo of it
+  const a2 = apply(store, 'set change:board-work next=again', run, {});
+  set(store, 'change:board-work', ['next=later still'], {});
+  assert.throws(() => undo(store, { commit: a2.commit! }), /refused: 1 later write touched/);
+  assert.throws(() => undo(store, { commit: 'nope' }), /not a commit/);
+  // the rebuilt stream reads the batch and its undo the same way
+  rebuildEvents(store);
+  const rebuilt = readEvents(store);
+  assert.ok(rebuilt.some((e) => e.op === 'applied' && e.key === 'change:board-work' && e.commit === a.commit));
+  assert.ok(rebuilt.some((e) => e.op === 'reverted' && e.key === 'change:board-work'));
+});
+
+test('init asks about the map once and records the answer; the context says when a product has no map', () => {
+  const other = path.join(tmp, 'other');
+  fs.mkdirSync(other, { recursive: true });
+  git(other, 'init', '-q');
+  const lines = init({ cwd: other, adapter: false, start: false, map: false });
+  assert.ok(lines.some((l) => /no product map will be proposed \(project:other map=skip\)/.test(l)));
+  assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'skip');
+  // no line while the project declined
+  assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
+  // yes on a later init flips it; the project has no product, so the context says so
+  init({ cwd: other, adapter: false, start: false, map: true });
+  assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'propose');
+  const c = storeContext(store, { project: 'project:other' });
+  assert.match(c.mapPrompt ?? '', /project:other has no product yet/);
+  assert.match(formatStoreContext(c), /^# project:other.*\nno product map: project:other has no product yet/);
+  // a product with no feature says the product has no map; a feature beneath it ends the line
+  newRecord(store, 'product', 'bare', { title: 'Bare' });
+  set(store, 'project:other', ['product=product:bare'], {});
+  assert.match(storeContext(store, { project: 'project:other' }).mapPrompt ?? '', /product:bare has no map yet/);
+  newRecord(store, 'feature', 'cart', { title: 'The cart', product: 'product:bare' });
+  assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
+  assert.throws(() => set(store, 'project:other', ['map=maybe'], {}), /not one of propose, skip/);
   assert.deepEqual(errors(store), []);
 });

@@ -12,6 +12,8 @@ export const ACTOR_KINDS = ['person', 'agent'] as const;
 export const CHANGE_KINDS = ['work', 'bug'] as const;
 /** A bug's severity: where on the tree the behaviour is lost (the first three are levels), else a nuisance with a
  *  workaround, else cosmetic. In order from worst. */
+/** A project's answer to the map question: the first session proposes a product map, or not. */
+export const MAP_ANSWERS = ['propose', 'skip'] as const;
 export const SEVERITIES = ['product', 'feature', 'capability', 'nuisance', 'cosmetic'] as const;
 export const LAYERS = ['core', 'sources', 'work'] as const;
 export const DEFAULT_SOURCE_KINDS = [

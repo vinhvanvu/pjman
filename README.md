@@ -9,7 +9,7 @@ git clone <this repository> && cd pjman && npm install && npm link   # until the
 cd ~/Projects/<your-repo> && pjman init
 ```
 
-`pjman init` is the whole onboarding: it creates the global store if missing, registers the repository as a project, sets you as the actor from your git name, installs the Claude Code plugin from this checkout when `claude` is on PATH (hooks, skill, brief, Linear's MCP server), runs `pjman start` (the dashboard, detached) and prints what exists and what is left, which is at most signing in to the tracker from inside a session with `/mcp`. Running it again is the health check; it repairs what is missing and never undoes anything. `pjman stop` stops the dashboard; `pjman init --brief claude-md` also writes the brief into `~/.claude/CLAUDE.md` for sessions that run without hooks.
+`pjman init` is the whole onboarding: it creates the global store if missing, registers the repository as a project, sets you as the actor from your git name, installs the Claude Code plugin from this checkout when `claude` is on PATH (hooks, skill, brief, Linear's MCP server), runs `pjman start` (the dashboard, detached) and prints what exists and what is left, which is at most signing in to the tracker from inside a session with `/mcp`. It asks one question, whether the first session should propose a product map from the repository (yes by default; `--map` or `--no-map` answers without asking), and records the answer on the project: while it is yes and the product has no feature, `pjman context` opens with one line saying so, and the map skill surveys the repository and proposes the tree. Running it again is the health check; it repairs what is missing and never undoes anything. `pjman stop` stops the dashboard; `pjman init --brief claude-md` also writes the brief into `~/.claude/CLAUDE.md` for sessions that run without hooks.
 
 After that nothing is asked of you: a session in any git repository registers it as a project (`auto_register: false` in `~/.pjman/config.yaml` turns that off), starts with the brief and the board in front of the model, binds to the change or ticket a prompt names, observes the files, branch and pull request it works on, and docks the dashboard beside itself.
 
@@ -38,10 +38,10 @@ index.db                                     derived, git-ignored, rebuilt by `p
 ## Commands
 
 ```
-pjman init [--name <project-name>] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]
+pjman init [--name <project-name>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]
 pjman new product <slug> --title … [--owners <actor>]… [--levels <label>]… [--sequence <change>]… [--summary …]
 pjman new feature <slug> --title … --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]…
-pjman new project <slug> --title … [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]… [--links <key>]…
+pjman new project <slug> --title … [--product <product>] [--parent <project>] [--tracker <source-kind>] [--map propose|skip] [--owners <actor>]… [--links <key>]…
 pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
                                 [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]
 pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
@@ -64,8 +64,10 @@ pjman refs <text|->                    every reference in a text, in order, with
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>
 pjman order <change> --before <change> | --after <change> | --first | --last | --later   move a change in its product's sequence, the roadmap's order; the rest is never touched
-pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; sequence on a product; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
-pjman mv <key> <new key>               rename a change (alias kept), a project or a decision; every reference rewritten
+pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; sequence on a product; map on a project; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
+pjman mv <key> <new key>               rename a change or a feature (alias kept), a product, a project or a decision; every reference rewritten
+pjman apply [<file>|-] [--for <key>]   many writes as one commit: the commands one per line (new, set, mv, rm, order, session), one commit and one 'applied' event at the end; a line that fails refuses the whole batch
+pjman undo [<commit>]                  revert the last batch (or the commit named) as one commit; refused while a later write touched a record of it
 pjman rm <key> [--detach]              remove a record (a change with its decisions); refused while referenced, --detach drops droppable references
 pjman events [--since <seq>] [--json]   the store's event stream, one event per write; `pjman events rebuild` derives it from git history
 pjman follow [--since <seq>] [--json]   print events as they are appended, until interrupted; what a view subscribes to

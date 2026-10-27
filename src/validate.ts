@@ -1,4 +1,4 @@
-import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, SEVERITIES } from './config.js';
+import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, MAP_ANSWERS, SEVERITIES } from './config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
@@ -18,7 +18,7 @@ const REQUIRED: Record<RecordType, string[]> = {
 const STRING_FIELDS: Record<RecordType, string[]> = {
   product: ['title', 'writer', 'session', 'created'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
-  project: ['title', 'product', 'parent', 'tracker', 'writer', 'session', 'created'],
+  project: ['title', 'product', 'parent', 'tracker', 'map', 'writer', 'session', 'created'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
@@ -28,7 +28,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
 
 const LIST_FIELDS: Record<RecordType, string[]> = {
   product: ['owners', 'levels', 'sequence', 'links'],
-  feature: ['owners', 'links'],
+  feature: ['owners', 'links', 'aliases'],
   project: ['owners', 'links'],
   change: ['depends_on', 'features', 'owners', 'binds', 'links', 'aliases'],
   decision: ['links'],
@@ -187,6 +187,7 @@ export function validate(loaded: Loaded): Problem[] {
           parentCycle('parent');
         }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        if (typeof d.map === 'string' && !(MAP_ANSWERS as readonly string[]).includes(d.map)) err(r, `map '${d.map}' is not one of ${MAP_ANSWERS.join(', ')}`);
         if (typeof d.tracker === 'string' && !store.config.source_kinds.map((k) => k.toLowerCase()).includes(d.tracker.toLowerCase())) {
           err(r, `tracker '${d.tracker}' is not in source_kinds (${store.config.source_kinds.join(', ')})`);
         }

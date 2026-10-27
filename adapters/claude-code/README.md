@@ -1,12 +1,12 @@
 # pjman adapter for Claude Code
 
-A plugin: seven hooks, two skills (`pjman`, the working rules; `intake`, how a request becomes a record) and one MCP server declaration (Linear's hosted server, so a session can read tickets after the person signs in with `/mcp`; the tool itself never signs in anywhere). Every write goes through `pjman`; the plugin holds no record logic of its own. The view beside the session is `pjman view`, rendered by the tool and docked by the plugin.
+A plugin: seven hooks, three skills (`pjman`, the working rules; `intake`, how a request becomes a record; `map`, how a product gets its tree, or a better one) and one MCP server declaration (Linear's hosted server, so a session can read tickets after the person signs in with `/mcp`; the tool itself never signs in anywhere). Every write goes through `pjman`; the plugin holds no record logic of its own. The view beside the session is `pjman view`, rendered by the tool and docked by the plugin.
 
 | Claude Code event | What happens |
 |---|---|
 | `SessionStart` (startup, resume, clear, compact, fork) | in a git repository that is not a project yet, runs `pjman init` so it becomes one (`auto_register: false` in `~/.pjman/config.yaml` turns that off); creates `session:<id>` if missing, appends a log line, injects the brief (`pjman brief`) and `pjman context`; on resume and compact also the bound change's context; observes the branch and open pull request of a bound change |
 | `UserPromptSubmit` | the prompt goes to `pjman refs`, which returns every reference in it (`change:<slug>`, an existing hyphenated slug, a ticket in any shape the store's source kinds know, a URL) with the change each leads to; the last one binds the session, and the branch and open pull request are observed as its sources. The hook holds no pattern of its own. A ticket of the project's `tracker` with no record is read from the tracker and created through the sync (GitHub: the hook runs `gh issue view` and `pjman sync github` itself; otherwise the agent is told to read it and sync); a pattern match alone never creates a record. The change's context is injected the first time |
-| `PostToolUse` (Write, Edit, MultiEdit, NotebookEdit, Bash) | an edit, or a shell call that writes the store (`pjman new|set|session|mv|fmt|init`), marks the turn as having acted; a file write in the project records an observed `links` edge from the bound change to `file:<path>`. A shell call that only reads, builds or tests does not count; a file edited through the shell is not observed |
+| `PostToolUse` (Write, Edit, MultiEdit, NotebookEdit, Bash) | an edit, or a shell call that writes the store (`pjman new|set|session|mv|rm|order|apply|undo|fmt|init`), marks the turn as having acted; a file write in the project records an observed `links` edge from the bound change to `file:<path>`. A shell call that only reads, builds or tests does not count; a file edited through the shell is not observed |
 | `Stop` | if the turn acted, appends one log line from the first line of the assistant's message; then shows the person the receipt, `pjman events --receipt` since the last turn: what the store received, one line per record, composed by the tool so it reads the same every time |
 | `SubagentStart` / `SubagentStop` | a child session with `parent`, and its own log line |
 | `SessionEnd` | a closing log line; the view's pane is closed |
@@ -34,9 +34,9 @@ Permanently, add this repository as a local marketplace and install from it:
 
 The user config `~/.pjman/config.yaml` must name the person the sessions run for (`actor: person:<handle>`); `pjman init` sets it from `git config user.name`.
 
-## What the skill adds
+## What the skills add
 
-`skills/pjman/SKILL.md` carries the rules an agent follows in a pjman project: read the change's context first, open a decision `proposed` before a choice that forecloses options and never set it `decided`, keep `next` true before stopping, name new work as `change:<slug>`. Skills load on demand, so for a rule that must hold every session add one line to the project's `CLAUDE.md`:
+`skills/pjman/SKILL.md` carries the rules an agent follows in a pjman project: read the change's context first, open a decision `proposed` before a choice that forecloses options and never set it `decided`, keep `next` true before stopping, name new work as `change:<slug>`. `skills/intake/SKILL.md` is how one request becomes a record: duplicates first, then four questions with defaults. `skills/map/SKILL.md` is how a whole product gets its map: when `pjman context` says the product has none (or the person asks for a regrouping), survey the person's words, the documentation, the code's split and the store, draft the top level as the layers of the stack titled as sentences, propose the whole tree in a proposed decision, apply it on the go as one batch (`pjman apply`, which `pjman undo` reverts), verify. Skills load on demand, so for a rule that must hold every session add one line to the project's `CLAUDE.md`:
 
 ```markdown
 This project has a pjman store. Follow the `pjman` skill: read `pjman context change:<slug>` before working on a change, open decisions `proposed` before acting, and set `next` before stopping.

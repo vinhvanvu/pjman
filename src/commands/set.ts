@@ -9,7 +9,7 @@ import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
 const SETTABLE: Record<RecordType, string[]> = {
   product: ['title', 'owners', 'levels', 'sequence', 'links', 'summary'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'summary'],
-  project: ['title', 'product', 'parent', 'tracker', 'owners', 'links'],
+  project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'summary', 'plan'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'links', 'decision', 'why'],
   source: ['title', 'url', 'links'],

@@ -53,6 +53,24 @@ export function validateOrUndo(store: Store, rels: string[], created: string[]):
   throw new CliError(`refused: the record would not validate\n${formatProblems(errors)}`);
 }
 
+let batch: EventInput[] | null = null;
+
+/** Hold every commit and event from here until endBatch: the writes of one batch land in one commit (pjman apply). */
+export function beginBatch(): void {
+  batch = [];
+}
+
+export function inBatch(): boolean {
+  return batch !== null;
+}
+
+/** The events held since beginBatch, in order; the batch ends. */
+export function endBatch(): EventInput[] {
+  const held = batch ?? [];
+  batch = null;
+  return held;
+}
+
 /** In standalone mode the tool commits after every write it makes; in-project, the project's workflow does. */
 export function commitIfStandalone(store: Store, message: string, session?: string): string | null {
   if (store.mode !== 'standalone') return null;
@@ -61,6 +79,10 @@ export function commitIfStandalone(store: Store, message: string, session?: stri
 
 /** The end of every write: commit (standalone), then one event per record written, carrying the commit. */
 export function finishWrite(store: Store, message: string, session: string | undefined, events: EventInput[]): string | null {
+  if (batch) {
+    batch.push(...events.map((e) => ({ ...e, session: e.session ?? session })));
+    return null;
+  }
   const commit = commitIfStandalone(store, message, session);
   emit(store, events.map((e) => ({ ...e, session: e.session ?? session })), commit);
   return commit;

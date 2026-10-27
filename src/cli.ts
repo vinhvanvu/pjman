@@ -20,6 +20,7 @@ import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
 import { rm } from './commands/rm.js';
+import { apply, undo } from './commands/apply.js';
 import { formatTree, tree } from './tree.js';
 import { formatReceipt, receipt } from './receipt.js';
 import { activity, formatActivity } from './activity.js';
@@ -34,8 +35,8 @@ const VERSION = (createRequire(import.meta.url)('../package.json') as { version:
 
 /** One entry per command: the usage lines and a one-line purpose. `pjman <cmd> --help` prints one; `pjman --help` prints all. */
 const COMMANDS: { name: string; usage: string[]; about: string }[] = [
-  { name: 'init', about: 'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project, set the actor, install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
-    usage: ['pjman init [--name <project-name>] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
+  { name: 'init', about: 'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project, ask whether the first session should propose a product map (--map or --no-map answers without asking; the answer is the project\'s map field), set the actor, install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
+    usage: ['pjman init [--name <project-name>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
   { name: 'start', about: 'the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL', usage: ['pjman start [--port <n>] [--open]'] },
   { name: 'stop', about: 'stop the dashboard server', usage: ['pjman stop'] },
   { name: 'brief', about: 'print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md)', usage: ['pjman brief'] },
@@ -78,8 +79,12 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman validate [--json]'] },
   { name: 'fmt', about: 'rewrite records in canonical form: field order, the YAML rule, repaired quoting (--check reports only)',
     usage: ['pjman fmt [--check]'] },
-  { name: 'mv', about: 'rename a change (the folder moves, the old slug stays as an alias), a project (directories bound to it follow) or a decision (within or across changes); every reference is rewritten in the same commit',
-    usage: ['pjman mv change:<old> change:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>'] },
+  { name: 'mv', about: 'rename a change or a feature (the folder moves, the old slug stays as an alias), a product, a project (directories bound to it follow) or a decision (within or across changes); every reference is rewritten in the same commit',
+    usage: ['pjman mv change:<old> change:<new>', 'pjman mv feature:<old> feature:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>'] },
+  { name: 'apply', about: "many writes as one commit: the commands one per line (new, set, mv, rm, order, session; as typed after pjman), run in order with every commit held, then one commit and the events with it, closed by one 'applied' event on the record --for names (a decision that proposed a map, a change). A line that fails refuses the whole batch and nothing is written",
+    usage: ['pjman apply [<file>|-] [--for <key>]'] },
+  { name: 'undo', about: 'revert the last batch (or the commit named) as one commit, every record put back; refused while a later write touched a record of that batch',
+    usage: ['pjman undo [<commit>]'] },
   { name: 'rm', about: "remove a record (a change takes its decisions with it). Refused while anything refers to it, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped",
     usage: ['pjman rm <key> [--detach] [--json]'] },
   { name: 'events', about: "the store's event stream: one event per write (seq, at, op, key, type, path, fields, writer, session, commit); `rebuild` rewrites it from the store's git history",
@@ -106,10 +111,10 @@ function usage(name?: string): string {
   return `${head}usage:\n${body}\n\n${GLOBAL}\n`;
 }
 
-function parse() {
+function parse(args: string[]) {
   try {
     return parseArgs({
-  args: process.argv.slice(2),
+  args,
   allowPositionals: true,
   strict: true,
   options: {
@@ -175,15 +180,15 @@ function parse() {
     first: { type: 'boolean' },
     last: { type: 'boolean' },
     later: { type: 'boolean' },
+    for: { type: 'string' },
+    map: { type: 'boolean' },
+    'no-map': { type: 'boolean' },
   },
     });
   } catch (e) {
-    process.stderr.write(`pjman: ${(e as Error).message.split('\n')[0]}\n(a value that starts with a dash is passed as --flag=value)\n`);
-    process.exit(2);
+    throw new CliError(`${(e as Error).message.split('\n')[0]}\n(a value that starts with a dash is passed as --flag=value)`, 2);
   }
 }
-
-const { values: v, positionals: pos } = parse();
 
 const out = (s: string) => process.stdout.write(s.endsWith('\n') ? s : s + '\n');
 const json = (x: unknown) => out(JSON.stringify(x, null, 2));
@@ -195,7 +200,8 @@ function trackerOf(store: ReturnType<typeof requireStore>): string | null {
   return rec && typeof rec.data.tracker === 'string' ? rec.data.tracker : null;
 }
 
-function main(): number {
+function main(argv: string[]): number {
+  const { values: v, positionals: pos } = parse(argv);
   const cmd = pos[0];
   if (v.version) {
     out(`pjman ${VERSION}`);
@@ -213,7 +219,7 @@ function main(): number {
   switch (cmd) {
     case 'init': {
       if (v.brief && v.brief !== 'claude-md') throw new CliError('--brief takes claude-md');
-      for (const line of init({ cwd, inProject: v['in-project'], name: v.name, adapter: !v['no-adapter'], start: !v['no-start'], brief: v.brief as 'claude-md' | undefined, port: v.port ? Number(v.port) : undefined })) out(line);
+      for (const line of init({ cwd, inProject: v['in-project'], name: v.name, adapter: !v['no-adapter'], start: !v['no-start'], brief: v.brief as 'claude-md' | undefined, port: v.port ? Number(v.port) : undefined, map: v['no-map'] ? false : v.map ? true : undefined })) out(line);
       return 0;
     }
     case 'new': {
@@ -402,6 +408,25 @@ function main(): number {
       }
       return 0;
     }
+    case 'apply': {
+      const store = requireStore(cwd, v.store);
+      const src = pos[1] ?? '-';
+      const text = src === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(src, 'utf8');
+      const r = apply(store, text, (line) => {
+        const code = main([...line, ...(v.store ? ['--store', v.store] : []), ...(v.session ? ['--session', v.session] : []), ...(v.writer ? ['--writer', v.writer] : [])]);
+        if (code !== 0) throw new CliError(`exit ${code}`);
+      }, { for: v.for, session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else out(r.writes ? `applied ${plural(r.writes, 'write')} from ${plural(r.lines, 'line')} as one commit${r.for ? ` for ${r.for}` : ''}${r.commit ? ` (committed ${r.commit}; pjman undo reverts it)` : ''}` : `nothing to write in ${plural(r.lines, 'line')}`);
+      return 0;
+    }
+    case 'undo': {
+      const store = requireStore(cwd, v.store);
+      const r = undo(store, { commit: pos[1], session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else out(`reverted ${r.reverted} (${r.subject}): ${plural(r.files, 'file')} put back${r.commit ? ` (committed ${r.commit})` : ''}`);
+      return 0;
+    }
     case 'rm': {
       const store = requireStore(cwd, v.store);
       if (!pos[1]) throw new CliError('usage: pjman rm <key> [--detach]');
@@ -506,7 +531,7 @@ function main(): number {
 }
 
 try {
-  process.exitCode = main();
+  process.exitCode = main(process.argv.slice(2));
 } catch (e) {
   if (e instanceof CliError) {
     process.stderr.write(`pjman: ${e.message}\n`);

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { git } from './git.js';
+import { parseKey } from './keys.js';
 import type { RecordType } from './records.js';
 
 /** One write to the store. The shape is part of the record contract; the transport (a file, a command that tails it) may change. */
@@ -10,7 +11,7 @@ export interface StoreEvent {
   seq: number;
   /** When the write happened (UTC instant). */
   at: string;
-  op: 'created' | 'set' | 'log' | 'bind' | 'observe' | 'moved' | 'formatted' | 'removed' | 'init' | 'write';
+  op: 'created' | 'set' | 'log' | 'bind' | 'observe' | 'moved' | 'formatted' | 'removed' | 'init' | 'write' | 'applied' | 'reverted';
   /** The record written, or `store` for the store itself. */
   key: string;
   type: RecordType | 'store';
@@ -137,7 +138,7 @@ export function ensureIgnored(store: Store): void {
 
 // --- rebuild from git -------------------------------------------------------------------------
 
-const TYPE_OF_PATH = (p: string): RecordType | null => {
+export const typeOfPath = (p: string): RecordType | null => {
   if (p.startsWith('products/')) return 'product';
   if (p.startsWith('features/') && p.endsWith('/feature.md')) return 'feature';
   if (p.startsWith('projects/')) return 'project';
@@ -150,7 +151,7 @@ const TYPE_OF_PATH = (p: string): RecordType | null => {
   return null;
 };
 
-function keyOfPath(p: string, type: RecordType, root: string, sha: string): string {
+export function keyOfPath(p: string, type: RecordType, root: string, sha: string): string {
   const base = path.basename(p, '.md');
   const dated = /^\d{4}-\d{2}-\d{2}-(.+)$/.exec(base);
   switch (type) {
@@ -203,14 +204,14 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
     const rows = changed.map((row) => row.split('\t')).map(([status, a, b]) => ({ status, p: b ?? a }));
     const named = rest.split(' ')[0];
     rows.sort((x, y) => {
-      const tx = TYPE_OF_PATH(x.p);
-      const ty = TYPE_OF_PATH(y.p);
+      const tx = typeOfPath(x.p);
+      const ty = typeOfPath(y.p);
       const nx = tx && keyOfPath(x.p, tx, root, sha) === named ? 0 : 1;
       const ny = ty && keyOfPath(y.p, ty, root, sha) === named ? 0 : 1;
       return nx - ny;
     });
     for (const { status, p } of rows) {
-      const type = TYPE_OF_PATH(p);
+      const type = typeOfPath(p);
       if (!type) continue;
       if (status.startsWith('D')) {
         // a removed record: its key as it was in the parent commit
@@ -227,6 +228,7 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       else if (verb === 'session') { op = rest.startsWith('log') ? 'log' : rest.startsWith('bind') ? 'bind' : 'observe'; fields = [op === 'log' ? 'log' : op === 'bind' ? 'changes' : 'observed']; }
       else if (verb === 'mv') { op = status.startsWith('R') || key === rest.split(' ')[1] ? 'moved' : 'set'; if (op === 'set') fields = ['references']; }
       else if (verb === 'fmt') op = 'formatted';
+      else if (verb === 'apply' || verb === 'undo') op = status.startsWith('A') ? 'created' : 'set';
       else if (status.startsWith('A')) op = 'created';
       let writer: string | undefined;
       if (op === 'created' || op === 'set') {
@@ -237,6 +239,12 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
         }
       }
       events.push({ seq: ++seq, at, op, key, type, path: p, fields, writer, session, commit: short });
+    }
+    // a batch or its undo closes with the event that names what it was for
+    if (verb === 'apply' || verb === 'undo') {
+      const forKey = git(root, ['log', '-1', '--format=%(trailers:key=Pjman-For,valueonly)', sha]).trim() || 'store';
+      const forType = forKey === 'store' ? 'store' : (parseKey(forKey)?.kind as RecordType | undefined) ?? 'store';
+      events.push({ seq: ++seq, at, op: verb === 'apply' ? 'applied' : 'reverted', key: forKey, type: forType, path: 'pjman.yaml', fields: [rest], session, commit: short });
     }
   }
   const tmp = eventsPath(store) + '.tmp';

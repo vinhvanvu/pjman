@@ -7,6 +7,7 @@ import { slugify } from '../keys.js';
 import { loadStore } from '../records.js';
 import { CliError } from '../util.js';
 import { newProject } from './new.js';
+import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
 import { packageRoot, start } from './start.js';
 import { execFileSync } from 'node:child_process';
@@ -24,6 +25,8 @@ export interface InitOpts {
   /** Also put the brief in a harness's always-on file. */
   brief?: BriefTarget;
   port?: number;
+  /** Whether the first session should propose a product map: true or false answers; undefined asks on a terminal, else yes. */
+  map?: boolean;
 }
 
 /** Install the Claude Code plugin from this checkout at user scope, when `claude` is on PATH. Idempotent; never throws. */
@@ -54,6 +57,22 @@ export function installClaudeAdapter(): string {
 }
 
 const FOLDERS = ['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors'];
+
+/** A yes/no question on the terminal; the default when stdin is not a terminal or the answer is empty. */
+export function askYesNo(question: string, dflt: boolean): boolean {
+  if (!process.stdin.isTTY) return dflt;
+  process.stdout.write(`${question} ${dflt ? '[Y/n]' : '[y/N]'} `);
+  const buf = Buffer.alloc(256);
+  let n = 0;
+  try {
+    n = fs.readSync(0, buf, 0, buf.length, null);
+  } catch {
+    return dflt;
+  }
+  const a = buf.toString('utf8', 0, n).trim().toLowerCase();
+  if (!a) return dflt;
+  return a.startsWith('y');
+}
 
 function scaffold(root: string, cfg: StoreConfig): void {
   fs.mkdirSync(root, { recursive: true });
@@ -125,13 +144,18 @@ export function init(opts: InitOpts): string[] {
     if (!slug) throw new CliError(`'${title}' does not make a project slug; pass --name`);
     const key = `project:${slug}`;
     const store = openStore(root);
-    if (!loadStore(store).byKey.has(key)) {
+    const known = loadStore(store).byKey.get(key)?.[0];
+    const wantsMap = opts.map ?? (known && typeof known.data.map === 'string' ? undefined : askYesNo('Should the first session propose a product map from this repository?', true));
+    if (!known) {
       const repo = originRepo(project);
-      newProject(store, slug, { title, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor });
+      newProject(store, slug, { title, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor, map: wantsMap === false ? 'skip' : 'propose' });
       out.push(`registered ${key}${repo ? ` (git-repo:${repo})` : ''}`);
     } else {
       out.push(`${key} is already registered`);
+      if (wantsMap !== undefined && known.data.map !== (wantsMap ? 'propose' : 'skip')) set(store, key, [`map=${wantsMap ? 'propose' : 'skip'}`], {});
     }
+    const answer = wantsMap ?? (known?.data.map !== 'skip');
+    out.push(answer ? `the first session proposes a product map (${key} map=propose; pjman set ${key} map=skip to stop)` : `no product map will be proposed (${key} map=skip)`);
     const binding = entry.projects.find((b) => path.resolve(b.path) === project);
     if (binding) binding.project = key;
     else entry.projects.push({ path: project, project: key });

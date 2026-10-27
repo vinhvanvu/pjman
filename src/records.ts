@@ -8,8 +8,8 @@ export type RecordType = 'product' | 'feature' | 'project' | 'change' | 'decisio
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   product: ['title', 'owners', 'levels', 'sequence', 'links', 'writer', 'session', 'created', 'ext'],
-  feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
-  project: ['title', 'product', 'parent', 'tracker', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
+  feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
+  project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
@@ -63,6 +63,8 @@ export interface Loaded {
   byKey: Map<string, Rec[]>;
   /** change alias slug → current change key. */
   aliasOf: Map<string, string>;
+  /** feature alias slug → current feature key. */
+  featureAliasOf: Map<string, string>;
   problems: Problem[];
 }
 
@@ -255,11 +257,14 @@ export function loadStore(store: Store): Loaded {
     byKey.set(r.key, list);
   }
   const aliasOf = new Map<string, string>();
+  const featureAliasOf = new Map<string, string>();
   for (const r of records) {
-    if (r.type !== 'change' || !Array.isArray(r.data.aliases)) continue;
-    for (const a of r.data.aliases) if (typeof a === 'string') aliasOf.set(a, r.key);
+    if (!Array.isArray(r.data.aliases)) continue;
+    const m = r.type === 'change' ? aliasOf : r.type === 'feature' ? featureAliasOf : null;
+    if (!m) continue;
+    for (const a of r.data.aliases) if (typeof a === 'string') m.set(a, r.key);
   }
-  return { store, records, byKey, aliasOf, problems };
+  return { store, records, byKey, aliasOf, featureAliasOf, problems };
 }
 
 export type Resolution =
@@ -293,7 +298,13 @@ export function resolve(loaded: Loaded, raw: unknown): Resolution {
     }
     return { status: 'missing', key };
   }
-  if (key.kind === 'session' || key.kind === 'project' || key.kind === 'product' || key.kind === 'feature') return { status: 'missing', key };
+  if (key.kind === 'feature') {
+    const target = loaded.featureAliasOf.get(key.rest);
+    const rec = target ? loaded.byKey.get(target)?.[0] : undefined;
+    if (rec) return { status: 'alias', rec, via: target! };
+    return { status: 'missing', key };
+  }
+  if (key.kind === 'session' || key.kind === 'project' || key.kind === 'product') return { status: 'missing', key };
   if (key.kind === 'person' || key.kind === 'agent') return { status: 'actor-key', key };
   if (key.kind === 'url') {
     const rec = loaded.byKey.get(canonicalSourceKey('url', key.rest))?.[0];

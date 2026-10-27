@@ -80,7 +80,9 @@ changes (live once an adding change is done, retired once a removing one is), so
 A parent change is a milestone: its progress is its children done; goals such as a release or a second user are
 milestones, not features. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
 beneath any node. Create a feature only when the person names a capability; a ticket label is not a feature. Give it `--name`, one to
-three words: the label trees and chips show (the title stays the sentence).
+three words: the label trees and chips show (the title stays the sentence). When `pjman context` opens with "no product
+map", or the person asks for the map to be regrouped, follow the `map` skill: it surveys, proposes the whole tree in a
+proposed decision, and applies it only on the go, as one batch. Never grow a map one guess at a time.
 
 ## Commands you will use
 
@@ -97,5 +99,7 @@ pjman tree [product:<slug>]              the product by features: levels, derive
 pjman activity <key> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
 pjman set <key> field=value …            authored fields: title, status, next, links, binds, summary, plan; decision, why while proposed
 pjman rm <key> [--detach]                remove a record you created by mistake; refused while anything refers to it
+pjman mv <key> <new key>                 rename a change or a feature (the old slug stays an alias); every reference follows
+pjman apply - --for <key>                many writes as one commit, the commands one per line on stdin; pjman undo reverts it
 pjman validate                           run before committing a store that lives in the project
 ```
