@@ -11,11 +11,11 @@ import { Chip } from '@/components/chips/Chip';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
 import { AppShell } from '@/components/shell/AppShell';
-import { Rail, railItem } from '@/components/shell/Rail';
+import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
-import type { ChangeContext, Grouping, Lens, Scope, Tab, View } from '@/data/contract';
+import type { ChangeContext, Grouping, Lens, ProductRow, Scope, Tab, View } from '@/data/contract';
 import { useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
@@ -165,11 +165,26 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       ? data.node
       : store?.products[0];
   const inboxData = data ? inbox(data) : undefined;
+  const railProduct = (p: { key: string; title?: string; name?: string }, health?: ProductRow): RailProduct => ({
+    key: p.key,
+    name: p.name ?? health?.name ?? short(p.key),
+    title: p.title ?? health?.title,
+    open: health?.open,
+    inFlight: health?.inFlight,
+    loud: health?.loud,
+  });
 
   const rail = (
     <Rail
-      product={product ? { key: product.key, title: product.title ?? short(product.key) } : undefined}
-      products={store?.products.map((p) => ({ key: p.key, title: p.title ?? short(p.key) }))}
+      product={
+        product
+          ? railProduct(
+              product,
+              store?.products.find((p) => p.key === product.key),
+            )
+          : undefined
+      }
+      products={store?.products.map((p) => railProduct(p, p))}
       lens={lens}
       node={node}
       view={view}

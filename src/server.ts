@@ -126,7 +126,17 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         root: store.root, mode: store.mode, name: cfg.name, project: store.project ?? null, actor: readUserConfig().actor ?? null,
         source_kinds: cfg.source_kinds, vocabulary: cfg.vocabulary,
         projects: loaded.records.filter((r) => r.type === 'project').map(row),
-        products: loaded.records.filter((r) => r.type === 'product').map(row),
+        products: loaded.records.filter((r) => r.type === 'product').map((p) => {
+          const projects = new Set(loaded.records.filter((r) => r.type === 'project' && r.data.product === p.key).map((r) => r.key));
+          const changes = loaded.records.filter((r) => r.type === 'change' && projects.has(String(r.data.project)) && r.data.status !== 'done' && r.data.status !== 'dropped');
+          return {
+            ...row(p),
+            name: typeof p.data.name === 'string' ? p.data.name : undefined,
+            open: changes.length,
+            inFlight: changes.filter((r) => ['active', 'review', 'blocked'].includes(String(r.data.status))).length,
+            loud: changes.filter((r) => r.data.kind === 'bug' && (r.data.severity === 'product' || r.data.severity === 'feature')).length,
+          };
+        }),
       } });
     }
     if (route === '/records') {

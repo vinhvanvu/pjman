@@ -39,7 +39,7 @@ index.db                                     derived, git-ignored, rebuilt by `p
 
 ```
 pjman init [--name <project-name>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]
-pjman new product <slug> --title … [--owners <actor>]… [--levels <label>]… [--sequence <change>]… [--summary …]
+pjman new product <slug> --title … [--name <one to three words>] [--owners <actor>]… [--levels <label>]… [--sequence <change>]… [--summary …]
 pjman new feature <slug> --title … --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]…
 pjman new project <slug> --title … [--product <product>] [--parent <project>] [--tracker <source-kind>] [--map propose|skip] [--owners <actor>]… [--links <key>]…
 pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
@@ -64,7 +64,7 @@ pjman refs <text|->                    every reference in a text, in order, with
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>
 pjman order <change> --before <change> | --after <change> | --first | --last | --later   move a change in its product's sequence, the roadmap's order; the rest is never touched
-pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; sequence on a product; map on a project; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
+pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; name and sequence on a product; map on a project; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
 pjman mv <key> <new key>               rename a change or a feature (alias kept), a product, a project or a decision; every reference rewritten
 pjman apply [<file>|-] [--for <key>]   many writes as one commit: the commands one per line (new, set, mv, rm, order, session), one commit and one 'applied' event at the end; a line that fails refuses the whole batch
 pjman undo [<commit>]                  revert the last batch (or the commit named) as one commit; refused while a later write touched a record of it

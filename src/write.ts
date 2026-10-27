@@ -37,10 +37,21 @@ export function errorsAt(store: Store, rels: string[]): Problem[] {
   return validate(loaded).filter((p) => p.level === 'error' && set.has(p.path));
 }
 
-/** Validate after a write; on errors undo the listed new paths and throw. */
-export function validateOrUndo(store: Store, rels: string[], created: string[]): void {
+/** The text of each existing path, taken before a write so a refusal can put it back. */
+export function snapshot(store: Store, rels: string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const rel of rels) {
+    const abs = path.join(store.root, rel);
+    if (fs.existsSync(abs)) out.set(rel, fs.readFileSync(abs, 'utf8'));
+  }
+  return out;
+}
+
+/** Validate after a write; on errors undo the listed new paths, put the snapshotted ones back, and throw. */
+export function validateOrUndo(store: Store, rels: string[], created: string[], prior: Map<string, string> = new Map()): void {
   const errors = errorsAt(store, rels);
   if (errors.length === 0) return;
+  for (const [rel, text] of prior) fs.writeFileSync(path.join(store.root, rel), text);
   for (const rel of created) {
     const abs = path.join(store.root, rel);
     fs.rmSync(abs, { force: true });

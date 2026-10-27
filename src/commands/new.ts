@@ -107,7 +107,7 @@ export function newProduct(store: Store, ident: string, flags: NewFlags): NewRes
   if (!flags.title) throw new CliError('--title is required');
   const rel = path.join('products', `${slug}.md`);
   refuseExisting(store, rel);
-  const data: Record<string, unknown> = { title: flags.title, owners: listOrNone(flags.owners), levels: listOrNone(flags.levels), sequence: listOrNone(flags.sequence), links: listOrNone(flags.links), ...stamp(flags) };
+  const data: Record<string, unknown> = { title: flags.title, name: flags.name, owners: listOrNone(flags.owners), levels: listOrNone(flags.levels), sequence: listOrNone(flags.sequence), links: listOrNone(flags.links), ...stamp(flags) };
   let body = flags.summary ? section('Summary', flags.summary) : '';
   if (flags.body) body += (body ? '\n' : '') + flags.body.trim() + '\n';
   writeFile(store, rel, render('product', data, body));
@@ -212,11 +212,13 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
   const notes: string[] = [];
   const touched: string[] = [];
   const also: EventInput[] = [];
+  const prior = new Map<string, string>();
   if (flags.supersedes) {
     const res = resolve(loaded, flags.supersedes);
     if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`supersedes: ${flags.supersedes} does not resolve`);
     if (res.rec.data.status !== 'superseded') {
       const text = fs.readFileSync(res.rec.abs, 'utf8');
+      prior.set(res.rec.path, text);
       const updated = render('decision', { ...res.rec.data, status: 'superseded' }, res.rec.body);
       if (updated !== text) fs.writeFileSync(res.rec.abs, updated);
       touched.push(res.rec.path);
@@ -227,7 +229,7 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
   let body = section('Decision', flags.decision) + '\n' + section('Why', flags.why);
   if (flags.body) body += '\n' + flags.body.trim() + '\n';
   writeFile(store, rel, render('decision', data, body));
-  validateOrUndo(store, [rel, ...touched], [rel]);
+  validateOrUndo(store, [rel, ...touched], [rel], prior);
   const commit = finishWrite(store, `pjman: new ${key}`, envelope(flags).session, [{ op: 'created', key, type: 'decision', path: rel, writer: env.writer as string | undefined }, ...also]);
   return { type: 'decision', key, path: rel, commit, notes };
 }

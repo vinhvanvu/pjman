@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { findSession, loadStore } from '../records.js';
 import { CliError, nowIso } from '../util.js';
-import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
+import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 import { EDGES } from '../validate.js';
 
 function load(store: Store, id: string) {
@@ -14,8 +14,9 @@ function load(store: Store, id: string) {
 }
 
 function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: 'log' | 'bind' | 'observe'): string | null {
+  const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render('session', data, body));
-  validateOrUndo(store, [rec.path], []);
+  validateOrUndo(store, [rec.path], [], prior);
   const fields = { log: ['log'], bind: ['changes'], observe: ['observed'] }[op];
   return finishWrite(store, message, rec.key, [{ op, key: rec.key, type: 'session', path: rec.path, fields, writer: envelope({}).writer }]);
 }

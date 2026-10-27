@@ -36,7 +36,18 @@ export interface StoreInfo {
   source_kinds: string[];
   vocabulary: Record<string, string>;
   projects: Row[];
-  products: Row[];
+  products: ProductRow[];
+}
+
+/** A product as the store lists it: its short name and one line of health, for the switcher. */
+export interface ProductRow extends Row {
+  name?: string;
+  /** Open changes under its projects. */
+  open: number;
+  /** Of those, active, review or blocked. */
+  inFlight: number;
+  /** Open bugs at product or feature severity. */
+  loud: number;
 }
 
 /** What a session's view shows, as /sessions/:id/view answers. */

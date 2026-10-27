@@ -680,3 +680,28 @@ test('init asks about the map once and records the answer; the context says when
   assert.throws(() => set(store, 'project:other', ['map=maybe'], {}), /not one of propose, skip/);
   assert.deepEqual(errors(store), []);
 });
+
+test('a refused write puts the record back: a bind to a missing change leaves the session file and the tree untouched', () => {
+  const sess = loadStore(store).records.find((r) => r.type === 'session')!;
+  const textBefore = fs.readFileSync(sess.abs, 'utf8');
+  const head = git(store.root, 'rev-parse', 'HEAD');
+  assert.throws(() => sessionBind(store, sess.key.slice('session:'.length), 'change:never-made'), /would not validate/);
+  assert.equal(fs.readFileSync(sess.abs, 'utf8'), textBefore);
+  assert.equal(git(store.root, 'status', '--porcelain'), '');
+  assert.equal(git(store.root, 'rev-parse', 'HEAD'), head);
+  // a superseding decision that fails to validate puts the superseded one back too
+  const project = loadStore(store).records.find((r) => r.type === 'project')!.key;
+  newRecord(store, 'change', 'sup', { title: 'Sup', summary: 's', project });
+  newRecord(store, 'decision', 'sup/old', { title: 'Old', decision: 'o', why: 'w' });
+  const old = loadStore(store).byKey.get('decision:sup/old')![0];
+  const oldText = fs.readFileSync(old.abs, 'utf8');
+  assert.throws(() => newRecord(store, 'decision', 'sup/new', { title: 'New', decision: 'n', why: 'w', supersedes: 'decision:sup/old', decidedBy: 'nobody' }), /would not validate|decided_by/);
+  assert.equal(fs.readFileSync(old.abs, 'utf8'), oldText);
+  assert.equal(git(store.root, 'status', '--porcelain'), '');
+  // a product carries a short name like a feature
+  newRecord(store, 'product', 'named', { title: 'A product in a sentence', name: 'Named' });
+  assert.equal(loadStore(store).byKey.get('product:named')![0].data.name, 'Named');
+  set(store, 'product:named', ['name=Renamed'], {});
+  assert.equal(loadStore(store).byKey.get('product:named')![0].data.name, 'Renamed');
+  assert.deepEqual(errors(store), []);
+});

@@ -46,7 +46,8 @@ The fixed root of the product tree. Projects and top-level features attach to it
 
 | field | kind | meaning |
 |---|---|---|
-| `title` | A | Required. |
+| `title` | A | Required: the product in a sentence. |
+| `name` | A | Optional short name, one to three words: what the rail, the switcher, the crumbs and the chips show (the title stays the sentence). Absent, the key's slug. |
 | `owners` | A | Optional list of actor keys; inherited by every node beneath that names none. |
 | `levels` | A | Optional list of level labels for the features beneath, by depth (default: the store's `tree_levels`, `feature` then `capability`; anything deeper takes the last label). |
 | `sequence` | A | Optional ordered list of change keys: the roadmap's order, the deliverables as the person arranged them. A milestone on it is a column holding its children; a loose change is a column of one; a change not on it comes after, as later. No repeats; `pjman order` moves an entry. |

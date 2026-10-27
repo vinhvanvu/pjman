@@ -16,7 +16,7 @@ const REQUIRED: Record<RecordType, string[]> = {
 };
 
 const STRING_FIELDS: Record<RecordType, string[]> = {
-  product: ['title', 'writer', 'session', 'created'],
+  product: ['title', 'name', 'writer', 'session', 'created'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'writer', 'session', 'created'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'next', 'writer', 'session', 'created'],

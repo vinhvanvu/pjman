@@ -7,7 +7,7 @@ import { canonicalSourceKey, parseKey, type Key } from './keys.js';
 export type RecordType = 'product' | 'feature' | 'project' | 'change' | 'decision' | 'source' | 'session' | 'actor';
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
-  product: ['title', 'owners', 'levels', 'sequence', 'links', 'writer', 'session', 'created', 'ext'],
+  product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'writer', 'session', 'created', 'ext'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],

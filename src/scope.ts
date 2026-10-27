@@ -450,7 +450,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   };
   const productNode = (p: Rec, lensOf: 'feature' | 'project'): ScopeNode => {
     const children = lensOf === 'feature' ? featureChildren(p.key).map(featureNode).filter((n): n is ScopeNode => n !== null) : projectChildren(p.key).map(projectNode);
-    return { key: p.key, type: 'product', title: str(p.data.title), level: 'product', childCount: children.length, ...facts(p), children };
+    return { key: p.key, type: 'product', title: str(p.data.title), name: str(p.data.name), level: 'product', childCount: children.length, ...facts(p), children };
   };
   const flat = <T extends Rec>(recs: T[], node: (r: T) => ScopeNode | null): ScopeNode[] =>
     [...new Map(recs.map((r) => [r.key, r])).values()].sort((a, b) => a.key.localeCompare(b.key)).map(node).filter((n): n is ScopeNode => n !== null);
