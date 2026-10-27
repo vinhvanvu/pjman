@@ -25,6 +25,7 @@ import { formatReceipt, receipt } from './receipt.js';
 import { activity, formatActivity } from './activity.js';
 import { set } from './commands/set.js';
 import { order } from './commands/order.js';
+import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
 
 import { createRequire } from 'node:module';
@@ -62,6 +63,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'ls', about: 'list records, by type, status, project and kind; bugs come worst first, then oldest', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--kind bug|work] [--json]'] },
   { name: 'refs', about: "every reference in a text that resolves to something, in order, each with the change it leads to: change:<slug>, a URL, a ticket in any shape the store's source kinds know, an existing slug; the last mention is what a prompt is about. Never writes",
     usage: ['pjman refs <text> [--json]', 'pjman refs - [--json]   (text on stdin)'] },
+  { name: 'intake', about: "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Never writes; the intake skill answers its four questions from this",
+    usage: ['pjman intake <text> [--json]', 'pjman intake - [--json]   (text on stdin)'] },
   { name: 'tree', about: "the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature",
     usage: ['pjman tree [product:<slug>|feature:<slug>] [--json]'] },
   { name: 'activity', about: "the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person",
@@ -323,6 +326,14 @@ function main(): number {
       const n = get(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project });
       v.json ? json(n) : out(formatNeighbourhood(n, formatChangeContext));
       return n.resolution.status === 'none' ? 1 : 0;
+    }
+    case 'intake': {
+      const store = requireStore(cwd, v.store);
+      if (!pos[1]) throw new CliError('usage: pjman intake <text> | pjman intake - (text on stdin)');
+      const text = pos[1] === '-' ? fs.readFileSync(0, 'utf8') : pos.slice(1).join(' ');
+      const i = intake(store, loadStore(store), text.trim(), { cwd, projectDir: store.projectDir, project: store.project });
+      v.json ? json(i) : out(formatIntake(i));
+      return 0;
     }
     case 'refs': {
       const store = requireStore(cwd, v.store);

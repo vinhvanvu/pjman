@@ -13,6 +13,7 @@ import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
 import { order } from './commands/order.js';
+import { intake } from './intake.js';
 import { CliError } from './util.js';
 
 export interface ServeOpts {
@@ -171,6 +172,11 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const days = q.get('days');
       return send(res, 200, { data: scope(store, loaded, { lens: q.get('lens') ?? undefined, node: q.get('node') ?? undefined, days: days ? Number(days) : undefined, done: q.get('done') === '1', retired: q.get('retired') === '1' }) });
     }
+    if (route === '/intake') {
+      const text = url.searchParams.get('text');
+      if (text === null) throw new HttpError(400, 'bad-request', 'text is required');
+      return send(res, 200, { data: intake(store, loaded, text, getOpts) });
+    }
     if (route === '/refs') {
       const text = url.searchParams.get('text');
       if (text === null) throw new HttpError(400, 'bad-request', 'text is required');
@@ -233,7 +239,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since=', 'POST /order {change, before|after|first|last|later}'] } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since=', 'POST /order {change, before|after|first|last|later}'] } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

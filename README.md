@@ -59,6 +59,7 @@ pjman tree [product:<slug>|feature:<slug>]   the product tree: features at label
 pjman activity <key> [--days 14]       the events beneath a node, through every chain, and what they say about health
 pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads first: this project's board, or one change with its decisions, sources, sessions
 pjman get <ref>                        the getter: a key, a URL, a ticket id, a file path or a slug in; the record, its edges both ways and the context of every change within two hops out
+pjman intake <text|->                  what already exists for a request before it is filed: duplicates (open changes sharing its words or named in it), done ones like it, the nodes it may alter with their path, milestones in flight, the order's tail; never writes
 pjman refs <text|->                    every reference in a text, in order, with the change it leads to; what a prompt is about
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>

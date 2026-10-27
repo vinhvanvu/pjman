@@ -16,7 +16,9 @@ Rules
 2. Before a choice that forecloses options, open a decision:
    \`pjman new decision <change>/<slug> --title "…" --decision "…" --why "…"\`. It is created proposed. Never set one
    decided; that is the person's. Say in your reply that a decision is open and what you recommend.
-3. New work is a change: \`pjman new change <slug> --title "…" --summary "…"\`; name it in your reply as change:<slug>.
+3. New work is a change, filed through intake: \`pjman intake "<the request>"\` first (duplicates, the nodes it may alter,
+   the milestones, the order's tail), then \`pjman new change <slug> --title "…" --summary "…"\`; name it in your reply
+   as change:<slug>. A bug is \`--kind bug --severity <product|feature|capability|nuisance|cosmetic>\` on the live node it breaks.
 4. Before you stop on a change, set the handoff: \`pjman set change:<slug> "next=…"\` and the status if it moved
    (open, planning, active, blocked, review, done, dropped).
 5. Things outside the store are sources, linked by key: \`--links file:<path>\`, \`github-pr:<owner>/<repo>#<n>\`,
