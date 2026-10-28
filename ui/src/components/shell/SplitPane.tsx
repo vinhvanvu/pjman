@@ -1,5 +1,5 @@
-// Two panes side by side when there is room, one column when there is not. The split's layout is the caller's to
-// remember; the component reports it.
+// Two panes side by side when there is room, one column when there is not: the panes stacked, each at its own height,
+// the column scrolling as one. The split's layout is the caller's to remember; the component reports it.
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
@@ -34,8 +34,9 @@ export function SplitPane({
         className={cn('flex min-h-0 flex-1 flex-col overflow-auto', className)}
         data-scroll-restoration-id={id ? `${id}.stack` : undefined}
       >
-        <div className="min-h-0">{primary}</div>
-        {secondary && <div className="min-h-0 border-t border-line">{secondary}</div>}
+        {/* shrink-0: a flex item shrinks to the column's height by default and its content overflows the one below */}
+        <div className="shrink-0">{primary}</div>
+        {secondary && <div className="shrink-0 border-t border-line">{secondary}</div>}
       </div>
     );
   }

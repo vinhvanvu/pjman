@@ -388,31 +388,41 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     );
   }
 
-  // the badge floats over the structure pane whenever something is selected: one way to clear it in every lens
+  // the badge floats over the structure pane whenever something is selected: one way to clear it in every lens.
+  // Not at narrow width: the record stands alone there and its header names the selection and closes it
   const primary = (
     <div className="relative flex min-h-0 flex-1 flex-col">
       {structure}
-      {sel && selectedLabel && <SelectionBadge label={selectedLabel} kind={selectedKind} onClear={clear} />}
+      {wide && sel && selectedLabel && <SelectionBadge label={selectedLabel} kind={selectedKind} onClear={clear} />}
     </div>
   );
 
   const splitId = `pjman.split.${lens}.${view}`;
-  const content =
-    paneAlways || sel ? (
-      <SplitPane
-        wide={wide}
-        id={splitId}
-        primary={primary}
-        secondary={pane}
-        primarySize={view === 'tree' ? (lens === 'roadmap' ? 64 : 55) : 62}
-        layout={splits[splitId]}
-        onLayoutChange={(l) => setSplit(splitId, l)}
-      />
-    ) : (
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto" data-scroll-restoration-id={`${splitId}.only`}>
-        {primary}
-      </div>
-    );
+  // width decides panes, never routes (change:dashboard-v2; decision phone-width-record-pane/pane-replaces-map-when-narrow):
+  // two panes wide; narrow, one column holding the record when something is selected (its close returns to the
+  // structure), else the structure
+  const content = !wide ? (
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-auto"
+      data-scroll-restoration-id={`${splitId}.${sel ? 'record' : 'only'}`}
+    >
+      {sel ? pane : primary}
+    </div>
+  ) : paneAlways || sel ? (
+    <SplitPane
+      wide={wide}
+      id={splitId}
+      primary={primary}
+      secondary={pane}
+      primarySize={view === 'tree' ? (lens === 'roadmap' ? 64 : 55) : 62}
+      layout={splits[splitId]}
+      onLayoutChange={(l) => setSplit(splitId, l)}
+    />
+  ) : (
+    <div className="flex min-h-0 flex-1 flex-col overflow-auto" data-scroll-restoration-id={`${splitId}.only`}>
+      {primary}
+    </div>
+  );
 
   return (
     <AppShell wide={wide} rail={rail} bar={bar} railOpen={railOpen} onCloseRail={() => setRailOpenFor(null)}>
