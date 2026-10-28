@@ -1,6 +1,7 @@
 // Server state: every piece of data a component shows comes through one of these hooks. Keys are structured so the
 // event stream can invalidate by prefix (see live.ts); nothing is ever copied out of the cache into other state.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { api } from './client';
 import type { OrderBody, ScopeQuery } from './contract';
 
@@ -65,6 +66,25 @@ export function useSessionView(id: string | undefined) {
 }
 
 /** The bridge: the product's sessions by state. The stream invalidates it like everything else. */
+/** Warm the product's three destinations (the bridge, the product map, the roadmap) as soon as any of them mounts, so
+ *  the first switch between them reads from the cache instead of painting a loading state. The keys are the ones the
+ *  pages ask for with no search flags set: the map's scope, the roadmap's scope with the done changes, the bridge. */
+export function usePrefetchDestinations(product: string | undefined) {
+  const client = useQueryClient();
+  useEffect(() => {
+    if (!product) return;
+    const map: ScopeQuery = { lens: 'feature', node: product };
+    const roadmap: ScopeQuery = { lens: 'roadmap', node: product, done: true };
+    for (const q of [map, roadmap])
+      void client.prefetchQuery({ queryKey: queryKeys.scope(q), queryFn: () => api.scope(q), staleTime: 15_000 });
+    void client.prefetchQuery({
+      queryKey: queryKeys.bridge(product),
+      queryFn: () => api.bridge(product),
+      staleTime: 15_000,
+    });
+  }, [client, product]);
+}
+
 export function useBridge(product: string | undefined, days?: number) {
   return useQuery({
     queryKey: queryKeys.bridge(product ?? '', days),

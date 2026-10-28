@@ -6,6 +6,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
+import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
 import { Chip } from '@/components/chips/Chip';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
@@ -16,7 +17,7 @@ import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
 import type { ChangeContext, Lens, ProductRow, Scope, SessionView, Tab } from '@/data/contract';
-import { useBridge, useScope, useStore } from '@/data/queries';
+import { useBridge, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
@@ -155,6 +156,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const product = pageProduct(node, fresh, store?.products);
   // the rail's bridge entry carries how many decisions wait on the person
   const bridge = useBridge(product?.key);
+  usePrefetchDestinations(product?.key);
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
     if (product?.key) setLastProduct(product.key);
@@ -232,7 +234,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     );
     selectedLabel = sel;
   } else if (!shown) {
-    pane = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
+    pane = <Pending />;
   } else {
     const kind = kindOf(shown);
     if (!isScope) {
@@ -302,7 +304,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       <EmptyState title={`Nothing at ${node ?? 'the root'} in this lens.`} hint={scope.error.message} className="m-6" />
     );
   } else if (!data) {
-    structure = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
+    structure = <Pending />;
   } else if (lens === 'feature' && data.node?.type !== 'change') {
     structure = (
       <ProductMap
@@ -376,7 +378,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         data ? (
           <Dock scope={data} session={following?.view.session} lens={lens} />
         ) : (
-          <div className="p-6 text-xs text-ink-faint">Loading…</div>
+          <Pending />
         )
       ) : docked || sel ? (
         pane

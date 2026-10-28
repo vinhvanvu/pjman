@@ -8,8 +8,9 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { TopBar } from '@/components/shell/TopBar';
 import { EmptyState } from '@/components/EmptyState';
+import { Pending } from '@/components/Pending';
 import type { ProductRow } from '@/data/contract';
-import { useBridge, useStore } from '@/data/queries';
+import { useBridge, usePrefetchDestinations, useStore } from '@/data/queries';
 import { Bridge } from '@/features/bridge';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { FollowPill } from '@/features/session-follow';
@@ -44,6 +45,7 @@ function BridgePage() {
   const productKey = node?.startsWith('product:') ? node : undefined;
   const product = store?.products.find((p) => p.key === productKey);
   const bridge = useBridge(productKey);
+  usePrefetchDestinations(productKey);
   useEffect(() => {
     if (product?.key) setLastProduct(product.key);
   }, [product?.key, setLastProduct]);
@@ -97,7 +99,7 @@ function BridgePage() {
   } else if (bridge.error) {
     content = <EmptyState title="The bridge could not be read." hint={bridge.error.message} className="m-6" />;
   } else if (!bridge.data) {
-    content = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
+    content = <Pending />;
   } else {
     content = <Bridge data={bridge.data} lens="feature" productName={product?.name ?? short(productKey)} />;
   }
