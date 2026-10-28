@@ -18,12 +18,24 @@ A record may reference records of its own layer or a lower one. The envelope's `
 
 Inside records, every reference is a human-readable key. Ids exist only in the index.
 
+A key is a namespace and a slug, nothing else. The namespace is the product for what is a product's vocabulary
+(features, changes, decisions) and the store for what is identity or external (products, projects, people, agents,
+sessions, sources). A record's place in any hierarchy (its parent, its depth, its level label, its milestone) is a field
+on the record and never part of the key, so reparenting, regrouping or relabelling the levels changes no key. Keys are
+relative to their store; a reference into another store is a source (`url:`), never a key. The full key is what the
+store writes, in fields and in prose alike; inside a product the slug alone names a record, and the tool resolves that
+short form through the scope at hand (the record being written, the session's bound change, the project's product,
+the page's product), store-wide when exactly one product has the slug, and refuses it as ambiguous otherwise. Text
+output read inside a project drops the product segment; JSON keeps it.
+
 | Kind | Key form | Example |
 |---|---|---|
 | actor | `person:<handle>` · `agent:<handle>` | `person:vinh`, `agent:claude-code` |
+| product | `product:<slug>` | `product:pjman` |
+| feature | `feature:<product>/<slug>` (inside the product: `feature:<slug>`) | `feature:pjman/store` |
 | project | `project:<slug>` | `project:pjman` |
-| change | `change:<slug>` | `change:schema` |
-| decision | `decision:<change-slug>/<decision-slug>` · `decision:/<slug>` for store-level | `decision:schema/layered-minimal` |
+| change | `change:<product>/<slug>` (inside the product: `change:<slug>`) | `change:pjman/schema` |
+| decision | `decision:<product>/<change>/<slug>` (inside the product: `decision:<change>/<slug>`) · `decision:<product>/<slug>` at product level · `decision:/<slug>` at store level | `decision:pjman/schema/layered-minimal` |
 | source | `<kind>:<key>` | `linear:ABC-1234`, `github-pr:acme/app#123`, `file:THESIS.md`, `url:https://…` |
 | session | `session:<harness-session-id>` | `session:8b4adf71-…` |
 
@@ -40,9 +52,9 @@ A key is resolved by the tool; a reference to a record that does not exist is a 
 
 No `id`, no `type` (the folder is the type), no `updated` (git has it).
 
-### Product — `products/<slug>.md`
+### Product — `products/<slug>/product.md`
 
-The fixed root of the product tree. Projects and top-level features attach to it.
+The fixed root of the product tree and the namespace of everything beneath it: its features, its changes and their decisions live in its folder, so a product is one directory in git and an organisation's store is the union of its products' directories. Projects and top-level features attach to it.
 
 | field | kind | meaning |
 |---|---|---|
@@ -52,9 +64,10 @@ The fixed root of the product tree. Projects and top-level features attach to it
 | `levels` | A | Optional list of level labels for the features beneath, by depth (default: the store's `tree_levels`, `feature` then `capability`; anything deeper takes the last label). |
 | `sequence` | A | Optional ordered list of change keys: the roadmap's order, the deliverables as the person arranged them. A milestone on it is a column holding its children; a loose change is a column of one; a change not on it comes after, as later. No repeats; `pjman order` moves an entry. |
 | `links` | A | Optional source keys. |
+| `aliases` | A | Former slugs, appended by `pjman mv`; a key under the old segment still resolves. |
 | body | A | `## Summary`, optional: the product in a paragraph. |
 
-### Feature — `features/<slug>/feature.md`
+### Feature — `products/<product>/features/<slug>/feature.md`
 
 One nestable kind for everything the product is and does, at any depth: a feature, a capability beneath it, a sub-capability beneath that. The level is a label, not a kind; each default label has one definition (a feature is what the product does for a person, nameable in a sentence a user would recognise; a capability is a distinct behaviour a change can add, change or remove, the most specific node a change names), and the README states them.
 
@@ -97,6 +110,10 @@ A record for an actor exists only when there is something to say about one. Refe
 | `kind` | A | `person` · `agent` |
 | `name` | A | Optional |
 | `url` | A | Optional: a profile, an agent's definition. A scalar, not an edge |
+| `links` | A | A person's accounts, each a source of an identity kind keyed as the outside world keys it: `github-user:<login>`, `linear-user:<id>`, `email:<address>`, `git-author:<name <email>>`. An account is one person's; two people claiming one is an error on both. A commit, a pull request, a ticket assignee or a review resolves to its person through the account; an account no person claims resolves to nothing and is never matched by name |
+| `aliases` | A | Former handles, appended by `pjman mv person:<old> person:<new>`; the user config's actor follows |
+
+A person's key is a handle of their own, unique in the store, suggested by `pjman init` from the forge login (else the git user name) and confirmed by the person; it belongs to no account, so two people with the same name have different handles and a person who leaves a forge keeps their key.
 
 ### Session — `sessions/<yyyy-mm-dd>-<harness-session-id>.md`
 
@@ -168,7 +185,9 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 
 ## Layer 2 · Work
 
-### Change — `changes/<slug>/change.md`
+### Change — `products/<product>/changes/<slug>/change.md`
+
+A change is keyed under the product its project names; `pjman set <change> project=` to a project of another product is refused, and `pjman mv change:<product>/<slug> change:<other>/<slug>` moves it (into that product's one project).
 
 | Field | A/M | Notes |
 |---|---|---|
@@ -185,11 +204,11 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 | `target` | A | Optional date: a milestone's target, set by a person, shown where present, never required and never inferred |
 | `next` | A | The handoff: the next action. What resume reads first |
 | `parent` | A | Optional. The change this one is part of. Depth is unbounded; a cycle is an error; the parent may be in another project. Children are derived, never written. A change with children is a milestone: its progress is the children done over children, dropped excluded, derived |
-| `aliases` | A | Former slugs, appended by `pjman mv`. A reference to an alias resolves and is reported as "resolves via alias" |
+| `aliases` | A | Former slugs, appended by `pjman mv` (`<product>/<slug>` for a key once held in another product; the flat slug from before keys were paths under the product, added by `pjman migrate`). A reference to an alias resolves and is reported as "resolves via alias" |
 
-Body: `## Summary` (required), `## Plan` (optional; or `plan.md` beside it), anything else free. Decisions made in the course of the change live in `changes/<slug>/decisions/`.
+Body: `## Summary` (required), `## Plan` (optional; or `plan.md` beside it), anything else free. Decisions made in the course of the change live in `decisions/` beside it.
 
-### Decision — `changes/<slug>/decisions/<yyyy-mm-dd>-<slug>.md`, or `decisions/<yyyy-mm-dd>-<slug>.md` at the store root
+### Decision — `products/<product>/changes/<change>/decisions/<yyyy-mm-dd>-<slug>.md`; `products/<product>/decisions/…` at product level; `decisions/…` at the store root
 
 Opened `proposed` before the work it governs; `decided` when an actor sets it. A decision written after the fact is allowed and is the pattern the test tallies against.
 

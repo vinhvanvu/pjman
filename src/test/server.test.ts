@@ -54,17 +54,19 @@ test('the address file names the running server', () => {
 });
 
 test('records by key, the listing, the store', async () => {
-  const one = await getJson('/api/v1/records/change/login');
+  const one = await getJson('/api/v1/records/change/app/login');
   assert.equal(one.status, 200);
-  assert.equal((one.body.data as { key: string }).key, 'change:login');
+  assert.equal((one.body.data as { key: string }).key, 'change:app/login');
+  // the bare form still opens it: the project's product is the scope
+  assert.equal(((await getJson('/api/v1/records/change/login')).body.data as { key: string }).key, 'change:app/login');
   assert.equal(String(one.body.seq), one.seq);
-  const dec = await getJson('/api/v1/records/decision/login/magic-links');
-  assert.equal((dec.body.data as { key: string }).key, 'decision:login/magic-links');
+  const dec = await getJson('/api/v1/records/decision/app/login/magic-links');
+  assert.equal((dec.body.data as { key: string }).key, 'decision:app/login/magic-links');
   const missing = await getJson('/api/v1/records/change/nope');
   assert.equal(missing.status, 404);
   assert.equal(missing.body.error?.code, 'not-found');
   const list = await getJson('/api/v1/records?type=change');
-  assert.deepEqual((list.body.data as { key: string }[]).map((r) => r.key), ['change:login']);
+  assert.deepEqual((list.body.data as { key: string }[]).map((r) => r.key), ['change:app/login']);
   const s = await getJson('/api/v1/store');
   assert.equal((s.body.data as { name: string }).name, 'global');
   assert.deepEqual((s.body.data as { projects: { key: string }[] }).projects.map((p) => p.key), ['project:app']);
@@ -73,12 +75,12 @@ test('records by key, the listing, the store', async () => {
 test('the getter: a neighbourhood by key, and resolve for anything', async () => {
   const n = await getJson('/api/v1/records/linear/APP-1/neighbourhood');
   assert.equal(n.status, 200);
-  assert.deepEqual((n.body.data as { changes: { change: { key: string } }[] }).changes.map((c) => c.change.key), ['change:login']);
+  assert.deepEqual((n.body.data as { changes: { change: { key: string } }[] }).changes.map((c) => c.change.key), ['change:app/login']);
   const r = await getJson('/api/v1/resolve?ref=' + encodeURIComponent('https://linear.app/acme/issue/APP-1/login'));
   assert.equal((r.body.data as { resolution: { key: string } }).resolution.key, 'linear:APP-1');
   const refs = await getJson('/api/v1/refs?text=' + encodeURIComponent('start APP-1 now'));
   assert.equal(refs.status, 200);
-  assert.deepEqual((refs.body.data as { key: string; change?: string }[]).map((r) => [r.key, r.change]), [['linear:APP-1', 'change:login']]);
+  assert.deepEqual((refs.body.data as { key: string; change?: string }[]).map((r) => [r.key, r.change]), [['linear:APP-1', 'change:app/login']]);
   const none = await getJson('/api/v1/resolve?ref=zzz');
   assert.equal(none.status, 404);
   assert.ok(none.body.error?.tried?.length);
@@ -89,9 +91,9 @@ test("a session's view and a project's board", async () => {
   assert.equal((before.body.data as { showing: { board: string } }).showing.board, 'project:app');
   sessionBind(store, 'sess-1', 'change:login');
   const after = await getJson('/api/v1/sessions/sess-1/view');
-  assert.equal((after.body.data as { showing: { key: string } }).showing.key, 'change:login');
+  assert.equal((after.body.data as { showing: { key: string } }).showing.key, 'change:app/login');
   const board = await getJson('/api/v1/projects/app/board');
-  assert.deepEqual((board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key), ['change:login']);
+  assert.deepEqual((board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key), ['change:app/login']);
 });
 
 test('the event stream: a list, and server-sent events with ids', async () => {
@@ -142,23 +144,23 @@ test('the scope: one page as data, in a lens, at a node; a bad lens or node is a
   const data = root.body.data as { lens: string; node: null; tree: { key: string; children: { key: string; row?: { ticket?: { label: string } } }[] }[]; changes: { key: string }[] };
   assert.equal(data.lens, 'project');
   assert.equal(data.node, null);
-  assert.deepEqual(data.tree.map((n) => n.key), ['project:app']);
-  assert.deepEqual(data.tree[0].children.map((n) => n.key), ['change:login', 'change:signup']);
-  assert.equal(data.tree[0].children[0].row?.ticket?.label, 'APP-1');
+  // the product init made with the project is the root; the project sits beneath it with its changes
+  assert.deepEqual(data.tree.map((n) => n.key), ['product:app']);
+  const project = data.tree[0].children[0] as unknown as { key: string; children: { key: string; row?: { ticket?: { label: string } } }[] };
+  assert.equal(project.key, 'project:app');
+  assert.deepEqual(project.children.map((n) => n.key), ['change:app/login', 'change:app/signup']);
+  assert.equal(project.children[0].row?.ticket?.label, 'APP-1');
   const at = await getJson('/api/v1/scope?lens=feature&node=change:login&days=7');
   assert.equal(at.status, 200);
   const d2 = at.body.data as { container: string; change?: { change: { key: string } }; health: { days: number } };
-  assert.equal(d2.container, 'project:app'); // no feature names it: the project's product, else the project itself
-  assert.equal(d2.change?.change.key, 'change:login');
+  assert.equal(d2.container, 'product:app'); // no feature names it: the project's product
+  assert.equal(d2.change?.change.key, 'change:app/login');
   assert.equal(d2.health.days, 7);
   assert.equal((await getJson('/api/v1/scope?lens=colour')).status, 400);
   assert.equal((await getJson('/api/v1/scope?node=change:nope')).status, 400);
 });
 
 test('the one write: POST /order moves a change in its product\'s sequence as the person signed in; anything else is refused', async () => {
-  newRecord(store, 'product', 'app', { title: 'App' });
-  const { set } = await import('../commands/set.js');
-  set(store, 'project:app', ['product=product:app'], {});
   newRecord(store, 'change', 'second', { title: 'Second', summary: 's' });
   const post = async (body: unknown) => {
     const res = await fetch(base + '/api/v1/order', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -166,11 +168,11 @@ test('the one write: POST /order moves a change in its product\'s sequence as th
   };
   let r = await post({ change: 'change:login', last: true });
   assert.equal(r.status, 200);
-  assert.deepEqual(r.body.data?.sequence, ['change:login']);
+  assert.deepEqual(r.body.data?.sequence, ['change:app/login']);
   r = await post({ change: 'change:second', before: 'change:login' });
-  assert.deepEqual(r.body.data?.sequence, ['change:second', 'change:login']);
+  assert.deepEqual(r.body.data?.sequence, ['change:app/second', 'change:app/login']);
   r = await post({ change: 'change:second', later: true });
-  assert.deepEqual(r.body.data?.sequence, ['change:login']);
+  assert.deepEqual(r.body.data?.sequence, ['change:app/login']);
   r = await post({ change: 'change:nope', first: true });
   assert.equal(r.status, 400);
   r = await post({ change: 'change:login' });
@@ -179,5 +181,5 @@ test('the one write: POST /order moves a change in its product\'s sequence as th
   const other = await fetch(base + '/api/v1/records', { method: 'POST' });
   assert.equal(other.status, 405);
   const scope = await getJson('/api/v1/scope?node=product:app');
-  assert.deepEqual((scope.body.data as { roadmap: { sequence: string[] } }).roadmap.sequence, ['change:login']);
+  assert.deepEqual((scope.body.data as { roadmap: { sequence: string[] } }).roadmap.sequence, ['change:app/login']);
 });

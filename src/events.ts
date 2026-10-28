@@ -11,7 +11,7 @@ export interface StoreEvent {
   seq: number;
   /** When the write happened (UTC instant). */
   at: string;
-  op: 'created' | 'set' | 'log' | 'bind' | 'observe' | 'moved' | 'formatted' | 'removed' | 'init' | 'write' | 'applied' | 'reverted';
+  op: 'created' | 'set' | 'log' | 'bind' | 'observe' | 'moved' | 'formatted' | 'removed' | 'init' | 'write' | 'applied' | 'reverted' | 'migrated';
   /** The record written, or `store` for the store itself. */
   key: string;
   type: RecordType | 'store';
@@ -139,7 +139,15 @@ export function ensureIgnored(store: Store): void {
 // --- rebuild from git -------------------------------------------------------------------------
 
 export const typeOfPath = (p: string): RecordType | null => {
-  if (p.startsWith('products/')) return 'product';
+  // products/<p>/{product.md, features/<f>/feature.md, changes/<c>/change.md, changes/<c>/decisions/<d>.md, decisions/<d>.md};
+  // the flat forms (products/<p>.md, features/, changes/ at the root) are the layout before the migration, still in the history
+  if (p.startsWith('products/')) {
+    if (p.endsWith('/product.md') || !p.slice('products/'.length).includes('/')) return 'product';
+    if (p.endsWith('/feature.md')) return 'feature';
+    if (p.endsWith('/change.md')) return 'change';
+    if (p.includes('/decisions/')) return 'decision';
+    return null;
+  }
   if (p.startsWith('features/') && p.endsWith('/feature.md')) return 'feature';
   if (p.startsWith('projects/')) return 'project';
   if (p.startsWith('changes/') && p.endsWith('/change.md')) return 'change';
@@ -154,12 +162,18 @@ export const typeOfPath = (p: string): RecordType | null => {
 export function keyOfPath(p: string, type: RecordType, root: string, sha: string): string {
   const base = path.basename(p, '.md');
   const dated = /^\d{4}-\d{2}-\d{2}-(.+)$/.exec(base);
+  const seg = p.split('/');
+  const under = seg[0] === 'products' && seg.length > 2 ? seg[1] : null; // the product the path is beneath, in the current layout
   switch (type) {
-    case 'product': return `product:${base}`;
-    case 'feature': return `feature:${p.split('/')[1]}`;
+    case 'product': return `product:${under ?? base}`;
+    case 'feature': return under ? `feature:${under}/${seg[3]}` : `feature:${seg[1]}`;
     case 'project': return `project:${base}`;
-    case 'change': return `change:${p.split('/')[1]}`;
-    case 'decision': return p.startsWith('decisions/') ? `decision:/${dated?.[1] ?? base}` : `decision:${p.split('/')[1]}/${dated?.[1] ?? base}`;
+    case 'change': return under ? `change:${under}/${seg[3]}` : `change:${seg[1]}`;
+    case 'decision': {
+      const slug = dated?.[1] ?? base;
+      if (under) return seg[2] === 'changes' ? `decision:${under}/${seg[3]}/${slug}` : `decision:${under}/${slug}`;
+      return p.startsWith('decisions/') ? `decision:/${slug}` : `decision:${seg[1]}/${slug}`;
+    }
     case 'session': return `session:${dated?.[1] ?? base}`;
     case 'source':
     case 'actor': {
@@ -198,6 +212,11 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
     const rest = m?.[2] ?? '';
     if (verb === 'init') {
       events.push({ seq: ++seq, at, op: 'init', key: 'store', type: 'store', path: 'pjman.yaml', session, commit: short });
+      continue;
+    }
+    if (verb === 'migrate') {
+      // every record moved under its product: one event on the store, not one per record
+      events.push({ seq: ++seq, at, op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${changed.length} files`], session, commit: short });
       continue;
     }
     // the record the subject names comes first, as the live write emitted it

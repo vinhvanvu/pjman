@@ -6,6 +6,7 @@ import path from 'node:path';
 import { before, test } from 'node:test';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
+import { rm } from '../commands/rm.js';
 import { sessionBind } from '../commands/session.js';
 import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
@@ -36,31 +37,33 @@ before(() => {
   }
   store = findStore(path.join(tmp, 'web'))!;
   newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
-  newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
-  newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:checkout' });
-  newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
-  newRecord(store, 'feature', 'fax', { title: 'Fax orders', product: 'product:shop', status: 'retired' });
   set(store, 'project:web', ['product=product:shop'], {});
   set(store, 'project:api', ['product=product:shop'], {});
+  rm(store, 'product:web');
+  rm(store, 'product:api');
+  newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
+  newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:shop/checkout' });
+  newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
+  newRecord(store, 'feature', 'fax', { title: 'Fax orders', product: 'product:shop', status: 'retired' });
   newRecord(store, 'change', 'cards', { title: 'Cards milestone', summary: 's', project: 'project:web', status: 'planning' });
-  newRecord(store, 'change', 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:cards', features: ['adds feature:saved-cards', 'feature:search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
-  newRecord(store, 'change', 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', parent: 'change:cards', features: ['adds feature:saved-cards'] });
-  newRecord(store, 'change', 'card-tests', { title: 'Card tests', summary: 's', project: 'project:web', parent: 'change:card-form' });
+  newRecord(store, 'change', 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards', 'feature:shop/search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
+  newRecord(store, 'change', 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards'] });
+  newRecord(store, 'change', 'card-tests', { title: 'Card tests', summary: 's', project: 'project:web', parent: 'change:shop/card-form' });
   newRecord(store, 'change', 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
-  newRecord(store, 'change', 'old', { title: 'Old', summary: 's', project: 'project:web', features: ['feature:search'], status: 'done' });
+  newRecord(store, 'change', 'old', { title: 'Old', summary: 's', project: 'project:web', features: ['feature:shop/search'], status: 'done' });
   newRecord(store, 'decision', 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
   newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
-  sessionBind(store, 'live-1', 'change:card-form');
+  sessionBind(store, 'live-1', 'change:shop/card-form');
 });
 
 test('feature lens: features nest, a change sits under every feature it names, a child naming nothing nests under its parent, the unnamed close the list', () => {
   const s = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop' });
   assert.equal(s.container, 'product:shop');
-  assert.deepEqual(keys(s.tree), ['feature:checkout', 'feature:search', 'unassigned']);
+  assert.deepEqual(keys(s.tree), ['feature:shop/checkout', 'feature:shop/search', 'unassigned']);
   assert.equal(s.retiredHidden, 1);
   assert.equal(s.doneHidden, 1);
   const checkout = s.tree[0];
-  assert.deepEqual(keys(checkout.children), ['feature:saved-cards']);
+  assert.deepEqual(keys(checkout.children), ['feature:shop/saved-cards']);
   assert.equal(checkout.childCount, 1);
   assert.equal(checkout.open, 3); // card-form, card-endpoint, card-tests (through its parent)
   assert.equal(checkout.inFlight, 1);
@@ -69,12 +72,12 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.equal(checkout.ownersFrom, 'product:shop');
   const saved = checkout.children[0];
   assert.equal(saved.name, 'Saved cards'); // the short name the tree shows; the title stays the sentence
-  assert.deepEqual(keys(saved.children), ['change:card-form', 'change:card-endpoint']);
-  assert.deepEqual(keys(saved.children[0].children), ['change:card-tests']);
+  assert.deepEqual(keys(saved.children), ['change:shop/card-form', 'change:shop/card-endpoint']);
+  assert.deepEqual(keys(saved.children[0].children), ['change:shop/card-tests']);
   // the same change again under the second feature it names; its child is not placed twice
-  assert.deepEqual(keys(s.tree[1].children), ['change:card-form']);
+  assert.deepEqual(keys(s.tree[1].children), ['change:shop/card-form']);
   assert.deepEqual(s.tree[1].children[0].children, []);
-  assert.deepEqual(keys(s.tree[2].children), ['change:cards', 'change:chore']);
+  assert.deepEqual(keys(s.tree[2].children), ['change:shop/cards', 'change:shop/chore']);
   assert.deepEqual(s.tree[2].children[0].children, []); // its children live under their features
   // the row
   const r = saved.children[0].row!;
@@ -82,89 +85,89 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.equal(r.waiting, 1);
   assert.equal(r.live, true);
   assert.deepEqual(r.progress, { done: 0, total: 1 });
-  assert.deepEqual(r.features.map((f) => `${f.effect} ${f.key}`), ['adds feature:saved-cards', 'changes feature:search']);
+  assert.deepEqual(r.features.map((f) => `${f.effect} ${f.key}`), ['adds feature:shop/saved-cards', 'changes feature:shop/search']);
   assert.equal(s.tree[2].children[0].row!.progress?.total, 2);
   // the health of the node, the live session beneath it, the window
   assert.equal(s.health.waiting, 1);
   // the inbox: the proposed decision beneath, with the recommendation and the change it is on
-  assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.decision]), [['decision:card-form/why', 'change:card-form', 'd']]);
+  assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.decision]), [['decision:shop/card-form/why', 'change:shop/card-form', 'd']]);
   assert.equal(s.health.created, 6);
   assert.equal(s.health.staleDays, 0);
-  assert.deepEqual(s.sessions.map((x) => [x.key, x.on]), [['session:live-1', 'change:card-form']]);
+  assert.deepEqual(s.sessions.map((x) => [x.key, x.on]), [['session:live-1', 'change:shop/card-form']]);
   assert.deepEqual(s.projects, ['project:api', 'project:web']);
   assert.ok(s.recent.length > 0);
   assert.equal(s.node?.summary, 'A shop.');
   // retired and done shown on request
   const all = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true, retired: true });
-  assert.deepEqual(keys(all.tree), ['feature:checkout', 'feature:fax', 'feature:search', 'unassigned']);
-  assert.deepEqual(keys(all.tree[2].children), ['change:card-form', 'change:old']);
+  assert.deepEqual(keys(all.tree), ['feature:shop/checkout', 'feature:shop/fax', 'feature:shop/search', 'unassigned']);
+  assert.deepEqual(keys(all.tree[2].children), ['change:shop/card-form', 'change:shop/old']);
   assert.equal(all.doneHidden, 0);
 });
 
 test('project lens: projects under the product, changes nested by parent within a project, a child in another project stands on its own', () => {
   const s = scope(store, loadStore(store), { lens: 'project', node: 'product:shop' });
   assert.deepEqual(keys(s.tree), ['project:api', 'project:web']);
-  assert.deepEqual(keys(s.tree[0].children), ['change:card-endpoint']);
-  assert.deepEqual(keys(s.tree[1].children), ['change:cards', 'change:chore']);
-  assert.deepEqual(keys(s.tree[1].children[0].children), ['change:card-form']);
-  assert.deepEqual(keys(s.tree[1].children[0].children[0].children), ['change:card-tests']);
+  assert.deepEqual(keys(s.tree[0].children), ['change:shop/card-endpoint']);
+  assert.deepEqual(keys(s.tree[1].children), ['change:shop/cards', 'change:shop/chore']);
+  assert.deepEqual(keys(s.tree[1].children[0].children), ['change:shop/card-form']);
+  assert.deepEqual(keys(s.tree[1].children[0].children[0].children), ['change:shop/card-tests']);
   assert.deepEqual(s.tree[1].progress, { done: 1, total: 6 }); // card-endpoint counts beneath web through its parent milestone
   const web = scope(store, loadStore(store), { lens: 'project', node: 'project:web' });
   assert.deepEqual(web.node?.progress, { done: 1, total: 6 }); // the project's own progress on the node, for the header
   // a child of a web milestone that lives in api is beneath web; the project lens cannot place it here, so it closes the list
-  assert.deepEqual(keys(web.tree), ['change:cards', 'change:chore', 'unassigned']);
+  assert.deepEqual(keys(web.tree), ['change:shop/cards', 'change:shop/chore', 'unassigned']);
   assert.equal(web.tree[2].title, 'In other projects');
-  assert.deepEqual(keys(web.tree[2].children), ['change:card-endpoint']);
+  assert.deepEqual(keys(web.tree[2].children), ['change:shop/card-endpoint']);
   assert.deepEqual(web.crumbs.map((c) => c.key), ['product:shop']);
-  assert.deepEqual(web.changes.map((c) => c.key), ['change:cards', 'change:card-form', 'change:card-endpoint', 'change:card-tests', 'change:chore']);
+  assert.deepEqual(web.changes.map((c) => c.key), ['change:shop/cards', 'change:shop/card-form', 'change:shop/card-endpoint', 'change:shop/card-tests', 'change:shop/chore']);
   assert.deepEqual(web.projects, ['project:api', 'project:web']);
 });
 
 test('milestone lens: parent changes nested all the way down, changes without a milestone close the list', () => {
   const s = scope(store, loadStore(store), { lens: 'milestone', node: 'product:shop' });
-  assert.deepEqual(keys(s.tree), ['change:cards', 'unassigned']);
-  assert.deepEqual(keys(s.tree[0].children), ['change:card-form', 'change:card-endpoint']);
-  assert.deepEqual(keys(s.tree[0].children[0].children), ['change:card-tests']);
-  assert.deepEqual(keys(s.tree[1].children), ['change:chore']);
-  const m = scope(store, loadStore(store), { lens: 'milestone', node: 'change:cards' });
-  assert.equal(m.container, 'change:cards');
-  assert.deepEqual(keys(m.tree), ['change:card-form', 'change:card-endpoint']);
+  assert.deepEqual(keys(s.tree), ['change:shop/cards', 'unassigned']);
+  assert.deepEqual(keys(s.tree[0].children), ['change:shop/card-form', 'change:shop/card-endpoint']);
+  assert.deepEqual(keys(s.tree[0].children[0].children), ['change:shop/card-tests']);
+  assert.deepEqual(keys(s.tree[1].children), ['change:shop/chore']);
+  const m = scope(store, loadStore(store), { lens: 'milestone', node: 'change:shop/cards' });
+  assert.equal(m.container, 'change:shop/cards');
+  assert.deepEqual(keys(m.tree), ['change:shop/card-form', 'change:shop/card-endpoint']);
   assert.ok(m.change);
   assert.deepEqual(m.change.progress, { done: 0, total: 2 });
 });
 
 test('a leaf change stands in its container for the lens; the crumbs climb that chain; the root holds every product', () => {
   const loaded = loadStore(store);
-  const f = scope(store, loaded, { lens: 'feature', node: 'change:card-tests' });
-  assert.equal(f.container, 'feature:saved-cards'); // it names nothing; its parent's first feature files it
-  assert.deepEqual(f.crumbs.map((c) => c.key), ['product:shop', 'feature:checkout', 'feature:saved-cards', 'change:cards', 'change:card-form']);
+  const f = scope(store, loaded, { lens: 'feature', node: 'change:shop/card-tests' });
+  assert.equal(f.container, 'feature:shop/saved-cards'); // it names nothing; its parent's first feature files it
+  assert.deepEqual(f.crumbs.map((c) => c.key), ['product:shop', 'feature:shop/checkout', 'feature:shop/saved-cards', 'change:shop/cards', 'change:shop/card-form']);
   assert.equal(f.crumbs[2].name, 'Saved cards'); // crumbs carry the short name
-  const p = scope(store, loaded, { lens: 'project', node: 'change:card-tests' });
+  const p = scope(store, loaded, { lens: 'project', node: 'change:shop/card-tests' });
   assert.equal(p.container, 'project:web');
-  assert.deepEqual(p.crumbs.map((c) => c.key), ['product:shop', 'project:web', 'change:cards', 'change:card-form']);
-  const m = scope(store, loaded, { lens: 'milestone', node: 'change:card-tests' });
-  assert.equal(m.container, 'change:card-form');
-  assert.equal(m.change?.change.key, 'change:card-tests');
+  assert.deepEqual(p.crumbs.map((c) => c.key), ['product:shop', 'project:web', 'change:shop/cards', 'change:shop/card-form']);
+  const m = scope(store, loaded, { lens: 'milestone', node: 'change:shop/card-tests' });
+  assert.equal(m.container, 'change:shop/card-form');
+  assert.equal(m.change?.change.key, 'change:shop/card-tests');
   const root = scope(store, loaded, { lens: 'feature' });
   assert.equal(root.node, null);
   assert.deepEqual(keys(root.tree), ['product:shop', 'unassigned']);
   assert.equal(root.tree[0].type, 'product');
   assert.deepEqual(root.products.map((r) => r.key), ['product:shop']);
   assert.throws(() => scope(store, loaded, { lens: 'colour' }), /lens must be one of/);
-  assert.throws(() => scope(store, loaded, { node: 'change:nope' }), /has no record/);
+  assert.throws(() => scope(store, loaded, { node: 'change:shop/nope' }), /has no record/);
   assert.throws(() => scope(store, loaded, { node: 'session:live-1' }), /not a node of the tree/);
 });
 
 test('health reads the window: a change done today counts, blocked counts as it stands, last moved tints past the window', () => {
-  set(store, 'change:chore', ['status=done'], {});
-  set(store, 'change:card-endpoint', ['status=blocked'], {});
+  set(store, 'change:shop/chore', ['status=done'], {});
+  set(store, 'change:shop/card-endpoint', ['status=blocked'], {});
   const s = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', days: 7 });
   assert.equal(s.health.done, 1);
   assert.equal(s.health.blocked, 1);
   assert.equal(s.health.days, 7);
-  const checkout = find(s.tree, 'feature:checkout')!;
+  const checkout = find(s.tree, 'feature:shop/checkout')!;
   assert.equal(checkout.health?.blocked, 1);
-  assert.equal(find(s.tree, 'feature:search')!.health?.blocked, 0);
+  assert.equal(find(s.tree, 'feature:shop/search')!.health?.blocked, 0);
   // a window that ended long ago: nothing moved inside it, last stays
   const stale = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', now: Date.now() + 30 * 86_400_000 });
   assert.equal(stale.health.moved, 0);
@@ -174,51 +177,51 @@ test('health reads the window: a change done today counts, blocked counts as it 
 
 test('bugs: one home at the severity level, counts roll up with the worst named, the queue worst first; the roadmap: the sequence, later, the checks', () => {
   // a capability bug with feature severity is listed at the feature; a product one at the root; a nuisance where named
-  newRecord(store, 'change', 'cards-crash', { title: 'Saving a card crashes', summary: 'b', project: 'project:web', kind: 'bug', severity: 'feature', features: ['feature:saved-cards'] });
-  newRecord(store, 'change', 'down', { title: 'Nothing loads', summary: 'b', project: 'project:web', kind: 'bug', severity: 'product', features: ['feature:search'] });
-  newRecord(store, 'change', 'typo', { title: 'Typo in search', summary: 'b', project: 'project:web', kind: 'bug', severity: 'cosmetic', features: ['feature:search'], created: '2026-01-01' });
-  newRecord(store, 'change', 'slow-search', { title: 'Search is slow', summary: 'b', project: 'project:web', kind: 'bug', severity: 'nuisance', features: ['feature:search'] });
+  newRecord(store, 'change', 'cards-crash', { title: 'Saving a card crashes', summary: 'b', project: 'project:web', kind: 'bug', severity: 'feature', features: ['feature:shop/saved-cards'] });
+  newRecord(store, 'change', 'down', { title: 'Nothing loads', summary: 'b', project: 'project:web', kind: 'bug', severity: 'product', features: ['feature:shop/search'] });
+  newRecord(store, 'change', 'typo', { title: 'Typo in search', summary: 'b', project: 'project:web', kind: 'bug', severity: 'cosmetic', features: ['feature:shop/search'], created: '2026-01-01' });
+  newRecord(store, 'change', 'slow-search', { title: 'Search is slow', summary: 'b', project: 'project:web', kind: 'bug', severity: 'nuisance', features: ['feature:shop/search'] });
   set(store, 'product:shop', ['sequence=change:cards,change:old'], {});
-  set(store, 'change:cards', ['target=2026-12-01'], {});
-  set(store, 'change:chore', ['status=open', 'depends_on=change:cards'], {});
+  set(store, 'change:shop/cards', ['target=2026-12-01'], {});
+  set(store, 'change:shop/chore', ['status=open', 'depends_on=change:cards'], {});
   const s = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop' });
   const byKey = Object.fromEntries(s.changes.map((c) => [c.key, c]));
-  assert.equal(byKey['change:cards-crash'].home, 'feature:checkout');
-  assert.equal(byKey['change:down'].home, 'product:shop');
-  assert.equal(byKey['change:typo'].home, 'feature:search');
-  assert.equal(byKey['change:slow-search'].home, 'feature:search');
-  const checkout = find(s.tree, 'feature:checkout')!;
+  assert.equal(byKey['change:shop/cards-crash'].home, 'feature:shop/checkout');
+  assert.equal(byKey['change:shop/down'].home, 'product:shop');
+  assert.equal(byKey['change:shop/typo'].home, 'feature:shop/search');
+  assert.equal(byKey['change:shop/slow-search'].home, 'feature:shop/search');
+  const checkout = find(s.tree, 'feature:shop/checkout')!;
   assert.deepEqual(checkout.bugs, { here: 1, beneath: 1, worst: 'feature' });
-  assert.deepEqual(find(s.tree, 'feature:saved-cards')!.bugs, { here: 0, beneath: 0, worst: undefined });
-  assert.deepEqual(find(s.tree, 'feature:search')!.bugs, { here: 2, beneath: 2, worst: 'nuisance' });
+  assert.deepEqual(find(s.tree, 'feature:shop/saved-cards')!.bugs, { here: 0, beneath: 0, worst: undefined });
+  assert.deepEqual(find(s.tree, 'feature:shop/search')!.bugs, { here: 2, beneath: 2, worst: 'nuisance' });
   // the queue beneath the product: product, feature, nuisance, cosmetic
-  assert.deepEqual(s.bugs.map((b) => b.key), ['change:down', 'change:cards-crash', 'change:slow-search', 'change:typo']);
-  const search = scope(store, loadStore(store), { lens: 'feature', node: 'feature:search' });
-  assert.deepEqual(search.bugs.map((b) => b.key), ['change:down', 'change:slow-search', 'change:typo']);
+  assert.deepEqual(s.bugs.map((b) => b.key), ['change:shop/down', 'change:shop/cards-crash', 'change:shop/slow-search', 'change:shop/typo']);
+  const search = scope(store, loadStore(store), { lens: 'feature', node: 'feature:shop/search' });
+  assert.deepEqual(search.bugs.map((b) => b.key), ['change:shop/down', 'change:shop/slow-search', 'change:shop/typo']);
   // the roadmap: the sequence in scope, children take their milestone's place, the loose come after, bugs never
   assert.equal(s.roadmap.product, 'product:shop');
-  assert.deepEqual(s.roadmap.sequence, ['change:cards', 'change:old']);
-  assert.equal(byKey['change:card-form'].position, 0);
-  assert.equal(byKey['change:card-tests'].position, 0);
-  assert.equal(byKey['change:chore'].position, undefined);
-  assert.deepEqual(s.roadmap.later, ['change:chore']);
-  assert.equal(byKey['change:cards'].target, '2026-12-01');
-  assert.deepEqual(byKey['change:chore'].dependsOn, ['change:cards']);
+  assert.deepEqual(s.roadmap.sequence, ['change:shop/cards', 'change:shop/old']);
+  assert.equal(byKey['change:shop/card-form'].position, 0);
+  assert.equal(byKey['change:shop/card-tests'].position, 0);
+  assert.equal(byKey['change:shop/chore'].position, undefined);
+  assert.deepEqual(s.roadmap.later, ['change:shop/chore']);
+  assert.equal(byKey['change:shop/cards'].target, '2026-12-01');
+  assert.deepEqual(byKey['change:shop/chore'].dependsOn, ['change:shop/cards']);
   assert.deepEqual(s.roadmap.violations, []);
   // a dependant placed before what it depends on; an overdue target
   set(store, 'product:shop', ['sequence=change:chore,change:cards,change:old'], {});
-  set(store, 'change:card-form', ['target=2020-01-01'], {});
+  set(store, 'change:shop/card-form', ['target=2020-01-01'], {});
   const v = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop' }).roadmap.violations;
   assert.deepEqual(v, [
-    { kind: 'overdue', change: 'change:card-form' },
-    { kind: 'order', change: 'change:chore', against: 'change:cards' },
+    { kind: 'overdue', change: 'change:shop/card-form' },
+    { kind: 'order', change: 'change:shop/chore', against: 'change:shop/cards' },
   ]);
   // began and finished come from the status events
-  assert.ok(byKey['change:card-endpoint'].began);
-  assert.equal(byKey['change:card-endpoint'].finished, undefined);
-  const done = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true }).changes.find((c) => c.key === 'change:chore')!;
+  assert.ok(byKey['change:shop/card-endpoint'].began);
+  assert.equal(byKey['change:shop/card-endpoint'].finished, undefined);
+  const done = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true }).changes.find((c) => c.key === 'change:shop/chore')!;
   assert.equal(done.finished, undefined);
-  set(store, 'change:chore', ['status=done'], {});
-  const fin = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true }).changes.find((c) => c.key === 'change:chore')!;
+  set(store, 'change:shop/chore', ['status=done'], {});
+  const fin = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true }).changes.find((c) => c.key === 'change:shop/chore')!;
   assert.ok(fin.finished && fin.began && fin.began <= fin.finished);
 });

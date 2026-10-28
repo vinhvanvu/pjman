@@ -114,7 +114,7 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
 
   const edges = allEdges(loaded);
   for (const e of edges) insEdge.run(e.edge, e.from, e.to, e.on, e.observed ? 1 : 0, e.at);
-  for (const r of loaded.records) if (r.type === 'change' && r.valid) for (const a of list(r.data.aliases)) insAlias.run(`change:${a}`, r.key);
+  for (const [alias, keys] of loaded.aliases) if (keys.length === 1) insAlias.run(alias, keys[0]);
   const sourceKeys = sourceKeysOnly(loaded, edges);
   const boundBy = new Map<string, Rec[]>();
   for (const e of edges) {

@@ -71,20 +71,20 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   const r = syncLinear(store, { from: issues });
   assert.equal(r.team, 'APP');
   assert.equal(r.issues, 3);
-  assert.deepEqual(r.created.sort(), ['change:app-1', 'change:app-2', 'change:app-3']);
+  assert.deepEqual(r.created.sort(), ['change:app/app-1', 'change:app/app-2', 'change:app/app-3']);
   assert.deepEqual(r.skipped, [{ id: 'XYZ-9', reason: 'team XYZ is not APP' }]);
   assert.ok(r.commit);
   const loaded = loadStore(store);
-  const c1 = loaded.byKey.get('change:app-1')![0];
+  const c1 = loaded.byKey.get('change:app/app-1')![0];
   assert.equal(c1.data.status, 'active');
   assert.deepEqual(c1.data.binds, ['linear:APP-1']);
   assert.equal(c1.data.project, 'project:app');
   assert.equal(c1.data.writer, 'agent:linear-sync');
-  const c2 = loaded.byKey.get('change:app-2')![0];
-  assert.equal(c2.data.parent, 'change:app-1');
+  const c2 = loaded.byKey.get('change:app/app-2')![0];
+  assert.equal(c2.data.parent, 'change:app/app-1');
   assert.equal(c2.data.status, 'planning');
-  assert.equal(loaded.byKey.get('change:app-3')![0].data.status, 'done');
-  assert.ok(!loaded.byKey.has('change:xyz-9'));
+  assert.equal(loaded.byKey.get('change:app/app-3')![0].data.status, 'done');
+  assert.ok(!loaded.byKey.has('change:app/xyz-9'));
   const s1 = loaded.byKey.get('linear:APP-1')![0];
   assert.equal(s1.data.title, 'Login');
   assert.equal((s1.data.ext as { linear: { state: string } }).linear.state, 'In Progress');
@@ -99,11 +99,11 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   assert.equal(again.commit, null);
   assert.ok(readEvents(store).length - events <= 2); // only the run's session record
 
-  set(store, 'change:app-1', ['next=write the tests', 'summary=Our own words.'], {});
+  set(store, 'change:app/app-1', ['next=write the tests', 'summary=Our own words.'], {});
   const moved = issues.map((i) => (i.identifier === 'APP-1' ? { ...i, title: 'Login (renamed)', state: { name: 'Done', type: 'completed' } } : i));
   const third = syncLinear(store, { from: JSON.stringify({ issues: moved }) });
-  assert.deepEqual(third.updated, ['change:app-1']);
-  const after = loadStore(store).byKey.get('change:app-1')![0];
+  assert.deepEqual(third.updated, ['change:app/app-1']);
+  const after = loadStore(store).byKey.get('change:app/app-1')![0];
   assert.equal(after.data.status, 'done');
   assert.equal(after.data.title, 'Login (renamed)');
   assert.equal(after.data.next, 'write the tests');
@@ -113,6 +113,6 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   const file = path.join(tmp, 'one.json');
   fs.writeFileSync(file, JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ identifier: 'APP-4', title: 'New one', url: 'https://linear.app/acme/issue/APP-4/n', state: { name: 'Backlog', type: 'backlog' }, team: { key: 'APP' } }) }] }));
   const one = syncLinear(store, { from: file });
-  assert.deepEqual(one.created, ['change:app-4']);
-  assert.equal(loadStore(store).byKey.get('change:app-4')![0].data.status, 'open');
+  assert.deepEqual(one.created, ['change:app/app-4']);
+  assert.equal(loadStore(store).byKey.get('change:app/app-4')![0].data.status, 'open');
 });

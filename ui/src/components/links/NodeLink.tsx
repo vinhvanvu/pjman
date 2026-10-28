@@ -4,7 +4,7 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { Lens } from '@/data/contract';
-import { kindOf, restOf, targetOf } from '@/lib/keys';
+import { changeOfDecision, targetOf } from '@/lib/keys';
 
 export interface NodeLinkProps extends Omit<LinkProps, 'to' | 'params' | 'search' | 'children' | 'replace'> {
   to: string;
@@ -32,9 +32,9 @@ export const focusSearch = (prev: Search): Search => ({
 });
 
 export function NodeLink({ to, lens, mode = 'select', children, ...rest }: NodeLinkProps) {
-  // a decision is seen on its change, in the decisions tab
-  if (kindOf(to) === 'decision') {
-    const change = `change:${restOf(to).split('/')[0]}`;
+  // a decision is seen on its change, in the decisions tab; one at product or store level goes through the getter
+  const change = changeOfDecision(to);
+  if (change) {
     return (
       <Link to="." search={selectSearch(change, 'decisions')} {...rest}>
         {children}

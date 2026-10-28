@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { readUserConfig, userDir, type Store } from './config.js';
 import { follow, lastSeq, readEvents } from './events.js';
 import { findReferences, get } from './graph.js';
-import { tree } from './tree.js';
+import { rootProductOf, tree } from './tree.js';
 import { activity } from './activity.js';
 import { scope } from './scope.js';
 import { loadStore, resolve } from './records.js';
@@ -117,6 +117,14 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if (req.method === 'POST') return write(req, res, route);
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API reads, and writes only through POST /order`);
     const loaded = loadStore(store);
+    // a bare key on a request resolves in the product the page is in (its node), else the current project's
+    const at = url.searchParams.get('node') ?? url.searchParams.get('root') ?? url.searchParams.get('key');
+    if (at) {
+      const res = resolve(loaded, at);
+      const rec = res.status === 'ok' || res.status === 'alias' ? res.rec : undefined;
+      const p = rec ? (rec.type === 'product' ? rec.productSlug : rec.productSlug ?? rootProductOf(loaded, rec)?.productSlug) : undefined;
+      if (p) loaded.scope = p;
+    }
     const getOpts = { cwd: store.projectDir ?? process.cwd(), projectDir: store.projectDir, project: store.project };
     let m: RegExpExecArray | null;
 

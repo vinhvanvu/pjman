@@ -28,6 +28,8 @@ import { set } from './commands/set.js';
 import { order } from './commands/order.js';
 import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
+import { migrate } from './commands/migrate.js';
+import { shortenText } from './keys.js';
 
 import { createRequire } from 'node:module';
 
@@ -35,8 +37,8 @@ const VERSION = (createRequire(import.meta.url)('../package.json') as { version:
 
 /** One entry per command: the usage lines and a one-line purpose. `pjman <cmd> --help` prints one; `pjman --help` prints all. */
 const COMMANDS: { name: string; usage: string[]; about: string }[] = [
-  { name: 'init', about: 'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project, ask whether the first session should propose a product map (--map or --no-map answers without asking; the answer is the project\'s map field), set the actor, install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
-    usage: ['pjman init [--name <project-name>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
+  { name: 'init', about: 'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, holding their forge login and git email as accounts), ask whether the first session should propose a product map (--map or --no-map answers without asking; the answer is the project\'s map field), set the actor, install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
+    usage: ['pjman init [--name <project-name>] [--product product:<slug>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
   { name: 'start', about: 'the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL', usage: ['pjman start [--port <n>] [--open]'] },
   { name: 'stop', about: 'stop the dashboard server', usage: ['pjman stop'] },
   { name: 'brief', about: 'print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md)', usage: ['pjman brief'] },
@@ -44,13 +46,14 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: [
       'pjman new product <slug> --title <t> [--name <one to three words>] [--owners <actor>]... [--levels <label>]... [--sequence <change>]... [--summary <s>]',
       'pjman new feature <slug> --title <t> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>]',
+      '        keys are paths under the product (feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug>); inside a project the slug alone names a record',
       'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...',
       'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
       '                                [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date)',
       'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
       '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
-      'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>]',
+      'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...   (a person\'s accounts)',
       'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
     ] },
   { name: 'set', about: 'change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section)',
@@ -79,8 +82,10 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman validate [--json]'] },
   { name: 'fmt', about: 'rewrite records in canonical form: field order, the YAML rule, repaired quoting (--check reports only)',
     usage: ['pjman fmt [--check]'] },
-  { name: 'mv', about: 'rename a change or a feature (the folder moves, the old slug stays as an alias), a product, a project (directories bound to it follow) or a decision (within or across changes); every reference is rewritten in the same commit',
-    usage: ['pjman mv change:<old> change:<new>', 'pjman mv feature:<old> feature:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>'] },
+  { name: 'mv', about: 'rename a change or a feature (the folder moves, the old slug stays as an alias; <product>/<slug> moves it to another product), a product (every key beneath it follows), a project (directories bound to it follow), a decision (within or across changes) or a person (the old handle stays as an alias; the user config follows); every reference is rewritten in the same commit',
+    usage: ['pjman mv change:<old> change:<new>', 'pjman mv feature:<old> feature:<new>', 'pjman mv product:<old> product:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>', 'pjman mv person:<old> person:<new>'] },
+  { name: 'migrate', about: 'the one move from store-wide keys to keys under the product: every product becomes a folder holding its features and changes, every feature, change and decision key gains its product segment wherever it is written, each moved record keeps its old slug as an alias; one commit, one event, pjman undo <commit> reverts it',
+    usage: ['pjman migrate'] },
   { name: 'apply', about: "many writes as one commit: the commands one per line (new, set, mv, rm, order, session; as typed after pjman), run in order with every commit held, then one commit and the events with it, closed by one 'applied' event on the record --for names (a decision that proposed a map, a change). A line that fails refuses the whole batch and nothing is written",
     usage: ['pjman apply [<file>|-] [--for <key>]'] },
   { name: 'undo', about: 'revert the last batch (or the commit named) as one commit, every record put back; refused while a later write touched a record of that batch',
@@ -190,8 +195,23 @@ function parse(args: string[]) {
   }
 }
 
-const out = (s: string) => process.stdout.write(s.endsWith('\n') ? s : s + '\n');
-const json = (x: unknown) => out(JSON.stringify(x, null, 2));
+// Inside a product the slug alone names a record: text output drops the product segment of the current project's product
+// (JSON keeps the full keys). Set once the store is known.
+let scopeProduct: string | null = null;
+const scoped = (store: ReturnType<typeof requireStore>) => {
+  try {
+    scopeProduct = loadStore(store).scope;
+  } catch {
+    scopeProduct = null;
+  }
+  return store;
+};
+const out = (s: string) => {
+  const t = shortenText(s, scopeProduct);
+  process.stdout.write(t.endsWith('\n') ? t : t + '\n');
+};
+// JSON keeps the full keys: it is read by programs, and the product segment is part of the key
+const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '\n');
 
 /** The current project's tracker (its ticket source kind), or null. */
 function trackerOf(store: ReturnType<typeof requireStore>): string | null {
@@ -219,11 +239,11 @@ function main(argv: string[]): number {
   switch (cmd) {
     case 'init': {
       if (v.brief && v.brief !== 'claude-md') throw new CliError('--brief takes claude-md');
-      for (const line of init({ cwd, inProject: v['in-project'], name: v.name, adapter: !v['no-adapter'], start: !v['no-start'], brief: v.brief as 'claude-md' | undefined, port: v.port ? Number(v.port) : undefined, map: v['no-map'] ? false : v.map ? true : undefined })) out(line);
+      for (const line of init({ cwd, inProject: v['in-project'], name: v.name, adapter: !v['no-adapter'], start: !v['no-start'], brief: v.brief as 'claude-md' | undefined, port: v.port ? Number(v.port) : undefined, map: v['no-map'] ? false : v.map ? true : undefined, product: v.product })) out(line);
       return 0;
     }
     case 'new': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const [, type, ident] = pos;
       if (!type || !ident) throw new CliError('usage: pjman new <product|feature|project|change|decision|source|actor|session> <ident> [flags]');
       const flags: NewFlags = {
@@ -244,7 +264,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'session': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const [, sub, id, ...rest] = pos;
       if (sub === 'log') {
         if (!id || !rest.length) throw new CliError('usage: pjman session log <id> <text>');
@@ -262,7 +282,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'validate': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const loaded = loadStore(store);
       const problems = validate(loaded);
       const s = summarise(problems);
@@ -274,7 +294,7 @@ function main(argv: string[]): number {
       return s.errors ? 1 : 0;
     }
     case 'fmt': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const r = fmt(store, { check: v.check, session: v.session });
       if (v.json) json(r);
       else {
@@ -285,20 +305,20 @@ function main(argv: string[]): number {
       return v.check && r.changed.length ? 1 : 0;
     }
     case 'ls': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const rows = ls(store, { type: pos[1], status: v.status, project: v.project, kind: v.kind });
       v.json ? json(rows) : out(formatLs(rows));
       return 0;
     }
     case 'tree': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const nodes = tree(loadStore(store), pos[1]);
       if (v.json) json(nodes);
       else out(nodes.length ? formatTree(nodes) : pos[1] ? `${pos[1]} is not a product or a feature` : 'no products yet: pjman new product <slug> --title <t>');
       return 0;
     }
     case 'activity': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman activity <key> [--days 14]');
       const loaded = loadStore(store);
       const res = resolve(loaded, pos[1]);
@@ -308,7 +328,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'context': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (pos[1] && (pos[1].startsWith('product:') || pos[1].startsWith('feature:'))) {
         const loaded = loadStore(store);
         const nodes = tree(loaded, pos[1]);
@@ -327,14 +347,14 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'get': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman get <ref>');
       const n = get(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project });
       v.json ? json(n) : out(formatNeighbourhood(n, formatChangeContext));
       return n.resolution.status === 'none' ? 1 : 0;
     }
     case 'intake': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman intake <text> | pjman intake - (text on stdin)');
       const text = pos[1] === '-' ? fs.readFileSync(0, 'utf8') : pos.slice(1).join(' ');
       const i = intake(store, loadStore(store), text.trim(), { cwd, projectDir: store.projectDir, project: store.project });
@@ -342,7 +362,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'refs': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman refs <text> | pjman refs - (text on stdin)');
       const text = pos[1] === '-' ? fs.readFileSync(0, 'utf8') : pos.slice(1).join(' ');
       const refs = findReferences(loadStore(store), text, { cwd, projectDir: store.projectDir, project: store.project });
@@ -350,10 +370,11 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'view': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const opts = { ref: pos[1], session: v.session, cwd, projectDir: store.projectDir, project: store.project };
       const render = () => {
         const view = renderView(store, opts);
+        view.markdown = shortenText(view.markdown, scopeProduct); // read by a person inside the project
         if (v.out) {
           const tmp = `${v.out}.tmp`;
           fs.writeFileSync(tmp, view.markdown);
@@ -378,28 +399,28 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'show': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman show <key>');
       const r = show(store, pos[1]);
       v.json ? json({ key: r.rec.key, path: r.rec.path, data: r.rec.data, body: r.rec.body }) : out(`# ${r.rec.path}\n${r.text}`);
       return 0;
     }
     case 'set': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1] || !pos[2]) throw new CliError('usage: pjman set <key> <field>=<value>...');
       const r = set(store, pos[1], pos.slice(2), { session: v.session });
       v.json ? json(r) : out(`set ${r.changed.join(', ')} on ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'order': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman order <change> --before <change> | --after <change> | --first | --last | --later');
       const r = order(store, pos[1], { before: v.before, after: v.after, first: v.first, last: v.last, later: v.later, session: v.session, writer: v.writer });
       v.json ? json(r) : out(`${r.product} sequence: ${r.sequence.length ? r.sequence.join(' → ') : '(empty)'}${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'mv': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1] || !pos[2]) throw new CliError('usage: pjman mv <key> <new key>  (change, project or decision)');
       const r = mv(store, pos[1], pos[2], { session: v.session });
       if (v.json) json(r);
@@ -409,7 +430,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'apply': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const src = pos[1] ?? '-';
       const text = src === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(src, 'utf8');
       const r = apply(store, text, (line) => {
@@ -420,15 +441,22 @@ function main(argv: string[]): number {
       else out(r.writes ? `applied ${plural(r.writes, 'write')} from ${plural(r.lines, 'line')} as one commit${r.for ? ` for ${r.for}` : ''}${r.commit ? ` (committed ${r.commit}; pjman undo reverts it)` : ''}` : `nothing to write in ${plural(r.lines, 'line')}`);
       return 0;
     }
+    case 'migrate': {
+      const store = scoped(requireStore(cwd, v.store));
+      const r = migrate(store, { session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else out(`migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : ''}`);
+      return 0;
+    }
     case 'undo': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const r = undo(store, { commit: pos[1], session: v.session, writer: v.writer });
       if (v.json) json(r);
       else out(`reverted ${r.reverted} (${r.subject}): ${plural(r.files, 'file')} put back${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'rm': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman rm <key> [--detach]');
       const r = rm(store, pos[1], { detach: v.detach, session: v.session, writer: v.writer });
       if (v.json) json(r);
@@ -436,7 +464,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'events': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (pos[1] === 'rebuild') {
         const r = rebuildEvents(store);
         out(`rebuilt ${plural(r.events, 'event')} from ${plural(r.commits, 'commit')}`);
@@ -453,7 +481,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'follow': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const since = v.since !== undefined ? Number(v.since) : readEvents(store).at(-1)?.seq ?? 0;
       follow(store, since, (e) => out(v.json ? JSON.stringify(e) : formatEvent(e)));
       return 0; // the watcher keeps the process alive until it is interrupted
@@ -491,7 +519,7 @@ function main(argv: string[]): number {
     }
     case 'sync': {
       if (pos[1] !== 'linear' && pos[1] !== 'github') throw new CliError('usage: pjman sync linear|github --from <file|-> [--project <key>]');
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const r = pos[1] === 'linear'
         ? syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session })
         : syncGithub(store, { project: v.project, repo: v.repo, from: v.from, session: v.session });
@@ -500,7 +528,7 @@ function main(argv: string[]): number {
       return 0;
     }
     case 'index': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       const r = buildIndex(store);
       if (v.json) json(r);
       else {
@@ -512,7 +540,7 @@ function main(argv: string[]): number {
       return r.conflicts.length ? 1 : 0;
     }
     case 'query': {
-      const store = requireStore(cwd, v.store);
+      const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw new CliError('usage: pjman query "<sql>"');
       json(query(store, pos[1]));
       return 0;
@@ -520,8 +548,9 @@ function main(argv: string[]): number {
     case 'where': {
       const store = findStore(cwd, v.store);
       if (!store) throw new CliError('no store found');
+      scoped(store);
       v.json
-        ? json({ root: store.root, mode: store.mode, name: store.config.name, project: store.project ?? null, project_dir: store.projectDir ?? null, tracker: trackerOf(store), actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
+        ? json({ root: store.root, mode: store.mode, name: store.config.name, project: store.project ?? null, product: scopeProduct ? `product:${scopeProduct}` : null, project_dir: store.projectDir ?? null, tracker: trackerOf(store), actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
         : out(`${store.root} (${store.mode})${store.project ? ` ${store.project}` : ''}`);
       return 0;
     }

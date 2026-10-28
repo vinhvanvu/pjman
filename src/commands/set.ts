@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { replaceSection } from '../frontmatter.js';
-import { loadStore, resolve, type RecordType } from '../records.js';
+import { loadStore, resolve, unresolved, type RecordType } from '../records.js';
 import { CliError } from '../util.js';
-import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
+import { envelope, finishWrite, fullKeys, render, validateOrUndo } from '../write.js';
 
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
@@ -13,7 +13,7 @@ const SETTABLE: Record<RecordType, string[]> = {
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'summary', 'plan'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'links', 'decision', 'why'],
   source: ['title', 'url', 'links'],
-  actor: ['name', 'url'],
+  actor: ['name', 'url', 'links'],
   session: [],
 };
 const LISTS = new Set(['binds', 'links', 'owners', 'features', 'levels', 'depends_on', 'sequence']);
@@ -32,7 +32,7 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
   const res = resolve(loaded, keyRaw);
   if (res.status !== 'ok' && res.status !== 'alias') {
     if (res.status === 'invalid') throw new CliError(`${res.rec.path} is invalid; fix it before setting fields`);
-    throw new CliError(`${keyRaw} does not resolve to a record`);
+    throw new CliError(unresolved(res, keyRaw));
   }
   const rec = res.rec;
   const allowed = SETTABLE[rec.type];
@@ -64,10 +64,17 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
       continue;
     }
     if (!allowed.includes(field)) throw new CliError(`'${field}' cannot be set on a ${rec.type} (${allowed.join(', ')}; ext.<owner>.<field> on any record)`);
+    if (field === 'project' && rec.type === 'change' && value) {
+      // a change is keyed under its project's product: a project of another product means a move, not a field
+      const project = loaded.byKey.get(value.startsWith('project:') ? value : `project:${value}`)?.[0];
+      const product = project && typeof project.data.product === 'string' ? project.data.product : undefined;
+      if (product && product !== `product:${rec.productSlug}`) throw new CliError(`${project!.key} belongs to ${product}; this change is keyed under product:${rec.productSlug}. Move it: pjman mv ${rec.key} change:${product.slice('product:'.length)}/${rec.changeSlug}`);
+    }
     if (SECTIONS[field] && rec.type === 'decision' && rec.data.status !== 'proposed') throw new CliError(`a ${String(rec.data.status)} decision's text is fixed; open a new decision that supersedes it`);
     if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
     else data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean) : value;
+    if (value !== '') fullKeys(loaded, rec.type, data, field, rec.productSlug ?? null);
     changed.push(field);
   }
   const text = render(rec.type, data, body);

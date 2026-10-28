@@ -34,44 +34,46 @@ function list(v: unknown): string[] {
 export function allEdges(loaded: Loaded): Edge[] {
   const out: Edge[] = [];
   const edge = (name: string, from: string, to: string, on: Rec) => out.push({ edge: name, from, to: canon(to), on: on.path, observed: false, at: null });
-  const live = (raw: string): string => {
-    const res = resolve(loaded, raw);
+  const live = (raw: string, scope?: string | null): string => {
+    const res = resolve(loaded, raw, scope);
     return res.status === 'ok' || res.status === 'alias' ? res.rec.key : raw;
   };
   for (const r of loaded.records) {
     if (!r.valid) continue;
     const d = r.data;
+    const s = r.productSlug ?? null;
     for (const k of list(d.owners)) edge('owners', r.key, k, r);
     switch (r.type) {
       case 'product':
-        for (const k of list(d.sequence)) edge('sequence', r.key, live(k), r);
+        for (const k of list(d.sequence)) edge('sequence', r.key, live(k, s), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'feature':
         if (typeof d.product === 'string') edge('product', r.key, d.product, r);
-        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
+        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent, s), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'project':
         if (typeof d.product === 'string') edge('product', r.key, d.product, r);
-        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
+        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent, s), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'change':
         if (typeof d.project === 'string') edge('project', r.key, d.project, r);
-        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent), r);
-        for (const k of list(d.depends_on)) edge('depends_on', r.key, live(k), r);
+        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent, s), r);
+        for (const k of list(d.depends_on)) edge('depends_on', r.key, live(k, s), r);
         for (const f of list(d.features)) {
           const e = parseEffect(f);
-          if (e) edge(e.effect, r.key, live(e.key), r);
+          if (e) edge(e.effect, r.key, live(e.key, s), r);
         }
         for (const k of list(d.binds)) edge('binds', r.key, k, r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'decision':
-        if (typeof d.supersedes === 'string') edge('supersedes', r.key, live(d.supersedes), r);
+        if (typeof d.supersedes === 'string') edge('supersedes', r.key, live(d.supersedes, s), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
-        if (r.changeSlug) edge('in', r.key, `change:${r.changeSlug}`, r);
+        if (r.changeKey) edge('in', r.key, r.changeKey, r);
+        else if (r.productSlug) edge('in', r.key, `product:${r.productSlug}`, r);
         break;
       case 'source':
         for (const k of list(d.links)) edge('links', r.key, k, r);
@@ -251,17 +253,14 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
     const p = parseKey(k);
     if (!p) return null;
     if (p.kind === 'change') return k;
-    if (p.kind === 'decision') {
-      const i = p.rest.indexOf('/');
-      return i > 0 ? `change:${p.rest.slice(0, i)}` : null;
-    }
+    if (p.kind === 'decision') return loaded.byKey.get(k)?.[0]?.changeKey ?? null;
     return null;
   };
   const add = (k: string, how: string) => {
     if (loaded.byKey.get(k)?.[0]?.valid && !reach.has(k)) reach.set(k, how);
   };
   if (rec?.type === 'change') add(key, 'self');
-  else if (rec?.type === 'decision' && rec.changeSlug) add(`change:${rec.changeSlug}`, 'in');
+  else if (rec?.type === 'decision' && rec.changeKey) add(rec.changeKey, 'in');
   else if (rec?.type === 'session') for (const k of list(rec.data.changes)) add(canon(k), 'changes');
   if (rec?.type !== 'project' && rec?.type !== 'actor') {
     for (const e of result.in) {
@@ -329,7 +328,7 @@ export interface Reference {
  *  The last mention is what a prompt is about. Never writes. */
 export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {}): Reference[] {
   // bare slugs: changes still in play (a dropped change is reached by its full key only)
-  const slugs = loaded.records.filter((r) => r.type === 'change' && r.data.status !== 'dropped').map((r) => r.key.slice('change:'.length));
+  const slugs = [...new Set(loaded.records.filter((r) => r.type === 'change' && r.data.status !== 'dropped').map((r) => r.changeSlug!))];
   const tracker = trackerOf(loaded, opts.project);
   const out: Reference[] = [];
   for (const m of mentions(text, slugs)) {

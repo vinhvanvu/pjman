@@ -1,11 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../config.js';
-import { parseDecisionRest, parseKey, SLUG_RE, sourceFileSlug } from '../keys.js';
-import { loadStore, resolve, type RecordType } from '../records.js';
+import { changeKey, decisionKey, featureKey, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE, sourceFileSlug } from '../keys.js';
+import { loadStore, recordOf, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
+import { rootProductOf } from '../tree.js';
 import type { EventInput } from '../events.js';
 import { CliError, isDateString, localDate, today } from '../util.js';
-import { envelope, finishWrite, render, validateOrUndo, writeFile } from '../write.js';
+import { envelope, finishWrite, fullKeys, render, validateOrUndo, writeFile } from '../write.js';
 
 export interface NewFlags {
   title?: string;
@@ -101,13 +102,24 @@ function finish(store: Store, type: RecordType, key: string, rel: string, create
 
 const listOrNone = (v?: string[]): string[] | undefined => (v?.length ? v : undefined);
 
+/** A product named by key or slug, resolved; refused when it does not exist. */
+function productSlugOf(loaded: Loaded, raw: string, what: string): string {
+  const key = raw.startsWith('product:') ? raw : `product:${raw}`;
+  const rec = recordOf(loaded, key, null);
+  if (!rec || rec.type !== 'product') throw new CliError(`${what}: ${key} does not exist`);
+  return rec.productSlug!;
+}
+
 export function newProduct(store: Store, ident: string, flags: NewFlags): NewResult {
   const slug = ident.startsWith('product:') ? ident.slice(8) : ident;
   if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
   if (!flags.title) throw new CliError('--title is required');
-  const rel = path.join('products', `${slug}.md`);
+  const rel = path.join('products', slug, 'product.md');
   refuseExisting(store, rel);
+  const loaded = loadStore(store);
+  if (loaded.aliases.has(`product:${slug}`)) throw new CliError(`refused: '${slug}' is a former name of ${loaded.aliases.get(`product:${slug}`)!.join(', ')}`);
   const data: Record<string, unknown> = { title: flags.title, name: flags.name, owners: listOrNone(flags.owners), levels: listOrNone(flags.levels), sequence: listOrNone(flags.sequence), links: listOrNone(flags.links), ...stamp(flags) };
+  fullKeys(loaded, 'product', data, undefined, slug);
   let body = flags.summary ? section('Summary', flags.summary) : '';
   if (flags.body) body += (body ? '\n' : '') + flags.body.trim() + '\n';
   writeFile(store, rel, render('product', data, body));
@@ -115,20 +127,41 @@ export function newProduct(store: Store, ident: string, flags: NewFlags): NewRes
 }
 
 export function newFeature(store: Store, ident: string, flags: NewFlags): NewResult {
-  const slug = ident.startsWith('feature:') ? ident.slice(8) : ident;
-  if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
+  const rest = ident.startsWith('feature:') ? ident.slice(8) : ident;
+  const s = parseScopedRest(rest);
+  if (!s) throw new CliError(`'${rest}' is not a slug (lower-case letters, digits, hyphens), or <product>/<slug>`);
   if (!flags.title) throw new CliError('--title is required');
   if (!flags.product && !flags.parent) throw new CliError('a feature needs --product product:<slug> (top level) or --parent feature:<slug>');
-  const rel = path.join('features', slug, 'feature.md');
+  const loaded = loadStore(store);
+  // the product it is keyed under: named in the ident, else --product, else the parent's
+  let product: string | null = s.product ? productSlugOf(loaded, s.product, 'feature') : null;
+  if (flags.product) {
+    const p = productSlugOf(loaded, flags.product, '--product');
+    if (product && p !== product) throw new CliError(`--product ${flags.product} is not the product the key names (product:${product})`);
+    product = p;
+  }
+  if (flags.parent) {
+    const res = resolve(loaded, flags.parent, product ?? loaded.scope);
+    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`--parent: ${unresolved(res, flags.parent)}`);
+    const above = rootProductOf(loaded, res.rec)?.productSlug ?? res.rec.productSlug ?? null;
+    if (product && above !== product) throw new CliError(`--parent ${res.rec.key} is in product:${above}, not product:${product}; a feature nests inside its own product`);
+    product = above;
+    flags = { ...flags, parent: res.rec.key };
+  }
+  if (!product) throw new CliError('the feature belongs to no product: name one with --product or a parent beneath one');
+  const key = featureKey(product, s.slug);
+  const rel = path.join('products', product, 'features', s.slug, 'feature.md');
   refuseExisting(store, rel);
+  if (loaded.aliases.has(key)) throw new CliError(`refused: '${s.slug}' is a former name of ${loaded.aliases.get(key)!.join(', ')} in product:${product}`);
   const data: Record<string, unknown> = {
-    title: flags.title, name: flags.name, status: flags.status, level: flags.level, product: flags.product, parent: flags.parent,
+    title: flags.title, name: flags.name, status: flags.status, level: flags.level, product: flags.product ? `product:${product}` : undefined, parent: flags.parent,
     owners: listOrNone(flags.owners), links: listOrNone(flags.links), ...stamp(flags),
   };
+  fullKeys(loaded, 'feature', data, undefined, product);
   let body = flags.summary ? section('Summary', flags.summary) : '';
   if (flags.body) body += (body ? '\n' : '') + flags.body.trim() + '\n';
   writeFile(store, rel, render('feature', data, body));
-  return finish(store, 'feature', `feature:${slug}`, rel, [rel], flags);
+  return finish(store, 'feature', key, rel, [rel], flags);
 }
 
 export function newProject(store: Store, ident: string, flags: NewFlags): NewResult {
@@ -137,25 +170,42 @@ export function newProject(store: Store, ident: string, flags: NewFlags): NewRes
   if (!flags.title) throw new CliError('--title is required');
   const rel = path.join('projects', `${slug}.md`);
   refuseExisting(store, rel);
+  const loaded = loadStore(store);
   const data: Record<string, unknown> = { title: flags.title, product: flags.product, parent: flags.parent, tracker: flags.tracker, map: flags.map, owners: listOrNone(flags.owners), links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
+  fullKeys(loaded, 'project', data, undefined, null);
   writeFile(store, rel, render('project', data, flags.body ? flags.body.trim() + '\n' : ''));
   return finish(store, 'project', `project:${slug}`, rel, [rel], flags);
 }
 
+/** The product a project names, as a slug; refused when it names none. */
+export function productOfProject(loaded: Loaded, projectKey: string): { project: Rec; product: string } {
+  const project = recordOf(loaded, projectKey, null);
+  if (!project || project.type !== 'project') throw new CliError(`${projectKey} does not resolve to a project`);
+  const product = typeof project.data.product === 'string' ? recordOf(loaded, project.data.product, null) : undefined;
+  if (!product || product.type !== 'product') throw new CliError(`${project.key} names no product; a change is keyed under its project's product: pjman set ${project.key} product=product:<slug> (pjman new product <slug> --title … first, when there is none)`);
+  return { project, product: product.productSlug! };
+}
+
 export function newChange(store: Store, ident: string, flags: NewFlags): NewResult {
-  const slug = ident.startsWith('change:') ? ident.slice(7) : ident;
-  if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
+  const rest = ident.startsWith('change:') ? ident.slice(7) : ident;
+  const s = parseScopedRest(rest);
+  if (!s) throw new CliError(`'${rest}' is not a slug (lower-case letters, digits, hyphens), or <product>/<slug>`);
   if (!flags.title) throw new CliError('--title is required');
-  const rel = path.join('changes', slug, 'change.md');
-  refuseExisting(store, rel);
   const loaded = loadStore(store);
-  if (loaded.aliasOf.has(slug)) throw new CliError(`refused: '${slug}' is an alias of ${loaded.aliasOf.get(slug)}`);
+  const projectKey = flags.project ?? store.project;
+  if (!projectKey) throw new CliError('no project: run from a registered repository or pass --project project:<slug>');
+  const { project, product } = productOfProject(loaded, projectKey);
+  if (s.product && productSlugOf(loaded, s.product, 'change') !== product) throw new CliError(`${project.key} belongs to product:${product}, not product:${s.product}; a change is keyed under its project's product`);
+  const key = changeKey(product, s.slug);
+  const rel = path.join('products', product, 'changes', s.slug, 'change.md');
+  refuseExisting(store, rel);
+  if (loaded.aliases.has(key)) throw new CliError(`refused: '${s.slug}' is a former name of ${loaded.aliases.get(key)!.join(', ')} in product:${product}`);
   const data: Record<string, unknown> = {
     title: flags.title,
     status: flags.status ?? 'open',
     kind: flags.kind,
     severity: flags.severity,
-    project: flags.project ?? store.project,
+    project: project.key,
     parent: flags.parent,
     depends_on: listOrNone(flags.dependsOn),
     features: listOrNone(flags.features),
@@ -166,30 +216,46 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     links: flags.links?.length ? flags.links : undefined,
     ...stamp(flags),
   };
+  fullKeys(loaded, 'change', data, undefined, product);
   let body = section('Summary', flags.summary);
   if (flags.plan) body += '\n' + section('Plan', flags.plan);
   if (flags.body) body += '\n' + flags.body.trim() + '\n';
   writeFile(store, rel, render('change', data, body));
-  return finish(store, 'change', `change:${slug}`, rel, [rel], flags);
+  return finish(store, 'change', key, rel, [rel], flags);
 }
 
 export function newDecision(store: Store, ident: string, flags: NewFlags): NewResult {
   const rest = ident.startsWith('decision:') ? ident.slice(9) : ident;
   const parsed = parseDecisionRest(rest);
-  if (!parsed) throw new CliError(`'${ident}' must be <change-slug>/<decision-slug> or /<decision-slug> for store level`);
+  if (!parsed) throw new CliError(`'${ident}' must be <change>/<decision-slug> (<product>/<change>/<slug> in full), <product>/<slug> at product level, or /<slug> at store level`);
   if (!flags.title) throw new CliError('--title is required');
   const loaded = loadStore(store);
-  if (parsed.changeSlug) {
-    const res = resolve(loaded, `change:${parsed.changeSlug}`);
-    if (res.status === 'missing' || res.status === 'malformed') throw new CliError(`change:${parsed.changeSlug} does not exist`);
-    if (res.status === 'alias') parsed.changeSlug = res.rec.changeSlug!;
+  // where it lives: under a change, at product level, or at store level
+  let product: string | null = null;
+  let change: Rec | undefined;
+  if (parsed.head) {
+    if (parsed.segments === 3) {
+      product = productSlugOf(loaded, parsed.head, 'decision');
+      change = recordOf(loaded, `change:${product}/${parsed.change}`, null);
+      if (!change) throw new CliError(`change:${product}/${parsed.change} does not exist`);
+    } else {
+      const res = resolve(loaded, `change:${parsed.head}`);
+      if (res.status === 'ok' || res.status === 'alias') {
+        change = res.rec;
+        product = change.productSlug!;
+      } else if (res.status === 'ambiguous') throw new CliError(unresolved(res, `change:${parsed.head}`));
+      else if (loaded.byKey.has(`product:${parsed.head}`)) product = parsed.head; // product level
+      else throw new CliError(`change:${parsed.head} does not exist (nor does product:${parsed.head})`);
+    }
   }
   const env = stamp(flags);
   const date = env.created as string;
-  const rel = parsed.changeSlug
-    ? path.join('changes', parsed.changeSlug, 'decisions', `${date}-${parsed.dslug}.md`)
-    : path.join('decisions', `${date}-${parsed.dslug}.md`);
-  const key = `decision:${parsed.changeSlug ?? ''}/${parsed.dslug}`;
+  const key = decisionKey(product, change?.changeSlug ?? null, parsed.slug);
+  const rel = change
+    ? path.join('products', product!, 'changes', change.changeSlug!, 'decisions', `${date}-${parsed.slug}.md`)
+    : product
+      ? path.join('products', product, 'decisions', `${date}-${parsed.slug}.md`)
+      : path.join('decisions', `${date}-${parsed.slug}.md`);
   if (loaded.byKey.has(key)) throw new CliError(`refused: ${key} already exists at ${loaded.byKey.get(key)![0].path}`);
   refuseExisting(store, rel);
 
@@ -209,13 +275,14 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
     links: flags.links?.length ? flags.links : undefined,
     ...env,
   };
+  fullKeys(loaded, 'decision', data, undefined, product);
   const notes: string[] = [];
   const touched: string[] = [];
   const also: EventInput[] = [];
   const prior = new Map<string, string>();
   if (flags.supersedes) {
-    const res = resolve(loaded, flags.supersedes);
-    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`supersedes: ${flags.supersedes} does not resolve`);
+    const res = resolve(loaded, flags.supersedes, product);
+    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`supersedes: ${unresolved(res, flags.supersedes)}`);
     if (res.rec.data.status !== 'superseded') {
       const text = fs.readFileSync(res.rec.abs, 'utf8');
       prior.set(res.rec.path, text);
@@ -261,7 +328,9 @@ export function newActor(store: Store, ident: string, flags: NewFlags): NewResul
   if (!SLUG_RE.test(key.rest)) throw new CliError(`'${key.rest}' is not a slug`);
   const rel = path.join('actors', `${key.rest}.md`);
   refuseExisting(store, rel);
-  const data: Record<string, unknown> = { kind: key.kind, name: flags.name, url: flags.url, ...stamp(flags) };
+  const loaded = loadStore(store);
+  if (loaded.aliases.has(key.raw)) throw new CliError(`refused: '${key.rest}' is a former handle of ${loaded.aliases.get(key.raw)!.join(', ')}`);
+  const data: Record<string, unknown> = { kind: key.kind, name: flags.name, url: flags.url, links: listOrNone(flags.links), ...stamp(flags) };
   writeFile(store, rel, render('actor', data, flags.body ? flags.body.trim() + '\n' : ''));
   return finish(store, 'actor', key.raw, rel, [rel], flags);
 }

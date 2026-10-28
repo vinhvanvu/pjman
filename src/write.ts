@@ -4,7 +4,7 @@ import { readUserConfig, type Store } from './config.js';
 import { stringifyRecord } from './frontmatter.js';
 import { emit, type EventInput } from './events.js';
 import { commitAll } from './git.js';
-import { FIELD_ORDER, loadStore, type Problem, type RecordType } from './records.js';
+import { FIELD_ORDER, fullKey, loadStore, type Loaded, type Problem, type RecordType } from './records.js';
 import { CliError } from './util.js';
 import { formatProblems, validate } from './validate.js';
 
@@ -97,4 +97,33 @@ export function finishWrite(store: Store, message: string, session: string | und
   const commit = commitIfStandalone(store, message, session);
   emit(store, events.map((e) => ({ ...e, session: e.session ?? session })), commit);
   return commit;
+}
+
+/** The fields of each record type that hold keys of records (sources stay as written). */
+const KEY_FIELDS: Record<RecordType, string[]> = {
+  product: ['sequence', 'owners'],
+  feature: ['product', 'parent', 'owners'],
+  project: ['product', 'parent', 'owners'],
+  change: ['project', 'parent', 'depends_on', 'features', 'owners'],
+  decision: ['supersedes', 'decided_by'],
+  source: [],
+  session: ['changes', 'parent', 'agent', 'on_behalf_of'],
+  actor: [],
+};
+
+/** Rewrite the keys in `field` (or every key field when none is named) to their full form, resolved in `scope`: the
+ *  store holds full keys; the short form is for people and the places that show them. A key that resolves to nothing
+ *  is left as written, for validation to refuse. */
+export function fullKeys(loaded: Loaded, type: RecordType, data: Record<string, unknown>, field: string | undefined, scope: string | null): void {
+  const full = (raw: string): string => {
+    const m = /^(adds|changes|removes)\s+(\S+)$/.exec(raw);
+    if (m) return `${m[1]} ${fullKey(loaded, m[2], scope)}`;
+    return fullKey(loaded, raw, scope);
+  };
+  for (const f of KEY_FIELDS[type]) {
+    if (field && f !== field) continue;
+    const v = data[f];
+    if (typeof v === 'string') data[f] = full(v);
+    else if (Array.isArray(v)) data[f] = v.map((x) => (typeof x === 'string' ? full(x) : x));
+  }
 }

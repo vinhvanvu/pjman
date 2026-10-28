@@ -4,7 +4,7 @@
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useResolve, useScope } from '@/data/queries';
 import { ChangeCard } from '@/components/cards/ChangeCard';
-import { isNodeKey, kindOf, restOf, short, targetOf } from '@/lib/keys';
+import { changeOfDecision, isNodeKey, kindOf, restOf, short, targetOf } from '@/lib/keys';
 
 export const Route = createFileRoute('/get/$')({
   component: Get,
@@ -25,10 +25,8 @@ function Get() {
   }
   if (!data) return null;
   const key = data.resolution.key;
-  if (key && kindOf(key) === 'decision') {
-    const change = `change:${restOf(key).split('/')[0]}`;
-    return <Navigate to="/$lens/$" params={{ lens: 'feature', _splat: change }} replace />;
-  }
+  const onChange = key ? changeOfDecision(key) : undefined;
+  if (onChange) return <Navigate to="/$lens/$" params={{ lens: 'feature', _splat: onChange }} replace />;
   if (key && isNodeKey(key)) {
     const t = targetOf(key, 'feature');
     if (t.kind === 'node') return <Navigate to="/$lens/$" params={{ lens: t.lens, _splat: t.node }} replace />;

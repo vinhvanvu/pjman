@@ -23,6 +23,7 @@ Rules
    (open, planning, active, blocked, review, done, dropped).
 5. Things outside the store are sources, linked by key: \`--links file:<path>\`, \`github-pr:<owner>/<repo>#<n>\`, \`url:<https://…>\`; a record for a source is optional.
 6. Nothing harness-specific in a record: no tool, model or session mechanics in titles, summaries or decisions.
+7. Keys are paths under the product (\`change:<product>/<slug>\`); inside this project the slug alone names a record, as the context prints them; the product segment is for another product's record.
 
 Tickets
 The project may name a tracker (\`pjman where --json\` shows it). Read tickets with the tracker's own tools (Linear's MCP:
@@ -41,7 +42,6 @@ name the most specific node. A parent change is a milestone; goals are milestone
 <key>\` the motion beneath any node. Create a feature only when the person names a capability, never from a ticket label.
 A product with no map is said so at the top of the context: the map skill surveys the repository, proposes the whole tree
 in a proposed decision, and applies it only on the go as one batch (\`pjman apply\`; \`pjman undo\` reverts it); a map that has outgrown its shape is regrouped the same way, when asked.
-
 Also: \`pjman ls decision --status proposed\` (what waits on a person) · \`pjman show <key>\` · \`pjman validate\` · the dashboard: \`pjman start\` prints its URL (also in ~/.pjman/serve.json).
 `;
 

@@ -356,7 +356,7 @@ function main() {
     }
     case 'PostToolUse': {
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
-      const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|session|mv|rm|fmt|sync|order|apply|undo)\b/;
+      const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|session|mv|rm|fmt|sync|order|apply|undo|migrate)\b/;
       if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
       if (input.tool_name === 'Bash' && /\bgit\s+(checkout|switch)\b|\bgh\s+pr\s+create\b/.test(String(input.tool_input?.command ?? ''))) observeWork(st, sid, cwd, env);
       const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
@@ -392,7 +392,10 @@ function main() {
       if (EVENT === 'Stop') {
         const r = tryPjman(['events', '--receipt', '--since', String(st.seq ?? 0), '--json'], { cwd, json: true });
         if (r) {
-          const lines = r.lines.filter((l) => !l.startsWith(`session:${sid}:`));
+          // the receipt is read by the person inside the project: the product segment of the project's product is dropped
+          const product = store.product ? String(store.product).replace(/^product:/, '') : null;
+          const trim = (l) => (product ? l.replace(new RegExp(`\\b(feature|change|decision):${product}/`, 'g'), '$1:') : l);
+          const lines = r.lines.filter((l) => !l.startsWith(`session:${sid}:`)).map(trim);
           if (lines.length && st.seq !== undefined) process.stdout.write(JSON.stringify({ systemMessage: `pjman recorded:\n${lines.map((l) => `- ${l}`).join('\n')}` }));
           st.seq = r.seq;
         }

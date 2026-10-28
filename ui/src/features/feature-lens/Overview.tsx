@@ -39,7 +39,7 @@ export function Overview({ scope, lens }: { scope: Scope; lens: Lens }) {
         state={node?.type === 'feature' ? (node.derived ?? node.status) : undefined}
         title={title}
         sentence={sentence}
-        owners={scope.owners.owners.map(short)}
+        owners={scope.owners.owners.map((k) => short(k))}
         ownersFrom={scope.owners.from && scope.owners.from !== node?.key ? short(scope.owners.from) : undefined}
         word={healthWord(scope.health)}
         health={scope.health}

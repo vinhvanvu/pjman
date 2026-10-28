@@ -5,11 +5,34 @@ import type { Lens } from '@/data/contract';
 export const kindOf = (key: string): string => key.slice(0, key.indexOf(':'));
 export const restOf = (key: string): string => key.slice(key.indexOf(':') + 1);
 
-/** The short form people say: the slug, or `#7` for a ticket. */
-export function short(key: string): string {
+/** Kinds keyed beneath a product: `feature:<product>/<slug>`, `change:<product>/<slug>`, `decision:<product>/<change>/<slug>`. */
+const SCOPED = new Set(['feature', 'change', 'decision']);
+
+/** The product segment of a scoped key, or undefined. */
+export function productOf(key: string): string | undefined {
+  if (!SCOPED.has(kindOf(key))) return undefined;
+  const rest = restOf(key);
+  const parts = rest.split('/');
+  if (kindOf(key) === 'decision') return parts.length === 3 ? parts[0] : undefined; // `p/c/s`; a store-level `/s` or product-level `p/s` has no change
+  return parts.length === 2 ? parts[0] : undefined;
+}
+
+/** The short form people say: the slug (the product segment dropped, since the page is inside a product; pass
+ *  `product` to keep the segment of another product), or `#7` for a ticket. */
+export function short(key: string, product?: string): string {
   const rest = restOf(key);
   const gh = /^(.+)#(\d+)$/.exec(rest);
-  return kindOf(key) === 'github-issue' && gh ? `#${gh[2]}` : rest;
+  if (kindOf(key) === 'github-issue' && gh) return `#${gh[2]}`;
+  const p = productOf(key);
+  if (p && (!product || product === p || product === `product:${p}`)) return rest.slice(p.length + 1);
+  return rest;
+}
+
+/** The change a decision sits on, from its key: `decision:<product>/<change>/<slug>`; undefined at product or store level. */
+export function changeOfDecision(key: string): string | undefined {
+  if (kindOf(key) !== 'decision') return undefined;
+  const parts = restOf(key).split('/');
+  return parts.length === 3 ? `change:${parts[0]}/${parts[1]}` : undefined;
 }
 
 /** Where a key lives. A change has no home lens of its own: it keeps the lens it is seen in. A project has no lens:

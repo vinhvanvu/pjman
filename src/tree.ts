@@ -97,10 +97,10 @@ export function ancestorsOf(loaded: Loaded, key: string): string[] {
       break;
     }
     case 'decision': {
-      if (rec.changeSlug) {
-        const c = live(loaded, `change:${rec.changeSlug}`);
+      if (rec.changeKey) {
+        const c = live(loaded, rec.changeKey);
         if (c && push(c.key)) for (const a of ancestorsOf(loaded, c.key)) push(a);
-      }
+      } else if (rec.productSlug) push(`product:${rec.productSlug}`);
       break;
     }
     case 'feature':

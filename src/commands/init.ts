@@ -2,11 +2,11 @@ import { emit } from '../events.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_SOURCE_KINDS, DEFAULT_TREE_LEVELS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type StoreConfig, type UserStore } from '../config.js';
-import { git, gitUserName, hasGit, toplevel } from '../git.js';
+import { git, gitUserEmail, gitUserName, hasGit, toplevel } from '../git.js';
 import { slugify } from '../keys.js';
 import { loadStore } from '../records.js';
 import { CliError } from '../util.js';
-import { newProject } from './new.js';
+import { newActor, newProduct, newProject } from './new.js';
 import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
 import { packageRoot, start } from './start.js';
@@ -27,6 +27,8 @@ export interface InitOpts {
   port?: number;
   /** Whether the first session should propose a product map: true or false answers; undefined asks on a terminal, else yes. */
   map?: boolean;
+  /** The product the repository belongs to, when it already exists; else one is created with the project's name. */
+  product?: string;
 }
 
 /** Install the Claude Code plugin from this checkout at user scope, when `claude` is on PATH. Idempotent; never throws. */
@@ -56,7 +58,7 @@ export function installClaudeAdapter(): string {
   }
 }
 
-const FOLDERS = ['projects', 'changes', 'decisions', 'sources', 'sessions', 'actors'];
+const FOLDERS = ['products', 'projects', 'decisions', 'sources', 'sessions', 'actors'];
 
 /** A yes/no question on the terminal; the default when stdin is not a terminal or the answer is empty. */
 export function askYesNo(question: string, dflt: boolean): boolean {
@@ -85,15 +87,35 @@ function scaffold(root: string, cfg: StoreConfig): void {
   }
 }
 
-/** Make sure the user config names an actor; derive one from git when it does not. */
-function ensureActor(): string | undefined {
+/** The person's login at the forge, when gh is signed in: the handle a person record is keyed by. */
+export function forgeLogin(): string | null {
+  try {
+    const login = execFileSync('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 8000, env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } }).trim();
+    return login && /^[A-Za-z0-9-]+$/.test(login) ? login : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Make sure the user config names an actor. The handle is the person's own: suggested from the forge login, else the
+ *  git user name; the accounts (the forge login, the git email) are what the person record links. */
+function ensureActor(): { actor?: string; login?: string | null; email?: string | null; name?: string | null } {
   const user = readUserConfig();
-  if (user.actor) return user.actor;
+  const email = gitUserEmail();
   const name = gitUserName();
-  if (!name) return undefined;
-  user.actor = `person:${slugify(name)}`;
+  // an actor already named (the config, or the environment of a run) is kept; the forge is asked only to suggest a new handle
+  if (user.actor) return { actor: user.actor, email, name };
+  if (process.env.PJMAN_WRITER?.startsWith('person:')) {
+    user.actor = process.env.PJMAN_WRITER;
+    writeUserConfig(user);
+    return { actor: user.actor, email, name };
+  }
+  const login = forgeLogin();
+  const handle = login ? slugify(login) : name ? slugify(name) : '';
+  if (!handle) return { login, email, name };
+  user.actor = `person:${handle}`;
   writeUserConfig(user);
-  return user.actor;
+  return { actor: user.actor, login, email, name };
 }
 
 /** `owner/name` from the repository's origin remote, when it has one. */
@@ -111,12 +133,22 @@ export function init(opts: InitOpts): string[] {
   const out: string[] = [];
   const project = toplevel(opts.cwd) ?? path.resolve(opts.cwd);
   const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS], tree_levels: [...DEFAULT_TREE_LEVELS] });
-  const actor = ensureActor();
+  const who = ensureActor();
+  const actor = who.actor;
 
   if (opts.inProject) {
     const root = path.join(project, '.pjman');
-    scaffold(root, cfg(opts.name ?? path.basename(project)));
+    const title = opts.name ?? path.basename(project);
+    scaffold(root, cfg(title));
     out.push(`initialised in-project store at ${root}`);
+    // the repository is the store's one project, under a product of the same name
+    const slug = slugify(title);
+    if (slug) {
+      const own = openStore(root);
+      newProduct(own, slug, { title, name: title.length <= 24 ? title : undefined, writer: actor });
+      newProject(own, slug, { title, product: `product:${slug}`, writer: actor, map: opts.map === false ? 'skip' : 'propose' });
+      out.push(`registered project:${slug} under product:${slug}`);
+    }
     if (!toplevel(project)) out.push(`note: ${project} is not a git repository; the store will have no history until it is`);
     out.push('the tool never commits here; commit the store with the project');
   } else {
@@ -144,12 +176,28 @@ export function init(opts: InitOpts): string[] {
     if (!slug) throw new CliError(`'${title}' does not make a project slug; pass --name`);
     const key = `project:${slug}`;
     const store = openStore(root);
-    const known = loadStore(store).byKey.get(key)?.[0];
+    let loaded = loadStore(store);
+    // the person: a record keyed by their handle, holding the accounts the sources will be matched through
+    if (actor && !loaded.byKey.has(actor)) {
+      const links = [who.login ? `github-user:${who.login}` : null, who.email ? `email:${who.email.toLowerCase()}` : null].filter((k): k is string => !!k && store.config.source_kinds.includes(k.slice(0, k.indexOf(':'))));
+      newActor(store, actor, { name: who.name ?? undefined, links, writer: actor });
+      out.push(`you are ${actor}${links.length ? ` (${links.join(', ')})` : ''}`);
+      loaded = loadStore(store);
+    }
+    const known = loaded.byKey.get(key)?.[0];
     const wantsMap = opts.map ?? (known && typeof known.data.map === 'string' ? undefined : askYesNo('Should the first session propose a product map from this repository?', true));
     if (!known) {
       const repo = originRepo(project);
-      newProject(store, slug, { title, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor, map: wantsMap === false ? 'skip' : 'propose' });
-      out.push(`registered ${key}${repo ? ` (git-repo:${repo})` : ''}`);
+      // the product the repository builds: an existing one named by --product, else one made now with the project's name
+      let product = opts.product;
+      if (product && !loaded.byKey.has(product.startsWith('product:') ? product : `product:${product}`)) throw new CliError(`--product ${product} does not exist`);
+      if (!product) {
+        if (!loaded.byKey.has(`product:${slug}`)) newProduct(store, slug, { title, name: title.length <= 24 ? title : undefined, writer: actor });
+        product = `product:${slug}`;
+        out.push(`created ${product}`);
+      } else if (!product.startsWith('product:')) product = `product:${product}`;
+      newProject(store, slug, { title, product, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor, map: wantsMap === false ? 'skip' : 'propose' });
+      out.push(`registered ${key} under ${product}${repo ? ` (git-repo:${repo})` : ''}`);
     } else {
       out.push(`${key} is already registered`);
       if (wantsMap !== undefined && known.data.map !== (wantsMap ? 'propose' : 'skip')) set(store, key, [`map=${wantsMap ? 'propose' : 'skip'}`], {});

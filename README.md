@@ -24,16 +24,25 @@ A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): th
 `pjman init --in-project` makes a store at `<repo>/.pjman/` instead, tracked with the project and never committed by the tool. It is set aside: kept for a repository that must carry its own record.
 
 ```
-pjman.yaml                                   name, layers, vocabulary, source_kinds
-projects/<slug>.md                           project:<slug>              a repository
-changes/<slug>/change.md                     change:<slug>               carries its project
-changes/<slug>/decisions/<date>-<slug>.md    decision:<change>/<slug>
-decisions/<date>-<slug>.md                   decision:/<slug>            (store level)
+pjman.yaml                                             name, layers, vocabulary, source_kinds
+products/<p>/product.md                                product:<p>                 the root and the namespace
+products/<p>/features/<slug>/feature.md                feature:<p>/<slug>          nests by its parent field, never by folder
+products/<p>/changes/<slug>/change.md                  change:<p>/<slug>           carries its project (a project of <p>)
+products/<p>/changes/<c>/decisions/<date>-<slug>.md    decision:<p>/<c>/<slug>
+products/<p>/decisions/<date>-<slug>.md                decision:<p>/<slug>         (product level)
+decisions/<date>-<slug>.md                             decision:/<slug>            (store level)
+projects/<slug>.md                                     project:<slug>              a repository, naming its product
 sources/<kind>/<key-slug>.md                 <kind>:<key>                (optional; a source may exist as a key only)
 sessions/<date>-<id>.md                      session:<id>
-actors/<handle>.md                           person:<handle> · agent:<handle>  (optional)
+actors/<handle>.md                                     person:<handle> · agent:<handle>  (a person's accounts are links: github-user:<login>, email:<address>)
 index.db                                     derived, git-ignored, rebuilt by `pjman index`
 ```
+
+Keys are a namespace and a slug: the product for features, changes and decisions, the store for the rest. Position in
+the tree is a field, never part of a key. Inside a project the slug alone names a record (`change:schema`,
+`feature:store`, `decision:schema/keys`): the tool resolves the short form in the project's product, store-wide when
+one product has the slug, and refuses it as ambiguous otherwise. The store writes full keys; text output read inside a
+project drops the product segment, JSON keeps it. `pjman migrate` moves a store from the flat layout before this, once.
 
 ## Commands
 

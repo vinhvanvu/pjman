@@ -169,7 +169,7 @@ export interface Mention {
  *  `slugs` is given) a bare existing change slug containing a hyphen, as a whole word. */
 export function mentions(text: string, slugs: string[] = []): Mention[] {
   const found: Mention[] = [];
-  for (const m of text.matchAll(/\bchange:([a-z0-9][a-z0-9-]*)/g)) found.push({ text: `change:${m[1]}`, at: m.index!, shape: 'change' });
+  for (const m of text.matchAll(/\bchange:([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)/g)) found.push({ text: `change:${m[1]}`, at: m.index!, shape: 'change' });
   for (const m of text.matchAll(/https?:\/\/[^\s<>()"']+/g)) found.push({ text: m[0].replace(/[.,;:!?]+$/, ''), at: m.index!, shape: 'url' });
   for (const g of GRAMMARS) {
     if (!g.id) continue;
@@ -183,3 +183,30 @@ export function mentions(text: string, slugs: string[] = []): Mention[] {
   // longest first at a position; the caller drops a span inside one it already accepted (the id inside a URL)
   return found.sort((a, b) => a.at - b.at || b.text.length - a.text.length);
 }
+
+// --- identity: the accounts a person holds ----------------------------------------------------------------------
+// An account is a source of an identity kind, keyed as the outside world keys it (`github-user:<login>`,
+// `linear-user:<id>`, `email:<address>`, `git-author:<name <email>>`), linked from the person who holds it. Anything
+// observed with an account on it resolves to its person here; an account no person claims resolves to nothing, and is
+// never matched by name.
+
+/** The person who claims an account, or undefined when no one does. */
+export function personOf(loaded: Loaded, account: string): string | undefined {
+  const key = account.toLowerCase().startsWith('email:') ? `email:${account.slice('email:'.length).toLowerCase()}` : account;
+  const people = loaded.records.filter((r) => r.type === 'actor' && r.valid && r.data.kind === 'person');
+  const holder = people.find((r) => Array.isArray(r.data.links) && (r.data.links as unknown[]).some((l) => typeof l === 'string' && (l === key || l.toLowerCase() === key.toLowerCase())));
+  return holder?.key;
+}
+
+/** The identity grammars: where an account's key comes from in a URL or a commit line. */
+export const IDENTITY_GRAMMARS: Grammar[] = [
+  {
+    kind: 'github-user',
+    url: (u) => {
+      const seg = githubRepo(u);
+      return seg && seg.length === 1 && !['orgs', 'settings', 'marketplace', 'explore', 'topics', 'features', 'pulls', 'issues', 'notifications', 'login'].includes(seg[0]) ? seg[0] : undefined;
+    },
+  },
+  { kind: 'email', url: (u) => (u.protocol === 'mailto:' ? u.pathname.toLowerCase() : undefined) },
+];
+GRAMMARS.push(...IDENTITY_GRAMMARS);

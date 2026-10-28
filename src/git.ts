@@ -42,6 +42,14 @@ export function gitUserName(): string | null {
   }
 }
 
+export function gitUserEmail(): string | null {
+  try {
+    return git(process.cwd(), ['config', 'user.email']) || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Stage everything under `root` and commit. Returns the short sha, or null when there was nothing to commit. */
 export function commitAll(root: string, message: string, session?: string, trailers: Record<string, string> = {}): string | null {
   git(root, ['add', '-A', '--', '.']);

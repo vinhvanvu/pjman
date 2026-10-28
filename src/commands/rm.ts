@@ -8,7 +8,7 @@ import type { Store } from '../config.js';
 import type { EventInput } from '../events.js';
 import { canon } from '../graph.js';
 import { parseKey } from '../keys.js';
-import { loadStore, resolve, type Rec } from '../records.js';
+import { eventKeysOf, loadStore, resolve, unresolved, type Rec } from '../records.js';
 import { CliError } from '../util.js';
 import { envelope, errorsAt, finishWrite, render } from '../write.js';
 
@@ -82,22 +82,21 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
   if (!key) throw new CliError(`'${raw}' is not a key (kind:rest)`);
   const loaded = loadStore(store);
   const res = resolve(loaded, key.raw);
-  if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw new CliError(`${key.raw} does not exist`);
+  if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw new CliError(res.status === 'ambiguous' ? unresolved(res, key.raw) : `${key.raw} does not exist`);
   const rec = res.rec;
 
   // what goes: a change takes its folder (decisions included); anything else is one file
-  const dir = rec.type === 'change' || rec.type === 'feature' ? path.dirname(rec.path) : null;
+  const dir = rec.type === 'change' || rec.type === 'feature' || rec.type === 'product' ? path.dirname(rec.path) : null;
   const going = loaded.records.filter((r) => r.path === rec.path || (dir !== null && r.path.startsWith(dir + '/')));
   const removedPaths = new Set(going.map((r) => r.path));
-  const keys = new Set<string>(going.map((r) => r.key));
-  for (const r of going) if (Array.isArray(r.data.aliases)) for (const a of r.data.aliases as unknown[]) if (typeof a === 'string') keys.add(`change:${a}`);
+  const keys = new Set<string>(going.flatMap((r) => eventKeysOf(r)));
 
   if (rec.type === 'project') {
     const members = loaded.records.filter((r) => r.type === 'change' && r.data.project === rec.key).map((r) => r.key);
     if (members.length) throw new CliError(`refused: ${rec.key} is the project of ${members.join(', ')}; move or remove them first`);
   }
   if (rec.type === 'product') {
-    const members = loaded.records.filter((r) => (r.type === 'feature' || r.type === 'project') && r.data.product === rec.key).map((r) => r.key);
+    const members = loaded.records.filter((r) => (r.type !== 'product' && r.productSlug === rec.productSlug) || (r.type === 'project' && r.data.product === rec.key)).map((r) => r.key);
     if (members.length) throw new CliError(`refused: ${rec.key} is the product of ${members.join(', ')}; move or remove them first`);
   }
   const refs = referrers(loaded.records, removedPaths, keys);

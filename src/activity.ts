@@ -2,7 +2,7 @@
 // node's timeline is the events of everything beneath it. Health reads from here, as components, never as a score.
 import type { Store } from './config.js';
 import { readEvents, type StoreEvent } from './events.js';
-import type { Loaded } from './records.js';
+import { eventKeysOf, type Loaded } from './records.js';
 import { descendantsOf, live } from './tree.js';
 
 export interface Activity {
@@ -36,10 +36,10 @@ export function activity(store: Store, loaded: Loaded, key: string, opts: { days
   const now = Date.now();
   const since = opts.since ? new Date(opts.since).toISOString() : new Date(now - days * DAY).toISOString();
   const keys = new Set<string>([key, ...descendantsOf(loaded, key)]);
-  // a change's aliases carry its older events
+  // a record's former keys (a rename, the flat key before keys were paths under the product) carry its older events
   for (const k of [...keys]) {
     const r = live(loaded, k);
-    if (r?.type === 'change' && Array.isArray(r.data.aliases)) for (const a of r.data.aliases) if (typeof a === 'string') keys.add(`change:${a}`);
+    if (r) for (const e of eventKeysOf(r)) keys.add(e);
   }
   const all = readEvents(store).filter((e) => keys.has(e.key));
   const events = all.filter((e) => e.at >= since);

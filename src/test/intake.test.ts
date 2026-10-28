@@ -23,8 +23,6 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   init({ cwd: dir, name: 'shop' });
   store = findStore(dir)!;
-  newRecord(store, 'product', 'shop', { title: 'Shop' });
-  set(store, 'project:shop', ['product=product:shop'], {});
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search the catalogue', product: 'product:shop' });
@@ -42,28 +40,28 @@ test('words: meaning only, stemmed', () => {
 
 test('intake: duplicates by words and by reference, done ones apart, nodes with their path, milestones, the tail', () => {
   const i = intake(store, loadStore(store), 'Saving a card from the form fails');
-  assert.deepEqual(i.duplicates.map((d) => d.key), ['change:card-form']);
+  assert.deepEqual(i.duplicates.map((d) => d.key), ['change:shop/card-form']);
   assert.ok(i.duplicates[0].score > 0.3);
-  assert.deepEqual(i.duplicates[0].features, ['feature:saved-cards']);
-  assert.equal(i.duplicates[0].parent, 'change:cards');
-  assert.deepEqual(i.nodes.map((n) => n.key), ['feature:saved-cards']);
-  assert.deepEqual(i.nodes[0].path, ['product:shop', 'feature:checkout']);
+  assert.deepEqual(i.duplicates[0].features, ['feature:shop/saved-cards']);
+  assert.equal(i.duplicates[0].parent, 'change:shop/cards');
+  assert.deepEqual(i.nodes.map((n) => n.key), ['feature:shop/saved-cards']);
+  assert.deepEqual(i.nodes[0].path, ['product:shop', 'feature:shop/checkout']);
   assert.equal(i.nodes[0].level, 'capability');
-  assert.deepEqual(i.milestones.map((m) => [m.key, m.target]), [['change:cards', '2026-12-01']]);
-  assert.deepEqual(i.tail, { product: 'product:shop', sequence: ['change:cards'], later: 1 });
+  assert.deepEqual(i.milestones.map((m) => [m.key, m.target]), [['change:shop/cards', '2026-12-01']]);
+  assert.deepEqual(i.tail, { product: 'product:shop', sequence: ['change:shop/cards'], later: 1 });
   // a ticket named in the request is the duplicate, whatever the words
   const r = intake(store, loadStore(store), 'look at acme/shop#7 again');
-  assert.equal(r.duplicates[0]?.key, 'change:card-form');
+  assert.equal(r.duplicates[0]?.key, 'change:shop/card-form');
   assert.equal(r.duplicates[0]?.referenced, true);
   assert.equal(r.duplicates[0]?.score, 1);
   // a done change that covered the same words is reported apart
   const d = intake(store, loadStore(store), 'search by colour is broken again');
   assert.deepEqual(d.duplicates, []);
-  assert.deepEqual(d.done.map((c) => c.key), ['change:old-search']);
-  assert.deepEqual(d.nodes.map((n) => n.key), ['feature:search']);
+  assert.deepEqual(d.done.map((c) => c.key), ['change:shop/old-search']);
+  assert.deepEqual(d.nodes.map((n) => n.key), ['feature:shop/search']);
   const text = formatIntake(i);
-  assert.match(text, /## Duplicates[\s\S]*change:card-form \[active\]/);
-  assert.match(text, /feature:saved-cards \(capability, building\)/);
+  assert.match(text, /## Duplicates[\s\S]*change:shop\/card-form \[active\]/);
+  assert.match(text, /feature:shop\/saved-cards \(capability, building\)/);
   assert.match(text, /1 open change after it as later/);
   // nothing shared: empty sections say so
   const none = intake(store, loadStore(store), 'zebra');

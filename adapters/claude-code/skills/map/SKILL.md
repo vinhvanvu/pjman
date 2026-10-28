@@ -60,10 +60,10 @@ Every node beneath the top level is a capability (the last level label repeats b
 feature. Go no deeper than a change would name. Each capability gets `--name`, one to three words, and a title that is
 the sentence.
 
-Feature keys are global in a store, and a store holds every product a person has: check each slug before proposing it
-(`pjman show feature:<slug>`), and name a shared word for its product (`chunk-activity`, not `activity`, when another
-product's map already has activity). The batch refuses itself at a collision and writes nothing, so a miss costs one
-rerun, not a half-made map.
+Keys are paths under the product (`feature:<product>/<slug>`), so a slug need only be unique inside its own product:
+two products may each have `activity`, and inside a project the slug alone names the node (`feature:activity`). Check
+each slug against the product's own map before proposing it (`pjman tree product:<slug>`). The batch refuses itself at a
+collision and writes nothing, so a miss costs one rerun, not a half-made map.
 
 For a cold start there are no done changes to derive a state from, so give each node its status from the documentation
 (`--status live` for what the ladder says shipped, `planned` for what is drafted or open, `building` for what is in
@@ -77,7 +77,7 @@ Never replace a node by hand: a rename keeps the past true.
 
 ## 4. Propose, and wait
 
-Open a change for the map (`change:<product>-map` for a bare product, since the store holds every project; `change:map-by-layer` or the person's name for a regrouping)
+Open a change for the map (`change:map` for a bare product, keyed under it as `change:<product>/map`; `change:map-by-layer` or the person's name for a regrouping)
 and one decision `proposed` on it whose text is the whole tree: every node with its sentence, the moves, the renames,
 the new nodes and what names them. Put the tree in your reply as an indented list. Say what the dashboard will read
 differently (the roadmap's lanes are the top-level nodes; a bug's home is the top-level node above the one it names).

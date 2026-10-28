@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { SEVERITIES } from '../config.js';
-import { loadStore, resolve, type Loaded, type Rec, type RecordType } from '../records.js';
+import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { CliError } from '../util.js';
 
 export interface Row {
@@ -132,7 +132,7 @@ function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
 export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
   const raw = key.startsWith('change:') ? key : `change:${key}`;
   const res = resolve(loaded, raw);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`${raw} does not resolve`);
+  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
   const rec = res.rec;
   const sections: Record<string, string> = {};
   for (const [k, v] of rec.sections) if (k && k !== 'Summary' && k !== 'Plan') sections[k] = v;
@@ -147,7 +147,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     if (t.status === 'ok' || t.status === 'alias') supersededBy.set(t.rec.key, r.key);
   }
   const decisions = loaded.records
-    .filter((r) => r.type === 'decision' && r.changeSlug === rec.changeSlug)
+    .filter((r) => r.type === 'decision' && r.changeKey === rec.key)
     .sort((a, b) => (a.fileDate! + a.path).localeCompare(b.fileDate! + b.path))
     .map((r) => ({ ...row(r), decision: r.sections.get('Decision'), why: r.sections.get('Why'), supersededBy: supersededBy.get(r.key) }));
 
@@ -276,7 +276,7 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
     .map(row);
   const proposed = loaded.records
     .filter((r) => r.type === 'decision' && r.data.status === 'proposed')
-    .filter((r) => !project || !r.changeSlug || loaded.byKey.get(`change:${r.changeSlug}`)?.[0]?.data.project === project.key)
+    .filter((r) => !project || !r.changeKey || loaded.byKey.get(r.changeKey)?.[0]?.data.project === project.key)
     .map(row);
   return { store: { name: store.config.name, mode: store.mode, root: store.root }, project, projects, changes, proposed, counts, mapPrompt: project ? mapPrompt(loaded, project) : undefined };
 }
@@ -285,7 +285,7 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
 export function mapPrompt(loaded: Loaded, project: Row): string | undefined {
   if (project.data.map === 'skip') return undefined;
   const product = typeof project.data.product === 'string' ? project.data.product : undefined;
-  if (product && loaded.records.some((r) => r.type === 'feature' && r.data.product === product)) return undefined;
+  if (product && loaded.records.some((r) => r.type === 'feature' && `product:${r.productSlug}` === product)) return undefined;
   const what = product ? `${product} has no map yet` : `${project.key} has no product yet`;
   return `${what}: survey the repository (what the person said, the documentation, the code's split, the store) and propose a product map, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure. \`pjman set ${project.key} map=skip\` stops this line.`;
 }

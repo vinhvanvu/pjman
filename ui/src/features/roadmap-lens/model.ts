@@ -3,6 +3,7 @@
 // sequence, then later), the past's span and ticks, and which rows draw as bars. Nothing here knows pixels except the
 // scale it is handed.
 import type { ChangeRow, Scope, ScopeNode, Violation } from '@/data/contract';
+import { short } from '@/lib/keys';
 
 export const FOUNDATIONS = '__foundations__';
 export const LATER = '__later__';
@@ -107,7 +108,7 @@ export function columns(scope: Scope): Column[] {
       kind: milestone ? 'milestone' : 'single',
       key,
       row,
-      title: row?.title ?? key.slice('change:'.length),
+      title: row?.title ?? short(key),
       progress: row?.progress,
       target: row?.target,
       entries: milestone ? beneath : row && isWork(row) ? [row] : [],
@@ -186,7 +187,7 @@ export function bars(rows: ChangeRow[], now: number): Bar[] {
 
 /** Where a violation's warning reads from, one line. */
 export function violationText(v: Violation, titles: Map<string, string | undefined>): string {
-  const name = (k?: string) => (k ? (titles.get(k) ?? k.slice('change:'.length)) : '');
+  const name = (k?: string) => (k ? (titles.get(k) ?? short(k)) : '');
   switch (v.kind) {
     case 'order':
       return `placed before ${name(v.against)}, which it depends on`;

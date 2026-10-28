@@ -52,7 +52,7 @@ test('SessionStart creates the session record and injects the board', () => {
 test('the view file follows the session: the board before a bind, the change after', () => {
   const file = path.join(env.CLAUDE_PLUGIN_DATA, 'view', 'sess-a.md');
   const before = fs.readFileSync(file, 'utf8');
-  assert.match(before, /^# project\n/);
+  assert.match(before, /^# project(:project)?\n/);
   assert.match(before, /change:eight-week-test/);
   hook('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
   const after = fs.readFileSync(file, 'utf8');
@@ -64,7 +64,7 @@ test('a prompt naming a change binds it and injects its context once', () => {
   assert.equal(hook('UserPromptSubmit', { prompt: 'hello' }), '');
   assert.equal(hook('UserPromptSubmit', { prompt: 'work on the eight-week-test now' }), '');
   assert.equal(hook('UserPromptSubmit', { prompt: 'again change:eight-week-test' }), '');
-  assert.deepEqual(loadStore(store).byKey.get('session:sess-a')![0].data.changes, ['change:eight-week-test']);
+  assert.deepEqual(loadStore(store).byKey.get('session:sess-a')![0].data.changes, ['change:project/eight-week-test']);
 });
 
 test('a file write records an observed edge; a store write does not; a turn that acted gets a log line', () => {
@@ -108,19 +108,19 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   const at = (prompt: string) => hook('UserPromptSubmit', { cwd: work, session_id: 'sess-t', prompt });
   hook('SessionStart', { cwd: work, session_id: 'sess-t', source: 'startup' });
   assert.equal(at('look at ABC-1234 and UTF-8'), '');
-  assert.ok(!loadStore(g).byKey.has('change:abc-1234'));
+  assert.ok(!loadStore(g).byKey.has('change:work/abc-1234'));
   set(g, 'project:work', ['tracker=linear'], {});
   // a ticket of the tracker with no record: nothing is created from the pattern; the agent is told to read and sync it
   const hint = context(at('start ABC-1234 please, mind UTF-8'));
   assert.match(hint, /ABC-1234 is linear:ABC-1234; the store has no record/);
   assert.match(hint, /pjman sync linear --from -/);
-  assert.ok(!loadStore(g).byKey.has('change:abc-1234'));
-  assert.ok(!loadStore(g).byKey.has('change:utf-8'));
+  assert.ok(!loadStore(g).byKey.has('change:work/abc-1234'));
+  assert.ok(!loadStore(g).byKey.has('change:work/utf-8'));
   // once the sync (here: the record) exists, the id binds it
   newRecord(g, 'change', 'abc-1234', { title: 'ABC-1234', summary: 's', project: 'project:work', binds: ['linear:ABC-1234'] });
   const ctx = context(at('continue ABC-1234'));
   assert.match(ctx, /^# change:abc-1234 — ABC-1234/);
-  assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234']);
+  assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234']);
   assert.equal(at('see https://linear.app/acme/issue/ABC-1234/the-title.'), '');
   assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
   // a GitHub project: #12 in the prompt is an issue of its repository; the hook reads it with gh and the sync creates the change
@@ -132,11 +132,11 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   const withGh = { ...env, PATH: `${bin}:${process.env.PATH ?? ""}` };
   const atGh = (prompt: string) => execFileSync(process.execPath, [HOOK, 'UserPromptSubmit'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', prompt }), encoding: 'utf8', env: withGh });
   assert.match(context(atGh('fix #12 first')), /^# change:app-12 — Twelve/);
-  const twelve = loadStore(g).byKey.get('change:app-12')![0];
+  const twelve = loadStore(g).byKey.get('change:work/app-12')![0];
   assert.deepEqual(twelve.data.binds, ['github-issue:acme/app#12']);
   assert.equal(twelve.data.writer, 'agent:github-sync');
   assert.equal(atGh('and acme/app#12 again'), ''); // already hydrated: bound, no second injection
-  assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:abc-1234', 'change:app-12']);
+  assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234', 'change:work/app-12']);
   assert.match(context(atGh('fix #13 too')), /#13 is github-issue:acme\/app#13; the store has no record/); // gh knows no 13
   // the receipt at the end of the turn: what the store received, for the person
   const stop = JSON.parse(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'done' }), encoding: 'utf8', env: withGh })) as { systemMessage?: string };
@@ -144,7 +144,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.match(stop.systemMessage ?? '', /created change:app-12 — Twelve/);
   assert.ok(!/session:sess-t:/.test(stop.systemMessage ?? ''));
   assert.equal(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'nothing' }), encoding: 'utf8', env: withGh }), '');
-  assert.ok(!loadStore(g).byKey.has('change:app-13'));
+  assert.ok(!loadStore(g).byKey.has('change:work/app-13'));
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });
 
@@ -179,6 +179,6 @@ test('binding observes the branch as a source of the change', () => {
   const g = findStore(work)!;
   const rec = loadStore(g).byKey.get('session:sess-b')![0];
   const observed = (rec.data.observed as { from: string; to: string }[]).map((o) => `${o.from} ${o.to}`);
-  assert.ok(observed.includes('change:abc-1234 branch:feat/login'), observed.join(', '));
+  assert.ok(observed.includes('change:work/abc-1234 branch:feat/login'), observed.join(', '));
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });

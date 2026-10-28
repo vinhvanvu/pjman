@@ -2,7 +2,7 @@
 // moves what it is told to and never rearranges the rest. The dashboard's reorder calls this same function.
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { loadStore, type Loaded, type Rec } from '../records.js';
+import { loadStore, resolve, unresolved, type Loaded, type Rec } from '../records.js';
 import { effectsOf, live, rootProductOf } from '../tree.js';
 import { CliError } from '../util.js';
 import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
@@ -51,8 +51,10 @@ export function sequenceOf(loaded: Loaded, product: Rec): string[] {
 
 export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): OrderResult {
   const loaded = loadStore(store);
-  const change = live(loaded, changeRaw.startsWith('change:') ? changeRaw : `change:${changeRaw}`);
-  if (!change || change.type !== 'change') throw new CliError(`${changeRaw} does not resolve to a change`);
+  const changeRef = changeRaw.startsWith('change:') ? changeRaw : `change:${changeRaw}`;
+  const changeRes = resolve(loaded, changeRef);
+  if (changeRes.status !== 'ok' && changeRes.status !== 'alias') throw new CliError(unresolved(changeRes, changeRef));
+  const change = changeRes.rec;
   const product = productOf(loaded, change);
   if (!product) throw new CliError(`${change.key} belongs to no product: its project has none and it names no feature`);
   const wants = [opts.before, opts.after, opts.first, opts.last, opts.later].filter((x) => x).length;
@@ -60,8 +62,10 @@ export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): Or
 
   const seq = sequenceOf(loaded, product).filter((k) => k !== change.key);
   const anchor = (raw: string): number => {
-    const rec = live(loaded, raw.startsWith('change:') ? raw : `change:${raw}`);
-    if (!rec || rec.type !== 'change') throw new CliError(`${raw} does not resolve to a change`);
+    const ref = raw.startsWith('change:') ? raw : `change:${raw}`;
+    const res = resolve(loaded, ref, product.productSlug);
+    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, ref));
+    const rec = res.rec;
     const i = seq.indexOf(rec.key);
     if (i < 0) throw new CliError(`${rec.key} is not on ${product.key}'s sequence; place it first`);
     return i;

@@ -18,7 +18,10 @@ export const SEVERITIES = ['product', 'feature', 'capability', 'nuisance', 'cosm
 export const LAYERS = ['core', 'sources', 'work'] as const;
 export const DEFAULT_SOURCE_KINDS = [
   'file', 'url', 'doc', 'git-repo', 'branch', 'github-pr', 'github-issue', 'linear', 'jira', 'thread',
+  ...['github-user', 'linear-user', 'email', 'git-author'],
 ];
+/** The accounts a person holds, keyed as the outside world keys them; a person record links them. */
+export const IDENTITY_KINDS = ['github-user', 'linear-user', 'email', 'git-author'];
 
 /** The product tree's level labels below the root, pjman's template; a product may name its own. */
 export const DEFAULT_TREE_LEVELS = ['feature', 'capability'];
@@ -140,10 +143,14 @@ export function findStore(cwd: string, override?: string): Store | null {
   if (explicit) return openStore(explicit);
   let dir = path.resolve(cwd);
   for (;;) {
-    // inside a store itself (the global store, or any store opened by path)
-    if (fs.existsSync(path.join(dir, 'pjman.yaml')) && fs.existsSync(path.join(dir, 'changes'))) return openStore(dir);
+    // inside a store itself (the global store, or any store opened by path; `changes/` is the layout before products held them)
+    if (fs.existsSync(path.join(dir, 'pjman.yaml')) && (fs.existsSync(path.join(dir, 'products')) || fs.existsSync(path.join(dir, 'changes')))) return openStore(dir);
     const candidate = path.join(dir, '.pjman');
-    if (fs.existsSync(path.join(candidate, 'pjman.yaml'))) return { ...openStore(candidate), projectDir: dir };
+    if (fs.existsSync(path.join(candidate, 'pjman.yaml'))) {
+      // an in-project store holds its own project record: the one it has is the current project
+      const projects = (() => { try { return fs.readdirSync(path.join(candidate, 'projects')).filter((f) => f.endsWith('.md')); } catch { return []; } })();
+      return { ...openStore(candidate), projectDir: dir, project: projects.length === 1 ? `project:${projects[0].slice(0, -3)}` : undefined };
+    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;

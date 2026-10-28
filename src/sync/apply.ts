@@ -5,6 +5,8 @@ import { readUserConfig, type Store } from '../config.js';
 import type { EventInput } from '../events.js';
 import { sourceFileSlug } from '../keys.js';
 import { loadStore, type Rec } from '../records.js';
+import { productOfProject } from '../commands/new.js';
+import { personOf } from '../refs.js';
 import { localDate, nowIso } from '../util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../write.js';
 import { newSession } from '../commands/new.js';
@@ -26,6 +28,8 @@ export interface Ticket {
   parent?: string;
   /** `bug` when the tracker's own issue type or label says so; the sync never sets the feature or the severity. */
   kind?: 'bug';
+  /** The accounts assigned on the tracker (`github-user:<login>`): each resolves to the person who claims it, or is left. */
+  assignees?: string[];
 }
 
 export interface ApplyOpts {
@@ -71,6 +75,7 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
   const events: EventInput[] = [];
   const touched: string[] = [];
   let loaded = loadStore(store);
+  const { product } = productOfProject(loaded, project.key);
 
   const byBind = new Map<string, Rec>();
   for (const r of loaded.records) if (r.type === 'change' && Array.isArray(r.data.binds)) for (const k of r.data.binds as unknown[]) if (typeof k === 'string') byBind.set(k, r);
@@ -103,15 +108,19 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       };
       write(src, 'source', srcRel, sourceKey, srcData, src?.body ?? '', ['title', 'url', 'ext']);
     }
-    const existing = byBind.get(sourceKey) ?? loaded.byKey.get(`change:${t.slug}`)?.[0];
-    const changeKey = existing?.key ?? `change:${t.slug}`;
+    const existing = byBind.get(sourceKey) ?? loaded.byKey.get(`change:${product}/${t.slug}`)?.[0];
+    const changeKey = existing?.key ?? `change:${product}/${t.slug}`;
     changeOf.set(t.id, changeKey);
-    const rel = existing?.path ?? path.join('changes', t.slug, 'change.md');
+    const rel = existing?.path ?? path.join('products', product, 'changes', t.slug, 'change.md');
+    // assignees the store knows become owners; an account no person claims is left alone, never matched by name
+    const owners = (t.assignees ?? []).map((a) => personOf(loaded, a)).filter((p): p is string => !!p);
     if (existing) {
       const binds = Array.isArray(existing.data.binds) ? (existing.data.binds as string[]) : [];
-      write(existing, 'change', rel, changeKey, { ...existing.data, title: t.title, status: t.status, kind: t.kind ?? existing.data.kind, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['title', 'status', 'kind']);
+      const had = Array.isArray(existing.data.owners) ? (existing.data.owners as string[]) : [];
+      const merged = [...had, ...owners.filter((o) => !had.includes(o))];
+      write(existing, 'change', rel, changeKey, { ...existing.data, title: t.title, status: t.status, kind: t.kind ?? existing.data.kind, owners: merged.length ? merged : undefined, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['title', 'status', 'kind', 'owners']);
     } else {
-      write(undefined, 'change', rel, changeKey, { title: t.title, status: t.status, kind: t.kind, project: project.key, binds: [sourceKey], ...stamp }, '## Summary\n\n\n', []);
+      write(undefined, 'change', rel, changeKey, { title: t.title, status: t.status, kind: t.kind, project: project.key, owners: owners.length ? owners : undefined, binds: [sourceKey], ...stamp }, '## Summary\n\n\n', []);
     }
   }
   if (touched.length) validateOrUndo(store, touched, events.filter((e) => e.op === 'created').map((e) => e.path));

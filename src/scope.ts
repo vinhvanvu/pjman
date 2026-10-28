@@ -4,7 +4,7 @@
 // live sessions and activity of the node stood on. Everything here is derived from the records and the event stream.
 import type { Store } from './config.js';
 import { readEvents, type StoreEvent } from './events.js';
-import { resolve, type Loaded, type Rec } from './records.js';
+import { eventKeysOf, resolve, type Loaded, type Rec } from './records.js';
 import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row } from './commands/view.js';
 import { productOf, sequenceOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
@@ -198,7 +198,7 @@ class Index {
     // creation order: the day the record names, then its place in the stream (a renamed change keeps its first place)
     const firstSeq = new Map<string, number>();
     for (const e of this.events) if (e.op === 'created' && !firstSeq.has(e.key)) firstSeq.set(e.key, e.seq);
-    const seqOf = (c: Rec) => Math.min(firstSeq.get(c.key) ?? Infinity, ...list(c.data.aliases).map((a) => firstSeq.get(`change:${a}`) ?? Infinity));
+    const seqOf = (c: Rec) => Math.min(...eventKeysOf(c).map((k) => firstSeq.get(k) ?? Infinity));
     this.changes = loaded.records
       .filter((r) => r.type === 'change' && r.valid)
       .sort((a, b) => (str(a.data.created) ?? '').localeCompare(str(b.data.created) ?? '') || seqOf(a) - seqOf(b) || a.key.localeCompare(b.key));
@@ -211,8 +211,8 @@ class Index {
       if (p) this.childrenOf.set(p.key, [...(this.childrenOf.get(p.key) ?? []), c]);
     }
     for (const d of loaded.records) {
-      if (d.type !== 'decision' || !d.valid || d.data.status !== 'proposed' || !d.changeSlug) continue;
-      const c = live(loaded, `change:${d.changeSlug}`);
+      if (d.type !== 'decision' || !d.valid || d.data.status !== 'proposed' || !d.changeKey) continue;
+      const c = live(loaded, d.changeKey);
       if (c) this.waiting.set(c.key, (this.waiting.get(c.key) ?? 0) + 1);
     }
     const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
@@ -279,7 +279,7 @@ class Index {
 
   /** The first status change (when it began) and, for a done change, the last one (when it finished). */
   span(c: Rec): { began?: string; finished?: string } {
-    const keys = new Set<string>([c.key, ...list(c.data.aliases).map((a) => `change:${a}`)]);
+    const keys = new Set<string>(eventKeysOf(c));
     let began: string | undefined;
     let last: string | undefined;
     for (const e of this.events) {
@@ -304,7 +304,7 @@ class Index {
     const all = new Set(keys);
     for (const k of keys) {
       const r = live(loaded, k);
-      if (r?.type === 'change') for (const a of list(r.data.aliases)) all.add(`change:${a}`);
+      if (r?.type === 'change') for (const k of eventKeysOf(r)) all.add(k);
     }
     const since = new Date(this.now - days * DAY).toISOString();
     const mine = this.events.filter((e) => all.has(e.key));
@@ -342,7 +342,7 @@ class Index {
 
   /** The instant of the change's last event, under its key or any alias; undefined when it never moved. */
   lastMoved(c: Rec): string | undefined {
-    const keys = new Set<string>([c.key, ...list(c.data.aliases).map((a) => `change:${a}`)]);
+    const keys = new Set<string>(eventKeysOf(c));
     for (let i = this.events.length - 1; i >= 0; i--) if (keys.has(this.events[i].key)) return this.events[i].at;
     return undefined;
   }
@@ -501,11 +501,11 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     .filter((s) => !node || (s.on && nodeKeys.has(s.on)))
     .sort((a, b) => b.last.localeCompare(a.last));
   const aliasKeys = new Set(nodeKeys);
-  for (const k of nodeKeys) for (const a of list(live(loaded, k)?.data.aliases)) aliasKeys.add(`change:${a}`);
+  for (const k of nodeKeys) { const r = live(loaded, k); if (r) for (const e of eventKeysOf(r)) aliasKeys.add(e); }
   const recent = ix.events.filter((e) => aliasKeys.has(e.key) && e.op !== 'write' && e.op !== 'formatted').slice(-60);
   const waitingOn: WaitingDecision[] = loaded.records
-    .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && nodeKeys.has(d.key) && d.changeSlug)
-    .map((d) => ({ key: d.key, title: str(d.data.title), change: `change:${d.changeSlug}`, decision: d.sections.get('Decision'), why: d.sections.get('Why'), created: str(d.data.created) }))
+    .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && nodeKeys.has(d.key) && d.changeKey)
+    .map((d) => ({ key: d.key, title: str(d.data.title), change: d.changeKey!, decision: d.sections.get('Decision'), why: d.sections.get('Why'), created: str(d.data.created) }))
     .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
 
   // crumbs: the chain above the node in this lens, product first

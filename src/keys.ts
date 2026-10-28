@@ -1,7 +1,18 @@
+// Keys. A key is a namespace and a slug, nothing else. The namespace is the product for what is a product's
+// vocabulary (features, changes, decisions) and the store for what is identity or external (products, projects,
+// people, agents, sessions, sources). A record's place in any hierarchy is a field, never part of its key.
+//
+//   feature:<product>/<slug>            change:<product>/<slug>
+//   decision:<product>/<change>/<slug>  decision:<product>/<slug> (product level)  decision:/<slug> (store level)
+//
+// Inside a product the slug alone names a record (`feature:<slug>`, `change:<slug>`, `decision:<change>/<slug>`):
+// the bare form resolves through the scope at hand (records.ts). The full form is what the store writes.
 import { createHash } from 'node:crypto';
 
 /** Kinds whose keys name records inside the store. Every other kind is a source kind. */
 export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature']);
+/** Kinds keyed beneath a product. */
+export const SCOPED_KINDS = new Set(['feature', 'change', 'decision']);
 
 export interface Key {
   kind: string;
@@ -28,6 +39,7 @@ export const isChangeKey = (k: Key): boolean => k.kind === 'change';
 export const isDecisionKey = (k: Key): boolean => k.kind === 'decision';
 export const isSessionKey = (k: Key): boolean => k.kind === 'session';
 export const isSourceKey = (k: Key): boolean => !RECORD_KINDS.has(k.kind);
+export const isScopedKind = (kind: string): boolean => SCOPED_KINDS.has(kind);
 
 export function slugify(s: string): string {
   return s
@@ -63,18 +75,85 @@ export function sourceFileSlug(kind: string, key: string): string {
   return slugify(key);
 }
 
-export const changeKey = (slug: string): string => `change:${slug}`;
-export const sessionKey = (id: string): string => `session:${id}`;
-export const decisionKey = (changeSlug: string | null, dslug: string): string =>
-  `decision:${changeSlug ?? ''}/${dslug}`;
+// --- scoped keys -----------------------------------------------------------------------------------------------
 
-/** `decision:<change>/<slug>` or `decision:/<slug>` (store level). */
-export function parseDecisionRest(rest: string): { changeSlug: string | null; dslug: string } | null {
-  const i = rest.indexOf('/');
-  if (i < 0) return null;
-  const changeSlug = rest.slice(0, i);
-  const dslug = rest.slice(i + 1);
-  if (!SLUG_RE.test(dslug)) return null;
-  if (changeSlug !== '' && !SLUG_RE.test(changeSlug)) return null;
-  return { changeSlug: changeSlug === '' ? null : changeSlug, dslug };
+export const productKey = (product: string): string => `product:${product}`;
+export const featureKey = (product: string, slug: string): string => `feature:${product}/${slug}`;
+export const changeKey = (product: string, slug: string): string => `change:${product}/${slug}`;
+export const sessionKey = (id: string): string => `session:${id}`;
+/** A decision's full key: under a change, at product level (no change), or at store level (no product). */
+export const decisionKey = (product: string | null, change: string | null, slug: string): string =>
+  product ? `decision:${product}/${change ? `${change}/` : ''}${slug}` : `decision:/${slug}`;
+
+/** A feature or change rest taken apart: `<product>/<slug>` is full; `<slug>` is bare (resolved through a scope). */
+export interface ScopedRest {
+  product: string | null;
+  slug: string;
+}
+
+export function parseScopedRest(rest: string): ScopedRest | null {
+  const parts = rest.split('/');
+  if (parts.length === 1) return SLUG_RE.test(parts[0]) ? { product: null, slug: parts[0] } : null;
+  if (parts.length === 2 && SLUG_RE.test(parts[0]) && SLUG_RE.test(parts[1])) return { product: parts[0], slug: parts[1] };
+  return null;
+}
+
+/** A decision rest taken apart. `full` says every namespace segment is present:
+ *  `/<slug>` store level · `<product>/<change>/<slug>` under a change · `<a>/<slug>` either product level (full) or
+ *  a bare change-level key, which the resolver tells apart · `<slug>` alone is not a decision key. */
+export interface DecisionRest {
+  /** The first segment: a product (full, product level or under a change) or a change (bare). Null at store level. */
+  head: string | null;
+  /** The change slug, when the key has three segments. */
+  change: string | null;
+  slug: string;
+  segments: number;
+}
+
+export function parseDecisionRest(rest: string): DecisionRest | null {
+  const parts = rest.split('/');
+  if (parts.length < 2 || parts.length > 3) return null;
+  const slug = parts[parts.length - 1];
+  if (!SLUG_RE.test(slug)) return null;
+  if (parts.length === 2) {
+    if (parts[0] === '') return { head: null, change: null, slug, segments: 2 };
+    return SLUG_RE.test(parts[0]) ? { head: parts[0], change: null, slug, segments: 2 } : null;
+  }
+  return SLUG_RE.test(parts[0]) && SLUG_RE.test(parts[1]) ? { head: parts[0], change: parts[1], slug, segments: 3 } : null;
+}
+
+/** The product segment of a full scoped key, or null when the key is bare or not scoped. */
+export function productOfKey(key: string): string | null {
+  const k = parseKey(key);
+  if (!k || !SCOPED_KINDS.has(k.kind)) return null;
+  if (k.kind === 'decision') {
+    const d = parseDecisionRest(k.rest);
+    return d && d.segments === 3 ? d.head : null; // a two-segment decision key is told apart by the resolver
+  }
+  return parseScopedRest(k.rest)?.product ?? null;
+}
+
+/** The slug of a scoped key (the last segment); the rest for anything else. */
+export function slugOfKey(key: string): string {
+  const k = parseKey(key);
+  if (!k) return key;
+  const i = k.rest.lastIndexOf('/');
+  return i >= 0 ? k.rest.slice(i + 1) : k.rest;
+}
+
+/** The key as it reads inside `product`: the product segment dropped from a feature, change or decision beneath it.
+ *  Anything of another product, or of no product, is returned whole. */
+export function shortKey(key: string, product: string | null | undefined): string {
+  if (!product) return key;
+  const k = parseKey(key);
+  if (!k || !SCOPED_KINDS.has(k.kind)) return key;
+  const p = product.startsWith('product:') ? product.slice('product:'.length) : product;
+  return k.rest.startsWith(`${p}/`) ? `${k.kind}:${k.rest.slice(p.length + 1)}` : key;
+}
+
+/** Every `<kind>:<product>/…` in a text shortened to its slug form, for output read inside that product. */
+export function shortenText(text: string, product: string | null | undefined): string {
+  if (!product) return text;
+  const p = product.startsWith('product:') ? product.slice('product:'.length) : product;
+  return text.replace(new RegExp(`\\b(feature|change|decision):${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g'), '$1:');
 }

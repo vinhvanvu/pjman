@@ -14,6 +14,11 @@ already put `pjman context` in front of you; this run's records carry `session:<
 
 Every write goes through the `pjman` command. Never edit a file under the store directly.
 
+Keys are a namespace and a slug: a feature, a change and a decision are keyed under their product
+(`change:<product>/<slug>`, `decision:<product>/<change>/<slug>`); people, projects, sessions and sources are keyed
+in the store. Inside this project the slug alone names a record (`change:<slug>`, `feature:<slug>`), and that is how
+the context prints them; write the full key only for something in another product. JSON output carries full keys.
+
 ## Rules
 
 1. **Read before acting.** When a change is named or implied, run `pjman context change:<slug>` first. It is the

@@ -14,6 +14,7 @@ export interface GhIssue {
   state: string;
   stateReason?: string;
   labels: string[];
+  assignees: string[];
   milestone?: string;
   parent?: number;
   updatedAt?: string;
@@ -39,12 +40,14 @@ export function toGhIssue(raw: unknown): GhIssue | null {
   if (number === undefined || !title || r.pull_request) return null;
   const labelList = Array.isArray(r.labels) ? (r.labels as unknown[]) : Array.isArray(obj(r.labels)?.nodes) ? (obj(r.labels)!.nodes as unknown[]) : [];
   const labels = labelList.map((l) => (typeof l === 'string' ? l : str(obj(l)?.name))).filter((x): x is string => !!x);
+  const assigneeList = Array.isArray(r.assignees) ? (r.assignees as unknown[]) : Array.isArray(obj(r.assignees)?.nodes) ? (obj(r.assignees)!.nodes as unknown[]) : [];
+  const assignees = assigneeList.map((a) => (typeof a === 'string' ? a : str(obj(a)?.login))).filter((x): x is string => !!x);
   const parent = obj(r.parent);
   const url = str(r.url) ?? str(r.html_url);
   const m = url && /github\.com\/([^/]+\/[^/]+)\/issues\/\d+/.exec(url);
   return {
     number, title, url, state: (str(r.state) ?? 'open').toLowerCase(), stateReason: str(r.stateReason) ?? str(r.state_reason) ?? undefined,
-    labels, milestone: str(obj(r.milestone)?.title), parent: typeof parent?.number === 'number' ? parent.number : undefined, updatedAt: str(r.updatedAt) ?? str(r.updated_at),
+    labels, assignees, milestone: str(obj(r.milestone)?.title), parent: typeof parent?.number === 'number' ? parent.number : undefined, updatedAt: str(r.updatedAt) ?? str(r.updated_at),
     repo: str(r.repo) ?? (m ? m[1] : undefined),
   };
 }
@@ -65,7 +68,7 @@ export function mapGhStatus(store: Store, i: GhIssue): string {
 /** The command that reads a repository's issues with their sub-issue parents: GitHub's GraphQL API through gh (gh issue list --json has no parent). */
 export function ghReadCommand(repo: string): string {
   const [owner, name] = repo.split('/');
-  const query = `query($endCursor:String){repository(owner:"${owner}",name:"${name}"){issues(first:100,after:$endCursor,states:[OPEN,CLOSED]){nodes{number title url state stateReason updatedAt labels(first:20){nodes{name}} milestone{title} parent{number}} pageInfo{hasNextPage endCursor}}}}`;
+  const query = `query($endCursor:String){repository(owner:"${owner}",name:"${name}"){issues(first:100,after:$endCursor,states:[OPEN,CLOSED]){nodes{number title url state stateReason updatedAt labels(first:20){nodes{name}} assignees(first:10){nodes{login}} milestone{title} parent{number}} pageInfo{hasNextPage endCursor}}}}`;
   return `gh api graphql --paginate --slurp -H 'GraphQL-Features: sub_issues' -f query='${query}'`;
 }
 
@@ -100,8 +103,8 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
     }
     tickets.push({
       id: `${repo}#${i.number}`, slug: slugFor('github-issue', `${repo}#${i.number}`), title: i.title, url: i.url ?? `https://github.com/${repo}/issues/${i.number}`,
-      status: mapGhStatus(store, i), parent: i.parent !== undefined ? `${repo}#${i.parent}` : undefined, kind: i.labels.some((l) => l.toLowerCase() === 'bug') ? 'bug' : undefined,
-      observed: { state: i.state, state_reason: i.stateReason, labels: i.labels, milestone: i.milestone, parent: i.parent, updated_at: i.updatedAt },
+      status: mapGhStatus(store, i), parent: i.parent !== undefined ? `${repo}#${i.parent}` : undefined, kind: i.labels.some((l) => l.toLowerCase() === 'bug') ? 'bug' : undefined, assignees: i.assignees.map((a) => `github-user:${a}`),
+      observed: { state: i.state, state_reason: i.stateReason, labels: i.labels, assignees: i.assignees, milestone: i.milestone, parent: i.parent, updated_at: i.updatedAt },
     });
   }
   const r = applyTickets(store, { project, kind: 'github-issue', owner: 'github', writer: WRITER, tickets, session: opts.session, label: `github ${repo}` });

@@ -1,6 +1,6 @@
 import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, MAP_ANSWERS, SEVERITIES } from './config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
-import { isActorKey, parseKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
+import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
 import { isDateString, isTimestamp, localDate } from './util.js';
 
@@ -27,14 +27,14 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
 };
 
 const LIST_FIELDS: Record<RecordType, string[]> = {
-  product: ['owners', 'levels', 'sequence', 'links'],
+  product: ['owners', 'levels', 'sequence', 'links', 'aliases'],
   feature: ['owners', 'links', 'aliases'],
   project: ['owners', 'links'],
   change: ['depends_on', 'features', 'owners', 'binds', 'links', 'aliases'],
   decision: ['links'],
   source: ['links'],
   session: ['changes'],
-  actor: [],
+  actor: ['links', 'aliases'],
 };
 
 const REQUIRED_SECTIONS: Partial<Record<RecordType, string[]>> = {
@@ -45,7 +45,7 @@ const REQUIRED_SECTIONS: Partial<Record<RecordType, string[]>> = {
 /** Edge name → [from kinds, to kinds]. 'source' stands for any source kind. */
 export const EDGES: Record<string, [string[], string[]]> = {
   binds: [['change'], ['source']],
-  links: [['product', 'feature', 'project', 'change', 'decision', 'source'], ['source']],
+  links: [['product', 'feature', 'project', 'change', 'decision', 'source', 'actor'], ['source']],
   supersedes: [['decision'], ['decision']],
   parent: [['session', 'change', 'feature', 'project'], ['session', 'change', 'feature', 'project']],
   depends_on: [['change'], ['change']],
@@ -57,6 +57,9 @@ export const EDGES: Record<string, [string[], string[]]> = {
   adds: [['change'], ['feature']],
   removes: [['change'], ['feature']],
 };
+
+/** A slug alias, or `<product>/<slug>` for a key the record had in another product. */
+const ALIAS_RE = /^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?$/;
 
 export function validate(loaded: Loaded): Problem[] {
   const problems: Problem[] = [...loaded.problems];
@@ -72,8 +75,15 @@ export function validate(loaded: Loaded): Problem[] {
   const info = (r: Rec | string, message: string) =>
     problems.push({ level: 'info', path: typeof r === 'string' ? r : r.path, message });
 
+  /** The scope a record's own references resolve in: its product, or none. Never the current project's. */
+  const scopeOf = (r: Rec): string | null => r.productSlug ?? null;
+  const res = (r: Rec, raw: unknown): Resolution => resolve(loaded, raw, scopeOf(r));
+  const liveKey = (r: Rec, raw: unknown): string | undefined => {
+    const x = res(r, raw);
+    return x.status === 'ok' || x.status === 'alias' ? x.rec.key : undefined;
+  };
 
-  /** Check one reference. `expect` is a list of kinds ('source' covers any source kind). Returns the key's kind class. */
+  /** Check one reference. `expect` is a list of kinds ('source' covers any source kind). */
   const checkRef = (r: Rec, field: string, raw: unknown, expect: string[]): void => {
     const key = parseKey(raw);
     if (!key) {
@@ -90,16 +100,23 @@ export function validate(loaded: Loaded): Problem[] {
       err(r, `${field}: '${key.raw}' must be a ${expect.join(' or ')} key`);
       return;
     }
-    const res = resolve(loaded, key.raw);
-    switch (res.status) {
+    const x = res(r, key.raw);
+    switch (x.status) {
       case 'missing':
         err(r, `${field}: '${key.raw}' does not resolve`);
         break;
+      case 'ambiguous':
+        err(r, `${field}: '${key.raw}' is ambiguous (${x.candidates.join(', ')}); write the product's key`);
+        break;
       case 'invalid':
-        warn(r, `${field}: '${key.raw}' resolves to ${res.rec.path}, which is invalid`);
+        warn(r, `${field}: '${key.raw}' resolves to ${x.rec.path}, which is invalid`);
         break;
       case 'alias':
-        info(r, `${field}: '${key.raw}' resolves via alias to '${res.rec.key}'`);
+        info(r, `${field}: '${key.raw}' resolves via alias to '${x.rec.key}'`);
+        break;
+      case 'ok':
+        // a stored reference is the full key; a bare one still resolves inside the record's product, and fmt will not rewrite it
+        if ((key.kind === 'change' || key.kind === 'feature' || key.kind === 'decision') && x.rec.key !== key.raw) info(r, `${field}: '${key.raw}' is the short form of '${x.rec.key}'`);
         break;
       default:
         break;
@@ -136,32 +153,48 @@ export function validate(loaded: Loaded): Problem[] {
     // a parent chain of the record's own kind that returns to it is a cycle
     const parentCycle = (field: string): void => {
       const seen = new Set<string>([r.key]);
-      let cur: unknown = d[field];
+      let cur: Rec | undefined = r;
       for (;;) {
-        const res = typeof cur === 'string' ? resolve(loaded, cur) : null;
-        if (!res || (res.status !== 'ok' && res.status !== 'alias')) break;
-        if (seen.has(res.rec.key)) {
-          err(r, `'${field}' cycles: ${[...seen, res.rec.key].join(' → ')}`);
+        const x: Resolution | null = cur && typeof cur.data[field] === 'string' ? resolve(loaded, cur.data[field], scopeOf(cur)) : null;
+        if (!x || (x.status !== 'ok' && x.status !== 'alias')) break;
+        if (seen.has(x.rec.key)) {
+          err(r, `'${field}' cycles: ${[...seen, x.rec.key].join(' → ')}`);
           break;
         }
-        seen.add(res.rec.key);
-        cur = res.rec.data[field];
+        seen.add(x.rec.key);
+        cur = x.rec;
+      }
+    };
+    /** A list of aliases: slugs, or `<product>/<slug>` for a key once held in another product; none may be live. */
+    const checkAliases = (kind: string): void => {
+      for (const a of listOf(d.aliases)) {
+        if (!ALIAS_RE.test(a)) err(r, `aliases: '${a}' is not a slug`);
+        else {
+          const full = r.productSlug && !a.includes('/') ? `${kind}:${r.productSlug}/${a}` : `${kind}:${a}`;
+          // an alias equal to the record's own slug says it held the flat key before keys were paths under the product
+          if (full !== r.key && loaded.byKey.has(full)) err(r, `aliases: '${a}' is also a live ${kind} key`);
+        }
       }
     };
     for (const k of listOf(d.owners)) checkRef(r, 'owners', k, ['actor']);
 
     switch (r.type) {
       case 'product': {
-        if (r.productSlug && !SLUG_RE.test(r.productSlug)) err(r, `file name '${r.productSlug}' is not a slug`);
+        if (r.productSlug && !SLUG_RE.test(r.productSlug)) err(r, `folder name '${r.productSlug}' is not a slug`);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        for (const a of listOf(d.aliases)) {
+          if (!SLUG_RE.test(a)) err(r, `aliases: '${a}' is not a slug`);
+          else if (loaded.byKey.has(`product:${a}`)) err(r, `aliases: '${a}' is also a live product slug`);
+        }
         {
           const seen = new Set<string>();
           for (const k of listOf(d.sequence)) {
             checkRef(r, 'sequence', k, ['change']);
-            const res = resolve(loaded, k);
-            const key = res.status === 'ok' || res.status === 'alias' ? res.rec.key : k;
+            const key = liveKey(r, k) ?? k;
             if (seen.has(key)) err(r, `sequence: '${k}' appears twice`);
             seen.add(key);
+            const p = productOfKey(key);
+            if (p && p !== r.productSlug) err(r, `sequence: '${k}' belongs to product:${p}, not this product`);
           }
         }
         break;
@@ -171,12 +204,19 @@ export function validate(loaded: Loaded): Problem[] {
         if (typeof d.name === 'string' && (!d.name.trim() || d.name.trim().split(/\s+/).length > 3)) err(r, `name: one to three words, the label the tree shows ('${d.name}')`);
         if (typeof d.status === 'string' && !(FEATURE_STATUSES as readonly string[]).includes(d.status)) err(r, `status '${d.status}' is not one of ${FEATURE_STATUSES.join(', ')}`);
         if (typeof d.product !== 'string' && typeof d.parent !== 'string') err(r, `a feature names its 'product' (a top-level feature) or its 'parent' (a feature)`);
-        if (typeof d.product === 'string') checkRef(r, 'product', d.product, ['product']);
+        if (typeof d.product === 'string') {
+          checkRef(r, 'product', d.product, ['product']);
+          const p = liveKey(r, d.product);
+          if (p && p !== `product:${r.productSlug}`) err(r, `product: '${d.product}' is not the product this feature is keyed under (product:${r.productSlug})`);
+        }
         if (typeof d.parent === 'string') {
           checkRef(r, 'parent', d.parent, ['feature']);
+          const p = liveKey(r, d.parent);
+          if (p && productOfKey(p) !== r.productSlug) err(r, `parent: '${d.parent}' is in another product; a feature nests inside its own product`);
           parentCycle('parent');
         }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        checkAliases('feature');
         break;
       }
       case 'project': {
@@ -206,7 +246,14 @@ export function validate(loaded: Loaded): Problem[] {
           if (d.kind !== 'bug') err(r, `severity is a bug's field; this change's kind is '${String(d.kind ?? 'work')}'`);
         }
         if (d.target !== undefined && !isDateString(d.target)) err(r, `'target' must be a date (yyyy-mm-dd)`);
-        if (typeof d.project === 'string') checkRef(r, 'project', d.project, ['project']);
+        if (typeof d.project === 'string') {
+          checkRef(r, 'project', d.project, ['project']);
+          // the change is keyed under the product its project names
+          const project = loaded.byKey.get(liveKey(r, d.project) ?? '')?.[0];
+          const product = project && typeof project.data.product === 'string' ? liveKey(project, project.data.product) : undefined;
+          if (project && !product) err(r, `project: ${project.key} names no product, and this change is keyed under product:${r.productSlug}; set the project's product`);
+          else if (product && product !== `product:${r.productSlug}`) err(r, `project: ${project!.key} belongs to ${product}, but this change is keyed under product:${r.productSlug}`);
+        }
         if (typeof d.parent === 'string') {
           checkRef(r, 'parent', d.parent, ['change']);
           parentCycle('parent');
@@ -214,23 +261,22 @@ export function validate(loaded: Loaded): Problem[] {
         if (listOf(d.depends_on).length) {
           for (const k of listOf(d.depends_on)) {
             checkRef(r, 'depends_on', k, ['change']);
-            const res = resolve(loaded, k);
-            if ((res.status === 'ok' || res.status === 'alias') && res.rec.key === r.key) err(r, `depends_on: '${k}' is the change itself`);
+            if (liveKey(r, k) === r.key) err(r, `depends_on: '${k}' is the change itself`);
           }
           // a chain of dependencies that returns to this change is a cycle
           const path: string[] = [r.key];
           const visit = (rec: Rec, depth: number): boolean => {
             if (depth > 64) return false;
             for (const k of listOf(rec.data.depends_on)) {
-              const res = resolve(loaded, k);
-              if (res.status !== 'ok' && res.status !== 'alias') continue;
-              if (res.rec.key === r.key) {
+              const x = resolve(loaded, k, scopeOf(rec));
+              if (x.status !== 'ok' && x.status !== 'alias') continue;
+              if (x.rec.key === r.key) {
                 err(r, `depends_on cycles: ${[...path, r.key].join(' → ')}`);
                 return true;
               }
-              if (path.includes(res.rec.key)) continue;
-              path.push(res.rec.key);
-              if (visit(res.rec, depth + 1)) return true;
+              if (path.includes(x.rec.key)) continue;
+              path.push(x.rec.key);
+              if (visit(x.rec, depth + 1)) return true;
               path.pop();
             }
             return false;
@@ -244,10 +290,7 @@ export function validate(loaded: Loaded): Problem[] {
         }
         for (const k of listOf(d.binds)) checkRef(r, 'binds', k, ['source']);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
-        for (const a of listOf(d.aliases)) {
-          if (!SLUG_RE.test(a)) err(r, `aliases: '${a}' is not a slug`);
-          else if (loaded.byKey.has(`change:${a}`)) err(r, `aliases: '${a}' is also a live change slug`);
-        }
+        checkAliases('change');
         if (r.changeSlug && !SLUG_RE.test(r.changeSlug)) err(r, `folder name '${r.changeSlug}' is not a slug`);
         break;
       }
@@ -263,21 +306,21 @@ export function validate(loaded: Loaded): Problem[] {
         if (d.decided_on !== undefined && !isDateString(d.decided_on)) err(r, `'decided_on' must be a date (yyyy-mm-dd)`);
         if (typeof d.supersedes === 'string') {
           checkRef(r, 'supersedes', d.supersedes, ['decision']);
-          const res = resolve(loaded, d.supersedes);
-          if ((res.status === 'ok' || res.status === 'alias') && res.rec.data.status !== 'superseded') {
-            err(r, `supersedes '${d.supersedes}', whose status is '${String(res.rec.data.status)}'; it must be 'superseded'`);
+          const x = res(r, d.supersedes);
+          if ((x.status === 'ok' || x.status === 'alias') && x.rec.data.status !== 'superseded') {
+            err(r, `supersedes '${d.supersedes}', whose status is '${String(x.rec.data.status)}'; it must be 'superseded'`);
           }
-          if (res.status === 'ok' || res.status === 'alias') {
+          if (x.status === 'ok' || x.status === 'alias') {
             // cycle check
             const seen = new Set<string>([r.key]);
-            let cur: Rec | undefined = res.rec;
+            let cur: Rec | undefined = x.rec;
             while (cur) {
               if (seen.has(cur.key)) {
                 err(r, `supersedes forms a cycle through '${cur.key}'`);
                 break;
               }
               seen.add(cur.key);
-              const next: Resolution | null = typeof cur.data.supersedes === 'string' ? resolve(loaded, cur.data.supersedes) : null;
+              const next: Resolution | null = typeof cur.data.supersedes === 'string' ? resolve(loaded, cur.data.supersedes, scopeOf(cur)) : null;
               cur = next && (next.status === 'ok' || next.status === 'alias') ? next.rec : undefined;
             }
           }
@@ -348,6 +391,12 @@ export function validate(loaded: Loaded): Problem[] {
         if (typeof d.kind === 'string' && !(ACTOR_KINDS as readonly string[]).includes(d.kind)) err(r, `kind '${d.kind}' is not 'person' or 'agent'`);
         if (r.handle && !SLUG_RE.test(r.handle)) err(r, `file name '${r.handle}' is not a slug (${slugify(r.handle) || 'empty'})`);
         if (d.url !== undefined && typeof d.url === 'string' && !/^[a-z][a-z0-9+.-]*:/.test(d.url)) err(r, `'url' is not a URL`);
+        // the accounts a person holds: sources of an identity kind, each claimed by one person
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        for (const a of listOf(d.aliases)) {
+          if (!SLUG_RE.test(a)) err(r, `aliases: '${a}' is not a slug`);
+          else if (loaded.byKey.has(`${String(d.kind)}:${a}`)) err(r, `aliases: '${a}' is also a live handle`);
+        }
         break;
       }
     }
@@ -374,14 +423,32 @@ export function validate(loaded: Loaded): Problem[] {
   for (const [src, recs] of boundBy) {
     if (recs.length > 1) for (const r of recs) err(r, `binds '${src}', which is also bound by ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}`);
   }
+  // a flat key from before the migration is one record's: two records in two products claiming the same bare alias is an error on both
+  const flatHolders = new Map<string, Rec[]>();
+  for (const r of loaded.records) {
+    if (!r.valid || !r.productSlug || (r.type !== 'change' && r.type !== 'feature')) continue;
+    for (const a of listOf(r.data.aliases)) if (!a.includes('/')) flatHolders.set(`${r.type}:${a}`, [...(flatHolders.get(`${r.type}:${a}`) ?? []), r]);
+  }
+  for (const [flat, recs] of flatHolders) {
+    if (recs.length > 1) for (const r of recs) err(r, `aliases: '${flat}' was also held by ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}; one record keeps the old key`);
+  }
+  // an account is one person's: two people claiming the same account is an error on both
+  const claimedBy = new Map<string, Rec[]>();
+  for (const r of loaded.records) {
+    if (r.type !== 'actor' || !r.valid || r.data.kind !== 'person') continue;
+    for (const k of listOf(r.data.links)) claimedBy.set(k, [...(claimedBy.get(k) ?? []), r]);
+  }
+  for (const [account, recs] of claimedBy) {
+    if (recs.length > 1) for (const r of recs) err(r, `links '${account}', an account also claimed by ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}`);
+  }
   const supersededBy = new Map<string, Rec[]>();
   for (const r of loaded.records) {
     if (r.type !== 'decision' || !r.valid || typeof r.data.supersedes !== 'string') continue;
-    const res = resolve(loaded, r.data.supersedes);
-    if (res.status === 'ok' || res.status === 'alias' || res.status === 'invalid') {
-      const list = supersededBy.get(res.rec.key) ?? [];
+    const x = res(r, r.data.supersedes);
+    if (x.status === 'ok' || x.status === 'alias' || x.status === 'invalid') {
+      const list = supersededBy.get(x.rec.key) ?? [];
       list.push(r);
-      supersededBy.set(res.rec.key, list);
+      supersededBy.set(x.rec.key, list);
     }
   }
   for (const r of loaded.records) {

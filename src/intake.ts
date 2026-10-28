@@ -98,7 +98,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   const isOpen = (c: Rec) => c.data.status !== 'done' && c.data.status !== 'dropped';
 
   const candidate = (c: Rec): ChangeCandidate => {
-    const hay = `${c.key.slice('change:'.length).replace(/-/g, ' ')} ${str(c.data.title) ?? ''} ${c.sections.get('Summary') ?? ''}`;
+    const hay = `${(c.changeSlug ?? c.key).replace(/-/g, ' ')} ${str(c.data.title) ?? ''} ${c.sections.get('Summary') ?? ''}`;
     const o = overlap(ask, hay);
     const isRef = referenced.has(c.key);
     return {
@@ -123,7 +123,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   };
   const nodes: NodeCandidate[] = features
     .map((f) => {
-      const o = overlap(ask, `${f.key.slice('feature:'.length).replace(/-/g, ' ')} ${str(f.data.name) ?? ''} ${str(f.data.title) ?? ''} ${f.sections.get('Summary') ?? ''}`);
+      const o = overlap(ask, `${(f.featureSlug ?? f.key).replace(/-/g, ' ')} ${str(f.data.name) ?? ''} ${str(f.data.title) ?? ''} ${f.sections.get('Summary') ?? ''}`);
       return { key: f.key, title: str(f.data.title), name: str(f.data.name), score: o.score, words: o.words, level: levelOf(loaded, f), derived: str(f.data.status) ?? derivedStatus(loaded, f.key).status, path: pathOf(f) };
     })
     .filter((n) => n.score >= 0.2)
