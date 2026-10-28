@@ -110,14 +110,21 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
   assert.deepEqual(by['session:s-work'].children.map((c) => [c.key, c.state, c.line?.text]), [['session:s-kid', 'stopped', 'Built the thing.']]);
   assert.equal(by['session:s-fresh'].state, 'stopped');
   assert.equal(by['session:s-fresh'].change, undefined);
-  assert.equal(b.waiting, 1);
+  assert.equal(b.waiting, 2); // decisions, not sessions
+  assert.deepEqual(b.waitingOn.map((w) => [w.change.key, w.proposed.map((d) => d.key)]), [
+    ['change:shop/card-form', ['decision:shop/card-form/why', 'decision:shop/card-form/later']], // newest proposed first
+  ]);
+  assert.deepEqual(b.waitingOn[0].change.path.map((f) => f.name), ['Checkout', 'Saved cards']);
+  assert.equal(b.waitingOn[0].proposed[0].decision, 'd');
   // most recent first
   const lasts = b.sessions.map((s) => s.last ?? '');
   assert.deepEqual(lasts, [...lasts].sort().reverse());
 });
 
 test('bridge: another product sees none of them; a window that has passed sees none either', () => {
-  assert.equal(bridge(store, loadStore(store), { product: 'product:other' }).sessions.length, 0);
+  const other = bridge(store, loadStore(store), { product: 'product:other' });
+  assert.equal(other.sessions.length, 0);
+  assert.equal(other.waiting, 0);
   assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000 }).sessions.length, 0);
   assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000, days: 7 }).sessions.length, 5); // the subagent's is under its parent
 });

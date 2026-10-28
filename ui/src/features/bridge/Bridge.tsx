@@ -1,6 +1,6 @@
-// The bridge's content: for now the need strip across the width. The stage (the lineage graph lit by sessions), the
-// lanes and the transport come in later slices; the strip then moves to the right column (decision
-// stage-strip-transport).
+// The bridge's content: for now the need strip across the width, what waits on the person first at the grain of the
+// decision, then the sessions by state. The stage (the lineage graph lit by sessions), the lanes and the transport
+// come in later slices; the strip then moves to the right column (decision stage-strip-transport).
 import type { Bridge as BridgeData, Lens } from '@/data/contract';
 import { plural } from '@/lib/format';
 import { Strip } from './Strip';
@@ -15,10 +15,10 @@ export function Bridge({ data, lens, productName }: { data: BridgeData; lens: Le
           {plural(data.sessions.length, 'session')} across {productName} in the last{' '}
           {data.days === 1 ? 'day' : plural(data.days, 'day')}
           {working ? ` · ${working} working` : ''}
-          {data.waiting ? ` · ${data.waiting} ${data.waiting === 1 ? 'waits' : 'wait'} on you` : ''}
+          {data.waiting ? ` · ${plural(data.waiting, 'decision')} on you` : ''}
         </span>
       </div>
-      <Strip sessions={data.sessions} lens={lens} className="max-w-[720px]" />
+      <Strip waitingOn={data.waitingOn} sessions={data.sessions} lens={lens} className="max-w-[720px]" />
     </div>
   );
 }

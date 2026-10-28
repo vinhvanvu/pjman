@@ -6,7 +6,7 @@ import type { Store } from './config.js';
 import { readEvents } from './events.js';
 import { productOf } from './commands/order.js';
 import type { Loaded, Rec } from './records.js';
-import { LIVE_MINUTES } from './scope.js';
+import { LIVE_MINUTES, proposedDecisions, type WaitingDecision } from './scope.js';
 import { effectsOf, live, rootProductOf, structuralParent } from './tree.js';
 
 export type SessionState = 'working' | 'waiting' | 'stopped' | 'ended';
@@ -18,14 +18,6 @@ export interface BridgeChange {
   next?: string;
   /** The feature path the change names, the product left out, top first: the nearest feature is last. */
   path: { key: string; name: string }[];
-}
-
-export interface BridgeDecision {
-  key: string;
-  title?: string;
-  decision?: string;
-  why?: string;
-  created?: string;
 }
 
 export interface BridgeSession {
@@ -48,17 +40,27 @@ export interface BridgeSession {
   /** What it is on: its last bound change that still resolves. */
   change?: BridgeChange;
   /** The decision that waits on the person, when one does: the oldest proposed on its change. */
-  decision?: BridgeDecision;
+  decision?: WaitingDecision;
   /** Its change is in review: an ended session whose work waits for a look. */
   inReview: boolean;
+}
+
+/** A change with decisions proposed on it: what waits on the person, at the grain of the decision. */
+export interface WaitingChange {
+  change: BridgeChange;
+  /** Its proposed decisions, newest first. */
+  proposed: WaitingDecision[];
 }
 
 export interface Bridge {
   product: string | null;
   days: number;
+  /** Every proposed decision in the product, grouped by change, the change with the newest proposal first: the
+   *  strip's first group and the inbox's data. */
+  waitingOn: WaitingChange[];
   /** The sessions that acted inside the window, most recent first; a subagent's session sits under its parent. */
   sessions: BridgeSession[];
-  /** How many wait on the person. */
+  /** How many decisions wait on the person. */
   waiting: number;
 }
 
@@ -133,15 +135,17 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     if (e.op === 'log' && e.key === s) continue;
     if (!acts.has(s) || e.at > acts.get(s)!) acts.set(s, e.at);
   }
-  // proposed decisions by change, oldest first
-  const proposedOn = new Map<string, BridgeDecision[]>();
-  for (const d of loaded.records) {
-    if (d.type !== 'decision' || !d.valid || d.data.status !== 'proposed' || !d.changeKey) continue;
-    const c = live(loaded, d.changeKey);
-    if (!c) continue;
-    const row: BridgeDecision = { key: d.key, title: str(d.data.title), decision: str(d.data.decision), why: str(d.data.why), created: str(d.data.created) };
-    proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), row].sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key)));
+  // the proposed decisions in the product, by change, oldest first within a change: the same derivation the inbox reads
+  const inProduct = (c: Rec | undefined) => !!c && (!productKey || productOf(loaded, c)?.key === productKey);
+  const proposedOn = new Map<string, WaitingDecision[]>();
+  for (const d of proposedDecisions(loaded, (d) => inProduct(live(loaded, d.changeKey)))) {
+    const c = live(loaded, d.change)!;
+    proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), d]);
   }
+  const asChange = (c: Rec): BridgeChange => ({ key: c.key, title: str(c.data.title), status: str(c.data.status), next: str(c.data.next), path: featurePath(loaded, c) });
+  const waitingOn: WaitingChange[] = [...proposedOn.entries()]
+    .map(([key, ds]) => ({ change: asChange(live(loaded, key)!), proposed: [...ds].reverse() }))
+    .sort((a, b) => (b.proposed[0].created ?? '').localeCompare(a.proposed[0].created ?? '') || a.change.key.localeCompare(b.change.key));
 
   const rows: BridgeSession[] = [];
   for (const rec of loaded.records) {
@@ -175,7 +179,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
       ended,
       parent: str(rec.data.parent),
       children: [],
-      change: on ? { key: on.key, title: str(on.data.title), status: str(on.data.status), next: str(on.data.next), path: featurePath(loaded, on) } : undefined,
+      change: on ? asChange(on) : undefined,
       decision: state === 'waiting' ? proposed[0] : undefined,
       inReview: on?.data.status === 'review',
     });
@@ -191,5 +195,5 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   }
   for (const r of sessions) r.children.sort(newestFirst);
   sessions.sort(newestFirst);
-  return { product: productKey, days, sessions, waiting: sessions.filter((s) => s.state === 'waiting').length };
+  return { product: productKey, days, waitingOn, sessions, waiting: waitingOn.reduce((n, w) => n + w.proposed.length, 0) };
 }
