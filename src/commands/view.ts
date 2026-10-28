@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { SEVERITIES } from '../config.js';
+import { readUserConfig, SEVERITIES } from '../config.js';
+import { branchNameFor, worktreeNameFor } from '../branch.js';
 import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { CliError } from '../util.js';
 
@@ -88,6 +89,8 @@ export interface ChangeContext {
   sections: Record<string, string>;
   decisions: (Row & { decision?: string; why?: string; supersededBy?: string })[];
   sources: { key: string; record?: Row; via: 'binds' | 'links' }[];
+  /** The change's branch: one a session was seen on (observed), else the recommended name derived from the key. */
+  branch?: { name: string; worktree: string; observed: boolean };
   sessions: (Row & { last?: string })[];
   /** The parent change, resolved, and the changes whose parent this is. */
   parent?: Row;
@@ -194,7 +197,12 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   };
   const dependsOn = list(rec.data.depends_on).map((k) => liveKey(k)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => !!r).map(row);
   const neededBy = loaded.records.filter((r) => r.type === 'change' && r.valid && list(r.data.depends_on).some((k) => liveKey(k) === rec.key)).map(row);
-  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed };
+  // the branch: one linked from the change or seen by a session (the latest), else the recommended name
+  const seenOn = observed.filter((o) => o.to.startsWith('branch:')).sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '')).pop()?.to ?? sources.find((s) => s.key.startsWith('branch:'))?.key;
+  const branch = seenOn
+    ? { name: seenOn.slice('branch:'.length), worktree: worktreeNameFor(rec.key), observed: true }
+    : { name: branchNameFor(rec.key, readUserConfig().branch_prefix), worktree: worktreeNameFor(rec.key), observed: false };
+  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed };
 }
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
@@ -213,7 +221,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
   out.push(`# ${c.change.key} — ${c.change.title ?? ''}`);
-  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}`);
+  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`);
   if (c.summary) out.push(`\n## Summary\n\n${c.summary}`);
   if (c.plan) out.push(`\n## Plan\n\n${c.plan}`);
   for (const [k, v] of Object.entries(c.sections)) if (v) out.push(`\n## ${k}\n\n${v}`);

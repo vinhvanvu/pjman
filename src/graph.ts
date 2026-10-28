@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } from './keys.js';
-import { keyFromUrl, mentions, scopeOf, shortForms, trackerOf } from './refs.js';
+import { keyFromUrl, mentions, scopeOf, shortForms, slugFor, trackerOf } from './refs.js';
 export { keyFromUrl, repoOf } from './refs.js';
 import { resolve, type Loaded, type Rec } from './records.js';
 import { parseEffect } from './tree.js';
@@ -344,6 +344,11 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
       change = n.changes[0]?.change.key;
     }
     const kind = key.slice(0, key.indexOf(':'));
+    if (!change && kind === 'branch') {
+      // no record links the branch yet: the name itself says which change it was cut for
+      const r = resolveRef(loaded, `change:${slugFor('branch', key.slice('branch:'.length))}`, opts);
+      if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) change = r.key;
+    }
     out.push({ text: m.text, at: m.at, shape: m.shape, resolution, key, change, creatable: !change && resolution.status === 'key' && kind === tracker });
   }
   return out;

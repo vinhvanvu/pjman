@@ -5,6 +5,7 @@ import { findStore, globalStore, globalStorePath, readUserConfig, requireStore }
 import { BRIEF } from './commands/brief.js';
 import { start, stop } from './commands/start.js';
 import { withStoreLock } from './lock.js';
+import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
 import { loadStore, resolve } from './records.js';
 import { CliError, plural } from './util.js';
@@ -271,6 +272,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (v.json) json(r);
       else {
         out(`created ${r.key} at ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
+        if (r.type === 'change') out(`branch: ${branchNameFor(r.key, readUserConfig().branch_prefix)} (recommended; worktree ${worktreeNameFor(r.key)})`);
         for (const n of r.notes) out(`note: ${n}`);
       }
       return 0;

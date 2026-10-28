@@ -62,6 +62,8 @@ export interface UserConfig {
   actor?: string;
   /** A session in an unregistered git repository registers it (default true). */
   auto_register?: boolean;
+  /** The person's branch prefix (`vinh`): the recommended branch for a change is `<prefix>/<slug>`. */
+  branch_prefix?: string;
   stores: UserStore[];
 }
 
@@ -89,7 +91,7 @@ export function readUserConfig(): UserConfig {
     );
     return { name: String(st.name ?? ''), path: String(st.path ?? ''), projects };
   });
-  return { actor: typeof raw?.actor === 'string' ? raw.actor : undefined, stores , auto_register: raw?.auto_register };
+  return { actor: typeof raw?.actor === 'string' ? raw.actor : undefined, stores, auto_register: raw?.auto_register, branch_prefix: typeof raw?.branch_prefix === 'string' ? raw.branch_prefix : undefined };
 }
 
 export function writeUserConfig(cfg: UserConfig): void {

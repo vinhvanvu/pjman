@@ -43,6 +43,15 @@ the context prints them; write the full key only for something in another produc
    `url:https://…`); a record for a source is optional.
 6. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or
    decisions. Those belong to this adapter.
+7. **One worktree per change; the harness makes it, you name it, you clean it up.** Before the first edit on a change,
+   enter a worktree named for it: the name is the change slug (`pjman context change:<slug>` shows it on the `branch:`
+   line; `pjman new change` prints it), the harness creates the worktree and its branch (`claude --worktree <slug>`, or
+   the enter-worktree tool in a running session). A session on a branch so named is bound to the change at start, with
+   no prompt. Two sessions on one change share its worktree. When you stop, leave the worktree clean or committed so the
+   harness can remove it on exit. Once the branch is merged into main, remove the worktree and its branch before the
+   change is set done (`git worktree remove <path> && git branch -d <branch>`); the session-start context names any
+   worktree whose change is done and whose branch is merged, so a leftover is seen the next time someone sits down.
+   pjman creates and removes no worktree itself.
 
 ## Tickets
 

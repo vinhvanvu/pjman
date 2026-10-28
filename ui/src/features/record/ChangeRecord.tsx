@@ -3,6 +3,8 @@
 import type { ChangeContext, Lens } from '@/data/contract';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
+import { GitBranch } from 'lucide-react';
+import { CopyRef } from '@/components/cards/DecisionRows';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
@@ -62,6 +64,21 @@ export function ChangeRecord({
           )}
         </div>
         <h1 className="text-heading font-semibold tracking-tight">{c.title}</h1>
+        {ctx.branch && (
+          <div
+            className="flex flex-wrap items-center gap-1.5 text-meta text-ink-muted"
+            title={
+              ctx.branch.observed
+                ? 'the branch a session was seen on'
+                : 'the recommended branch, derived from the key; the worktree takes its last segment'
+            }
+          >
+            <GitBranch className="size-3 shrink-0 text-ink-faint" aria-hidden="true" />
+            <KeyText>{ctx.branch.name}</KeyText>
+            {!ctx.branch.observed && <span className="text-ink-faint">recommended</span>}
+            <CopyRef text={ctx.branch.name} className="text-ink-faint" />
+          </div>
+        )}
         {features.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5">
             {features.map((f) => {

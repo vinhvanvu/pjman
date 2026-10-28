@@ -112,6 +112,40 @@ function observeWork(st, sid, cwd, env) {
 let _sourceKinds = null;
 const store_sourceKinds = () => _sourceKinds ?? [];
 
+/** The change the current branch was cut for (its last segment is the change slug, less the harness's worktree- prefix), or null. */
+function changeOfBranch(cwd) {
+  const branch = sh('git', ['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
+  if (!branch || ['HEAD', 'main', 'master'].includes(branch)) return null;
+  const refs = tryPjman(['refs', `branch:${branch}`, '--json'], { cwd, json: true }) ?? [];
+  return refs.find((r) => r.change)?.change ?? null;
+}
+
+/** Worktrees of this repository whose change is done and whose branch is already on the default branch: safe to remove. */
+function staleWorktrees(cwd) {
+  const list = sh('git', ['worktree', 'list', '--porcelain'], cwd);
+  if (!list) return [];
+  const main = sh('git', ['rev-parse', '--verify', '--quiet', 'main'], cwd) ? 'main' : sh('git', ['rev-parse', '--verify', '--quiet', 'master'], cwd) ? 'master' : null;
+  if (!main) return [];
+  const out = [];
+  let dir = null;
+  for (const line of list.split('\n')) {
+    if (line.startsWith('worktree ')) dir = line.slice('worktree '.length);
+    else if (line.startsWith('branch refs/heads/') && dir) {
+      const branch = line.slice('branch refs/heads/'.length);
+      if (branch === main) continue;
+      const refs = tryPjman(['refs', `branch:${branch}`, '--json'], { cwd, json: true }) ?? [];
+      const change = refs.find((r) => r.change)?.change;
+      if (!change) continue;
+      const rec = tryPjman(['show', change, '--json'], { cwd, json: true });
+      const status = rec?.data?.status ?? rec?.status;
+      if (status !== 'done') continue;
+      if (sh('git', ['merge-base', '--is-ancestor', branch, main], cwd) === null) continue;
+      out.push({ dir, branch, change });
+    }
+  }
+  return out;
+}
+
 // --- the view beside the session --------------------------------------------------------------
 function viewFile(sid) {
   return path.join(dataDir, 'view', `${sid}.md`);
@@ -315,6 +349,22 @@ function main() {
       if ((source === 'resume' || source === 'compact') && st.bound) {
         const ctx = tryPjman(['context', st.bound], { cwd });
         if (ctx) text += `\n---\nBound change:\n\n${ctx}`;
+      }
+      if (!st.bound && !input.agent_id) {
+        // the ground the session stands on: a branch named for a change binds it before any prompt does
+        const key = changeOfBranch(cwd);
+        if (key && tryPjman(['session', 'bind', sid, key], { cwd, env }) !== null) {
+          st.bound = key;
+          const ctx = tryPjman(['context', key], { cwd });
+          if (ctx) {
+            st.hydrated.push(key);
+            text += `\n---\nBound from the branch:\n\n${ctx}`;
+          }
+        }
+      }
+      if (!input.agent_id) {
+        const stale = staleWorktrees(cwd);
+        if (stale.length) text += `\n---\nWorktrees whose change is done and whose branch is merged (remove them so checkouts do not pile up):\n${stale.map((w) => `- ${w.dir} (${w.change}, ${w.branch}): git worktree remove ${w.dir} && git branch -d ${w.branch}`).join('\n')}\n`;
       }
       emitContext(EVENT, text);
       if (!input.agent_id) {

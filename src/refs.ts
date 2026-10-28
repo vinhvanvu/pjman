@@ -1,5 +1,6 @@
 // One reference grammar per source kind: how a reference to it is written, linked and keyed. This table is the only
 // place a shape lives; the getter, the text scanner and the syncs read it, and adapters hold no pattern of their own.
+import { slugOfBranch } from './branch.js';
 import { SLUG_RE } from './keys.js';
 import type { Loaded } from './records.js';
 
@@ -62,6 +63,14 @@ export const GRAMMARS: Grammar[] = [
       const seg = githubRepo(u);
       return seg && seg[2] === 'pull' && /^\d+$/.test(seg[3] ?? '') ? `${seg[0]}/${seg[1]}#${seg[3]}` : undefined;
     },
+  },
+  {
+    // a branch, written as its key: `branch:<name>`. Its last segment, less the harness's `worktree-` prefix, is the
+    // change slug it was named for (branch.ts), so a session on that branch binds the change
+    kind: 'branch',
+    id: /\bbranch:[^\s'"`<>()]+/g,
+    rest: (m) => m[0].slice('branch:'.length),
+    slug: (rest) => slugOfBranch(rest),
   },
   {
     kind: 'git-repo',

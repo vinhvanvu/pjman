@@ -3,3 +3,4 @@ node_modules/
 !/dist/ui/
 .pjman/index.db
 ui/node_modules/
+.claude/worktrees/
