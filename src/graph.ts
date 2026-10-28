@@ -5,6 +5,7 @@ import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } fro
 import { keyFromUrl, mentions, scopeOf, shortForms, slugFor, trackerOf } from './refs.js';
 export { keyFromUrl, repoOf } from './refs.js';
 import { resolve, type Loaded, type Rec } from './records.js';
+import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { changeContext, row, type ChangeContext, type Row } from './commands/view.js';
 
@@ -70,7 +71,7 @@ export function allEdges(loaded: Loaded): Edge[] {
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'decision':
-        if (typeof d.supersedes === 'string') edge('supersedes', r.key, live(d.supersedes, s), r);
+        for (const k of supersedesOf(d)) edge('supersedes', r.key, live(k, s), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         if (r.changeKey) edge('in', r.key, r.changeKey, r);
         else if (r.productSlug) edge('in', r.key, `product:${r.productSlug}`, r);

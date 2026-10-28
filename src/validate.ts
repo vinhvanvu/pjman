@@ -2,6 +2,7 @@ import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, MAP_A
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
+import { supersedesOf } from './supersede.js';
 import { isDateString, isTimestamp, localDate } from './util.js';
 
 const REQUIRED: Record<RecordType, string[]> = {
@@ -20,7 +21,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'writer', 'session', 'created'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'next', 'writer', 'session', 'created'],
-  decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
+  decision: ['title', 'status', 'decided_by', 'decided_on', 'writer', 'session', 'created'], // supersedes: a key or a list, checked below
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'writer', 'created'],
   actor: ['kind', 'name', 'url', 'writer', 'session', 'created'],
@@ -304,24 +305,30 @@ export function validate(loaded: Loaded): Problem[] {
         }
         if (typeof d.decided_by === 'string') checkRef(r, 'decided_by', d.decided_by, ['actor']);
         if (d.decided_on !== undefined && !isDateString(d.decided_on)) err(r, `'decided_on' must be a date (yyyy-mm-dd)`);
-        if (typeof d.supersedes === 'string') {
-          checkRef(r, 'supersedes', d.supersedes, ['decision']);
-          const x = res(r, d.supersedes);
+        if (d.supersedes !== undefined && typeof d.supersedes !== 'string' && !Array.isArray(d.supersedes)) err(r, `'supersedes' must be a decision key or a list of them`);
+        for (const sup of supersedesOf(d)) {
+          checkRef(r, 'supersedes', sup, ['decision']);
+          const x = res(r, sup);
           if ((x.status === 'ok' || x.status === 'alias') && x.rec.data.status !== 'superseded') {
-            err(r, `supersedes '${d.supersedes}', whose status is '${String(x.rec.data.status)}'; it must be 'superseded'`);
+            err(r, `supersedes '${sup}', whose status is '${String(x.rec.data.status)}'; it must be 'superseded'`);
           }
           if (x.status === 'ok' || x.status === 'alias') {
-            // cycle check
+            // cycle check: no path of supersedes leads back here
             const seen = new Set<string>([r.key]);
-            let cur: Rec | undefined = x.rec;
-            while (cur) {
+            const stack: Rec[] = [x.rec];
+            let cycle = false;
+            while (stack.length && !cycle) {
+              const cur = stack.pop()!;
               if (seen.has(cur.key)) {
                 err(r, `supersedes forms a cycle through '${cur.key}'`);
+                cycle = true;
                 break;
               }
               seen.add(cur.key);
-              const next: Resolution | null = typeof cur.data.supersedes === 'string' ? resolve(loaded, cur.data.supersedes, scopeOf(cur)) : null;
-              cur = next && (next.status === 'ok' || next.status === 'alias') ? next.rec : undefined;
+              for (const k of supersedesOf(cur.data)) {
+                const next: Resolution = resolve(loaded, k, scopeOf(cur));
+                if (next.status === 'ok' || next.status === 'alias') stack.push(next.rec);
+              }
             }
           }
         }
@@ -443,12 +450,14 @@ export function validate(loaded: Loaded): Problem[] {
   }
   const supersededBy = new Map<string, Rec[]>();
   for (const r of loaded.records) {
-    if (r.type !== 'decision' || !r.valid || typeof r.data.supersedes !== 'string') continue;
-    const x = res(r, r.data.supersedes);
-    if (x.status === 'ok' || x.status === 'alias' || x.status === 'invalid') {
-      const list = supersededBy.get(x.rec.key) ?? [];
-      list.push(r);
-      supersededBy.set(x.rec.key, list);
+    if (r.type !== 'decision' || !r.valid) continue;
+    for (const sup of supersedesOf(r.data)) {
+      const x = res(r, sup);
+      if (x.status === 'ok' || x.status === 'alias' || x.status === 'invalid') {
+        const list = supersededBy.get(x.rec.key) ?? [];
+        list.push(r);
+        supersededBy.set(x.rec.key, list);
+      }
     }
   }
   for (const r of loaded.records) {

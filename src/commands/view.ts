@@ -3,6 +3,7 @@ import type { Store } from '../config.js';
 import { readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
 import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
+import { supersedesOf } from '../supersede.js';
 import { CliError } from '../util.js';
 
 export interface Row {
@@ -145,9 +146,11 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
 
   const supersededBy = new Map<string, string>();
   for (const r of loaded.records) {
-    if (r.type !== 'decision' || typeof r.data.supersedes !== 'string') continue;
-    const t = resolve(loaded, r.data.supersedes);
-    if (t.status === 'ok' || t.status === 'alias') supersededBy.set(t.rec.key, r.key);
+    if (r.type !== 'decision') continue;
+    for (const sup of supersedesOf(r.data)) {
+      const t = resolve(loaded, sup, r.productSlug ? `product:${r.productSlug}` : undefined);
+      if (t.status === 'ok' || t.status === 'alias') supersededBy.set(t.rec.key, r.key);
+    }
   }
   const decisions = loaded.records
     .filter((r) => r.type === 'decision' && r.changeKey === rec.key)
@@ -213,7 +216,8 @@ export function decisionLine(dec: Row & { supersededBy?: string }): string {
   else if (dec.status === 'superseded') parts.push(`superseded${dec.supersededBy ? ` by ${dec.supersededBy}` : ''}${by ? ` (${by})` : ''}`);
   else if (dec.status === 'reverted') parts.push(`reverted${by ? ` (${by})` : ''}`);
   else parts.push(dec.status ?? '?');
-  if (dec.data.supersedes) parts.push(`supersedes ${String(dec.data.supersedes)}`);
+  const sup = supersedesOf(dec.data);
+  if (sup.length) parts.push(`supersedes ${sup.join(', ')}`);
   return parts.join('; ');
 }
 

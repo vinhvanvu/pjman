@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { replaceSection } from '../frontmatter.js';
 import { loadStore, resolve, unresolved, type RecordType } from '../records.js';
+import { markSuperseded, resolveSupersedes, supersedesOf, unmark, type Marked } from '../supersede.js';
 import { CliError } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo } from '../write.js';
 
@@ -11,7 +12,7 @@ const SETTABLE: Record<RecordType, string[]> = {
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'summary'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'summary', 'plan'],
-  decision: ['title', 'status', 'decided_by', 'decided_on', 'links', 'decision', 'why'],
+  decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'decision', 'why'],
   source: ['title', 'url', 'links'],
   actor: ['name', 'url', 'links'],
   session: [],
@@ -24,6 +25,8 @@ export interface SetResult {
   path: string;
   changed: string[];
   commit: string | null;
+  /** What else the write did, one line each: a decision marked superseded. */
+  notes: string[];
 }
 
 /** `field=value` pairs; a list field takes comma-separated keys; an empty value removes the field. */
@@ -40,6 +43,8 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
   const data: Record<string, unknown> = { ...rec.data };
   let body = rec.body;
   const changed: string[] = [];
+  const env = envelope(opts);
+  let marked: Marked | undefined;
   for (const pair of pairs) {
     const i = pair.indexOf('=');
     if (i <= 0) throw new CliError(`'${pair}' is not field=value`);
@@ -70,6 +75,22 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
       const product = project && typeof project.data.product === 'string' ? project.data.product : undefined;
       if (product && product !== `product:${rec.productSlug}`) throw new CliError(`${project!.key} belongs to ${product}; this change is keyed under product:${rec.productSlug}. Move it: pjman mv ${rec.key} change:${product.slice('product:'.length)}/${rec.changeSlug}`);
     }
+    if (field === 'supersedes') {
+      // a decision made later names the one it replaces: the list only grows, and each target is marked superseded
+      // in this same commit, as creating with --supersedes does
+      const keys = value.split(',').map((s) => s.trim()).filter(Boolean);
+      if (keys.length === 0) throw new CliError(`supersedes is never emptied: a superseded decision stays pointed at`);
+      const scope = rec.productSlug ? `product:${rec.productSlug}` : null;
+      const targets = resolveSupersedes(loaded, keys, scope, rec);
+      const have = supersedesOf(data);
+      const fresh = targets.filter((t) => !have.includes(t.key));
+      if (fresh.length) {
+        data.supersedes = [...have, ...fresh.map((t) => t.key)];
+        marked = markSuperseded(fresh, env.writer as string | undefined);
+        changed.push(field);
+      }
+      continue;
+    }
     if (SECTIONS[field] && rec.type === 'decision' && rec.data.status !== 'proposed') throw new CliError(`a ${String(rec.data.status)} decision's text is fixed; open a new decision that supersedes it`);
     if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
@@ -81,12 +102,12 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
   const before = fs.readFileSync(rec.abs, 'utf8');
   fs.writeFileSync(rec.abs, text);
   try {
-    validateOrUndo(store, [rec.path], []);
+    validateOrUndo(store, [rec.path, ...(marked?.touched ?? [])], [], marked?.prior);
   } catch (e) {
     fs.writeFileSync(rec.abs, before);
+    if (marked) unmark(store, marked);
     throw e;
   }
-  const env = envelope(opts);
-  const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, writer: env.writer }]);
-  return { key: rec.key, path: rec.path, changed, commit };
+  const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, writer: env.writer }, ...(marked?.also ?? [])]);
+  return { key: rec.key, path: rec.path, changed, commit, notes: marked?.notes ?? [] };
 }

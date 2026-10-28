@@ -59,7 +59,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...   (a person\'s accounts)',
       'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
     ] },
-  { name: 'set', about: 'change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section)',
+  { name: 'set', about: "change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section; a decision's supersedes only adds, and marks each named decision superseded in the same commit)",
     usage: ['pjman set <key> <field>=<value>...'] },
   { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
     usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
@@ -430,7 +430,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1] || !pos[2]) throw new CliError('usage: pjman set <key> <field>=<value>...');
       const r = set(store, pos[1], pos.slice(2), { session: v.session });
-      v.json ? json(r) : out(`set ${r.changed.join(', ')} on ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}`);
+      v.json ? json(r) : out(`set ${r.changed.join(', ')} on ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}`);
       return 0;
     }
     case 'order': {

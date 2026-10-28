@@ -75,7 +75,7 @@ pjman refs <text|->                    every reference in a text, in order, with
 pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
 pjman show <key>
 pjman order <change> --before <change> | --after <change> | --first | --last | --later   move a change in its product's sequence, the roadmap's order; the rest is never touched
-pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; name and sequence on a product; map on a project; on a proposed decision also decision, why; ext.<owner>.<field> on any record); a list is comma-separated
+pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; name and sequence on a product; map on a project; on a proposed decision also decision, why; on any decision supersedes, which only adds and marks each named decision superseded in the same commit; ext.<owner>.<field> on any record); a list is comma-separated
 pjman mv <key> <new key>               rename a change or a feature (alias kept), a product, a project or a decision; every reference rewritten
 pjman apply [<file>|-] [--for <key>]   many writes as one commit: the commands one per line (new, set, mv, rm, order, session), one commit and one 'applied' event at the end; a line that fails refuses the whole batch
 pjman undo [<commit>]                  revert the last batch (or the commit named) as one commit; refused while a later write touched a record of it
@@ -116,7 +116,7 @@ The app lives in `ui/` (React, Vite) and builds into `dist/ui`, which ships with
 
 - **References are keys** (`person:vinh`, `project:pjman`, `change:schema`, `decision:schema/keys`, `linear:ABC-1`, `file:THESIS.md`). Projects, changes, decisions and sessions must exist; sources and actors need no record.
 - **The YAML rule:** any scalar containing `: ` or `#`, or starting with a special character, is quoted. `validate` reports; `fmt` quotes.
-- **A decision is decided by a person.** `--status decided` needs `--decided-by` unless the writer is a `person:`; `supersedes` marks its target `superseded`.
+- **A decision is decided by a person.** `--status decided` needs `--decided-by` unless the writer is a `person:`; `supersedes` marks its targets `superseded`, at creation or later through `pjman set decision:<k> supersedes=<key>,…` (a decision made later retires the proposals it overtook; the list only grows, a target another decision already supersedes is refused).
 - **A source binds at most one change.** A second bind is refused on write and reported as a conflict on hand edit.
 - **Nothing is dropped.** An invalid record is reported with its path and reason; a reference to it is "resolved, invalid", not "missing".
 - **Extensions** go under `ext.<owner>.<field>` and are never validated.

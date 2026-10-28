@@ -218,7 +218,7 @@ Opened `proposed` before the work it governs; `decided` when an actor sets it. A
 | `status` | A | `proposed` · `decided` · `superseded` · `reverted` |
 | `decided_by` | A | Actor key; required when `decided`. The tool defaults it to the writer only when the writer is a person; an agent is never the decider by default |
 | `decided_on` | A | Date; required when `decided` |
-| `supersedes` | A | Optional decision key |
+| `supersedes` | A | Optional decision key, or a list of them: the decisions this one replaces. Given at creation (`--supersedes`) or later (`pjman set … supersedes=<key>,…`, which only adds); each target is marked `superseded` in the same commit |
 | `links` | A | Optional source keys |
 
 Body: `## Decision`, `## Why`; anything else free.
@@ -252,7 +252,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `owners` | product, feature, project, change → actor | the node | inherited downward when a node names none |
 | `adds`, `changes`, `removes` | change → feature | change | what the change does to the feature; derived state replays the done ones |
 | `links` | change · decision · source → source | the referrer | — |
-| `supersedes` | decision → decision | decision | the target becomes `superseded`; no cycles |
+| `supersedes` | decision → decision (one or many) | decision | the target becomes `superseded`; a target already superseded by another decision is refused; no cycles |
 | `parent` | session → session | session | — |
 | `changes` | session → change | session | — |
 | observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule |

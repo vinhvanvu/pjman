@@ -26,8 +26,8 @@ export interface RmResult {
   commit: string | null;
 }
 
-const LISTS = ['binds', 'links', 'changes', 'owners', 'features', 'depends_on', 'sequence'];
-const SINGLE = ['parent', 'supersedes'];
+const LISTS = ['binds', 'links', 'changes', 'owners', 'features', 'depends_on', 'sequence', 'supersedes'];
+const SINGLE = ['parent', 'supersedes']; // supersedes is one key or a list; each branch handles its shape
 
 /** Drop `key` from the fields that may lose a reference. Returns the fields changed. */
 function detach(data: Record<string, unknown>, keys: Set<string>): string[] {

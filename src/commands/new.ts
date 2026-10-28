@@ -4,6 +4,7 @@ import type { Store } from '../config.js';
 import { changeKey, decisionKey, featureKey, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE, sourceFileSlug } from '../keys.js';
 import { loadStore, recordOf, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { rootProductOf } from '../tree.js';
+import { markSuperseded, resolveSupersedes } from '../supersede.js';
 import type { EventInput } from '../events.js';
 import { CliError, isDateString, localDate, today } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo, writeFile } from '../write.js';
@@ -281,17 +282,12 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
   const also: EventInput[] = [];
   const prior = new Map<string, string>();
   if (flags.supersedes) {
-    const res = resolve(loaded, flags.supersedes, product);
-    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`supersedes: ${unresolved(res, flags.supersedes)}`);
-    if (res.rec.data.status !== 'superseded') {
-      const text = fs.readFileSync(res.rec.abs, 'utf8');
-      prior.set(res.rec.path, text);
-      const updated = render('decision', { ...res.rec.data, status: 'superseded' }, res.rec.body);
-      if (updated !== text) fs.writeFileSync(res.rec.abs, updated);
-      touched.push(res.rec.path);
-      also.push({ op: 'set', key: res.rec.key, type: 'decision', path: res.rec.path, fields: ['status'], writer: env.writer as string | undefined });
-      notes.push(`${res.rec.key} is now superseded`);
-    }
+    const targets = resolveSupersedes(loaded, [flags.supersedes], product);
+    const m = markSuperseded(targets, env.writer as string | undefined);
+    touched.push(...m.touched);
+    also.push(...m.also);
+    notes.push(...m.notes);
+    for (const [k, v] of m.prior) prior.set(k, v);
   }
   let body = section('Decision', flags.decision) + '\n' + section('Why', flags.why);
   if (flags.body) body += '\n' + flags.body.trim() + '\n';
