@@ -39,7 +39,7 @@ before(async () => {
   fs.mkdirSync(ui);
   fs.writeFileSync(path.join(ui, 'index.html'), '<!doctype html><title>pjman</title>');
   fs.writeFileSync(path.join(ui, 'app.js'), 'console.log(1)');
-  const started = await startServer(store, { staticDir: ui });
+  const started = await startServer(store, { staticDir: ui, register: true });
   server = started.server;
   base = started.address.url;
 });
@@ -51,6 +51,26 @@ test('the address file names the running server', () => {
   assert.ok(a);
   assert.equal(a.url, base);
   assert.equal(a.pid, process.pid);
+});
+
+test('PORT names the port when none is passed; a checkout does not register unless told to', async () => {
+  const before = readServeAddress();
+  process.env.PORT = '0';
+  const free = await startServer(store, { staticDir: null });
+  delete process.env.PORT;
+  assert.equal(free.registered, false, 'the tests run from the checkout');
+  assert.notEqual(free.address.port, before!.port);
+  assert.equal(readServeAddress()?.pid, before!.pid, 'the address file still names the first server');
+  free.server.close();
+  const srv = http.createServer();
+  await new Promise<void>((res) => srv.listen(0, '127.0.0.1', res));
+  const want = (srv.address() as { port: number }).port;
+  srv.close();
+  process.env.PORT = String(want);
+  const pinned = await startServer(store, { staticDir: null, register: false });
+  delete process.env.PORT;
+  assert.equal(pinned.address.port, want);
+  pinned.server.close();
 });
 
 test('records by key, the listing, the store', async () => {

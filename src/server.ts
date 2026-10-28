@@ -18,10 +18,20 @@ import { intake } from './intake.js';
 import { CliError } from './util.js';
 
 export interface ServeOpts {
+  /** The port to listen on; else PORT from the environment (how a local proxy such as portless hands one down); else a free one. */
   port?: number;
   host?: string;
   /** The folder of built UI assets; the default is the app shipped with the tool. */
   staticDir?: string | null;
+  /** Write the machine's address file (what the hook docks and `pjman start` reuses). Default: only when this is the
+   *  installed tool, not a checkout, so a server started from a worktree prints its URL and claims nothing. */
+  register?: boolean;
+}
+
+/** True when the tool runs from an installed package rather than a checkout: there is no .git beside it. */
+export function installedTool(): boolean {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  return !fs.existsSync(path.join(root, '.git'));
 }
 
 export interface ServeAddress {
@@ -268,16 +278,18 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   });
 }
 
-/** Listen, write the address file, remove it on exit. Resolves with the address. */
-export function startServer(store: Store, opts: ServeOpts = {}): Promise<{ server: http.Server; address: ServeAddress }> {
+/** Listen; when registering, write the address file and remove it on exit. Resolves with the address and whether it registered. */
+export function startServer(store: Store, opts: ServeOpts = {}): Promise<{ server: http.Server; address: ServeAddress; registered: boolean }> {
   const server = createServer(store, opts);
   const host = opts.host ?? '127.0.0.1';
+  const register = opts.register ?? installedTool();
   return new Promise((res, rej) => {
     server.once('error', rej);
-    server.listen(opts.port ?? 0, host, () => {
+    server.listen(opts.port ?? (Number(process.env.PORT) || 0), host, () => {
       const a = server.address();
       const port = typeof a === 'object' && a ? a.port : 0;
       const address: ServeAddress = { url: `http://${host === '0.0.0.0' ? os.hostname() : host}:${port}`, host, port, pid: process.pid, store: store.root, started: new Date().toISOString() };
+      if (!register) return res({ server, address, registered: false });
       fs.mkdirSync(userDir(), { recursive: true });
       fs.writeFileSync(serveAddressPath(), JSON.stringify(address, null, 2) + '\n');
       const cleanup = () => {
@@ -290,7 +302,7 @@ export function startServer(store: Store, opts: ServeOpts = {}): Promise<{ serve
       };
       process.on('exit', cleanup);
       for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => { cleanup(); process.exit(0); });
-      res({ server, address });
+      res({ server, address, registered: true });
     });
   });
 }

@@ -13,7 +13,7 @@ import { formatProblems, summarise, validate } from './validate.js';
 import { findReferences, formatNeighbourhood, formatReferences, get } from './graph.js';
 import { renderView, watchStore } from './commands/pane.js';
 import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
-import { readServeAddress, startServer } from './server.js';
+import { installedTool, readServeAddress, startServer } from './server.js';
 import { syncLinear } from './sync/linear.js';
 import { syncGithub } from './sync/github.js';
 import { init } from './commands/init.js';
@@ -99,7 +99,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'follow', about: 'print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to',
     usage: ['pjman follow [--since <seq>] [--json]'] },
   { name: 'serve', about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs",
-    usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>]'] },
+    usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>] [--register|--no-register]   (PORT from the environment when --port is absent; a checkout registers only with --register)'] },
   { name: 'sync', about: "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered",
     usage: ['pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]', 'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]', 'pjman sync github            (no --from: prints the gh command that reads the issues)'] },
   { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
@@ -174,6 +174,8 @@ function parse(args: string[]) {
     out: { type: 'string' },
     since: { type: 'string' },
     port: { type: 'string' },
+    register: { type: 'boolean' },
+    'no-register': { type: 'boolean' },
     host: { type: 'string' },
     static: { type: 'string' },
     team: { type: 'string' },
@@ -521,10 +523,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'serve': {
       const store = findStore(cwd, v.store) ?? globalStore();
       if (!store) throw new CliError('no store: run `pjman init` in a repository first');
+      const register = v.register ? true : v['no-register'] ? false : installedTool();
       const running = readServeAddress();
-      if (running && !v.port) throw new CliError(`a server is already running at ${running.url} (pid ${running.pid}); pass --port to start another`);
-      startServer(store, { port: v.port ? Number(v.port) : undefined, host: v.host, staticDir: v.static })
-        .then(({ address }) => out(`pjman serve: ${address.url} (store ${store.root}; api ${address.url}/api/v1; ctrl-c to stop)`))
+      if (register && running && !v.port) throw new CliError(`a server is already running at ${running.url} (pid ${running.pid}); pass --port to start another`);
+      startServer(store, { port: v.port ? Number(v.port) : undefined, host: v.host, staticDir: v.static, register })
+        .then(({ address, registered }) => out(`pjman serve: ${address.url} (store ${store.root}; api ${address.url}/api/v1; ctrl-c to stop)${registered ? '' : `\n  not registered: this is a checkout, so the machine's dashboard (${running?.url ?? 'none running'}) is left as it is; --register claims it`}`))
         .catch((e: Error) => {
           process.stderr.write(`pjman: ${e.message}\n`);
           process.exit(1);

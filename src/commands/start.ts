@@ -3,7 +3,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultStaticDir, readServeAddress, serveAddressPath, type ServeAddress } from '../server.js';
+import { defaultStaticDir, installedTool, readServeAddress, serveAddressPath, type ServeAddress } from '../server.js';
 import { CliError } from '../util.js';
 
 /** The tool's own checkout or install root (dist/commands → root). */
@@ -46,8 +46,9 @@ export function start(opts: StartOpts): { address: ServeAddress; started: boolea
   if (running) return { address: running, started: false, ui: defaultStaticDir() !== null };
   const ui = opts.ui === false ? defaultStaticDir() !== null : ensureUi(log);
   const bin = path.join(packageRoot(), 'bin', 'pjman.js');
-  const args = [bin, 'serve'];
+  const args = [bin, 'serve', '--register']; // start is the person's act: the server it starts is the machine's dashboard
   if (opts.port) args.push('--port', String(opts.port));
+  if (!installedTool()) log('from a checkout: this build is the dashboard until pjman stop');
   const child = spawn(process.execPath, args, { cwd: opts.cwd, detached: true, stdio: 'ignore', env: process.env });
   child.unref();
   for (let waited = 0; waited < 8000; waited += 100) {

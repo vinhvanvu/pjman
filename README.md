@@ -87,7 +87,7 @@ pjman follow [--since <seq>] [--json]   print events as they are appended, until
 pjman sync linear|github --from <file|-> [--project <key>]   apply tickets observed through the harness's tracker tools: sources and the changes that bind them
 pjman start [--port <n>] [--open]      the dashboard, detached (installs and builds the app if the checkout has none); pjman stop stops it
 pjman brief                             the brief an agent needs every session (the adapter injects it)
-pjman serve [--port <n>] [--host <addr>] [--static <dir>]   the store over HTTP: the API under /api/v1 and the dashboard; the address is written to ~/.pjman/serve.json while it runs
+pjman serve [--port <n>] [--host <addr>] [--static <dir>] [--register|--no-register]   the store over HTTP: the API under /api/v1 and the dashboard. The port: --port, else PORT from the environment (how a proxy such as portless hands one down), else a free one. The installed tool writes its address to ~/.pjman/serve.json while it runs (what the hook docks and pjman start reuses); a server started from a checkout or a worktree prints its URL and claims nothing unless told --register
 pjman index [--json]                   rebuild index.db: ids, reverse edges, conflicts
 pjman query "<sql>"                    read the index
 pjman where
