@@ -112,6 +112,16 @@ test('sessions append: bind, log, observe', () => {
   assert.match(git(store.root, 'log', '-1', '--format=%B'), /Pjman-Session: session:sess-1/);
 });
 
+test('a session started just before local midnight is named by that day and validates', () => {
+  // 23:30 local on 2026-10-25, as the UTC instant the hook records; its UTC day may already be the 26th
+  const local = new Date(2026, 9, 25, 23, 30);
+  const r = newRecord(store, 'session', 'late-night', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', started: local.toISOString() });
+  assert.equal(r.path, 'sessions/2026-10-25-late-night.md');
+  const warnings = validate(loadStore(store)).filter((p) => p.path === r.path);
+  assert.deepEqual(warnings, []);
+  rm(store, 'session:late-night', {});
+});
+
 test('validate reports hand-written faults by path and reason, never drops', () => {
   fs.mkdirSync(path.join(store.root, 'changes/hand'), { recursive: true });
   fs.writeFileSync(path.join(store.root, 'changes/hand/change.md'), '---\ntitle: Hand: written\nstatus: open\n---\nno summary\n');

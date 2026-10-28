@@ -2,7 +2,7 @@ import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, MAP_A
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
-import { isDateString, isTimestamp } from './util.js';
+import { isDateString, isTimestamp, localDate } from './util.js';
 
 const REQUIRED: Record<RecordType, string[]> = {
   product: ['title'],
@@ -306,8 +306,13 @@ export function validate(loaded: Loaded): Problem[] {
         if (typeof d.agent === 'string') checkRef(r, 'agent', d.agent, ['actor']);
         if (typeof d.on_behalf_of === 'string') checkRef(r, 'on_behalf_of', d.on_behalf_of, ['actor']);
         if (d.started !== undefined && !isTimestamp(d.started)) err(r, `'started' must be a timestamp`);
-        else if (typeof d.started === 'string' && r.fileDate && !d.started.startsWith(r.fileDate)) {
-          warn(r, `file name date '${r.fileDate}' differs from 'started' (${d.started.slice(0, 10)})`);
+        else if (typeof d.started === 'string' && r.fileDate) {
+          // the file is named by the local day the session started (the day the person worked); a file named by the
+          // UTC day, as older writers did, or read in another zone, is accepted too
+          const local = localDate(new Date(d.started));
+          if (r.fileDate !== local && !d.started.startsWith(r.fileDate)) {
+            warn(r, `file name date '${r.fileDate}' differs from 'started' (${local} locally)`);
+          }
         }
         if (typeof d.parent === 'string') {
           checkRef(r, 'parent', d.parent, ['session']);
