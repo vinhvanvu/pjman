@@ -73,7 +73,7 @@ export function TopBar({
           </span>
         )}
       </nav>
-      <div className="flex-1" />
+      {(crumbs.length > 0 || current) && <div className="flex-1" />}
       {trailing}
       {liveSessions > 0 && (
         <Presence className="hidden sm:inline-flex">

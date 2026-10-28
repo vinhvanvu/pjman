@@ -353,6 +353,8 @@ export function newSession(store: Store, ident: string, flags: NewFlags): NewRes
     on_behalf_of: flags.onBehalfOf,
     started,
     parent: flags.parent,
+    // the project the session runs in, so a view of it knows its product before it binds a change
+    project: flags.project ?? store.project,
     writer: env.writer,
     created: date,
   };

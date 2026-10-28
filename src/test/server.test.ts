@@ -7,7 +7,7 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
-import { sessionBind } from '../commands/session.js';
+import { sessionBind, sessionLog } from '../commands/session.js';
 import { findStore, type Store } from '../config.js';
 import { readServeAddress, startServer } from '../server.js';
 
@@ -107,11 +107,25 @@ test('the getter: a neighbourhood by key, and resolve for anything', async () =>
 });
 
 test("a session's view and a project's board", async () => {
+  type SessionView = { showing: { key?: string; board?: string }; session: { key: string; on?: string; product?: string; state: string; log: { at: string; text: string }[] } };
+  sessionLog(store, 'sess-1', 'session started');
   const before = await getJson('/api/v1/sessions/sess-1/view');
-  assert.equal((before.body.data as { showing: { board: string } }).showing.board, 'project:app');
+  const fresh = before.body.data as SessionView;
+  assert.equal(fresh.showing.board, 'project:app');
+  // the session's facts ride along: no change yet, the project's product, live since it just wrote, its log
+  assert.equal(fresh.session.on, undefined);
+  assert.equal(fresh.session.product, 'product:app');
+  assert.equal(fresh.session.state, 'live');
+  assert.deepEqual(fresh.session.log.map((l) => l.text), ['session started']);
+  assert.match(fresh.session.log[0].at, /^\d{4}-\d{2}-\d{2}T/);
   sessionBind(store, 'sess-1', 'change:login');
+  sessionLog(store, 'sess-1', 'session ended (other)');
   const after = await getJson('/api/v1/sessions/sess-1/view');
-  assert.equal((after.body.data as { showing: { key: string } }).showing.key, 'change:app/login');
+  const bound = after.body.data as SessionView;
+  assert.equal(bound.showing.key, 'change:app/login');
+  assert.equal(bound.session.on, 'change:app/login');
+  assert.equal(bound.session.state, 'ended');
+  assert.equal(bound.session.log.length, 2);
   const board = await getJson('/api/v1/projects/app/board');
   assert.deepEqual((board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key), ['change:app/login']);
 });

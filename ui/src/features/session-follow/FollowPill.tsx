@@ -1,43 +1,71 @@
-// The following pill: the board is showing what a session is on. Any manual navigation pauses it; one click resumes.
+// The following pill: the way back to the session this tab follows, on every page. On the session's route with
+// nothing else open it reads following; anywhere else, or with something selected, paused on the change, and one tap
+// returns; once the session ends it says so. The close forgets the session. It names the change, never the uuid.
+import { useMatch, useNavigate, useSearch } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { Pause, Pin, PinOff, Play } from 'lucide-react';
-import { Presence } from '@/components/presence/Presence';
+import { Play, X } from 'lucide-react';
+import { useSessionView } from '@/data/queries';
+import { Pulse } from '@/components/presence/Presence';
+import type { PageSearch } from '@/routes/-search';
 import { useFollow } from '@/state/follow';
+import { away, followName, followState } from './model';
 
-export function FollowPill({ session, on, className }: { session: string; on?: string; className?: string }) {
-  const { pinned, paused, pin, unpin, pause, resume } = useFollow();
-  const isPinned = pinned === session;
+const WORDS = { following: 'following', paused: 'paused on', ended: 'ended' } as const;
+
+export function FollowPill({ className }: { className?: string }) {
+  const home = useFollow((s) => s.home);
+  const forget = useFollow((s) => s.forget);
+  const match = useMatch({ from: '/session/$id', shouldThrow: false });
+  const search = useSearch({ strict: false }) as PageSearch;
+  const navigate = useNavigate();
+  const { data } = useSessionView(home);
+  if (!home) return null;
+  const session = data?.session;
+  const standing = {
+    onSessionRoute: match?.params.id === home,
+    looking: !!search.sel || (!!search.tab && search.tab !== 'overview'),
+  };
+  const state = followState(session, standing);
+  const name = followName(session, home);
+  const back = () => void navigate({ to: '/session/$id', params: { id: home }, search: {} });
   return (
     <div
       className={cn(
-        'inline-flex h-7 items-center gap-2 rounded-full border border-line-strong bg-surface pr-1 pl-2.5 text-xs',
+        'inline-flex h-7 min-w-0 items-center gap-1.5 rounded-full border border-line-strong bg-surface pr-0.5 pl-2.5 text-xs',
         className,
       )}
+      title={`session ${home}`}
     >
-      <Presence>
-        <span className="hidden sm:inline">{paused ? 'paused on' : 'following'}</span>
-        <span className="font-mono text-ink">{session.slice(0, 8)}</span>
-      </Presence>
-      {on && <span className="hidden text-ink-faint md:inline">· {on}</span>}
+      {state === 'following' && session?.state === 'live' ? (
+        <Pulse />
+      ) : (
+        <span
+          aria-hidden="true"
+          className={cn(
+            'inline-block size-2 shrink-0 rounded-full',
+            state === 'ended' ? 'bg-ink-faint' : state === 'paused' ? 'bg-status-review' : 'bg-live',
+          )}
+        />
+      )}
+      <span className="shrink-0 text-ink-muted">{WORDS[state]}</span>
+      <span className="min-w-0 truncate font-medium text-ink">{name}</span>
+      {away(standing) && (
+        <button
+          type="button"
+          onClick={back}
+          aria-label="Back to what the session is on"
+          className="grid size-6 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground hover:opacity-90"
+        >
+          <Play className="size-3" />
+        </button>
+      )}
       <button
         type="button"
-        onClick={paused ? resume : pause}
-        aria-label={paused ? 'Resume following' : 'Pause following'}
-        className="grid size-5 place-items-center rounded-full text-ink-muted hover:bg-raised hover:text-ink"
+        onClick={forget}
+        aria-label="Stop following this session"
+        className="grid size-6 shrink-0 place-items-center rounded-full text-ink-muted hover:bg-raised hover:text-ink"
       >
-        {paused ? <Play className="size-3" /> : <Pause className="size-3" />}
-      </button>
-      <button
-        type="button"
-        onClick={() => (isPinned ? unpin() : pin(session))}
-        aria-label={isPinned ? 'Unpin this session' : 'Pin this session'}
-        aria-pressed={isPinned}
-        className={cn(
-          'grid size-5 place-items-center rounded-full hover:bg-raised',
-          isPinned ? 'text-primary' : 'text-ink-muted hover:text-ink',
-        )}
-      >
-        {isPinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
+        <X className="size-3" />
       </button>
     </div>
   );

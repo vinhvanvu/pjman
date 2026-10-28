@@ -22,7 +22,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
-  session: ['agent', 'on_behalf_of', 'started', 'parent', 'writer', 'created'],
+  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'writer', 'created'],
   actor: ['kind', 'name', 'url', 'writer', 'session', 'created'],
 };
 
@@ -51,7 +51,7 @@ export const EDGES: Record<string, [string[], string[]]> = {
   depends_on: [['change'], ['change']],
   sequence: [['product'], ['change']],
   changes: [['session'], ['change']],
-  project: [['change'], ['project']],
+  project: [['change', 'session'], ['project']],
   product: [['feature', 'project'], ['product']],
   owners: [['product', 'feature', 'project', 'change'], ['actor']],
   adds: [['change'], ['feature']],

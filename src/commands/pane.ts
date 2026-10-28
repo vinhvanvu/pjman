@@ -1,7 +1,9 @@
 import type { Store } from '../config.js';
-import { follow, lastSeq } from '../events.js';
+import { follow, lastSeq, readEvents } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
-import { loadStore, resolve, type Loaded } from '../records.js';
+import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
+import { LIVE_MINUTES } from '../scope.js';
+import { live, rootProductOf } from '../tree.js';
 import { CliError } from '../util.js';
 import { decisionLine, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
 
@@ -18,11 +20,55 @@ export interface View {
   showing: { key?: string; session?: string; board?: string | null };
 }
 
-/** What a view shows, as data: a neighbourhood, or a board. */
+/** The session followed, as the dock beside it needs it: its log, what it is on, and whether it is live. */
+export interface SessionFacts {
+  key: string;
+  agent?: string;
+  onBehalfOf?: string;
+  started?: string;
+  /** The log as written, oldest first: the instant and the line. */
+  log: { at: string; text: string }[];
+  /** What it is on: its last bound change that still resolves. */
+  on?: string;
+  /** The product that change is in, else the current project's; absent when neither is known. */
+  product?: string;
+  /** live: something it did reached the stream inside the live window; ended: its closing line was written; quiet
+   *  otherwise. */
+  state: 'live' | 'quiet' | 'ended';
+  /** The last instant it reached the stream. */
+  last?: string;
+}
+
+/** What a view shows, as data: a neighbourhood, or a board; the session followed, when one is. */
 export interface ViewData {
   showing: View['showing'];
   neighbourhood?: Neighbourhood;
   board?: StoreContext;
+  session?: SessionFacts;
+}
+
+const LOG_LINE = /^-\s*(\S+)\s+—\s+(.*)$/;
+
+/** The session's facts from its record and the stream. */
+export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewOpts, now = Date.now()): SessionFacts {
+  const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+  const log = (rec.sections.get('Log') ?? '')
+    .split('\n')
+    .map((l) => LOG_LINE.exec(l.trim()))
+    .filter((m): m is RegExpExecArray => !!m)
+    .map((m) => ({ at: m[1], text: m[2] }));
+  const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : []).map((k) => live(loaded, k)).filter((r): r is Rec => !!r);
+  const on = bound[bound.length - 1];
+  const project = live(loaded, rec.data.project ?? opts.project);
+  const product = rootProductOf(loaded, on ?? project ?? rec);
+  // the last instant the session itself wrote: its own log lines and the writes stamped with it. A write that merely
+  // touched its file (a migration, a format) is not the session acting
+  let last = log.length ? log[log.length - 1].at : undefined;
+  for (const e of readEvents(store)) if (e.session === rec.key && (!last || e.at > last)) last = e.at;
+  const ended = log.length > 0 && log[log.length - 1].text.startsWith('session ended');
+  const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
+  const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, product: product?.key, state, last };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };
@@ -138,13 +184,14 @@ export function viewData(store: Store, opts: ViewOpts, loaded: Loaded = loadStor
     const res = resolve(loaded, id);
     if (res.status !== 'ok') throw new CliError(`${id} does not resolve to a session`);
     showing.session = res.rec.key;
-    const changes = Array.isArray(res.rec.data.changes) ? (res.rec.data.changes as string[]) : [];
-    const last = changes.length ? changes[changes.length - 1] : undefined;
-    if (last) {
-      const n = get(loaded, last, opts);
+    const session = sessionFacts(store, loaded, res.rec, opts);
+    if (session.on) {
+      const n = get(loaded, session.on, opts);
       showing.key = n.resolution.key;
-      return { showing, neighbourhood: n };
+      return { showing, neighbourhood: n, session };
     }
+    showing.board = opts.project ?? null;
+    return { showing, board: storeContext(store, { project: opts.project ?? null }), session };
   }
   showing.board = opts.project ?? null;
   return { showing, board: storeContext(store, { project: opts.project ?? null }) };

@@ -15,10 +15,11 @@ import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
-import type { ChangeContext, Grouping, Lens, ProductRow, Scope, Tab, View } from '@/data/contract';
+import type { ChangeContext, Grouping, Lens, ProductRow, Scope, SessionView, Tab, View } from '@/data/contract';
 import { useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
+import { Dock } from '@/features/dock';
 import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestonePage } from '@/features/milestone-lens';
 import { BugsView, loud, RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
@@ -37,8 +38,8 @@ export interface LensPageProps {
   lens: Lens;
   /** The scope: the node the structure pane draws. */
   node?: string;
-  /** The session this page follows, when it does. */
-  following?: { session: string; on?: string };
+  /** The session this page follows, when it is a session's page: at docked width the page is the dock. */
+  following?: { session: string; view: SessionView };
 }
 
 /** What the top bar calls the product's own page in each lens: the rail already names the product. */
@@ -68,6 +69,8 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const search = useSearch({ strict: false }) as PageSearch;
   const navigate = useNavigate();
   const wide = useWide();
+  // width decides panes, never routes: the session's page at docked width is the dock column
+  const docked = !!following && !wide;
   const { data: store } = useStore();
 
   const defaultView: View = 'tree';
@@ -212,27 +215,24 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     />
   );
 
+  // the pill is the way back to the followed session from any page; at docked width it is the location, so no crumb
   const bar = (
     <TopBar
       lens={lens}
-      crumbs={crumbsBeneath}
+      crumbs={docked ? [] : crumbsBeneath}
       current={
-        fresh?.node
+        fresh?.node && !docked
           ? {
               key: fresh.node.key,
               title: onProduct ? (LENS_HOME[lens] ?? fresh.node.name) : (fresh.node.name ?? fresh.node.title),
             }
           : undefined
       }
-      kind={fresh && !onProduct ? kindOf(fresh) : undefined}
-      liveSessions={data?.sessions.length ?? 0}
+      kind={fresh && !onProduct && !docked ? kindOf(fresh) : undefined}
+      liveSessions={docked ? 0 : (data?.sessions.length ?? 0)}
       onOpenPalette={openPalette}
       onOpenRail={wide ? undefined : () => setRailOpenFor(pageKey)}
-      trailing={
-        following ? (
-          <FollowPill session={following.session} on={following.on ? short(following.on) : undefined} />
-        ) : undefined
-      }
+      trailing={<FollowPill className={docked ? 'min-w-0 flex-1' : undefined} />}
     />
   );
 
@@ -401,12 +401,25 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   // width decides panes, never routes (change:dashboard-v2; decision phone-width-record-pane/pane-replaces-map-when-narrow):
   // two panes wide; narrow, one column holding the record when something is selected (its close returns to the
   // structure), else the structure
+  // the dock stands where the structure would: what is selected, or a tab other than the overview, opens the record
+  // in place and its overview tab or close brings the dock back
+  const dockHome = docked && !sel && tab === 'overview';
   const content = !wide ? (
     <div
       className="flex min-h-0 flex-1 flex-col overflow-auto"
-      data-scroll-restoration-id={`${splitId}.${sel ? 'record' : 'only'}`}
+      data-scroll-restoration-id={`${splitId}.${dockHome ? 'dock' : sel ? 'record' : 'only'}`}
     >
-      {sel ? pane : primary}
+      {dockHome ? (
+        data ? (
+          <Dock scope={data} session={following?.view.session} lens={lens} />
+        ) : (
+          <div className="p-6 text-xs text-ink-faint">Loading…</div>
+        )
+      ) : docked || sel ? (
+        pane
+      ) : (
+        primary
+      )}
     </div>
   ) : paneAlways || sel ? (
     <SplitPane

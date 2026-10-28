@@ -14,7 +14,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
-  session: ['agent', 'on_behalf_of', 'started', 'parent', 'changes', 'observed', 'writer', 'created', 'ext'],
+  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'changes', 'observed', 'writer', 'created', 'ext'],
   actor: ['kind', 'name', 'url', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
 };
 
