@@ -19,6 +19,12 @@ export const useMoment = create<MomentState>()((set) => ({
 
 /** The cursor from the URL: what every query reads as of; undefined is now. */
 export function useAt(): string | undefined {
-  const search = useSearch({ strict: false }) as { at?: string };
-  return search.at || undefined;
+  const search = useSearch({ strict: false }) as { at?: string | number };
+  return atParam(search.at);
+}
+
+/** The cursor as queries send it: a sequence number or an instant as text; absent, empty or zero is now. */
+export function atParam(at: string | number | undefined): string | undefined {
+  if (at === undefined || at === '' || at === 0) return undefined;
+  return String(at);
 }

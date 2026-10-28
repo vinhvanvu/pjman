@@ -4,6 +4,14 @@
 import { z } from 'zod';
 import { GROUPINGS, TABS, VIEWS } from '@/data/contract';
 
+/** The moment a page reads as of: an event's sequence number or an instant (decision moment-is-an-event); absent is
+ *  now. The router reads search values as JSON, so a sequence number arrives as a number: it is kept one, so the URL
+ *  stays `at=1842`. */
+export const atSearch = z
+  .union([z.number().int().positive(), z.string().min(1)])
+  .optional()
+  .catch(undefined);
+
 export const pageSearch = z.object({
   view: z.enum(VIEWS).optional().catch(undefined),
   group: z.enum(GROUPINGS).optional().catch(undefined),
@@ -17,9 +25,8 @@ export const pageSearch = z.object({
   q: z.string().optional().catch(undefined),
   state: z.string().optional().catch(undefined),
   milestone: z.string().optional().catch(undefined),
-  /** The moment the page reads as of: an event's sequence number or an instant (decision moment-is-an-event);
-   *  absent is now. Every query carries it, so the whole page holds still at that moment. */
-  at: z.string().optional().catch(undefined),
+  /** The moment the page reads as of; every query carries it, so the whole page holds still at that moment. */
+  at: atSearch,
 });
 
 export type PageSearch = z.infer<typeof pageSearch>;
