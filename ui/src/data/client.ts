@@ -1,5 +1,15 @@
 // The client for /api/v1: one function per route. Nothing here is called from a component; the hooks in queries.ts are.
-import type { OrderBody, OrderResult, Resolution, Row, Scope, ScopeQuery, SessionView, StoreInfo } from './contract';
+import type {
+  Bridge,
+  OrderBody,
+  OrderResult,
+  Resolution,
+  Row,
+  Scope,
+  ScopeQuery,
+  SessionView,
+  StoreInfo,
+} from './contract';
 
 export class ApiError extends Error {
   constructor(
@@ -71,6 +81,11 @@ export const api = {
   record: (key: string) => call<Row & { body: string; sections: Record<string, string> }>(recordPath(key)),
   resolve: (ref: string) => call<Resolution>(`/resolve?ref=${encodeURIComponent(ref)}`),
   sessionView: (id: string) => call<SessionView>(`/sessions/${encodeURIComponent(id)}/view`),
+  /** The bridge's data: the product's sessions by state. `product` is the key; the slug is what the route takes. */
+  bridge: (product: string, days?: number) =>
+    call<Bridge>(
+      `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/bridge${days ? `?days=${days}` : ''}`,
+    ),
   scope: (q: ScopeQuery) => {
     const p = new URLSearchParams({ lens: q.lens });
     if (q.node) p.set('node', q.node);

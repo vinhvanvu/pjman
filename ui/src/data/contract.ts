@@ -3,6 +3,7 @@
 // would pull server code into the bundle.
 export type { ChangeRow, Health, Lens, LiveSession, Scope, ScopeNode, WaitingDecision } from '@contract/scope';
 export type { Violation } from '@contract/roadmap';
+export type { Bridge, BridgeChange, BridgeDecision, BridgeSession, SessionState } from '@contract/bridge';
 export type { OrderResult } from '@contract/commands/order';
 export type { ChangeContext, Row } from '@contract/commands/view';
 export type { SessionFacts } from '@contract/commands/pane';

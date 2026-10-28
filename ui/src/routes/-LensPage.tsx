@@ -16,7 +16,7 @@ import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
 import type { ChangeContext, Grouping, Lens, ProductRow, Scope, SessionView, Tab, View } from '@/data/contract';
-import { useScope, useStore } from '@/data/queries';
+import { useBridge, useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
@@ -170,6 +170,8 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const fresh = freshScope(data, scope.isPlaceholderData);
   const product = pageProduct(node, fresh, store?.products);
   const inboxData = data ? inbox(data) : undefined;
+  // the rail's bridge entry carries how many sessions wait on the person
+  const bridge = useBridge(product?.key);
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
     if (product?.key) setLastProduct(product.key);
@@ -202,6 +204,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       view={view}
       views={VIEWS_BY_LENS[lens]}
       defaultView={defaultView}
+      bridge={product ? { product: product.key, count: bridge.data?.waiting } : undefined}
       viewCounts={{ inbox: inboxData?.total, bugs: data ? loud(data.bugs) : undefined }}
       themeSlot={<ThemePicker />}
       personSlot={
