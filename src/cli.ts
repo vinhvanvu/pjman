@@ -1,9 +1,10 @@
 import './quiet.js';
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { findStore, globalStore, readUserConfig, requireStore } from './config.js';
+import { findStore, globalStore, globalStorePath, readUserConfig, requireStore } from './config.js';
 import { BRIEF } from './commands/brief.js';
 import { start, stop } from './commands/start.js';
+import { withStoreLock } from './lock.js';
 import { buildIndex, query } from './indexdb.js';
 import { loadStore, resolve } from './records.js';
 import { CliError, plural } from './util.js';
@@ -236,6 +237,17 @@ function main(argv: string[]): number {
     return 1;
   }
   const cwd = process.cwd();
+  if (!WRITE_COMMANDS.has(cmd)) return dispatch(v, pos, cmd, cwd);
+  // one writer at a time per store: the lock is held from before the first file is touched to after the commit
+  return withStoreLock(findStore(cwd, v.store)?.root ?? globalStorePath(), () => dispatch(v, pos, cmd, cwd));
+}
+
+/** The commands that write the store. */
+const WRITE_COMMANDS = new Set(['init', 'new', 'set', 'session', 'mv', 'rm', 'fmt', 'sync', 'order', 'apply', 'undo', 'migrate']);
+
+type Parsed = ReturnType<typeof parse>;
+
+function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, cwd: string): number {
   switch (cmd) {
     case 'init': {
       if (v.brief && v.brief !== 'claude-md') throw new CliError('--brief takes claude-md');

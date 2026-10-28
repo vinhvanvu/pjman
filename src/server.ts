@@ -13,6 +13,7 @@ import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
 import { order } from './commands/order.js';
+import { withStoreLock } from './lock.js';
 import { intake } from './intake.js';
 import { CliError } from './util.js';
 
@@ -100,7 +101,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
         const writer = readUserConfig().actor;
         if (!writer) throw new HttpError(403, 'no-actor', 'no person is signed in: set actor in ~/.pjman/config.yaml');
-        const r = order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer });
+        const r = withStoreLock(store.root, () => order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer }));
         send(res, 200, { data: r });
       } catch (e) {
         fail(res, e);

@@ -79,6 +79,8 @@ pjman set <key> <field>=<value>…   change an authored field (title, status, ki
 pjman mv <key> <new key>               rename a change or a feature (alias kept), a product, a project or a decision; every reference rewritten
 pjman apply [<file>|-] [--for <key>]   many writes as one commit: the commands one per line (new, set, mv, rm, order, session), one commit and one 'applied' event at the end; a line that fails refuses the whole batch
 pjman undo [<commit>]                  revert the last batch (or the commit named) as one commit; refused while a later write touched a record of it
+
+One writer at a time: every write command takes a lock on the store (a file under `~/.pjman/locks`) before it touches a file and releases it after its commit, so two sessions writing at once never commit each other's half-written records; a second writer waits a few seconds, then refuses naming the holder; a lock whose process is gone is reclaimed.
 pjman rm <key> [--detach]              remove a record (a change with its decisions); refused while referenced, --detach drops droppable references
 pjman events [--since <seq>] [--json]   the store's event stream, one event per write; `pjman events rebuild` derives it from git history
 pjman follow [--since <seq>] [--json]   print events as they are appended, until interrupted; what a view subscribes to
