@@ -29,9 +29,13 @@ the context prints them; write the full key only for something in another produc
    ```
    pjman new decision <change-slug>/<decision-slug> --title "…" --decision "…" --why "…"
    ```
-   It is created `proposed`. **Never set a decision `decided`**; that is the person's. Say in your reply that a
-   decision is open and what you recommend. If the person decides in chat, record it:
+   It is created `proposed`. **Never set a decision `decided` on your own judgment**; deciding is the person's. Say in
+   your reply that a decision is open and what you recommend. **When the person decides in chat ("agreed", "go",
+   "accept it"), that is the decision: record it at once**, never hand them the command:
    `pjman set decision:<change>/<slug> status=decided decided_by=person:<handle> decided_on=<yyyy-mm-dd>`.
+   The agreement also covers what follows from it: the build, the merge once reviewed, the install, the worktree's
+   removal, the change's status. Carry that chain out and report it; an approval that repeats one already given
+   ties up the person. Ask only for what the agreement did not settle.
 3. **Keep `next` true.** Before you stop on a change, set the handoff:
    `pjman set change:<slug> "next=…"` and the status if it moved (`open, planning, active, blocked, review, done, dropped`).
 4. **A new unit of work is a change, filed through intake.** Follow the `intake` skill first: `pjman intake "<the
@@ -48,8 +52,9 @@ the context prints them; write the full key only for something in another produc
    line; `pjman new change` prints it), the harness creates the worktree and its branch (`claude --worktree <slug>`, or
    the enter-worktree tool in a running session). A session on a branch so named is bound to the change at start, with
    no prompt. Two sessions on one change share its worktree. When you stop, leave the worktree clean or committed so the
-   harness can remove it on exit. Once the branch is merged into main, remove the worktree and its branch before the
-   change is set done (`git worktree remove <path> && git branch -d <branch>`); the session-start context names any
+   harness can remove it on exit. Once the person has approved the work, merge the branch into main yourself, then remove
+   the worktree and its branch before the change is set done (`git worktree remove <path> && git branch -d <branch>`;
+   the project's own instructions say what an install after a merge takes); the session-start context names any
    worktree whose change is done and whose branch is merged, so a leftover is seen the next time someone sits down.
    pjman creates and removes no worktree itself.
 
