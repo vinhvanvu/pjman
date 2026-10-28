@@ -8,7 +8,7 @@ import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Bug, ChevronRight, GripVertical, TriangleAlert } from 'lucide-react';
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeRow, Lens, Scope } from '@/data/contract';
+import type { ChangeRow, Scope } from '@/data/contract';
 import { useOrder } from '@/data/queries';
 import { plural } from '@/lib/format';
 import { short } from '@/lib/keys';
@@ -46,7 +46,6 @@ const STATUS_BG: Record<string, string> = {
 
 export interface RoadmapChartProps {
   scope: Scope;
-  lens: Lens;
   expanded: string[];
   onExpandedChange: (ids: string[]) => void;
   selected?: string;
@@ -57,7 +56,6 @@ export interface RoadmapChartProps {
 
 export function RoadmapChart({
   scope,
-  lens,
   expanded,
   onExpandedChange,
   selected,
@@ -181,9 +179,9 @@ export function RoadmapChart({
   const bugsLink = (key: string, n: number, worst?: string) => (
     <Link
       to="/$lens/$"
-      params={{ lens, _splat: key }}
-      search={(prev: Record<string, unknown>) => ({ ...prev, view: 'bugs' as const, sel: undefined })}
-      title={`${plural(n, 'open bug')}${worst ? `, worst ${worst}` : ''}`}
+      params={{ lens: 'feature', _splat: key }}
+      search={{ bugs: true }}
+      title={`${plural(n, 'open bug')}${worst ? `, worst ${worst}` : ''} · on the map`}
       className={cn(
         'ml-auto inline-flex h-5 shrink-0 items-center gap-1 rounded-chip px-1.5 text-meta font-medium hover:bg-raised',
         worst === 'product' || worst === 'feature' ? 'text-status-blocked' : 'text-ink-faint',

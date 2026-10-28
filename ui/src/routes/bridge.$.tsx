@@ -1,6 +1,6 @@
-// /bridge/*: the bridge, a view of the product (decision bridge-in-the-rail, proposed): its sessions by what each
-// needs from the person. The rest of the path is the product's key. The shell is the product frame; the content is
-// the bridge feature. Moving the bridge elsewhere later is this file and the rail's entry, nothing else.
+// /bridge/*: the bridge, the first of the product's three destinations and its home (decisions three-destinations and
+// bridge-is-home): what waits on the person and its sessions by need. The rest of the path is the product's key. The
+// shell is the product frame; the content is the bridge feature.
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { User } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -8,8 +8,9 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { TopBar } from '@/components/shell/TopBar';
 import { EmptyState } from '@/components/EmptyState';
-import { VIEWS, type ProductRow } from '@/data/contract';
-import { useBridge, useStore } from '@/data/queries';
+import { Pending } from '@/components/Pending';
+import type { ProductRow } from '@/data/contract';
+import { useBridge, usePrefetchDestinations, useStore } from '@/data/queries';
 import { Bridge } from '@/features/bridge';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { MomentChip } from '@/features/moment';
@@ -45,6 +46,7 @@ function BridgePage() {
   const productKey = node?.startsWith('product:') ? node : undefined;
   const product = store?.products.find((p) => p.key === productKey);
   const bridge = useBridge(productKey);
+  usePrefetchDestinations(productKey);
   useEffect(() => {
     if (product?.key) setLastProduct(product.key);
   }, [product?.key, setLastProduct]);
@@ -63,12 +65,10 @@ function BridgePage() {
     <Rail
       product={product ? railProduct(product) : productKey ? { key: productKey, name: short(productKey) } : undefined}
       products={store?.products.map(railProduct)}
+      current="bridge"
       lens="feature"
       node={productKey}
-      view="tree"
-      views={VIEWS}
-      defaultView="tree"
-      bridge={productKey ? { product: productKey, on: true, count: bridge.data?.waiting } : undefined}
+      waiting={bridge.data?.waiting}
       themeSlot={<ThemePicker />}
       personSlot={
         store?.actor ? (
@@ -105,7 +105,7 @@ function BridgePage() {
   } else if (bridge.error) {
     content = <EmptyState title="The bridge could not be read." hint={bridge.error.message} className="m-6" />;
   } else if (!bridge.data) {
-    content = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
+    content = <Pending />;
   } else {
     content = <Bridge data={bridge.data} lens="feature" productName={product?.name ?? short(productKey)} />;
   }

@@ -46,7 +46,7 @@ export function Overview({ scope, lens }: { scope: Scope; lens: Lens }) {
         open={open.length}
         inFlight={inFlight.length}
         waiting={scope.waitingOn.length}
-        bugs={{ count: scope.bugs.length, worst: scope.bugs[0]?.severity }}
+        bugs={{ count: scope.bugs.length, worst: scope.bugs[0]?.severity, node: node?.key }}
       />
       {body === 'product' && <ProductBody scope={scope} lens={lens} />}
       {body === 'feature' && <FeatureBody scope={scope} lens={lens} />}
@@ -132,7 +132,11 @@ function ProductBody({ scope, lens }: { scope: Scope; lens: Lens }) {
         </Section>
       )}
 
-      <WaitingList items={scope.waitingOn} lens={lens} />
+      <WaitingList
+        items={scope.waitingOn}
+        lens={lens}
+        product={scope.crumbs.find((c) => c.key.startsWith('product:'))?.key ?? scope.node?.key}
+      />
       <LiveList scope={scope} lens={lens} />
 
       {left && (
@@ -311,13 +315,7 @@ function Work({
           ))}
           {g.intent === 'waiting' && stray.length > 0 && <DecisionRows items={stray} lens={lens} />}
           {cap && g.rows.length > cap && (
-            <Link
-              to="."
-              search={(prev: Record<string, unknown>) => ({ ...prev, view: 'lanes' as const })}
-              className="text-xs text-ink-muted hover:text-ink"
-            >
-              and {g.rows.length - cap} more in lanes
-            </Link>
+            <span className="text-xs text-ink-faint">and {g.rows.length - cap} more beneath</span>
           )}
         </Section>
       ))}
@@ -325,21 +323,25 @@ function Work({
   );
 }
 
-function WaitingList({ items, lens }: { items: WaitingDecision[]; lens: Lens }) {
+function WaitingList({ items, lens, product }: { items: WaitingDecision[]; lens: Lens; product?: string }) {
   if (items.length === 0) return null;
   const shown = items.slice(0, 3);
   return (
     <Section label="Waiting on you" aside={String(items.length)}>
       <DecisionRows items={shown} lens={lens} />
-      {items.length > shown.length && (
-        <Link
-          to="."
-          search={(prev: Record<string, unknown>) => ({ ...prev, view: 'inbox' as const })}
-          className="text-xs text-ink-muted hover:text-ink"
-        >
-          and {items.length - shown.length} more in the inbox
-        </Link>
-      )}
+      {items.length > shown.length &&
+        (product ? (
+          <Link
+            to="/bridge/$"
+            params={{ _splat: product }}
+            search={{}}
+            className="text-xs text-ink-muted hover:text-ink"
+          >
+            and {items.length - shown.length} more on the bridge
+          </Link>
+        ) : (
+          <span className="text-xs text-ink-faint">and {items.length - shown.length} more</span>
+        ))}
     </Section>
   );
 }

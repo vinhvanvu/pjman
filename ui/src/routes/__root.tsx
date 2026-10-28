@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useLiveInvalidation } from '@/data/live';
 import { useApplyTheme } from '@/features/theme';
-import { atSearch } from './-search';
+import { atSearch, eventSearch } from './-search';
 
 export interface RouterContext {
   queryClient: QueryClient;
@@ -14,8 +14,8 @@ export interface RouterContext {
 // The time cursor is the app's, not a page's: every navigation keeps it, so moving between the bridge, the map and
 // the roadmap stays at the same moment; only the chip's way back to now clears it.
 export const Route = createRootRouteWithContext<RouterContext>()({
-  validateSearch: z.object({ at: atSearch }),
-  search: { middlewares: [retainSearchParams(['at'])] },
+  validateSearch: z.object({ at: atSearch, event: eventSearch }),
+  search: { middlewares: [retainSearchParams(['at', 'event'])] },
   component: Root,
 });
 

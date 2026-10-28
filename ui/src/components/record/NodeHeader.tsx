@@ -29,8 +29,9 @@ export interface NodeHeaderProps {
   inFlight: number;
   /** Decisions waiting on a person beneath; shown only when not zero. */
   waiting: number;
-  /** Open bugs beneath and the worst of them; shown only when there are any. */
-  bugs?: { count: number; worst?: string };
+  /** Open bugs beneath and the worst of them; shown only when there are any. The link opens the map on this node with
+   *  the bugs filter on. */
+  bugs?: { count: number; worst?: string; node?: string };
   className?: string;
   children?: ReactNode;
 }
@@ -114,8 +115,9 @@ export function NodeHeader({
           <>
             {sep}
             <Link
-              to="."
-              search={(prev: Record<string, unknown>) => ({ ...prev, view: 'bugs' as const })}
+              to="/$lens/$"
+              params={{ lens: 'feature', _splat: bugs.node ?? '' }}
+              search={{ bugs: true }}
               className={cn(
                 'hover:underline',
                 bugs.worst === 'product' || bugs.worst === 'feature'

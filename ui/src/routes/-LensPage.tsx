@@ -1,4 +1,4 @@
-// The page: a scope in a lens, drawn in a view, with a selection in the record pane. Composes the shell and the
+// The page: a scope in a lens, with a selection in the record pane. Composes the shell and the
 // features; owns nothing but the composition. URL state comes in as props and search (the path is the scope, `sel`
 // the selection, the filter params the narrowing); server state through the scope hook, once for the scope and once
 // for the selection; client state from the stores.
@@ -6,6 +6,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
+import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
 import { Chip } from '@/components/chips/Chip';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
@@ -15,15 +16,14 @@ import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
-import type { ChangeContext, Grouping, Lens, ProductRow, Scope, SessionView, Tab, View } from '@/data/contract';
-import { useBridge, useScope, useStore } from '@/data/queries';
+import type { ChangeContext, Lens, ProductRow, Scope, SessionView, Tab } from '@/data/contract';
+import { useBridge, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
 import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestonePage } from '@/features/milestone-lens';
-import { BugsView, loud, RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
-import { Inbox, inbox, WorkQueue } from '@/features/work';
+import { RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
 import { narrowToMilestone } from '@/lib/narrow';
 import { ChangeRecord } from '@/features/record';
 import { MomentChip } from '@/features/moment';
@@ -46,13 +46,6 @@ export interface LensPageProps {
 /** What the top bar calls the product's own page in each lens: the rail already names the product. */
 const LENS_HOME: Partial<Record<Lens, string>> = { feature: 'Product map', roadmap: 'Roadmap' };
 
-const VIEWS_BY_LENS: Record<Lens, readonly View[]> = {
-  feature: ['tree', 'lanes', 'inbox', 'bugs'],
-  project: ['lanes', 'tree', 'inbox', 'bugs'],
-  milestone: ['tree', 'lanes', 'inbox', 'bugs'],
-  roadmap: ['tree', 'lanes', 'inbox', 'bugs'],
-};
-
 /** A node's kind as a word for the record header. */
 function kindOf(s: Scope): string {
   const n = s.node;
@@ -74,10 +67,8 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const docked = !!following && !wide;
   const { data: store } = useStore();
 
-  const defaultView: View = 'tree';
-  const view: View = search.view ?? defaultView;
   // the roadmap's chart draws the past, so its scope always carries the done changes
-  const withDone = (lens === 'roadmap' && view === 'tree') || search.done;
+  const withDone = lens === 'roadmap' || search.done;
   const flags = useMemo(
     () => ({ days: search.days, done: withDone, retired: search.retired }),
     [search.days, withDone, search.retired],
@@ -100,23 +91,22 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   // the record pane's subject: the selection when there is one, else the scope itself
   const shown = sel ? narrowedSelection : narrowed;
 
-  const grouping: Grouping = search.group ?? 'status';
   const tab: Tab = search.tab ?? 'overview';
   const filter = useMemo<MapFilter>(
-    () => ({ q: search.q, states: list(search.state), milestone: search.milestone }),
-    [search.q, search.state, search.milestone],
+    () => ({ q: search.q, states: list(search.state), milestone: search.milestone, bugs: search.bugs }),
+    [search.q, search.state, search.milestone, search.bugs],
   );
 
   // the rail drawer is open for one page only: any navigation closes it, no effect needed
-  const pageKey = `${lens}|${node ?? ''}|${view}`;
+  const pageKey = `${lens}|${node ?? ''}`;
   const [railOpenFor, setRailOpenFor] = useState<string | null>(null);
   const railOpen = railOpenFor === pageKey;
   const [palette, setPalette] = useState(false);
   const openPalette = useCallback(() => setPalette(true), []);
   useCommandPaletteHotkey(openPalette);
 
-  // the acts. A history entry per place (scope, selection, view): select, clear and focus push, so Back undoes the last
-  // click; refinements of the same place (tab, grouping, filter, flags, window) replace. Components call these and
+  // the acts. A history entry per place (scope, selection): select, clear and focus push, so Back undoes the last
+  // click; refinements of the same place (tab, filter, flags, window) replace. Components call these and
   // never choose push or replace on their own.
   const clear = useCallback(
     () =>
@@ -134,12 +124,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     (key: string) => void navigate({ to: '/$lens/$', params: { lens, _splat: key }, search: focusSearch }),
     [navigate, lens],
   );
-  const setGrouping = (g: Grouping) =>
-    void navigate({
-      to: '.',
-      search: (prev: Record<string, unknown>) => ({ ...prev, group: g === 'status' ? undefined : g }),
-      replace: true,
-    });
   const setFilter = (f: MapFilter) =>
     void navigate({
       to: '.',
@@ -148,6 +132,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         q: f.q?.trim() ? f.q : undefined,
         state: f.states?.length ? f.states.join(',') : undefined,
         milestone: f.milestone || undefined,
+        bugs: f.bugs || undefined,
       }),
       replace: true,
     });
@@ -170,9 +155,9 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   // identity has one source (lib/identity.ts): the URL, else this page's own scope; never a guess
   const fresh = freshScope(data, scope.isPlaceholderData);
   const product = pageProduct(node, fresh, store?.products);
-  const inboxData = data ? inbox(data) : undefined;
-  // the rail's bridge entry carries how many sessions wait on the person
+  // the rail's bridge entry carries how many decisions wait on the person
   const bridge = useBridge(product?.key);
+  usePrefetchDestinations(product?.key);
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
     if (product?.key) setLastProduct(product.key);
@@ -200,13 +185,10 @@ export function LensPage({ lens, node, following }: LensPageProps) {
           : undefined
       }
       products={store?.products.map((p) => railProduct(p, p))}
+      current={lens === 'feature' || lens === 'roadmap' ? lens : undefined}
       lens={lens}
       node={node}
-      view={view}
-      views={VIEWS_BY_LENS[lens]}
-      defaultView={defaultView}
-      bridge={product ? { product: product.key, count: bridge.data?.waiting } : undefined}
-      viewCounts={{ inbox: inboxData?.total, bugs: data ? loud(data.bugs) : undefined }}
+      waiting={bridge.data?.waiting}
       themeSlot={<ThemePicker />}
       personSlot={
         store?.actor ? (
@@ -258,7 +240,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     );
     selectedLabel = sel;
   } else if (!shown) {
-    pane = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
+    pane = <Pending />;
   } else {
     const kind = kindOf(shown);
     if (!isScope) {
@@ -323,31 +305,12 @@ export function LensPage({ lens, node, following }: LensPageProps) {
 
   // --- the structure pane ------------------------------------------------------------------------------------
   let structure: React.ReactNode;
-  let paneAlways = true;
   if (scope.error) {
     structure = (
       <EmptyState title={`Nothing at ${node ?? 'the root'} in this lens.`} hint={scope.error.message} className="m-6" />
     );
   } else if (!data) {
-    structure = <div className="p-6 text-xs text-ink-faint">Loading…</div>;
-  } else if (view === 'inbox') {
-    paneAlways = false;
-    structure = <Inbox data={inboxData!} lens={lens} selected={sel} showProject={data.projects.length > 1} />;
-  } else if (view === 'bugs') {
-    paneAlways = false;
-    structure = <BugsView scope={data} lens={lens} selected={sel} showProject={data.projects.length > 1} />;
-  } else if (view === 'lanes') {
-    paneAlways = false;
-    structure = (
-      <WorkQueue
-        scope={data}
-        lens={lens}
-        grouping={grouping}
-        onGroupingChange={setGrouping}
-        selected={sel}
-        showDone={!!search.done}
-      />
-    );
+    structure = <Pending />;
   } else if (lens === 'feature' && data.node?.type !== 'change') {
     structure = (
       <ProductMap
@@ -366,7 +329,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     structure = (
       <RoadmapChart
         scope={data}
-        lens={lens}
         expanded={expanded}
         onExpandedChange={onExpandedChange}
         selected={sel}
@@ -406,7 +368,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     </div>
   );
 
-  const splitId = `pjman.split.${lens}.${view}`;
+  const splitId = `pjman.split.${lens}.tree`;
   // width decides panes, never routes (change:dashboard-v2; decision phone-width-record-pane/pane-replaces-map-when-narrow):
   // two panes wide; narrow, one column holding the record when something is selected (its close returns to the
   // structure), else the structure
@@ -422,7 +384,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         data ? (
           <Dock scope={data} session={following?.view.session} lens={lens} />
         ) : (
-          <div className="p-6 text-xs text-ink-faint">Loading…</div>
+          <Pending />
         )
       ) : docked || sel ? (
         pane
@@ -430,20 +392,16 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         primary
       )}
     </div>
-  ) : paneAlways || sel ? (
+  ) : (
     <SplitPane
       wide={wide}
       id={splitId}
       primary={primary}
       secondary={pane}
-      primarySize={view === 'tree' ? (lens === 'roadmap' ? 64 : 55) : 62}
+      primarySize={lens === 'roadmap' ? 64 : 55}
       layout={splits[splitId]}
       onLayoutChange={(l) => setSplit(splitId, l)}
     />
-  ) : (
-    <div className="flex min-h-0 flex-1 flex-col overflow-auto" data-scroll-restoration-id={`${splitId}.only`}>
-      {primary}
-    </div>
   );
 
   return (
@@ -491,7 +449,7 @@ function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
         </li>
       ))}
       <li className="text-xs text-ink-faint">
-        Decisions are made in the terminal for now; the inbox lists what waits on you.{' '}
+        Decisions are made in the terminal for now; the bridge lists what waits on you.{' '}
         <NodeLink to={ctx.change.key} lens={lens} className="hover:text-primary">
           Back to the change
         </NodeLink>

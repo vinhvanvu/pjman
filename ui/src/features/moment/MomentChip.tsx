@@ -1,30 +1,40 @@
-// The chip in the top bar while the page reads as of a moment: what the cursor resolved to, and the way back to now.
+// The chip in the top bar while the page reads as of a moment (decision read-at-a-moment/time-with-event-selection):
+// what the cursor resolved to, the way back to now, and, while an event is selected, a release that keeps its time.
 // It is the only control over time until the bridge's transport exists.
 import { useNavigate } from '@tanstack/react-router';
 import { X } from 'lucide-react';
-import { useAt, useMoment } from '@/state/moment';
+import { useCursor, useMoment } from '@/state/moment';
 import { momentWords } from './model';
 
 export function MomentChip() {
-  const at = useAt();
+  const cursor = useCursor();
   const resolved = useMoment((s) => s.resolved);
   const navigate = useNavigate();
-  if (!at) return null;
+  if (!cursor.at && !cursor.event) return null;
+  const set = (next: { at?: string; event?: number }) =>
+    void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, ...next }) });
+  const words = momentWords(cursor, resolved);
   return (
     <span
       className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-row border border-primary/50 bg-primary/10 pl-2.5 pr-1 text-xs whitespace-nowrap text-primary"
-      title={resolved ? `event #${resolved.seq} · commit ${resolved.commit}` : undefined}
+      title={resolved ? `event #${resolved.seq} · ${resolved.at} · commit ${resolved.commit}` : undefined}
     >
-      <span className="font-medium">{momentWords(at, resolved)}</span>
+      {cursor.event && resolved ? (
+        <button
+          type="button"
+          title="Release the event, keep its time"
+          onClick={() => set({ event: undefined, at: resolved.at })}
+          className="font-medium hover:underline"
+        >
+          {words}
+        </button>
+      ) : (
+        <span className="font-medium">{words}</span>
+      )}
       <button
         type="button"
         aria-label="Back to now"
-        onClick={() =>
-          void navigate({
-            to: '.',
-            search: (prev: Record<string, unknown>) => ({ ...prev, at: undefined }),
-          })
-        }
+        onClick={() => set({ at: undefined, event: undefined })}
         className="grid size-5 place-items-center rounded-full text-primary/80 hover:bg-primary/20 hover:text-primary"
       >
         <X className="size-3" />

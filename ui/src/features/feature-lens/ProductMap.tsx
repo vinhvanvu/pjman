@@ -1,6 +1,7 @@
 // The product map: features only, opening collapsed every time (only the path to the selection is open), state as a
 // dot, counts faint and right-aligned, connectors from parent to child. A click selects (the record pane shows it); the
 // filter bar narrows the map and opens the matches.
+import { Bug } from 'lucide-react';
 import { useMemo } from 'react';
 import type { ChangeRow, Scope, ScopeNode } from '@/data/contract';
 import { plural } from '@/lib/format';
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { FilterBar } from './FilterBar';
 import {
   allFeatureKeys,
+  bugMark,
   filterTree,
   isFiltering,
   MAP_ROOT,
@@ -93,7 +95,9 @@ export function ProductMap({
         {top.length === 0 && (
           <p className="px-2 py-3 text-xs text-ink-faint">
             {filtering
-              ? 'No feature matches the filter.'
+              ? filter.bugs && !filter.q && !filter.states?.length
+                ? 'No open bugs beneath this node.'
+                : 'No feature matches the filter.'
               : 'No features beneath this one. Its changes are in the record pane.'}
           </p>
         )}
@@ -161,6 +165,7 @@ function FeatureRow({
   dim?: boolean;
 }) {
   const label = n.name ?? n.title ?? short(n.key);
+  const bugs = bugMark(n);
   return (
     <div
       className={
@@ -172,6 +177,21 @@ function FeatureRow({
       <span className="min-w-0 truncate font-medium">{label}</span>
       {top && n.level && <Label>{n.level}</Label>}
       <span className="ml-auto flex shrink-0 items-center gap-2.5 text-meta text-ink-faint">
+        {bugs && (
+          <span
+            title={bugs.title}
+            className={
+              bugs.tone === 'loud'
+                ? 'inline-flex items-center gap-1 font-medium text-status-blocked'
+                : bugs.tone === 'warn'
+                  ? 'inline-flex items-center gap-1 text-status-review'
+                  : 'inline-flex items-center gap-1'
+            }
+          >
+            <Bug className="size-3" aria-hidden="true" />
+            {bugs.count}
+          </span>
+        )}
         {capabilities > 0 && <span>{plural(capabilities, 'capability', 'capabilities')}</span>}
         <span className="min-w-[48px] text-right">{n.open ? `${n.open} open` : '—'}</span>
       </span>

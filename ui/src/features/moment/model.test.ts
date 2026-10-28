@@ -4,14 +4,14 @@ import { clock, momentWords } from './model';
 const same = (iso: string) => iso;
 
 describe('momentWords', () => {
-  it('names the event and its instant once resolved', () => {
-    expect(momentWords('1842', { seq: 1842, at: '2026-10-28T14:02:00Z', commit: 'abc' }, same)).toBe(
-      'as of #1842 · 2026-10-28T14:02:00Z',
-    );
+  const resolved = { seq: 1842, at: '2026-10-28T14:02:00Z', commit: 'abc' };
+  it('names a time by its clock and a selected event by its number', () => {
+    expect(momentWords({ at: '2026-10-28T14:02' }, resolved, same)).toBe('as of 2026-10-28T14:02:00Z');
+    expect(momentWords({ event: 1842 }, resolved, same)).toBe('event #1842 · 2026-10-28T14:02:00Z');
   });
-  it('shows the cursor as typed until the server answers', () => {
-    expect(momentWords('1842', undefined, same)).toBe('as of #1842');
-    expect(momentWords('2026-10-28T14:02', undefined, same)).toBe('as of 2026-10-28T14:02');
+  it('shows the cursor as given until the server answers', () => {
+    expect(momentWords({ event: 1842 }, undefined, same)).toBe('event #1842');
+    expect(momentWords({ at: '2026-10-28T14:02' }, undefined, same)).toBe('as of 2026-10-28T14:02');
   });
 });
 

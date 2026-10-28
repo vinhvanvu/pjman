@@ -17,14 +17,30 @@ export const useMoment = create<MomentState>()((set) => ({
   setResolved: (resolved) => set({ resolved }),
 }));
 
-/** The cursor from the URL: what every query reads as of; undefined is now. */
-export function useAt(): string | undefined {
-  const search = useSearch({ strict: false }) as { at?: string | number };
-  return atParam(search.at);
+/** The cursor as the URL holds it (decision read-at-a-moment/time-with-event-selection): `at` the time the page reads
+ *  as of, `event` the event selected, which pins the page to exactly that event. An old link's numeric `at` is read as
+ *  the event. Absent both, the page reads now. */
+export interface Cursor {
+  at?: string;
+  event?: number;
 }
 
-/** The cursor as queries send it: a sequence number or an instant as text; absent, empty or zero is now. */
-export function atParam(at: string | number | undefined): string | undefined {
-  if (at === undefined || at === '' || at === 0) return undefined;
-  return String(at);
+export function cursorOf(search: { at?: string | number; event?: number }): Cursor {
+  const event = search.event ?? (typeof search.at === 'number' ? search.at : undefined);
+  const at = typeof search.at === 'string' && search.at !== '' ? search.at : undefined;
+  return event ? { event } : at ? { at } : {};
+}
+
+export function useCursor(): Cursor {
+  return cursorOf(useSearch({ strict: false }) as { at?: string | number; event?: number });
+}
+
+/** What every query sends as `at=`: the selected event's number when there is one (exact), else the time; undefined
+ *  is now. The server reads a number as an event and anything else as a time. */
+export function atParam(c: Cursor): string | undefined {
+  return c.event ? String(c.event) : c.at;
+}
+
+export function useAt(): string | undefined {
+  return atParam(useCursor());
 }

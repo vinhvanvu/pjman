@@ -1,20 +1,22 @@
-// The search params every page understands: what identifies the view. Validated with zod, absent means the default.
+// The search params every page understands: what identifies the page's state. Validated with zod, absent means the default.
 // The path is the scope (what the structure pane draws); `sel` is the selection (what the record pane shows); the
 // filter params narrow the structure pane and are what a saved view will be made of.
 import { z } from 'zod';
-import { GROUPINGS, TABS, VIEWS } from '@/data/contract';
+import { TABS } from '@/data/contract';
 
-/** The moment a page reads as of: an event's sequence number or an instant (decision moment-is-an-event); absent is
- *  now. The router reads search values as JSON, so a sequence number arrives as a number: it is kept one, so the URL
- *  stays `at=1842`. */
+/** The moment a page reads as of is a time (decision read-at-a-moment/time-with-event-selection): `at` holds an
+ *  instant, resolved by the server to the latest event at or before it; absent is now. A number is still accepted, as
+ *  an old link's event, and read as the selection. */
 export const atSearch = z
   .union([z.number().int().positive(), z.string().min(1)])
   .optional()
   .catch(undefined);
 
+/** The event selected (a tick clicked, a step, a lock): it pins the page to exactly that event, which a time cannot
+ *  do where several events share an instant. The router reads it as JSON, so it arrives as a number. */
+export const eventSearch = z.number().int().positive().optional().catch(undefined);
+
 export const pageSearch = z.object({
-  view: z.enum(VIEWS).optional().catch(undefined),
-  group: z.enum(GROUPINGS).optional().catch(undefined),
   sel: z.string().optional().catch(undefined),
   tab: z.enum(TABS).optional().catch(undefined),
   done: z.boolean().optional().catch(undefined),
@@ -25,8 +27,12 @@ export const pageSearch = z.object({
   q: z.string().optional().catch(undefined),
   state: z.string().optional().catch(undefined),
   milestone: z.string().optional().catch(undefined),
-  /** The moment the page reads as of; every query carries it, so the whole page holds still at that moment. */
+  /** Bugs only: the map keeps the nodes a bug is listed at, with the path to each. */
+  bugs: z.boolean().optional().catch(undefined),
+  /** The moment the page reads as of, and the event selected; every query carries them, so the whole page holds
+   *  still at that moment. */
   at: atSearch,
+  event: eventSearch,
 });
 
 export type PageSearch = z.infer<typeof pageSearch>;
