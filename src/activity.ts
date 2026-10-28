@@ -31,9 +31,9 @@ export interface Activity {
 
 const DAY = 86_400_000;
 
-export function activity(store: Store, loaded: Loaded, key: string, opts: { days?: number; since?: string } = {}): Activity {
+export function activity(store: Store, loaded: Loaded, key: string, opts: { days?: number; since?: string; now?: number; until?: number } = {}): Activity {
   const days = opts.days ?? 14;
-  const now = Date.now();
+  const now = opts.now ?? Date.now();
   const since = opts.since ? new Date(opts.since).toISOString() : new Date(now - days * DAY).toISOString();
   const keys = new Set<string>([key, ...descendantsOf(loaded, key)]);
   // a record's former keys (a rename, the flat key before keys were paths under the product) carry its older events
@@ -41,7 +41,7 @@ export function activity(store: Store, loaded: Loaded, key: string, opts: { days
     const r = live(loaded, k);
     if (r) for (const e of eventKeysOf(r)) keys.add(e);
   }
-  const all = readEvents(store).filter((e) => keys.has(e.key));
+  const all = readEvents(store).filter((e) => keys.has(e.key) && (opts.until === undefined || e.seq <= opts.until));
   const events = all.filter((e) => e.at >= since);
   const last = all.length ? all[all.length - 1].at : null;
   const byOp: Record<string, number> = {};

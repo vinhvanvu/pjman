@@ -130,6 +130,29 @@ test("a session's view and a project's board", async () => {
   assert.deepEqual((board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key), ['change:app/login']);
 });
 
+test('as of a moment: at= answers from the commit of that event, stamped with the moment; events between two points', async () => {
+  const events = (await getJson('/api/v1/events')).body.data as { seq: number; at: string; key: string; op: string }[];
+  const created = events.find((e) => e.key === 'change:app/login' && e.op === 'created')!;
+  const then = await getJson(`/api/v1/records/change/app/login?at=${created.seq}`);
+  assert.equal(then.status, 200);
+  const stamp = (then.body as { moment?: { seq: number; at: string; commit: string } }).moment;
+  assert.equal(stamp?.seq, created.seq);
+  assert.equal(stamp?.at, created.at);
+  assert.ok(stamp?.commit);
+  assert.equal((then.body.data as { key: string }).key, 'change:app/login');
+  // the decision did not exist yet at that event
+  const noDecision = await getJson(`/api/v1/records/decision/app/login/magic-links?at=${created.seq}`);
+  assert.equal(noDecision.status, 404);
+  assert.equal((await getJson('/api/v1/records/decision/app/login/magic-links')).status, 200);
+  // an instant resolves to the last event at or before it; a nonsense one is a bad request
+  const byInstant = await getJson(`/api/v1/scope?lens=feature&at=${encodeURIComponent(created.at)}`);
+  assert.equal((byInstant.body as { moment?: { seq: number } }).moment?.seq, created.seq);
+  assert.equal((await getJson('/api/v1/scope?lens=feature&at=yesterday')).status, 400);
+  const between = (await getJson(`/api/v1/events?since=${created.seq - 1}&until=${created.seq}`)).body.data as { seq: number }[];
+  assert.deepEqual(between.map((e) => e.seq), [created.seq]);
+  assert.equal((((await getJson('/api/v1/records/change/app/login')).body as { moment?: unknown }).moment), undefined, 'a live read carries no moment');
+});
+
 test('the event stream: a list, and server-sent events with ids', async () => {
   const list = await getJson('/api/v1/events');
   const events = list.body.data as { seq: number; op: string }[];

@@ -12,6 +12,7 @@ import { VIEWS, type ProductRow } from '@/data/contract';
 import { useBridge, useStore } from '@/data/queries';
 import { Bridge } from '@/features/bridge';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
+import { MomentChip } from '@/features/moment';
 import { FollowPill } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
@@ -87,7 +88,12 @@ function BridgePage() {
       liveSessions={bridge.data?.sessions.filter((s) => s.state === 'working').length ?? 0}
       onOpenPalette={openPalette}
       onOpenRail={wide ? undefined : () => setRailOpen(true)}
-      trailing={<FollowPill />}
+      trailing={
+        <>
+          <MomentChip />
+          <FollowPill />
+        </>
+      }
     />
   );
 

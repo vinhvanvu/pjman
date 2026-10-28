@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readUserConfig, userDir, type Store } from './config.js';
 import { follow, lastSeq, readEvents } from './events.js';
+import { eventsBetween, loadAt, type Moment } from './moment.js';
 import { findReferences, get } from './graph.js';
 import { rootProductOf, tree } from './tree.js';
 import { activity } from './activity.js';
@@ -93,6 +94,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     });
     res.end(text);
   };
+  const sendAll = send;
   const fail = (res: http.ServerResponse, e: unknown) => {
     if (e instanceof HttpError) return send(res, e.status, { error: { code: e.code, message: e.message, tried: e.tried } });
     if (e instanceof CliError) return send(res, 400, { error: { code: 'bad-request', message: e.message } });
@@ -128,7 +130,14 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     }
     if (req.method === 'POST') return write(req, res, route);
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API reads, and writes only through POST /order`);
-    const loaded = loadStore(store);
+    // as of a moment (at=<event seq|instant>): the records at its commit, the stream cut after it, the clock set to it
+    const atParam = url.searchParams.get('at');
+    let moment: Moment | undefined;
+    let loaded;
+    if (atParam) ({ moment, loaded } = loadAt(store, atParam));
+    else loaded = loadStore(store);
+    const asOf = moment ? { now: Date.parse(moment.at), until: moment.seq } : {};
+    const send = (r: http.ServerResponse, status: number, body: unknown) => sendAll(r, status, moment ? { moment, ...(body as object) } : body);
     // a bare key on a request resolves in the product the page is in (its node), else the current project's
     const at = url.searchParams.get('node') ?? url.searchParams.get('root') ?? url.searchParams.get('key');
     if (at) {
@@ -195,12 +204,12 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const r = resolve(loaded, key);
       if (r.status !== 'ok' && r.status !== 'alias') throw new HttpError(404, 'not-found', `${key} has no record`);
       const days = url.searchParams.get('days');
-      return send(res, 200, { data: activity(store, loaded, r.rec.key, { days: days ? Number(days) : undefined, since: url.searchParams.get('since') ?? undefined }) });
+      return send(res, 200, { data: activity(store, loaded, r.rec.key, { days: days ? Number(days) : undefined, since: url.searchParams.get('since') ?? undefined, ...asOf }) });
     }
     if (route === '/scope') {
       const q = url.searchParams;
       const days = q.get('days');
-      return send(res, 200, { data: scope(store, loaded, { lens: q.get('lens') ?? undefined, node: q.get('node') ?? undefined, days: days ? Number(days) : undefined, done: q.get('done') === '1', retired: q.get('retired') === '1' }) });
+      return send(res, 200, { data: scope(store, loaded, { lens: q.get('lens') ?? undefined, node: q.get('node') ?? undefined, days: days ? Number(days) : undefined, done: q.get('done') === '1', retired: q.get('retired') === '1', ...asOf }) });
     }
     if (route === '/intake') {
       const text = url.searchParams.get('text');
@@ -221,7 +230,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/bridge$/.exec(route)) || route === '/bridge') {
       const days = url.searchParams.get('days');
       const product = m ? `product:${m[1]}` : (url.searchParams.get('product') ?? undefined);
-      return send(res, 200, { data: bridge(store, loaded, { product, days: days ? Number(days) : undefined }) });
+      return send(res, 200, { data: bridge(store, loaded, { product, days: days ? Number(days) : undefined, ...asOf }) });
     }
     if (route === '/board') {
       return send(res, 200, { data: storeContext(store, { project: url.searchParams.get('project') ?? null }) });
@@ -246,7 +255,8 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         });
         return;
       }
-      return send(res, 200, { data: readEvents(store, since) });
+      const until = url.searchParams.get('until');
+      return send(res, 200, { data: until ? eventsBetween(store, since, Number(until)) : readEvents(store, since) });
     }
     throw new HttpError(404, 'not-found', `no route ${route}`);
   };
@@ -274,7 +284,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/bridge?product=&days=', '/events?since=', 'POST /order {change, before|after|first|last|later}'] } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/bridge?product=&days=', '/events?since=&until=', 'POST /order {change, before|after|first|last|later}'], asOf: 'every read takes at=<event seq|instant> and answers as of that moment, stamped with the moment it resolved to' } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

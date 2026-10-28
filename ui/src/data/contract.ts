@@ -8,6 +8,7 @@ export type { OrderResult } from '@contract/commands/order';
 export type { ChangeContext, Row } from '@contract/commands/view';
 export type { SessionFacts } from '@contract/commands/pane';
 export type { StoreEvent } from '@contract/events';
+export type { Moment } from '@contract/moment';
 export type { RecordType } from '@contract/records';
 
 import type { SessionFacts } from '@contract/commands/pane';

@@ -26,6 +26,7 @@ import { BugsView, loud, RoadmapChart, RoadmapHome } from '@/features/roadmap-le
 import { Inbox, inbox, WorkQueue } from '@/features/work';
 import { narrowToMilestone } from '@/lib/narrow';
 import { ChangeRecord } from '@/features/record';
+import { MomentChip } from '@/features/moment';
 import { FollowPill } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
@@ -235,7 +236,12 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       liveSessions={docked ? 0 : (data?.sessions.length ?? 0)}
       onOpenPalette={openPalette}
       onOpenRail={wide ? undefined : () => setRailOpenFor(pageKey)}
-      trailing={<FollowPill className={docked ? 'min-w-0 flex-1' : undefined} />}
+      trailing={
+        <>
+          <MomentChip />
+          <FollowPill className={docked ? 'min-w-0 flex-1' : undefined} />
+        </>
+      }
     />
   );
 

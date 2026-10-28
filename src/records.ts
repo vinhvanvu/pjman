@@ -73,25 +73,45 @@ export interface Loaded {
   problems: Problem[];
 }
 
-function listDir(abs: string): string[] {
-  try {
-    return fs.readdirSync(abs).filter((n) => !n.startsWith('.')).sort();
-  } catch {
-    return [];
-  }
+/** Where a store's files are read from: the working tree (the default), or a commit in its history (moment.ts).
+ *  Paths are relative to the store root; '' is the root. */
+export interface Source {
+  list(rel: string): string[];
+  isDir(rel: string): boolean;
+  exists(rel: string): boolean;
+  read(rel: string): string;
 }
 
-function isDir(abs: string): boolean {
-  try {
-    return fs.statSync(abs).isDirectory();
-  } catch {
-    return false;
-  }
+/** The store as it stands on disk. */
+export function diskSource(root: string): Source {
+  const abs = (rel: string) => (rel ? path.join(root, rel) : root);
+  return {
+    list(rel) {
+      try {
+        return fs.readdirSync(abs(rel)).filter((n) => !n.startsWith('.')).sort();
+      } catch {
+        return [];
+      }
+    },
+    isDir(rel) {
+      try {
+        return fs.statSync(abs(rel)).isDirectory();
+      } catch {
+        return false;
+      }
+    },
+    exists(rel) {
+      return fs.existsSync(abs(rel));
+    },
+    read(rel) {
+      return fs.readFileSync(abs(rel), 'utf8');
+    },
+  };
 }
 
-function readRec(store: Store, rel: string, type: RecordType, key: string): Rec {
+function readRec(src: Source, store: Store, rel: string, type: RecordType, key: string): Rec {
   const abs = path.join(store.root, rel);
-  const text = fs.readFileSync(abs, 'utf8');
+  const text = src.read(rel);
   const parsed = parseRecord(text);
   const valid = parsed.hasFrontmatter && parsed.isMapping && parsed.errors.length === 0;
   return { type, key, path: rel, abs, data: parsed.data, body: parsed.body, sections: sections(parsed.body), parsed, valid };
@@ -100,19 +120,24 @@ function readRec(store: Store, rel: string, type: RecordType, key: string): Rec 
 const DATED = /^(\d{4}-\d{2}-\d{2})-(.+)\.md$/;
 
 /** The store still holds records in the layout before keys were paths under the product. */
-export function isLegacyLayout(root: string): boolean {
-  if (listDir(path.join(root, 'changes')).some((n) => isDir(path.join(root, 'changes', n)))) return true;
-  if (listDir(path.join(root, 'features')).some((n) => isDir(path.join(root, 'features', n)))) return true;
-  return listDir(path.join(root, 'products')).some((n) => n.endsWith('.md'));
+export function isLegacyLayout(root: string | Source): boolean {
+  const src = typeof root === 'string' ? diskSource(root) : root;
+  if (src.list('changes').some((n) => src.isDir(path.join('changes', n)))) return true;
+  if (src.list('features').some((n) => src.isDir(path.join('features', n)))) return true;
+  return src.list('products').some((n) => n.endsWith('.md'));
 }
 
 const STORE_FILES = ['products', 'projects', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'events.jsonl', 'README.md'];
 
-export function loadStore(store: Store): Loaded {
+export function loadStore(store: Store, src: Source = diskSource(store.root)): Loaded {
   const records: Rec[] = [];
   const problems: Problem[] = [];
-  const root = store.root;
-  if (isLegacyLayout(root)) throw new CliError('the store is laid out the old way (changes/, features/ and products/<slug>.md at the root); run `pjman migrate` once to key every record under its product');
+  const listDir = (rel: string) => src.list(rel);
+  const isDir = (rel: string) => src.isDir(rel);
+  const exists = (rel: string) => src.exists(rel);
+  // paths are relative to the store root; the source knows where the root is
+  const root = '';
+  if (isLegacyLayout(src)) throw new CliError('the store is laid out the old way (changes/, features/ and products/<slug>.md at the root); run `pjman migrate` once to key every record under its product');
   const unexpected = (rel: string) => problems.push({ level: 'warning', path: rel, message: 'unexpected file; not a record' });
 
   const readDecisions = (dir: string, product: string | null, change: string | null, changeKeyOf?: string): void => {
@@ -123,7 +148,7 @@ export function loadStore(store: Store): Loaded {
         problems.push({ level: 'error', path: rel, message: 'decision file name must be <yyyy-mm-dd>-<slug>.md' });
         continue;
       }
-      const r = readRec(store, rel, 'decision', decisionKey(product, change, m[2]));
+      const r = readRec(src, store, rel, 'decision', decisionKey(product, change, m[2]));
       if (product) r.productSlug = product;
       if (change) {
         r.changeSlug = change;
@@ -143,8 +168,8 @@ export function loadStore(store: Store): Loaded {
       continue;
     }
     const file = path.join(dir, 'product.md');
-    if (fs.existsSync(path.join(root, file))) {
-      const r = readRec(store, file, 'product', `product:${slug}`);
+    if (exists(path.join(root, file))) {
+      const r = readRec(src, store, file, 'product', `product:${slug}`);
       r.productSlug = slug;
       records.push(r);
     } else problems.push({ level: 'error', path: dir, message: 'product folder without product.md' });
@@ -159,8 +184,8 @@ export function loadStore(store: Store): Loaded {
             continue;
           }
           const ffile = path.join(fdir, 'feature.md');
-          if (fs.existsSync(path.join(root, ffile))) {
-            const r = readRec(store, ffile, 'feature', `feature:${slug}/${fslug}`);
+          if (exists(path.join(root, ffile))) {
+            const r = readRec(src, store, ffile, 'feature', `feature:${slug}/${fslug}`);
             r.productSlug = slug;
             r.featureSlug = fslug;
             records.push(r);
@@ -178,8 +203,8 @@ export function loadStore(store: Store): Loaded {
           }
           const cfile = path.join(cdir, 'change.md');
           const ckey = `change:${slug}/${cslug}`;
-          if (fs.existsSync(path.join(root, cfile))) {
-            const r = readRec(store, cfile, 'change', ckey);
+          if (exists(path.join(root, cfile))) {
+            const r = readRec(src, store, cfile, 'change', ckey);
             r.productSlug = slug;
             r.changeSlug = cslug;
             records.push(r);
@@ -211,7 +236,7 @@ export function loadStore(store: Store): Loaded {
       continue;
     }
     const slug = f.slice(0, -3);
-    const r = readRec(store, rel, 'project', `project:${slug}`);
+    const r = readRec(src, store, rel, 'project', `project:${slug}`);
     r.projectSlug = slug;
     records.push(r);
   }
@@ -232,7 +257,7 @@ export function loadStore(store: Store): Loaded {
         unexpected(rel);
         continue;
       }
-      const r = readRec(store, rel, 'source', `${kind}:?${f.slice(0, -3)}`);
+      const r = readRec(src, store, rel, 'source', `${kind}:?${f.slice(0, -3)}`);
       r.fileSlug = f.slice(0, -3);
       const k = r.data.kind;
       const key = r.data.key;
@@ -249,7 +274,7 @@ export function loadStore(store: Store): Loaded {
       problems.push({ level: 'error', path: rel, message: 'session file name must be <yyyy-mm-dd>-<harness-session-id>.md' });
       continue;
     }
-    const r = readRec(store, rel, 'session', `session:${m[2]}`);
+    const r = readRec(src, store, rel, 'session', `session:${m[2]}`);
     r.sessionId = m[2];
     r.fileDate = m[1];
     records.push(r);
@@ -263,7 +288,7 @@ export function loadStore(store: Store): Loaded {
       continue;
     }
     const handle = f.slice(0, -3);
-    const r = readRec(store, rel, 'actor', `?:${handle}`);
+    const r = readRec(src, store, rel, 'actor', `?:${handle}`);
     r.handle = handle;
     const k = r.data.kind;
     if (k === 'person' || k === 'agent') r.key = `${k}:${handle}`;
@@ -271,7 +296,7 @@ export function loadStore(store: Store): Loaded {
   }
 
   // anything else at the root that is not a store file
-  for (const name of listDir(root)) {
+  for (const name of listDir('')) {
     if (STORE_FILES.includes(name)) continue;
     if ((name === 'changes' || name === 'features') && listDir(path.join(root, name)).length === 0) continue; // emptied by the migration
     unexpected(name);

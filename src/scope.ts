@@ -174,6 +174,8 @@ export interface ScopeOpts {
   done?: boolean;
   retired?: boolean;
   now?: number;
+  /** Read as of this event: the stream is cut after it. */
+  until?: number;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
@@ -204,9 +206,9 @@ class Index {
   readonly now: number;
   readonly liveSessions = new Map<string, string>();
 
-  constructor(readonly store: Store, readonly loaded: Loaded, now: number) {
+  constructor(readonly store: Store, readonly loaded: Loaded, now: number, until?: number) {
     this.now = now;
-    this.events = readEvents(store);
+    this.events = until === undefined ? readEvents(store) : readEvents(store).filter((e) => e.seq <= until);
     // creation order: the day the record names, then its place in the stream (a renamed change keeps its first place)
     const firstSeq = new Map<string, number>();
     for (const e of this.events) if (e.op === 'created' && !firstSeq.has(e.key)) firstSeq.set(e.key, e.seq);
@@ -368,7 +370,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const lens = (opts.lens ?? 'feature') as Lens;
   if (!LENSES.includes(lens)) throw new CliError(`lens must be one of ${LENSES.join(', ')}`);
   const days = opts.days && opts.days > 0 ? opts.days : 14;
-  const ix = new Index(store, loaded, opts.now ?? Date.now());
+  const ix = new Index(store, loaded, opts.now ?? Date.now(), opts.until);
 
   let node: Rec | undefined;
   if (opts.node) {

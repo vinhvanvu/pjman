@@ -17,6 +17,9 @@ export const pageSearch = z.object({
   q: z.string().optional().catch(undefined),
   state: z.string().optional().catch(undefined),
   milestone: z.string().optional().catch(undefined),
+  /** The moment the page reads as of: an event's sequence number or an instant (decision moment-is-an-event);
+   *  absent is now. Every query carries it, so the whole page holds still at that moment. */
+  at: z.string().optional().catch(undefined),
 });
 
 export type PageSearch = z.infer<typeof pageSearch>;

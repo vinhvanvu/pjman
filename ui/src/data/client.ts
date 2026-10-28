@@ -1,6 +1,8 @@
 // The client for /api/v1: one function per route. Nothing here is called from a component; the hooks in queries.ts are.
+import { useMoment } from '@/state/moment';
 import type {
   Bridge,
+  Moment,
   OrderBody,
   OrderResult,
   Resolution,
@@ -26,13 +28,19 @@ export const BASE = '/api/v1';
 
 interface Envelope<T> {
   seq: number;
+  moment?: Moment;
   data?: T;
   error?: { code: string; message: string; tried?: string[] };
 }
 
-async function call<T>(route: string): Promise<T> {
-  const res = await fetch(BASE + route, { headers: { accept: 'application/json' } });
+/** A moment on a route: `at=` appended, so the server answers as of it. */
+const asOf = (route: string, at?: string) =>
+  at ? `${route}${route.includes('?') ? '&' : '?'}at=${encodeURIComponent(at)}` : route;
+
+async function call<T>(route: string, at?: string): Promise<T> {
+  const res = await fetch(BASE + asOf(route, at), { headers: { accept: 'application/json' } });
   const body = (await res.json()) as Envelope<T>;
+  if (at && body.moment) useMoment.getState().setResolved(body.moment);
   if (!res.ok || body.error) {
     throw new ApiError(
       res.status,
@@ -73,26 +81,28 @@ const recordPath = (key: string) => {
 };
 
 export const api = {
-  store: () => call<StoreInfo>('/store'),
-  records: (q: { type?: string; status?: string; project?: string } = {}) => {
+  store: (at?: string) => call<StoreInfo>('/store', at),
+  records: (q: { type?: string; status?: string; project?: string } = {}, at?: string) => {
     const p = new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][]);
-    return call<Row[]>(`/records${p.size ? `?${p}` : ''}`);
+    return call<Row[]>(`/records${p.size ? `?${p}` : ''}`, at);
   },
-  record: (key: string) => call<Row & { body: string; sections: Record<string, string> }>(recordPath(key)),
-  resolve: (ref: string) => call<Resolution>(`/resolve?ref=${encodeURIComponent(ref)}`),
-  sessionView: (id: string) => call<SessionView>(`/sessions/${encodeURIComponent(id)}/view`),
+  record: (key: string, at?: string) =>
+    call<Row & { body: string; sections: Record<string, string> }>(recordPath(key), at),
+  resolve: (ref: string, at?: string) => call<Resolution>(`/resolve?ref=${encodeURIComponent(ref)}`, at),
+  sessionView: (id: string, at?: string) => call<SessionView>(`/sessions/${encodeURIComponent(id)}/view`, at),
   /** The bridge's data: the product's sessions by state. `product` is the key; the slug is what the route takes. */
-  bridge: (product: string, days?: number) =>
+  bridge: (product: string, days?: number, at?: string) =>
     call<Bridge>(
       `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/bridge${days ? `?days=${days}` : ''}`,
+      at,
     ),
-  scope: (q: ScopeQuery) => {
+  scope: (q: ScopeQuery, at?: string) => {
     const p = new URLSearchParams({ lens: q.lens });
     if (q.node) p.set('node', q.node);
     if (q.days) p.set('days', String(q.days));
     if (q.done) p.set('done', '1');
     if (q.retired) p.set('retired', '1');
-    return call<Scope>(`/scope?${p}`);
+    return call<Scope>(`/scope?${p}`, at);
   },
   /** The one write: reorder the roadmap, as the person signed in. */
   order: (body: OrderBody) => post<OrderResult>('/order', body),

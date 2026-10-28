@@ -70,6 +70,8 @@ export interface BridgeOpts {
   /** How far back a session's last act may be, in days. */
   days?: number;
   now?: number;
+  /** Read as of this event: the stream is cut after it (the records are the caller's, loaded at the same moment). */
+  until?: number;
 }
 
 const LOG_LINE = /^-\s*(\S+)\s+—\s+(.*)$/;
@@ -130,6 +132,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   // instant is read from the log, so a stop reads as a stop and not as an act after it)
   const acts = new Map<string, string>();
   for (const e of readEvents(store)) {
+    if (opts.until !== undefined && e.seq > opts.until) break;
     const s = e.session ?? (e.type === 'session' ? e.key : undefined);
     if (!s) continue;
     if (e.op === 'log' && e.key === s) continue;
