@@ -1,12 +1,10 @@
-// The search params every page understands: what identifies the view. Validated with zod, absent means the default.
+// The search params every page understands: what identifies the page's state. Validated with zod, absent means the default.
 // The path is the scope (what the structure pane draws); `sel` is the selection (what the record pane shows); the
 // filter params narrow the structure pane and are what a saved view will be made of.
 import { z } from 'zod';
-import { GROUPINGS, TABS, VIEWS } from '@/data/contract';
+import { TABS } from '@/data/contract';
 
 export const pageSearch = z.object({
-  view: z.enum(VIEWS).optional().catch(undefined),
-  group: z.enum(GROUPINGS).optional().catch(undefined),
   sel: z.string().optional().catch(undefined),
   tab: z.enum(TABS).optional().catch(undefined),
   done: z.boolean().optional().catch(undefined),
@@ -17,6 +15,8 @@ export const pageSearch = z.object({
   q: z.string().optional().catch(undefined),
   state: z.string().optional().catch(undefined),
   milestone: z.string().optional().catch(undefined),
+  /** Bugs only: the map keeps the nodes a bug is listed at, with the path to each. */
+  bugs: z.boolean().optional().catch(undefined),
 });
 
 export type PageSearch = z.infer<typeof pageSearch>;

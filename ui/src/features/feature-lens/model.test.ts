@@ -4,6 +4,10 @@ import {
   allFeatureKeys,
   allWork,
   bodyOf,
+  bugMark,
+  filterTree,
+  isFiltering,
+  matches,
   byMotion,
   changesBeneath,
   changesHere,
@@ -150,5 +154,31 @@ describe('the overview', () => {
     const row = { ...change('x').row!, features: [{ effect: 'adds' as const, key: 'feature:f' }] };
     expect(effectOn(row, 'feature:f')).toBe('adds');
     expect(effectOn(row, 'feature:g')).toBeUndefined();
+  });
+
+  it('marks a row with the bugs beneath it, toned by the worst, and nothing when there are none', () => {
+    expect(bugMark({ bugs: undefined })).toBeUndefined();
+    expect(bugMark({ bugs: { here: 0, beneath: 0 } })).toBeUndefined();
+    expect(bugMark({ bugs: { here: 1, beneath: 3, worst: 'feature' } })).toEqual({
+      count: 3,
+      tone: 'loud',
+      title: '3 open bugs beneath, worst feature',
+    });
+    expect(bugMark({ bugs: { here: 0, beneath: 1, worst: 'capability' } })?.tone).toBe('warn');
+    expect(bugMark({ bugs: { here: 1, beneath: 1, worst: 'cosmetic' } })).toMatchObject({ tone: 'quiet', count: 1 });
+  });
+
+  it('filters the map to the nodes a bug is listed at, keeping the path to each', () => {
+    const broken = { ...feature('cli'), bugs: { here: 1, beneath: 1, worst: 'nuisance' } };
+    const io = { ...feature('io', [broken, feature('server')]), bugs: { here: 0, beneath: 1, worst: 'nuisance' } };
+    const store = feature('store');
+    const tree = [io, store];
+    expect(isFiltering({ bugs: true })).toBe(true);
+    expect(matches(broken, { bugs: true })).toBe(true);
+    expect(matches(io, { bugs: true })).toBe(false);
+    const narrowed = filterTree(tree, { bugs: true });
+    expect(narrowed.map((n) => n.key)).toEqual(['feature:io']);
+    expect(narrowed[0]!.children.map((n) => n.key)).toEqual(['feature:cli']);
+    expect(filterTree(tree, { bugs: true, q: 'store' })).toEqual([]);
   });
 });

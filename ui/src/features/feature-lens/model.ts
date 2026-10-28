@@ -83,16 +83,38 @@ export interface MapFilter {
   states?: string[];
   /** A milestone (change key): the lens is narrowed to the work beneath it before the map is drawn. */
   milestone?: string;
+  /** Bugs only: the nodes a bug is listed at (its home), with the path to each; the bugs themselves are in the record
+   *  pane of the node. The list the rail once had is this filter (decision rail-destinations/three-destinations). */
+  bugs?: boolean;
 }
 
-export const isFiltering = (f: MapFilter): boolean => !!f.q?.trim() || !!f.states?.length || !!f.milestone;
+export const isFiltering = (f: MapFilter): boolean => !!f.q?.trim() || !!f.states?.length || !!f.milestone || !!f.bugs;
 
 export function matches(n: ScopeNode, f: MapFilter): boolean {
   if (n.type !== 'feature' && n.type !== 'product') return false;
   const q = f.q?.trim().toLowerCase();
   if (q && ![n.name, n.title, n.key].some((s) => s?.toLowerCase().includes(q))) return false;
   if (f.states?.length && !f.states.includes(n.derived ?? n.status ?? 'planned')) return false;
+  if (f.bugs && !(n.bugs?.here ?? 0)) return false;
   return true;
+}
+
+// --- bugs on the map ------------------------------------------------------------------------------------------
+
+/** What a row says about the bugs beneath a node: the count, and the tone of the worst (loud when a product or a
+ *  feature is broken, a warning for a capability, quiet below). Nothing when there are none. */
+export function bugMark(
+  n: Pick<ScopeNode, 'bugs'>,
+): { count: number; tone: 'loud' | 'warn' | 'quiet'; title: string } | undefined {
+  const count = n.bugs?.beneath ?? 0;
+  if (!count) return undefined;
+  const worst = n.bugs?.worst;
+  const tone = worst === 'product' || worst === 'feature' ? 'loud' : worst === 'capability' ? 'warn' : 'quiet';
+  return {
+    count,
+    tone,
+    title: `${count} open ${count === 1 ? 'bug' : 'bugs'} beneath${worst ? `, worst ${worst}` : ''}`,
+  };
 }
 
 /** The tree narrowed to the features that match, with the ancestors that lead to them. */

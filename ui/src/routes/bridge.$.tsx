@@ -1,6 +1,6 @@
-// /bridge/*: the bridge, a view of the product (decision bridge-in-the-rail, proposed): its sessions by what each
-// needs from the person. The rest of the path is the product's key. The shell is the product frame; the content is
-// the bridge feature. Moving the bridge elsewhere later is this file and the rail's entry, nothing else.
+// /bridge/*: the bridge, the first of the product's three destinations and its home (decisions three-destinations and
+// bridge-is-home): what waits on the person and its sessions by need. The rest of the path is the product's key. The
+// shell is the product frame; the content is the bridge feature.
 import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { User } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -8,7 +8,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { TopBar } from '@/components/shell/TopBar';
 import { EmptyState } from '@/components/EmptyState';
-import { VIEWS, type ProductRow } from '@/data/contract';
+import type { ProductRow } from '@/data/contract';
 import { useBridge, useStore } from '@/data/queries';
 import { Bridge } from '@/features/bridge';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
@@ -62,12 +62,10 @@ function BridgePage() {
     <Rail
       product={product ? railProduct(product) : productKey ? { key: productKey, name: short(productKey) } : undefined}
       products={store?.products.map(railProduct)}
+      current="bridge"
       lens="feature"
       node={productKey}
-      view="tree"
-      views={VIEWS}
-      defaultView="tree"
-      bridge={productKey ? { product: productKey, on: true, count: bridge.data?.waiting } : undefined}
+      waiting={bridge.data?.waiting}
       themeSlot={<ThemePicker />}
       personSlot={
         store?.actor ? (

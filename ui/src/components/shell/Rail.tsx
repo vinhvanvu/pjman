@@ -1,22 +1,11 @@
-// The rail: product, lens, view, and at the bottom the theme and the person. Links carry the node across lenses; the
-// view is a search param on the current route. Slots take what a feature owns (the theme picker, the person).
+// The rail: the product, then three destinations with no headings (decision rail-destinations/three-destinations),
+// the bridge first as where a person lands, the product map and the roadmap as the structures everything derives from;
+// at the bottom the theme and the person. Links to the lenses carry the node across. Slots take what a feature owns.
 import { Link, useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
-import {
-  Bug,
-  ChartGantt,
-  Check,
-  ChevronDown,
-  Columns3,
-  Inbox,
-  Layers,
-  Radar,
-  ListTree,
-  Route,
-  type LucideIcon,
-} from 'lucide-react';
+import { Check, ChevronDown, Layers, Radar, Route, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { Lens, View } from '@/data/contract';
+import type { Lens } from '@/data/contract';
 import { plural } from '@/lib/format';
 import {
   DropdownMenu,
@@ -45,23 +34,21 @@ const healthLine = (p: RailProduct): string =>
     .filter(Boolean)
     .join(' · ') || 'nothing open';
 
+/** Where the page is: the bridge, or one of the two lenses. */
+export type Destination = 'bridge' | Lens;
+
 export interface RailProps {
   product?: RailProduct;
   /** Every product in the store: with more than one, the header is a switcher. */
   products?: RailProduct[];
-  lens: Lens;
+  /** The destination this page is; nothing is marked when it is none of the three. */
+  current?: Destination;
+  /** The node the lens links carry across, when the page stands on one. */
   node?: string;
-  view: View;
-  /** Figures beside each lens: features, projects, milestones. */
-  lensCounts?: Partial<Record<Lens, number>>;
-  /** Figures beside views that have one: the inbox count. */
-  viewCounts?: Partial<Record<View, number>>;
-  /** Views the current page offers, and the one the lens draws when none is asked for. */
-  views: readonly View[];
-  defaultView: View;
-  /** The bridge, first under View: the product's sessions by what each needs. `on` when this page is it; `count`
-   *  the sessions waiting on the person. Absent when no product is known. */
-  bridge?: { product: string; on?: boolean; count?: number };
+  /** The lens the product switcher lands in, and that the node links use. */
+  lens: Lens;
+  /** The bridge's badge: the decisions waiting on the person across the product. */
+  waiting?: number;
   themeSlot?: ReactNode;
   personSlot?: ReactNode;
   className?: string;
@@ -72,35 +59,12 @@ const LENS_ITEMS: { lens: Lens; label: string; icon: LucideIcon }[] = [
   { lens: 'roadmap', label: 'Roadmap', icon: Route },
 ];
 
-/** The tree view is the lens's own structure: the map in the feature lens, the chart in the roadmap lens. */
-const viewItems = (lens: Lens): { view: View; label: string; icon: LucideIcon }[] => [
-  lens === 'roadmap'
-    ? { view: 'tree', label: 'Chart', icon: ChartGantt }
-    : { view: 'tree', label: 'Map', icon: ListTree },
-  { view: 'lanes', label: 'Lanes', icon: Columns3 },
-  { view: 'inbox', label: 'Inbox', icon: Inbox },
-  { view: 'bugs', label: 'Bugs', icon: Bug },
-];
-
-export function Rail({
-  product,
-  products,
-  lens,
-  node,
-  view,
-  lensCounts,
-  viewCounts,
-  views,
-  defaultView,
-  bridge,
-  themeSlot,
-  personSlot,
-  className,
-}: RailProps) {
+export function Rail({ product, products, current, node, lens, waiting, themeSlot, personSlot, className }: RailProps) {
   const navigate = useNavigate();
   const several = (products?.length ?? 0) > 1;
   const headerClass =
     'flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[13.5px] font-semibold hover:bg-raised';
+  const lensOf = (d: Destination | undefined): Lens => (d && d !== 'bridge' ? d : lens);
   return (
     <nav
       aria-label="Rail"
@@ -121,7 +85,11 @@ export function Rail({
             {products!.map((p) => (
               <DropdownMenuItem
                 key={p.key}
-                onSelect={() => navigate({ to: '/$lens/$', params: { lens, _splat: p.key }, search: {} })}
+                onSelect={() =>
+                  current === 'bridge' || !current
+                    ? navigate({ to: '/bridge/$', params: { _splat: p.key }, search: {} })
+                    : navigate({ to: '/$lens/$', params: { lens: lensOf(current), _splat: p.key }, search: {} })
+                }
                 className="flex items-start gap-2 py-1.5"
                 aria-current={p.key === product?.key ? 'true' : undefined}
               >
@@ -140,8 +108,8 @@ export function Rail({
         </DropdownMenu>
       ) : (
         <Link
-          to="/$lens/$"
-          params={{ lens, _splat: product?.key ?? '' }}
+          to="/bridge/$"
+          params={{ _splat: product?.key ?? '' }}
           search={{}}
           className={headerClass}
           title={product?.title ?? 'Home'}
@@ -150,60 +118,34 @@ export function Rail({
         </Link>
       )}
 
-      <RailHeading>Lens</RailHeading>
-      {LENS_ITEMS.map(({ lens: l, label, icon: Icon }) => (
-        <Link
-          key={l}
-          to="/$lens/$"
-          params={{ lens: l, _splat: node ?? '' }}
-          search={{}}
-          className={cn(railItem, l === lens && railItemOn)}
-          aria-current={l === lens ? 'page' : undefined}
-        >
-          <Icon className="size-[15px] shrink-0" />
-          {label}
-          {lensCounts?.[l] !== undefined && (
-            <span className="ml-auto text-xs font-normal text-ink-faint">{lensCounts[l]}</span>
-          )}
-        </Link>
-      ))}
-
-      <RailHeading>View</RailHeading>
-      {bridge && (
-        <Link
-          to="/bridge/$"
-          params={{ _splat: bridge.product }}
-          search={{}}
-          className={cn(railItem, bridge.on && railItemOn)}
-          aria-current={bridge.on ? 'page' : undefined}
-        >
-          <Radar className="size-[15px] shrink-0" />
-          Bridge
-          {bridge.count ? <span className="ml-auto text-xs font-normal text-status-review">{bridge.count}</span> : null}
-        </Link>
-      )}
-      {viewItems(lens)
-        .filter((v) => views.includes(v.view))
-        .map(({ view: v, label, icon: Icon }) => (
+      <div className="flex flex-col gap-0.5 pt-3">
+        {product && (
           <Link
-            key={v}
+            to="/bridge/$"
+            params={{ _splat: product.key }}
+            search={{}}
+            className={cn(railItem, current === 'bridge' && railItemOn)}
+            aria-current={current === 'bridge' ? 'page' : undefined}
+          >
+            <Radar className="size-[15px] shrink-0" />
+            Bridge
+            {waiting ? <span className="ml-auto text-xs font-normal text-status-review">{waiting}</span> : null}
+          </Link>
+        )}
+        {LENS_ITEMS.map(({ lens: l, label, icon: Icon }) => (
+          <Link
+            key={l}
             to="/$lens/$"
-            params={{ lens, _splat: node ?? '' }}
-            search={(prev: Record<string, unknown>) => ({ ...prev, view: v === defaultView ? undefined : v })}
-            className={cn(railItem, v === view && !bridge?.on && railItemOn)}
-            aria-current={v === view && !bridge?.on ? 'page' : undefined}
+            params={{ lens: l, _splat: node ?? product?.key ?? '' }}
+            search={{}}
+            className={cn(railItem, current === l && railItemOn)}
+            aria-current={current === l ? 'page' : undefined}
           >
             <Icon className="size-[15px] shrink-0" />
             {label}
-            {viewCounts?.[v] ? (
-              <span
-                className={cn('ml-auto text-xs font-normal', v === 'bugs' ? 'text-status-blocked' : 'text-ink-faint')}
-              >
-                {viewCounts[v]}
-              </span>
-            ) : null}
           </Link>
         ))}
+      </div>
 
       <div className="flex-1" />
       {themeSlot}
@@ -215,7 +157,3 @@ export function Rail({
 export const railItem =
   'flex h-8 items-center gap-2.5 rounded-row px-2.5 font-medium text-ink-muted hover:bg-raised hover:text-ink';
 export const railItemOn = 'bg-raised text-ink';
-
-export function RailHeading({ children }: { children: ReactNode }) {
-  return <div className="label px-2.5 pt-3.5 pb-1.5">{children}</div>;
-}

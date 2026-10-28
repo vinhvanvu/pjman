@@ -133,12 +133,13 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
           <div className="flex items-center gap-2">
             <Label>Bugs</Label>
             <Link
-              to="."
-              search={(prev: Record<string, unknown>) => ({ ...prev, view: 'bugs' as const })}
+              to="/$lens/$"
+              params={{ lens: 'feature', _splat: scope.node?.key ?? '' }}
+              search={{ bugs: true }}
               className="ml-auto inline-flex items-center gap-1 text-xs text-ink-muted hover:text-ink"
             >
               <Bug className="size-3.5" aria-hidden="true" />
-              the queue →
+              on the map →
             </Link>
           </div>
           <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">

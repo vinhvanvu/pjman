@@ -19,15 +19,9 @@ import type { Lens } from '@contract/scope';
  *  the getter page, and a milestone as an entry on the roadmap. */
 export const LENSES = ['feature', 'roadmap'] as const satisfies readonly Lens[];
 export const IN_FLIGHT = ['active', 'review', 'blocked'] as const;
-/** How the structure pane draws the scope. */
-export const VIEWS = ['tree', 'lanes', 'inbox', 'bugs'] as const;
-export type View = (typeof VIEWS)[number];
 /** The record pane's tabs, for the selected entity. */
 export const TABS = ['overview', 'activity', 'decisions'] as const;
 export type Tab = (typeof TABS)[number];
-/** How the lanes group. */
-export const GROUPINGS = ['status', 'milestone', 'actor'] as const;
-export type Grouping = (typeof GROUPINGS)[number];
 
 /** The store, as /store answers. */
 export interface StoreInfo {

@@ -1,8 +1,8 @@
-// The filter bar above the product map: a text, the states, and a milestone that narrows the whole lens to the work
-// beneath one milestone. All of it is URL state, so a filtered map is a link, and a saved view later is one of these links
+// The filter bar above the product map: a text, the states, bugs only, and a milestone that narrows the whole lens to
+// the work beneath one milestone. All of it is URL state, so a filtered map is a link, and a saved view later is one of these links
 // with a name.
 import { cn } from 'cn';
-import { ChevronDown, Flag, Search, X } from 'lucide-react';
+import { Bug, ChevronDown, Flag, Search, X } from 'lucide-react';
 import type { ChangeRow } from '@/data/contract';
 import { pct } from '@/lib/format';
 import { short } from '@/lib/keys';
@@ -70,6 +70,21 @@ export function FilterBar({ filter, onChange, matched, changes, className }: Fil
           );
         })}
       </div>
+      <button
+        type="button"
+        aria-pressed={!!filter.bugs}
+        onClick={() => onChange({ ...filter, bugs: filter.bugs ? undefined : true })}
+        title="Only the nodes a bug is listed at"
+        className={cn(
+          'inline-flex h-7 items-center gap-1.5 rounded-row border px-2 text-xs',
+          filter.bugs
+            ? 'border-primary/50 bg-selection text-ink'
+            : 'border-line-strong text-ink-muted hover:bg-raised hover:text-ink',
+        )}
+      >
+        <Bug className="size-3.5" aria-hidden="true" />
+        bugs
+      </button>
       {filter.milestone ? (
         <button
           type="button"
