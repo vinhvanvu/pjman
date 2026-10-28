@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { readUserConfig, userDir, type Store } from './config.js';
 import { follow, lastSeq, readEvents } from './events.js';
 import { eventsBetween, loadAt, type Moment } from './moment.js';
+import { timeline } from './timeline.js';
 import { findReferences, get } from './graph.js';
 import { rootProductOf, tree } from './tree.js';
 import { activity } from './activity.js';
@@ -232,6 +233,11 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const product = m ? `product:${m[1]}` : (url.searchParams.get('product') ?? undefined);
       return send(res, 200, { data: bridge(store, loaded, { product, days: days ? Number(days) : undefined, ...asOf }) });
     }
+    if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/timeline$/.exec(route))) {
+      // the axis a moment is placed on: always as of now, whatever at= says
+      const q = url.searchParams;
+      return send(res, 200, { data: timeline(store, moment ? loadStore(store) : loaded, { product: `product:${m[1]}`, from: q.get('from') ?? undefined, to: q.get('to') ?? undefined }) });
+    }
     if (route === '/board') {
       return send(res, 200, { data: storeContext(store, { project: url.searchParams.get('project') ?? null }) });
     }
@@ -284,7 +290,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/bridge?product=&days=', '/events?since=&until=', 'POST /order {change, before|after|first|last|later}'], asOf: 'every read takes at=<event seq|instant> and answers as of that moment, stamped with the moment it resolved to' } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/products/{slug}/timeline?from=&to=', '/bridge?product=&days=', '/events?since=&until=', 'POST /order {change, before|after|first|last|later}'], asOf: 'every read takes at=<event seq|instant> and answers as of that moment, stamped with the moment it resolved to' } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

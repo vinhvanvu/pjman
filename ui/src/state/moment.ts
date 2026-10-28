@@ -1,20 +1,21 @@
 // The moment the page reads as of (decision read-at-a-moment/moment-is-an-event). The cursor lives in the URL
 // (`at`, an event's sequence number or an instant) so it survives a reload and can be shared; every query carries it,
 // so the whole page holds still at that moment while the stream keeps invalidating. What the server resolved it to
-// (the event, its instant, its commit) is kept here from the last as-of response, for the chip.
+// (the event, its instant, its commit) is kept here per cursor from the as-of responses, so a cursor whose reads come
+// from the cache still names its own moment.
 import { useSearch } from '@tanstack/react-router';
 import { create } from 'zustand';
 import type { Moment } from '@/data/contract';
 
 interface MomentState {
-  /** The moment the last as-of response resolved to. */
-  resolved?: Moment;
-  setResolved: (m?: Moment) => void;
+  /** What each `at=` sent resolved to, by the value sent. */
+  byAt: Record<string, Moment>;
+  setResolved: (at: string, m: Moment) => void;
 }
 
 export const useMoment = create<MomentState>()((set) => ({
-  resolved: undefined,
-  setResolved: (resolved) => set({ resolved }),
+  byAt: {},
+  setResolved: (at, m) => set((s) => (s.byAt[at]?.seq === m.seq ? s : { byAt: { ...s.byAt, [at]: m } })),
 }));
 
 /** The cursor as the URL holds it (decision read-at-a-moment/time-with-event-selection): `at` the time the page reads
@@ -43,4 +44,10 @@ export function atParam(c: Cursor): string | undefined {
 
 export function useAt(): string | undefined {
   return atParam(useCursor());
+}
+
+/** The moment the page's cursor resolved to, once a read at it has answered; undefined while live. */
+export function useResolved(): Moment | undefined {
+  const at = useAt();
+  return useMoment((s) => (at ? s.byAt[at] : undefined));
 }

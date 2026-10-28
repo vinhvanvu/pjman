@@ -1,5 +1,5 @@
 export { Bridge } from './Bridge';
-export { SessionCard, Strip, WaitCard } from './Strip';
+export { SessionCard, Strip, WaitCard, type Touched } from './Strip';
 export {
   cardWhen,
   NEED_ORDER,

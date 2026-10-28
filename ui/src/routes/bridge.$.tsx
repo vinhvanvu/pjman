@@ -14,6 +14,7 @@ import { useBridge, usePrefetchDestinations, useStore } from '@/data/queries';
 import { Bridge } from '@/features/bridge';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { MomentChip } from '@/features/moment';
+import { touchedBy, Transport, useLockedEvent } from '@/features/transport';
 import { FollowPill } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
@@ -47,6 +48,7 @@ function BridgePage() {
   const product = store?.products.find((p) => p.key === productKey);
   const bridge = useBridge(productKey);
   usePrefetchDestinations(productKey);
+  const locked = useLockedEvent(productKey);
   useEffect(() => {
     if (product?.key) setLastProduct(product.key);
   }, [product?.key, setLastProduct]);
@@ -107,11 +109,20 @@ function BridgePage() {
   } else if (!bridge.data) {
     content = <Pending />;
   } else {
-    content = <Bridge data={bridge.data} lens="feature" productName={product?.name ?? short(productKey)} />;
+    content = (
+      <Bridge
+        data={bridge.data}
+        lens="feature"
+        productName={product?.name ?? short(productKey)}
+        touched={locked && touchedBy(locked)}
+      />
+    );
   }
 
   return (
     <AppShell wide={wide} rail={rail} bar={bar} railOpen={railOpen} onCloseRail={() => setRailOpen(false)}>
+      {/* the transport stands above the scroll, so it stays in reach while the strip scrolls */}
+      {productKey && <Transport product={productKey} />}
       <div className="flex min-h-0 flex-1 flex-col overflow-auto">{content}</div>
       <CommandPalette open={palette} onOpenChange={setPalette} lens="feature" />
     </AppShell>

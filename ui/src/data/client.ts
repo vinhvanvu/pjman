@@ -11,6 +11,7 @@ import type {
   ScopeQuery,
   SessionView,
   StoreInfo,
+  Timeline,
 } from './contract';
 
 export class ApiError extends Error {
@@ -40,7 +41,7 @@ const asOf = (route: string, at?: string) =>
 async function call<T>(route: string, at?: string): Promise<T> {
   const res = await fetch(BASE + asOf(route, at), { headers: { accept: 'application/json' } });
   const body = (await res.json()) as Envelope<T>;
-  if (at && body.moment) useMoment.getState().setResolved(body.moment);
+  if (at && body.moment) useMoment.getState().setResolved(at, body.moment);
   if (!res.ok || body.error) {
     throw new ApiError(
       res.status,
@@ -95,6 +96,11 @@ export const api = {
     call<Bridge>(
       `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/bridge${days ? `?days=${days}` : ''}`,
       at,
+    ),
+  /** The product's events over a window, always as of now: the transport's axis. */
+  timeline: (product: string, from: string, to: string) =>
+    call<Timeline>(
+      `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
     ),
   scope: (q: ScopeQuery, at?: string) => {
     const p = new URLSearchParams({ lens: q.lens });

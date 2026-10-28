@@ -3,12 +3,12 @@
 // It is the only control over time until the bridge's transport exists.
 import { useNavigate } from '@tanstack/react-router';
 import { X } from 'lucide-react';
-import { useCursor, useMoment } from '@/state/moment';
+import { useCursor, useResolved } from '@/state/moment';
 import { momentWords } from './model';
 
 export function MomentChip() {
   const cursor = useCursor();
-  const resolved = useMoment((s) => s.resolved);
+  const resolved = useResolved();
   const navigate = useNavigate();
   if (!cursor.at && !cursor.event) return null;
   const set = (next: { at?: string; event?: number }) =>

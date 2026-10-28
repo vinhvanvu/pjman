@@ -6,7 +6,21 @@ import { BASE } from './client';
 import type { StoreEvent } from './contract';
 import { queryKeys } from './queries';
 
-const OPS = ['created', 'set', 'log', 'bind', 'observe', 'moved', 'removed', 'formatted', 'init', 'write'] as const;
+const OPS = [
+  'created',
+  'set',
+  'log',
+  'bind',
+  'observe',
+  'moved',
+  'removed',
+  'formatted',
+  'init',
+  'write',
+  'applied',
+  'reverted',
+  'migrated',
+] as const satisfies readonly StoreEvent['op'][];
 
 export interface LiveState {
   connected: boolean;

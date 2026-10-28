@@ -28,15 +28,29 @@ const EMPTY: Record<SessionState, string> = {
   ended: 'No session ended today with its work in review.',
 };
 
+/** What the event the page is locked on touched: the session that wrote it, the change it wrote or decided on. */
+export interface Touched {
+  session?: string;
+  change?: string;
+}
+
+/** A card the locked event touched is outlined. */
+const isTouched = (t: Touched | undefined, session?: BridgeSession, change?: BridgeChange): boolean =>
+  !!t && ((!!t.session && t.session === session?.key) || (!!t.change && t.change === change?.key));
+
+const OUTLINE = 'ring-2 ring-primary ring-offset-2 ring-offset-ground';
+
 export function Strip({
   waitingOn,
   sessions,
   lens,
+  touched,
   className,
 }: {
   waitingOn: readonly WaitingChange[];
   sessions: readonly BridgeSession[];
   lens: Lens;
+  touched?: Touched;
   className?: string;
 }) {
   const { waits, groups } = strip({ waitingOn, sessions });
@@ -53,7 +67,7 @@ export function Strip({
         }
         empty={EMPTY.waiting}
         items={waits.map((w) => (
-          <WaitCard key={w.change.key} item={w} lens={lens} />
+          <WaitCard key={w.change.key} item={w} lens={lens} touched={touched} />
         ))}
       />
       {groups.map((g) => (
@@ -68,7 +82,7 @@ export function Strip({
           }
           empty={EMPTY[g.state]}
           items={g.sessions.map((s) => (
-            <SessionCard key={s.key} session={s} lens={lens} />
+            <SessionCard key={s.key} session={s} lens={lens} touched={touched} />
           ))}
         />
       ))}
@@ -186,10 +200,15 @@ function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
 }
 
 /** A change with decisions proposed on it, doubling as the card of the session on it when one is in the window. */
-export function WaitCard({ item, lens }: { item: WaitItem; lens: Lens }) {
+export function WaitCard({ item, lens, touched }: { item: WaitItem; lens: Lens; touched?: Touched }) {
   const { change, proposed, session } = item;
   return (
-    <CardFrame session={session} change={change} lens={lens} className="border-status-review/60">
+    <CardFrame
+      session={session}
+      change={change}
+      lens={lens}
+      className={cn('border-status-review/60', isTouched(touched, session, change) && OUTLINE)}
+    >
       <span className="flex items-center gap-2">
         <span
           aria-hidden="true"
@@ -208,14 +227,14 @@ export function WaitCard({ item, lens }: { item: WaitItem; lens: Lens }) {
 }
 
 /** One session as the strip carries it. */
-export function SessionCard({ session: s, lens }: { session: BridgeSession; lens: Lens }) {
+export function SessionCard({ session: s, lens, touched }: { session: BridgeSession; lens: Lens; touched?: Touched }) {
   const title = s.change ? (s.change.title ?? short(s.change.key)) : 'No change yet';
   return (
     <CardFrame
       session={s}
       change={s.change}
       lens={lens}
-      className={cn('border-line', s.state === 'ended' && 'opacity-70')}
+      className={cn('border-line', s.state === 'ended' && 'opacity-70', isTouched(touched, s, s.change) && OUTLINE)}
     >
       <span className="flex items-center gap-2">
         <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', DOT[s.state])} />

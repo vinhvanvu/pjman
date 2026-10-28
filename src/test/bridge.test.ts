@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
 import { bridge, sessionState } from '../bridge.js';
+import { timeline } from '../timeline.js';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog } from '../commands/session.js';
@@ -127,4 +128,22 @@ test('bridge: another product sees none of them; a window that has passed sees n
   assert.equal(other.waiting, 0);
   assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000 }).sessions.length, 0);
   assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000, days: 7 }).sessions.length, 5); // the subagent's is under its parent
+});
+
+test('timeline: the product\'s events in the window, decisions marked, titles as they read now, the store\'s last event beside them', () => {
+  newRecord(store, 'product', 'other', { title: 'Other', owners: ['person:tester'], summary: 'Another.' });
+  const t = timeline(store, loadStore(store), { product: 'product:shop' });
+  assert.equal(t.product, 'product:shop');
+  const keys = new Set(t.events.map((e) => e.key));
+  for (const k of ['product:shop', 'feature:shop/checkout', 'change:shop/card-form', 'decision:shop/card-form/why', 'session:s-wait', 'session:s-fresh'])
+    assert.ok(keys.has(k), `${k} is the product's`);
+  assert.ok(!keys.has('product:other'), 'another product\'s write is not');
+  const opened = t.events.find((e) => e.key === 'decision:shop/card-form/why' && e.op === 'created')!;
+  assert.equal(opened.decision, true);
+  assert.equal(opened.title, 'Why');
+  assert.equal(t.events.find((e) => e.key === 'session:s-wait' && e.op === 'bind')!.title, 'Card form', 'a session reads by its change');
+  assert.ok(t.events.every((e) => e.key.startsWith('decision:') || !e.decision));
+  assert.deepEqual(t.events.map((e) => e.seq), [...t.events.map((e) => e.seq)].sort((a, b) => a - b), 'in stream order');
+  assert.equal(t.last?.seq, Math.max(...t.events.map((e) => e.seq)) + 1, 'the other product\'s write is the store\'s last');
+  assert.equal(timeline(store, loadStore(store), { product: 'product:shop', to: '2000-01-01T00:00:00Z' }).events.length, 0);
 });
