@@ -5,9 +5,11 @@ A context graph for product development: typed records (changes, decisions, sour
 ## Install
 
 ```bash
-git clone <this repository> && cd pjman && npm install && npm link   # until the package is published
+git clone <this repository> && cd pjman && npm install && npm run install:local   # until the package is published
 cd ~/Projects/<your-repo> && pjman init
 ```
+
+`npm run install:local` installs the tool as a copy of a built package, never a link to the checkout: it builds, packs, installs globally, points the Claude Code marketplace at the installed copy and refreshes the plugin, and restarts the dashboard when one was running. Run it again after every merge to main; a session's half-built checkout is then never another session's tool. When the installed tool asks for a store migration, run `pjman migrate` once, after the install.
 
 `pjman init` is the whole onboarding: it creates the global store if missing, registers the repository as a project, sets you as the actor from your git name, installs the Claude Code plugin from this checkout when `claude` is on PATH (hooks, skill, brief, Linear's MCP server), runs `pjman start` (the dashboard, detached) and prints what exists and what is left, which is at most signing in to the tracker from inside a session with `/mcp`. It asks one question, whether the first session should propose a product map from the repository (yes by default; `--map` or `--no-map` answers without asking), and records the answer on the project: while it is yes and the product has no feature, `pjman context` opens with one line saying so, and the map skill surveys the repository and proposes the tree. Running it again is the health check; it repairs what is missing and never undoes anything. `pjman stop` stops the dashboard; `pjman init --brief claude-md` also writes the brief into `~/.claude/CLAUDE.md` for sessions that run without hooks.
 
