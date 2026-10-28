@@ -31,6 +31,7 @@ import { order } from './commands/order.js';
 import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
 import { migrate } from './commands/migrate.js';
+import { formatIdentity, identity } from './identity.js';
 import { shortenText } from './keys.js';
 
 import { createRequire } from 'node:module';
@@ -105,6 +106,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
   { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
   { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },
+  { name: 'whoami', about: "who you are: the configured person, their record and their accounts in order, the first of a handle kind as the primary one; from the store alone, no app asked. --verify asks each account kind's checker (GitHub through gh; a kind with no checker reports unchecked) and gives each account a verdict, verified, unknown or unchecked, with the answers cached for a day (--fresh asks again). What is off is said with the command that resolves it: a provisional handle (one that claims no account of a handle kind), a sign-in claimed by another person, an account the app does not know. Writes nothing",
+    usage: ['pjman whoami [--verify] [--fresh] [--json]'] },
 ];
 
 const GLOBAL = `global flags: --store <path>  --writer <actor>  --session <session>  --created <date>  --json  --help  --version
@@ -135,6 +138,8 @@ function parse(args: string[]) {
     'in-project': { type: 'boolean' },
     'no-start': { type: 'boolean' },
     'no-adapter': { type: 'boolean' },
+    verify: { type: 'boolean' },
+    fresh: { type: 'boolean' },
     brief: { type: 'string' },
     open: { type: 'boolean' },
     all: { type: 'boolean' },
@@ -569,6 +574,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       v.json
         ? json({ root: store.root, mode: store.mode, name: store.config.name, project: store.project ?? null, product: scopeProduct ? `product:${scopeProduct}` : null, project_dir: store.projectDir ?? null, tracker: trackerOf(store), actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
         : out(`${store.root} (${store.mode})${store.project ? ` ${store.project}` : ''}`);
+      return 0;
+    }
+    case 'whoami': {
+      const store = globalStore() ?? requireStore(cwd, v.store);
+      const id = identity(store, { verify: v.verify, fresh: v.fresh });
+      if (v.json) json(id);
+      else for (const line of formatIdentity(id)) out(line);
       return 0;
     }
     default:

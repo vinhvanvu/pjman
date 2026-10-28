@@ -30,7 +30,7 @@ const getJson = async (route: string) => {
 before(async () => {
   fs.mkdirSync(project, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ cwd: project, name: 'app' });
+  init({ checkers: [], cwd: project, name: 'app' });
   store = findStore(project)!;
   newRecord(store, 'change', 'login', { title: 'Login', summary: 'Sign in.', binds: ['linear:APP-1'], links: ['file:README.md'] });
   newRecord(store, 'decision', 'login/magic-links', { title: 'Magic links', decision: 'Links.', why: 'No passwords.' });

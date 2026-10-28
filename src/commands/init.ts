@@ -1,15 +1,17 @@
 import { emit } from '../events.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DEFAULT_SOURCE_KINDS, DEFAULT_TREE_LEVELS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type StoreConfig, type UserStore } from '../config.js';
+import { DEFAULT_SOURCE_KINDS, DEFAULT_TREE_LEVELS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type Store, type StoreConfig, type UserStore } from '../config.js';
 import { git, gitUserEmail, gitUserName, hasGit, toplevel } from '../git.js';
 import { slugify } from '../keys.js';
 import { loadStore } from '../records.js';
+import { personOf } from '../refs.js';
 import { CliError } from '../util.js';
 import { newActor, newProduct, newProject } from './new.js';
 import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
 import { packageRoot, start } from './start.js';
+import { HANDLE_KINDS, checkersFor, formatIdentity, identity, machineName, type Checker } from '../identity.js';
 import { execFileSync } from 'node:child_process';
 
 export interface InitOpts {
@@ -29,6 +31,8 @@ export interface InitOpts {
   map?: boolean;
   /** The product the repository belongs to, when it already exists; else one is created with the project's name. */
   product?: string;
+  /** The account checkers (tests pass fakes); the default is GitHub through gh. */
+  checkers?: Checker[];
 }
 
 /** Install the Claude Code plugin from this checkout at user scope, when `claude` is on PATH. Idempotent; never throws. */
@@ -87,19 +91,22 @@ function scaffold(root: string, cfg: StoreConfig): void {
   }
 }
 
-/** The person's login at the forge, when gh is signed in: the handle a person record is keyed by. */
-export function forgeLogin(): string | null {
-  try {
-    const login = execFileSync('gh', ['api', 'user', '--jq', '.login'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 8000, env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } }).trim();
-    return login && /^[A-Za-z0-9-]+$/.test(login) ? login : null;
-  } catch {
-    return null;
+/** The person's login at the forge, when signed in: the first suggestion for a handle. */
+function forgeLogin(checkers: Checker[]): { kind: string; login: string } | null {
+  for (const c of checkers) {
+    if (!HANDLE_KINDS.includes(c.kind)) continue;
+    const login = c.self();
+    if (login) return { kind: c.kind, login };
   }
+  return null;
 }
 
-/** Make sure the user config names an actor. The handle is the person's own: suggested from the forge login, else the
- *  git user name; the accounts (the forge login, the git email) are what the person record links. */
-function ensureActor(): { actor?: string; login?: string | null; email?: string | null; name?: string | null } {
+/** Make sure the user config names an actor: there is always one. The handle is the person's own, suggested in a fixed
+ *  order, the forge login, else the committer name, else this machine's account name, which always exists; the accounts
+ *  the fallback knew (the forge login, the committer email) are what the person record links. A handle from the
+ *  committer name or the machine claims no account of a handle kind, so it reads as provisional until the person claims
+ *  one or renames it (decision handle-from-the-forge/say-it-while-unclaimed). */
+function ensureActor(checkers: Checker[]): { actor?: string; login?: { kind: string; login: string } | null; email?: string | null; name?: string | null } {
   const user = readUserConfig();
   const email = gitUserEmail();
   const name = gitUserName();
@@ -110,12 +117,29 @@ function ensureActor(): { actor?: string; login?: string | null; email?: string 
     writeUserConfig(user);
     return { actor: user.actor, email, name };
   }
-  const login = forgeLogin();
-  const handle = login ? slugify(login) : name ? slugify(name) : '';
+  const login = forgeLogin(checkers);
+  const handle = [login?.login, name, machineName()].map((s) => (s ? slugify(s) : '')).find(Boolean) ?? '';
   if (!handle) return { login, email, name };
   user.actor = `person:${handle}`;
   writeUserConfig(user);
   return { actor: user.actor, login, email, name };
+}
+
+/** The health of the person record on a re-run: a record that claims no account of a handle kind is given the forge
+ *  login when the login is the handle itself (unambiguous, and what the first run would have done); when they differ
+ *  nothing is claimed, so a provisional handle never turns chosen by accident, and the read below says what to do. */
+function claimLogin(store: Store, actor: string, checkers: Checker[]): string | null {
+  const loaded = loadStore(store);
+  const rec = loaded.byKey.get(actor)?.[0];
+  if (!rec) return null;
+  const links = Array.isArray(rec.data.links) ? (rec.data.links as unknown[]).filter((l): l is string => typeof l === 'string') : [];
+  if (links.some((l) => HANDLE_KINDS.includes(l.slice(0, l.indexOf(':'))))) return null;
+  const login = forgeLogin(checkers);
+  if (!login || slugify(login.login) !== actor.slice('person:'.length)) return null;
+  const key = `${login.kind}:${login.login}`;
+  if (!store.config.source_kinds.includes(login.kind) || personOf(loaded, key)) return null;
+  set(store, actor, [`links=${[...links, key].join(',')}`], {});
+  return key;
 }
 
 /** `owner/name` from the repository's origin remote, when it has one. */
@@ -133,7 +157,9 @@ export function init(opts: InitOpts): string[] {
   const out: string[] = [];
   const project = toplevel(opts.cwd) ?? path.resolve(opts.cwd);
   const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS], tree_levels: [...DEFAULT_TREE_LEVELS] });
-  const who = ensureActor();
+  // init is the person's own act, so the apps are asked afresh; the day's cache is refilled for the sessions that follow
+  const checkers = checkersFor({ checkers: opts.checkers, fresh: true });
+  const who = ensureActor(checkers);
   const actor = who.actor;
 
   if (opts.inProject) {
@@ -179,10 +205,16 @@ export function init(opts: InitOpts): string[] {
     let loaded = loadStore(store);
     // the person: a record keyed by their handle, holding the accounts the sources will be matched through
     if (actor && !loaded.byKey.has(actor)) {
-      const links = [who.login ? `github-user:${who.login}` : null, who.email ? `email:${who.email.toLowerCase()}` : null].filter((k): k is string => !!k && store.config.source_kinds.includes(k.slice(0, k.indexOf(':'))));
+      const links = [who.login ? `${who.login.kind}:${who.login.login}` : null, who.email ? `email:${who.email.toLowerCase()}` : null].filter((k): k is string => !!k && store.config.source_kinds.includes(k.slice(0, k.indexOf(':'))));
       newActor(store, actor, { name: who.name ?? undefined, links, writer: actor });
-      out.push(`you are ${actor}${links.length ? ` (${links.join(', ')})` : ''}`);
+      out.push(`created ${actor}${links.length ? ` (${links.join(', ')})` : ''}`);
       loaded = loadStore(store);
+    } else if (actor) {
+      const claimed = claimLogin(store, actor, checkers);
+      if (claimed) {
+        out.push(`claimed ${claimed} for ${actor}: it is your handle`);
+        loaded = loadStore(store);
+      }
     }
     const known = loaded.byKey.get(key)?.[0];
     const wantsMap = opts.map ?? (known && typeof known.data.map === 'string' ? undefined : askYesNo('Should the first session propose a product map from this repository?', true));
@@ -211,8 +243,9 @@ export function init(opts: InitOpts): string[] {
     out.push(`${project} → ${key} in ${userConfigPath()}`);
     out.push('the tool commits every write it makes here');
   }
-  if (actor) out.push(`you are ${actor} (user config 'actor')`);
-  else out.push(`no actor known: set 'actor: person:<handle>' in ${path.join(userDir(), 'config.yaml')} or pass --writer`);
+  // who you are, as the store and the apps see it: the same read as pjman whoami --verify
+  if (opts.inProject) out.push(actor ? `you are ${actor} (user config 'actor')` : `no actor known: set 'actor: person:<handle>' in ${path.join(userDir(), 'config.yaml')} or pass --writer`);
+  else out.push(...formatIdentity(identity(openStore(globalStorePath()), { verify: true, checkers })));
   if (opts.adapter) out.push(installClaudeAdapter());
   if (opts.brief) {
     const b = installBrief(opts.brief);

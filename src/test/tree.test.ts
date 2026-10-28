@@ -27,12 +27,12 @@ before(() => {
   const web = path.join(tmp, 'web');
   fs.mkdirSync(web, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: web });
-  init({ cwd: web, name: 'web' });
+  init({ checkers: [], cwd: web, name: 'web' });
   store = findStore(web)!;
   const api = path.join(tmp, 'api');
   fs.mkdirSync(api, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: api });
-  init({ cwd: api, name: 'api' });
+  init({ checkers: [], cwd: api, name: 'api' });
   // the two repositories build one product: shop; the ones init made with their names are not needed
   newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
