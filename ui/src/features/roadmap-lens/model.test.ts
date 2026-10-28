@@ -6,6 +6,7 @@ const row = (key: string, r: Partial<ChangeRow> = {}): ChangeRow => ({
   key: `change:${key}`,
   features: [],
   waiting: 0,
+  decided: 0,
   live: false,
   children: 0,
   dependsOn: [],

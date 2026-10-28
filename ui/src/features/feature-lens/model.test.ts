@@ -30,6 +30,7 @@ const change = (key: string): ScopeNode => ({
     title: key,
     features: [],
     waiting: 0,
+    decided: 0,
     live: false,
     children: 0,
     dependsOn: [],

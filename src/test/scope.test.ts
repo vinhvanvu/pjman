@@ -52,6 +52,7 @@ before(() => {
   newRecord(store, 'change', 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
   newRecord(store, 'change', 'old', { title: 'Old', summary: 's', project: 'project:web', features: ['feature:shop/search'], status: 'done' });
   newRecord(store, 'decision', 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
+  newRecord(store, 'decision', 'card-form/how', { title: 'How', decision: 'h', why: 'w', decidedBy: 'person:tester', decidedOn: '2026-01-02' });
   newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 'live-1', 'change:shop/card-form');
 });
@@ -83,6 +84,7 @@ test('feature lens: features nest, a change sits under every feature it names, a
   const r = saved.children[0].row!;
   assert.deepEqual(r.ticket, { key: 'github-issue:acme/shop#7', label: '#7', url: 'https://github.com/acme/shop/issues/7' });
   assert.equal(r.waiting, 1);
+  assert.equal(r.decided, 1); // the decided one counts; the proposed one waits
   assert.equal(r.live, true);
   assert.deepEqual(r.progress, { done: 0, total: 1 });
   assert.deepEqual(r.features.map((f) => `${f.effect} ${f.key}`), ['adds feature:shop/saved-cards', 'changes feature:shop/search']);

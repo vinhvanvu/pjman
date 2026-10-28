@@ -8,6 +8,7 @@ const row = (key: string, status: string, extra: Partial<ChangeRow> = {}): Chang
   status,
   features: [],
   waiting: 0,
+  decided: 0,
   live: false,
   children: 0,
   dependsOn: [],

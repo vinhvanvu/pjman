@@ -49,6 +49,8 @@ export interface ChangeRow {
   features: { effect: EffectName; key: string; title?: string }[];
   /** Proposed decisions on it: what waits on a person. */
   waiting: number;
+  /** Decisions on it decided; superseded and reverted ones are history and count in neither. */
+  decided: number;
   /** A session bound to it moved inside the live window. */
   live: boolean;
   children: number;
@@ -188,6 +190,7 @@ class Index {
   readonly ancestors = new Map<string, string[]>();
   readonly childrenOf = new Map<string, Rec[]>();
   readonly waiting = new Map<string, number>();
+  readonly decided = new Map<string, number>();
   readonly events: StoreEvent[];
   readonly now: number;
   readonly liveSessions = new Map<string, string>();
@@ -211,9 +214,10 @@ class Index {
       if (p) this.childrenOf.set(p.key, [...(this.childrenOf.get(p.key) ?? []), c]);
     }
     for (const d of loaded.records) {
-      if (d.type !== 'decision' || !d.valid || d.data.status !== 'proposed' || !d.changeKey) continue;
-      const c = live(loaded, d.changeKey);
-      if (c) this.waiting.set(c.key, (this.waiting.get(c.key) ?? 0) + 1);
+      if (d.type !== 'decision' || !d.valid || !d.changeKey) continue;
+      const tally = d.data.status === 'proposed' ? this.waiting : d.data.status === 'decided' ? this.decided : undefined;
+      const c = tally && live(loaded, d.changeKey);
+      if (c) tally.set(c.key, (tally.get(c.key) ?? 0) + 1);
     }
     const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
     for (const e of this.events) {
@@ -331,7 +335,7 @@ class Index {
       project: live(this.loaded, c.data.project)?.key, parent: this.parentOf(c), ticket: ticketOf(this.loaded, c), next: str(c.data.next),
       progress: progressOf(kids.map((k) => ({ status: str(k.data.status) }))),
       features: effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
-      waiting: this.waiting.get(c.key) ?? 0, live: sessions.length > 0, children: kids.length,
+      waiting: this.waiting.get(c.key) ?? 0, decided: this.decided.get(c.key) ?? 0, live: sessions.length > 0, children: kids.length,
       moved: this.lastMoved(c),
       kind: str(c.data.kind), severity: str(c.data.severity), home: this.homeOf(c), target: str(c.data.target),
       dependsOn: list(c.data.depends_on).map((k) => live(this.loaded, k)?.key).filter((k): k is string => !!k),

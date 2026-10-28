@@ -1,19 +1,20 @@
 // The dock: the session's page at docked width, one column beside the terminal (change:docked-view; decision
 // dock-column). What the session is on first; what waits on the person next; the handoff; this session's own lines,
 // newest first; the summary clamped; then rows that drill into the record in place. A session with no change yet
-// shows its product's board, until the first bind moves the dock to the change.
+// shows a pickup list, the product's open changes by feature with the nearest to fully decided first, until the first
+// bind moves the dock to the change.
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import type { ChangeContext, Lens, Scope, SessionFacts, View } from '@/data/contract';
+import type { ChangeContext, Lens, Scope, SessionFacts } from '@/data/contract';
 import { ago, plural } from '@/lib/format';
 import { short } from '@/lib/keys';
-import { DecisionRows } from '@/components/cards/DecisionRows';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords, newestLines } from '@/features/session-follow';
+import { pickups, readiness, type Pickup } from './model';
 
 const LIVE_LINES = 5;
 
@@ -157,15 +158,11 @@ function DockChange({
   );
 }
 
-/** The dock before the session binds a change: the product's board, what waits on the person first. */
+/** The dock before the session binds a change: a pickup list, what this session could take up (decision
+ *  fresh-dock-readiness): open changes by the feature they name, in the roadmap's order, the nearest to fully decided first. */
 function DockFresh({ scope, session, lens }: { scope: Scope; session?: SessionFacts; lens: Lens }) {
-  const open = scope.changes.filter((r) => r.status !== 'done' && r.status !== 'dropped');
-  const count = (s: string) => open.filter((r) => (r.status ?? 'open') === s).length;
-  const review = count('review');
-  const inOrder = scope.roadmap.sequence
-    .map((k) => scope.changes.find((r) => r.key === k))
-    .filter((r): r is NonNullable<typeof r> => !!r && r.status !== 'done' && r.status !== 'dropped')
-    .slice(0, 3);
+  const groups = pickups(scope);
+  const open = groups.reduce((n, g) => n + g.changes.length, 0);
   const product = scope.node?.name ?? scope.node?.title ?? (scope.node ? short(scope.node.key) : 'the store');
   return (
     <article className="flex flex-col gap-5 p-4">
@@ -185,62 +182,68 @@ function DockFresh({ scope, session, lens }: { scope: Scope; session?: SessionFa
         </p>
       </header>
 
-      <section className="flex flex-col gap-2">
+      <section className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
-          <Label className={scope.waitingOn.length || review ? 'text-primary' : undefined}>Waits on you</Label>
-          <span className="text-meta text-ink-faint">across {product}</span>
+          <Label>Pick up</Label>
+          <span className="text-meta text-ink-faint">
+            {plural(open, 'open change')} · in roadmap order, the nearest to decided first
+          </span>
         </div>
-        <div className="flex gap-2">
-          <Stat n={scope.waitingOn.length} label="decisions proposed" to={{ view: 'inbox' }} />
-          <Stat n={review} label="changes in review" to={{ view: 'lanes' }} />
-        </div>
-        {scope.waitingOn.length > 0 && (
-          <DecisionRows items={scope.waitingOn.slice(0, 3)} lens={lens} className="gap-1.5" />
-        )}
-        {scope.waitingOn.length > 3 && (
-          <Link
-            to="."
-            search={(prev: Record<string, unknown>) => ({ ...prev, view: 'inbox' as const })}
-            className="text-xs text-primary hover:underline"
-          >
-            {scope.waitingOn.length - 3} more in the inbox
-          </Link>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <Label>Open</Label>
-          <span className="text-meta text-ink-faint">{plural(open.length, 'change')}</span>
-        </div>
-        <div className="flex gap-3">
-          {(['active', 'planning', 'review', 'open'] as const).map((s) => (
-            <div key={s} className="flex flex-1 flex-col">
-              <span className="text-section font-semibold tabular-nums">{count(s)}</span>
-              <span className="text-meta text-ink-muted">{s}</span>
-            </div>
-          ))}
-        </div>
-        {inOrder.length > 0 && (
-          <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
-            {inOrder.map((r, i) => (
-              <li key={r.key} className="flex items-center gap-2 px-3.5 py-2">
-                <NodeLink
-                  to={r.key}
-                  lens={lens}
-                  className="line-clamp-2 min-w-0 flex-1 text-xs font-medium hover:text-primary"
-                >
-                  {r.title ?? short(r.key)}
+        {groups.length === 0 ? (
+          <div className="text-xs text-ink-faint">Nothing open across {product}.</div>
+        ) : (
+          groups.map((g) => (
+            <section key={g.key ?? ''} className="flex flex-col gap-1.5">
+              {g.key ? (
+                <NodeLink to={g.key} lens={lens} className="text-xs font-medium text-ink-muted hover:text-primary">
+                  {g.name}
                 </NodeLink>
-                <span className="shrink-0 text-meta text-ink-faint">{i === 0 ? 'next up' : 'then'}</span>
-              </li>
-            ))}
-          </ul>
+              ) : (
+                <span className="text-xs font-medium text-ink-faint">{g.name}</span>
+              )}
+              <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
+                {g.changes.map((p) => (
+                  <PickupRow key={p.row.key} pickup={p} lens={lens} />
+                ))}
+              </ul>
+            </section>
+          ))
         )}
       </section>
 
       {session && <LiveLines session={session} />}
     </article>
+  );
+}
+
+/** One change to pick up: its title, and how decided it is, the proposed decisions named. */
+function PickupRow({ pickup: { row, proposed }, lens }: { pickup: Pickup; lens: Lens }) {
+  const r = readiness(row);
+  return (
+    <li className="flex flex-col gap-0.5 px-3.5 py-2">
+      <NodeLink to={row.key} lens={lens} className="line-clamp-2 text-xs font-medium hover:text-primary">
+        {row.title ?? short(row.key)}
+      </NodeLink>
+      <span className="flex min-w-0 items-center gap-1.5 text-meta">
+        <span
+          className={cn(
+            'shrink-0',
+            r.state === 'ready'
+              ? 'font-medium text-primary'
+              : r.state === 'deciding'
+                ? 'text-ink-muted'
+                : 'text-ink-faint',
+          )}
+        >
+          {r.text}
+        </span>
+        {proposed.length > 0 && (
+          <span className="truncate text-ink-faint" title={proposed.join(', ')}>
+            · waits: {proposed.join(', ')}
+          </span>
+        )}
+      </span>
+    </li>
   );
 }
 
@@ -355,21 +358,5 @@ function Rows({
         ))}
       </ul>
     </section>
-  );
-}
-
-function Stat({ n, label, to }: { n: number; label: string; to: { view: View } }) {
-  return (
-    <Link
-      to="."
-      search={(prev: Record<string, unknown>) => ({ ...prev, ...to })}
-      className={cn(
-        'flex flex-1 flex-col rounded-card border border-line bg-surface px-3.5 py-2.5 hover:bg-raised',
-        n > 0 && 'border-primary',
-      )}
-    >
-      <span className="text-heading font-semibold tabular-nums">{n}</span>
-      <span className="text-meta text-ink-muted">{label}</span>
-    </Link>
   );
 }

@@ -8,6 +8,7 @@ const row = (key: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   status: 'open',
   features: [],
   waiting: 0,
+  decided: 0,
   live: false,
   children: 0,
   dependsOn: [],
