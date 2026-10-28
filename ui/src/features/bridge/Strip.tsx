@@ -1,7 +1,8 @@
 // The need strip: the product's sessions grouped by what each needs from the person, in the order of need. Each card
 // is a session: its state, the change it is on and the feature path above it, its last line and when, the decision
-// that waits on the person or the next it left. A card opens that session's dock, which adopts the session for the
-// tab. At desktop the strip is the bridge's command panel beside the stage; until the stage exists it stands alone.
+// that waits on the person or the next it left; its subagents are a count on it, never rows. A card opens that
+// session's dock, which adopts the session for the tab. At desktop the strip is the bridge's command panel beside the
+// stage; until the stage exists it stands alone.
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import type { BridgeSession, Lens, SessionState } from '@/data/contract';
@@ -9,7 +10,7 @@ import { plural } from '@/lib/format';
 import { restOf, short } from '@/lib/keys';
 import { Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
-import { cardWhen, needGroups } from './model';
+import { cardWhen, needGroups, subagentWords } from './model';
 
 const DOT: Record<SessionState, string> = {
   working: 'bg-live shadow-[0_0_0_3px_color-mix(in_srgb,var(--live)_25%,transparent)]',
@@ -109,6 +110,12 @@ export function SessionCard({ session: s, lens }: { session: BridgeSession; lens
         )}
         <span aria-hidden="true">·</span>
         <span className="shrink-0">{cardWhen(s)}</span>
+        {subagentWords(s.children) && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="shrink-0">{subagentWords(s.children)}</span>
+          </>
+        )}
       </span>
       {s.decision && (
         <span className="flex items-start gap-2 rounded-row bg-status-review/10 px-2.5 py-2 text-xs">

@@ -12,7 +12,8 @@ export interface NeedGroup {
 }
 
 /** The groups in the order of need: what waits on the person first, then what stopped with a next set, then what is
- *  working now, then what ended with its work left for a look. Every group is listed, empty or not. */
+ *  working now, then what ended with its work in review. Every group is listed, empty or not. An ended session whose
+ *  change is not in review is not in the strip: nothing about it needs the person. */
 export const NEED_ORDER: readonly { state: SessionState; label: string }[] = [
   { state: 'waiting', label: 'Waits on you' },
   { state: 'stopped', label: 'Stopped · next set' },
@@ -25,7 +26,7 @@ export function needGroups(sessions: readonly BridgeSession[]): NeedGroup[] {
     state,
     label,
     sessions: sessions
-      .filter((s) => s.state === state)
+      .filter((s) => s.state === state && (state !== 'ended' || s.inReview))
       .toSorted((a, b) => (b.last ?? '').localeCompare(a.last ?? '') || a.key.localeCompare(b.key)),
   }));
 }
@@ -42,4 +43,12 @@ export function cardWhen(s: Pick<BridgeSession, 'state' | 'last' | 'line'>, now 
     default:
       return back ? `stopped ${back}` : 'stopped';
   }
+}
+
+/** The faint words for a session's subagents, when it has any: how many, and whether one is still working. */
+export function subagentWords(children: readonly Pick<BridgeSession, 'state'>[]): string | undefined {
+  if (children.length === 0) return undefined;
+  const working = children.filter((c) => c.state === 'working').length;
+  const word = (n: number) => `${n} subagent${n === 1 ? '' : 's'}`;
+  return working ? `${word(working)} working` : `+${word(children.length)}`;
 }

@@ -57,7 +57,14 @@ before(() => {
   newRecord(store, 'session', 's-end', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 's-end', 'change:shop/chore');
   tick();
+  sessionLog(store, 's-end', 'Shipped it; left for review.');
+  tick();
   sessionLog(store, 's-end', 'session ended (prompt_input_exit)');
+  // a subagent of s-work: carried under it, never a row
+  newRecord(store, 'session', 's-kid', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', parent: 'session:s-work' });
+  sessionLog(store, 's-kid', 'spawned by session:s-work (fork)');
+  tick();
+  sessionLog(store, 's-kid', 'Built the thing.');
   // no change yet: only its project names its product
   newRecord(store, 'session', 's-fresh', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionLog(store, 's-fresh', 'session started');
@@ -96,6 +103,11 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
   assert.deepEqual(by['session:s-stop'].change?.path, []);
   assert.equal(by['session:s-end'].state, 'ended');
   assert.equal(by['session:s-end'].inReview, true);
+  assert.equal(by['session:s-end'].line?.text, 'Shipped it; left for review.'); // the closing line is the reason, not the line
+  assert.equal(by['session:s-end'].ended?.reason, 'prompt_input_exit');
+  assert.equal(by['session:s-work'].ended, undefined);
+  assert.equal(by['session:s-kid'], undefined); // a subagent's session is no row of its own
+  assert.deepEqual(by['session:s-work'].children.map((c) => [c.key, c.state, c.line?.text]), [['session:s-kid', 'stopped', 'Built the thing.']]);
   assert.equal(by['session:s-fresh'].state, 'stopped');
   assert.equal(by['session:s-fresh'].change, undefined);
   assert.equal(b.waiting, 1);
@@ -107,5 +119,5 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
 test('bridge: another product sees none of them; a window that has passed sees none either', () => {
   assert.equal(bridge(store, loadStore(store), { product: 'product:other' }).sessions.length, 0);
   assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000 }).sessions.length, 0);
-  assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000, days: 7 }).sessions.length, 5);
+  assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000, days: 7 }).sessions.length, 5); // the subagent's is under its parent
 });

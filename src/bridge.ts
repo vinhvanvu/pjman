@@ -36,8 +36,15 @@ export interface BridgeSession {
   /** The last instant the session itself acted: a line it wrote or a write stamped with it. */
   last?: string;
   state: SessionState;
-  /** The last line it wrote, and when. */
+  /** The last line it wrote before any closing one, and when. */
   line?: { at: string; text: string };
+  /** Ended: when it wrote its closing line, and the reason the line gives. */
+  ended?: { at: string; reason: string };
+  /** The session it was spawned by, when it is a subagent's: such a session is carried under its parent, never as a
+   *  row of its own. */
+  parent?: string;
+  /** The sessions spawned by this one that acted inside the window. */
+  children: BridgeSession[];
   /** What it is on: its last bound change that still resolves. */
   change?: BridgeChange;
   /** The decision that waits on the person, when one does: the oldest proposed on its change. */
@@ -49,7 +56,7 @@ export interface BridgeSession {
 export interface Bridge {
   product: string | null;
   days: number;
-  /** The sessions that acted inside the window, most recent first. */
+  /** The sessions that acted inside the window, most recent first; a subagent's session sits under its parent. */
   sessions: BridgeSession[];
   /** How many wait on the person. */
   waiting: number;
@@ -64,6 +71,7 @@ export interface BridgeOpts {
 }
 
 const LOG_LINE = /^-\s*(\S+)\s+—\s+(.*)$/;
+const CLOSING = /^session ended(?:\s*\((.*)\))?$/;
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
 /** The facts a state is read from. */
@@ -135,7 +143,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), row].sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key)));
   }
 
-  const sessions: BridgeSession[] = [];
+  const rows: BridgeSession[] = [];
   for (const rec of loaded.records) {
     if (rec.type !== 'session' || !rec.valid) continue;
     const log = (rec.sections.get('Log') ?? '')
@@ -143,9 +151,11 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
       .map((l) => LOG_LINE.exec(l.trim()))
       .filter((m): m is RegExpExecArray => !!m)
       .map((m) => ({ at: m[1], text: m[2] }));
-    const line = log.at(-1);
+    const closing = log.at(-1) && CLOSING.exec(log.at(-1)!.text) ? log.at(-1) : undefined;
+    const ended = closing ? { at: closing.at, reason: CLOSING.exec(closing.text)![1] ?? 'other' } : undefined;
+    const line = closing ? log.at(-2) : log.at(-1);
     const act = acts.get(rec.key);
-    const last = [line?.at, act].filter((x): x is string => !!x).sort().at(-1);
+    const last = [closing?.at, line?.at, act].filter((x): x is string => !!x).sort().at(-1);
     if (!last || last < since) continue;
     const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : []).map((k) => live(loaded, k)).filter((r): r is Rec => !!r);
     const on = bound.at(-1);
@@ -153,8 +163,8 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     const product = on ? productOf(loaded, on) : project ? rootProductOf(loaded, project) : undefined;
     if (productKey && product?.key !== productKey) continue;
     const proposed = on ? (proposedOn.get(on.key) ?? []) : [];
-    const state = sessionState({ ended: !!line && line.text.startsWith('session ended'), line: line?.at, act, proposed: proposed.length > 0 }, now);
-    sessions.push({
+    const state = sessionState({ ended: !!ended, line: line?.at, act, proposed: proposed.length > 0 }, now);
+    rows.push({
       key: rec.key,
       agent: str(rec.data.agent),
       onBehalfOf: str(rec.data.on_behalf_of),
@@ -162,11 +172,24 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
       last,
       state,
       line,
+      ended,
+      parent: str(rec.data.parent),
+      children: [],
       change: on ? { key: on.key, title: str(on.data.title), status: str(on.data.status), next: str(on.data.next), path: featurePath(loaded, on) } : undefined,
       decision: state === 'waiting' ? proposed[0] : undefined,
       inReview: on?.data.status === 'review',
     });
   }
-  sessions.sort((a, b) => (b.last ?? '').localeCompare(a.last ?? '') || a.key.localeCompare(b.key));
+  // a subagent's session is carried under its parent; one spawned by a session outside the window or the product is
+  // left out, since it has no row to sit under
+  const byKey = new Map(rows.map((r) => [r.key, r]));
+  const newestFirst = (a: BridgeSession, b: BridgeSession) => (b.last ?? '').localeCompare(a.last ?? '') || a.key.localeCompare(b.key);
+  const sessions: BridgeSession[] = [];
+  for (const r of rows) {
+    if (!r.parent) sessions.push(r);
+    else byKey.get(r.parent)?.children.push(r);
+  }
+  for (const r of sessions) r.children.sort(newestFirst);
+  sessions.sort(newestFirst);
   return { product: productKey, days, sessions, waiting: sessions.filter((s) => s.state === 'waiting').length };
 }
