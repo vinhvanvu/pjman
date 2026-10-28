@@ -32,7 +32,7 @@ Permanently, add this repository as a local marketplace and install from it:
 /plugin install pjman@pjman
 ```
 
-The user config `~/.pjman/config.yaml` must name the person the sessions run for (`actor: person:<handle>`); `pjman init` sets it from `git config user.name`.
+The user config `~/.pjman/config.yaml` names the person the sessions run for (`actor: person:<handle>`); `pjman init` sets it, from the forge login, else the committer name, else the machine's account name. At session start (startup and `/clear`, never on resume, compact or in a subagent) the hook runs `pjman whoami --verify` and injects one block only when something is off: a provisional handle (no account of a handle kind claimed), a sign-in another person claims, an account the app does not know. The block carries the command that resolves it; the agent offers it to the person and never runs a rename or a claim unasked. The tool caches the apps' answers for a day, so the check costs a session start nothing after the first.
 
 ## What the skills add
 

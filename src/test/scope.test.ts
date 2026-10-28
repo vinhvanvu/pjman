@@ -33,7 +33,7 @@ before(() => {
     const dir = path.join(tmp, name);
     fs.mkdirSync(dir, { recursive: true });
     execFileSync('git', ['init', '-q'], { cwd: dir });
-    init({ cwd: dir, name });
+    init({ checkers: [], cwd: dir, name });
   }
   store = findStore(path.join(tmp, 'web'))!;
   newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });

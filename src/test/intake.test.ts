@@ -21,7 +21,7 @@ before(() => {
   const dir = path.join(tmp, 'shop');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ cwd: dir, name: 'shop' });
+  init({ checkers: [], cwd: dir, name: 'shop' });
   store = findStore(dir)!;
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:checkout' });

@@ -3,7 +3,9 @@
 // Never blocks, never fails the session: on any error it logs to the plugin data directory and exits 0.
 //
 //   SessionStart      register the repository if it is not a project yet (auto_register); create the session record; inject the brief,
-//                     `pjman context` (and the bound change's context on resume/compact); observe the branch and the open PR
+//                     `pjman context` (and the bound change's context on resume/compact); observe the branch and the open PR;
+//                     at startup and /clear, who the person is checked against the apps (`pjman whoami --verify`, cached a day
+//                     by the tool), injected only when something is off, the rename or claim offered and never run
 //   UserPromptSubmit  a prompt naming a change, a ticket or a URL binds the change it leads to (pjman refs); a ticket of the project's tracker with no record is read from the tracker and created through the sync (gh for GitHub), or the agent is told to; the change's context is injected the first time
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
 //   Stop              a turn that acted appends one log line, from the harness's last message; the receipt of what the store received since the last turn is shown to the person
@@ -365,6 +367,12 @@ function main() {
       if (!input.agent_id) {
         const stale = staleWorktrees(cwd);
         if (stale.length) text += `\n---\nWorktrees whose change is done and whose branch is merged (remove them so checkouts do not pile up):\n${stale.map((w) => `- ${w.dir} (${w.change}, ${w.branch}): git worktree remove ${w.dir} && git branch -d ${w.branch}`).join('\n')}\n`;
+        // who the person is, checked against the apps once a day (the tool caches): only what is off is said, with the
+        // command that resolves it; a rename is the person's act, offered and never run unasked
+        if (source === 'startup' || source === 'clear') {
+          const who = tryPjman(['whoami', '--verify', '--json'], { cwd, json: true });
+          if (who?.notices?.length) text += `\n---\nIdentity (pjman whoami --verify):\n${who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person and never run a rename or a claim unasked.\n`;
+        }
       }
       emitContext(EVENT, text);
       if (!input.agent_id) {

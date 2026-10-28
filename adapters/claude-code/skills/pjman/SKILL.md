@@ -114,6 +114,7 @@ pjman activity <key> [--days 14]         the events beneath a node and what they
 pjman set <key> field=value …            authored fields: title, status, next, links, binds, summary, plan; decision, why while proposed
 pjman rm <key> [--detach]                remove a record you created by mistake; refused while anything refers to it
 pjman mv <key> <new key>                 rename a change or a feature (the old slug stays an alias); every reference follows
+pjman whoami [--verify]                  who the person is: handle, record, accounts (the first of a handle kind is primary); --verify asks the apps. A rename (pjman mv person:<old> person:<new>) or a claim of an account is the person's act: offer it, never run it unasked
 pjman apply - --for <key>                many writes as one commit, the commands one per line on stdin; pjman undo reverts it
 pjman validate                           run before committing a store that lives in the project
 ```

@@ -47,7 +47,7 @@ before(() => {
 });
 
 test('init creates the global store, its own repository, and registers the repository as a project', () => {
-  const lines = init({ cwd: project });
+  const lines = init({ checkers: [], cwd: project });
   assert.ok(lines.some((l) => /created the global store/.test(l)));
   const found = findStore(project);
   assert.ok(found);
@@ -61,7 +61,7 @@ test('init creates the global store, its own repository, and registers the repos
   store = findStore(project)!;
   assert.match(git(store.root, 'log', '--format=%s'), /pjman: new project:project\npjman: new product:project\npjman: new person:tester\npjman: init store global$/);
   assert.ok(fs.existsSync(path.join(store.root, '.gitignore')));
-  assert.deepEqual(init({ cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
+  assert.deepEqual(init({ checkers: [], cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
 });
 
 test('new change, decision, source, actor, session validate and commit', () => {
@@ -211,7 +211,7 @@ test('a second repository joins the same global store as its own project; the bo
   fs.mkdirSync(path.join(p3, 'src'), { recursive: true });
   git(p3, 'init', '-q');
   git(p3, 'remote', 'add', 'origin', 'git@github.com:acme/other.git');
-  init({ cwd: p3, name: 'Other' });
+  init({ checkers: [], cwd: p3, name: 'Other' });
   const s3 = findStore(path.join(p3, 'src'))!;
   assert.equal(s3.root, store.root);
   assert.equal(s3.project, 'project:other');
@@ -235,7 +235,7 @@ test('init --in-project never commits; the store resolves by walking up', () => 
   const p2 = path.join(tmp, 'p2');
   fs.mkdirSync(path.join(p2, 'src'), { recursive: true });
   git(p2, 'init', '-q');
-  init({ cwd: p2, inProject: true });
+  init({ checkers: [], cwd: p2, inProject: true });
   const s = findStore(path.join(p2, 'src'));
   assert.ok(s);
   assert.equal(s.mode, 'in-project');
@@ -424,7 +424,7 @@ test('the brief is short and installs once, between markers, in the harness file
   assert.equal((text.match(/<!-- pjman:brief -->/g) ?? []).length, 1);
   assert.match(text, /^# mine\n\nkeep this\n/);
   assert.match(text, /pjman get <anything>/);
-  const lines = init({ cwd: project, brief: 'claude-md' });
+  const lines = init({ checkers: [], cwd: project, brief: 'claude-md' });
   assert.ok(lines.some((l) => /kept the brief/.test(l)));
   delete process.env.CLAUDE_CONFIG_DIR;
 });
@@ -437,7 +437,7 @@ test('start brings the dashboard up detached and is idempotent; stop takes it do
   assert.ok(!again.started);
   assert.equal(again.address.url, first.address.url);
   assert.equal(readServeAddress()?.pid, first.address.pid);
-  const lines = init({ cwd: project, start: true });
+  const lines = init({ checkers: [], cwd: project, start: true });
   assert.ok(lines.some((l) => l === `dashboard: ${first.address.url} (already running)` || l.startsWith(`dashboard: ${first.address.url}`)));
   assert.ok(lines.some((l) => /left to do/.test(l)));
   const stopped = stop();
@@ -674,13 +674,13 @@ test('init asks about the map once and records the answer; the context says when
   const other = path.join(tmp, 'other');
   fs.mkdirSync(other, { recursive: true });
   git(other, 'init', '-q');
-  const lines = init({ cwd: other, adapter: false, start: false, map: false });
+  const lines = init({ checkers: [], cwd: other, adapter: false, start: false, map: false });
   assert.ok(lines.some((l) => /no product map will be proposed \(project:other map=skip\)/.test(l)));
   assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'skip');
   // no line while the project declined
   assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
   // yes on a later init flips it; the project has no product, so the context says so
-  init({ cwd: other, adapter: false, start: false, map: true });
+  init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
   assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'propose');
   // init made the product with the project; with no feature yet the context says the product has no map, and a feature ends the line
   const c = storeContext(store, { project: 'project:other' });

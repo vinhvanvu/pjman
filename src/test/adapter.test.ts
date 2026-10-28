@@ -28,13 +28,19 @@ const context = (out: string) => (out ? (JSON.parse(out) as { hookSpecificOutput
 
 let store: Store;
 
+// a gh that is signed in nowhere and knows one issue: the hook's forge, so no test reaches the network
+const bin = path.join(tmp, 'bin');
+fs.mkdirSync(bin, { recursive: true });
+fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\ncase "$*" in *"issue view 12"*) echo \'{"number":12,"title":"Twelve","url":"https://github.com/acme/app/issues/12","state":"OPEN","labels":[{"name":"in progress"}],"milestone":null}\';; *) echo "gh: not logged in" >&2; exit 1;; esac\n', { mode: 0o755 });
+(env as Record<string, string>).PATH = `${bin}:${process.env.PATH ?? ''}`;
+
 before(() => {
   process.env.PJMAN_HOME = env.PJMAN_HOME;
   fs.mkdirSync(path.join(project, 'src'), { recursive: true });
   fs.mkdirSync(env.PJMAN_HOME, { recursive: true });
   fs.writeFileSync(path.join(env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ cwd: project, inProject: true });
+  init({ checkers: [], cwd: project, inProject: true });
   store = findStore(project)!;
   newRecord(store, 'change', 'eight-week-test', { title: 'The test', summary: 's', writer: 'person:tester' });
 });
@@ -47,6 +53,10 @@ test('SessionStart creates the session record and injects the board', () => {
   assert.equal(rec.data.agent, 'agent:claude-code');
   assert.equal(rec.data.on_behalf_of, 'person:tester');
   assert.equal(rec.data.writer, 'agent:claude-code');
+  // who the person is, checked once at startup: this store holds no record for the actor, so that is said, with the way out
+  assert.match(ctx, /\nIdentity \(pjman whoami --verify\):\n- person:tester has no record: run pjman init.*\nOffer the command to the person and never run a rename or a claim unasked\.\n/);
+  assert.ok(!/Identity \(pjman whoami/.test(context(hook('SessionStart', { source: 'resume' }))), 'resume says nothing about identity');
+  assert.ok(!/Identity \(pjman whoami/.test(context(hook('SessionStart', { source: 'startup', agent_id: 'sub-1' }))), 'a subagent says nothing about identity');
 });
 
 test('the view file follows the session: the board before a bind, the change after', () => {
@@ -103,7 +113,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   const work = path.join(tmp, 'work');
   fs.mkdirSync(work, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: work });
-  init({ cwd: work, name: 'work' });
+  init({ checkers: [], cwd: work, name: 'work' });
   const g = findStore(work)!;
   const at = (prompt: string) => hook('UserPromptSubmit', { cwd: work, session_id: 'sess-t', prompt });
   hook('SessionStart', { cwd: work, session_id: 'sess-t', source: 'startup' });

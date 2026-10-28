@@ -32,7 +32,7 @@ before(() => {
   git(project, 'init', '-q');
   git(project, 'config', 'user.name', 'Tester');
   git(project, 'config', 'user.email', 't@example.com');
-  init({ cwd: project });
+  init({ checkers: [], cwd: project });
   store = findStore(project)!;
 });
 
