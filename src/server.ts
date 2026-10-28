@@ -8,6 +8,7 @@ import { follow, lastSeq, readEvents } from './events.js';
 import { findReferences, get } from './graph.js';
 import { rootProductOf, tree } from './tree.js';
 import { activity } from './activity.js';
+import { bridge } from './bridge.js';
 import { scope } from './scope.js';
 import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
@@ -217,6 +218,11 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if ((m = /^\/projects\/([a-z0-9][a-z0-9-]*)\/board$/.exec(route))) {
       return send(res, 200, { data: storeContext(store, { project: `project:${m[1]}` }) });
     }
+    if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/bridge$/.exec(route)) || route === '/bridge') {
+      const days = url.searchParams.get('days');
+      const product = m ? `product:${m[1]}` : (url.searchParams.get('product') ?? undefined);
+      return send(res, 200, { data: bridge(store, loaded, { product, days: days ? Number(days) : undefined }) });
+    }
     if (route === '/board') {
       return send(res, 200, { data: storeContext(store, { project: url.searchParams.get('project') ?? null }) });
     }
@@ -268,7 +274,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/events?since=', 'POST /order {change, before|after|first|last|later}'] } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/bridge?product=&days=', '/events?since=', 'POST /order {change, before|after|first|last|later}'] } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

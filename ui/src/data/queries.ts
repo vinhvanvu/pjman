@@ -12,6 +12,7 @@ export const queryKeys = {
   resolve: (ref: string) => ['pjman', 'resolve', ref] as const,
   sessionView: (id: string) => ['pjman', 'session-view', id] as const,
   scope: (q: ScopeQuery) => ['pjman', 'scope', q] as const,
+  bridge: (product: string, days?: number) => ['pjman', 'bridge', product, days ?? 1] as const,
 };
 
 export function useStore() {
@@ -60,5 +61,16 @@ export function useSessionView(id: string | undefined) {
     queryFn: () => api.sessionView(id!),
     enabled: !!id,
     placeholderData: keepPreviousData,
+  });
+}
+
+/** The bridge: the product's sessions by state. The stream invalidates it like everything else. */
+export function useBridge(product: string | undefined, days?: number) {
+  return useQuery({
+    queryKey: queryKeys.bridge(product ?? '', days),
+    queryFn: () => api.bridge(product!, days),
+    enabled: !!product,
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
   });
 }

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './../routes/__root'
 import { Route as IndexRouteImport } from './../routes/index'
 import { Route as LensSplatRouteImport } from './../routes/$lens.$'
+import { Route as BridgeSplatRouteImport } from './../routes/bridge.$'
 import { Route as GetSplatRouteImport } from './../routes/get.$'
 import { Route as SessionIdRouteImport } from './../routes/session.$id'
 
@@ -22,6 +23,11 @@ const IndexRoute = IndexRouteImport.update({
 const LensSplatRoute = LensSplatRouteImport.update({
   id: '/$lens/$',
   path: '/$lens/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BridgeSplatRoute = BridgeSplatRouteImport.update({
+  id: '/bridge/$',
+  path: '/bridge/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GetSplatRoute = GetSplatRouteImport.update({
@@ -38,12 +44,14 @@ const SessionIdRoute = SessionIdRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$lens/$': typeof LensSplatRoute
+  '/bridge/$': typeof BridgeSplatRoute
   '/get/$': typeof GetSplatRoute
   '/session/$id': typeof SessionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$lens/$': typeof LensSplatRoute
+  '/bridge/$': typeof BridgeSplatRoute
   '/get/$': typeof GetSplatRoute
   '/session/$id': typeof SessionIdRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$lens/$': typeof LensSplatRoute
+  '/bridge/$': typeof BridgeSplatRoute
   '/get/$': typeof GetSplatRoute
   '/session/$id': typeof SessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$lens/$' | '/get/$' | '/session/$id'
+  fullPaths: '/' | '/$lens/$' | '/bridge/$' | '/get/$' | '/session/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$lens/$' | '/get/$' | '/session/$id'
-  id: '__root__' | '/' | '/$lens/$' | '/get/$' | '/session/$id'
+  to: '/' | '/$lens/$' | '/bridge/$' | '/get/$' | '/session/$id'
+  id: '__root__' | '/' | '/$lens/$' | '/bridge/$' | '/get/$' | '/session/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LensSplatRoute: typeof LensSplatRoute
+  BridgeSplatRoute: typeof BridgeSplatRoute
   GetSplatRoute: typeof GetSplatRoute
   SessionIdRoute: typeof SessionIdRoute
 }
@@ -83,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/$lens/$'
       fullPath: '/$lens/$'
       preLoaderRoute: typeof LensSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/bridge/$': {
+      id: '/bridge/$'
+      path: '/bridge/$'
+      fullPath: '/bridge/$'
+      preLoaderRoute: typeof BridgeSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/get/$': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LensSplatRoute: LensSplatRoute,
+  BridgeSplatRoute: BridgeSplatRoute,
   GetSplatRoute: GetSplatRoute,
   SessionIdRoute: SessionIdRoute,
 }

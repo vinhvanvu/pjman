@@ -10,6 +10,7 @@ import {
   Columns3,
   Inbox,
   Layers,
+  Radar,
   ListTree,
   Route,
   type LucideIcon,
@@ -58,6 +59,9 @@ export interface RailProps {
   /** Views the current page offers, and the one the lens draws when none is asked for. */
   views: readonly View[];
   defaultView: View;
+  /** The bridge, first under View: the product's sessions by what each needs. `on` when this page is it; `count`
+   *  the sessions waiting on the person. Absent when no product is known. */
+  bridge?: { product: string; on?: boolean; count?: number };
   themeSlot?: ReactNode;
   personSlot?: ReactNode;
   className?: string;
@@ -88,6 +92,7 @@ export function Rail({
   viewCounts,
   views,
   defaultView,
+  bridge,
   themeSlot,
   personSlot,
   className,
@@ -164,6 +169,19 @@ export function Rail({
       ))}
 
       <RailHeading>View</RailHeading>
+      {bridge && (
+        <Link
+          to="/bridge/$"
+          params={{ _splat: bridge.product }}
+          search={{}}
+          className={cn(railItem, bridge.on && railItemOn)}
+          aria-current={bridge.on ? 'page' : undefined}
+        >
+          <Radar className="size-[15px] shrink-0" />
+          Bridge
+          {bridge.count ? <span className="ml-auto text-xs font-normal text-status-review">{bridge.count}</span> : null}
+        </Link>
+      )}
       {viewItems(lens)
         .filter((v) => views.includes(v.view))
         .map(({ view: v, label, icon: Icon }) => (
@@ -172,8 +190,8 @@ export function Rail({
             to="/$lens/$"
             params={{ lens, _splat: node ?? '' }}
             search={(prev: Record<string, unknown>) => ({ ...prev, view: v === defaultView ? undefined : v })}
-            className={cn(railItem, v === view && railItemOn)}
-            aria-current={v === view ? 'page' : undefined}
+            className={cn(railItem, v === view && !bridge?.on && railItemOn)}
+            aria-current={v === view && !bridge?.on ? 'page' : undefined}
           >
             <Icon className="size-[15px] shrink-0" />
             {label}

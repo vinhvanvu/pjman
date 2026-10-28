@@ -124,6 +124,15 @@ export interface WaitingDecision {
   created?: string;
 }
 
+/** The proposed decisions that pass `keep`, oldest first: what waits on a person. One derivation for the inbox, the
+ *  scope and the bridge. */
+export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = () => true): WaitingDecision[] {
+  return loaded.records
+    .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && !!d.changeKey && keep(d))
+    .map((d) => ({ key: d.key, title: str(d.data.title), change: d.changeKey!, decision: d.sections.get('Decision'), why: d.sections.get('Why'), created: str(d.data.created) }))
+    .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
+}
+
 export interface Scope {
   lens: Lens;
   days: number;
@@ -507,10 +516,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const aliasKeys = new Set(nodeKeys);
   for (const k of nodeKeys) { const r = live(loaded, k); if (r) for (const e of eventKeysOf(r)) aliasKeys.add(e); }
   const recent = ix.events.filter((e) => aliasKeys.has(e.key) && e.op !== 'write' && e.op !== 'formatted').slice(-60);
-  const waitingOn: WaitingDecision[] = loaded.records
-    .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && nodeKeys.has(d.key) && d.changeKey)
-    .map((d) => ({ key: d.key, title: str(d.data.title), change: d.changeKey!, decision: d.sections.get('Decision'), why: d.sections.get('Why'), created: str(d.data.created) }))
-    .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
+  const waitingOn = proposedDecisions(loaded, (d) => nodeKeys.has(d.key));
 
   // crumbs: the chain above the node in this lens, product first
   const crumbs: Scope['crumbs'] = [];
