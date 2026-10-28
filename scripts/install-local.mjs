@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const say = (line) => process.stdout.write(`${line}\n`);
-const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }).trim();
+const run = (cmd, args, opts = {}) => (execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }) ?? '').trim();
 const soft = (cmd, args, opts = {}) => {
   try {
     return execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
@@ -61,9 +61,13 @@ else {
   } else say('plugin pjman refreshed from the copy; it loads at the next session or /reload-plugins');
 }
 
-// the dashboard: a running server keeps the old code until restarted
+// the dashboard: a running server keeps the old code until restarted; it comes back on the same port
+let port;
+try {
+  port = JSON.parse(fs.readFileSync(path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'serve.json'), 'utf8')).port;
+} catch {}
 const stopped = soft('pjman', ['stop']);
 if (!stopped.failed && /stopped/.test(stopped)) {
-  const started = soft('pjman', ['start']);
+  const started = soft('pjman', ['start', ...(port ? ['--port', String(port)] : [])]);
   say(started.failed ? `the dashboard did not restart: ${started.failed}` : started);
 } else say('no dashboard server was running');
