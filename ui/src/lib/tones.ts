@@ -4,7 +4,7 @@
 // the person is the same amber everywhere. A tone is a set of whole class names (Tailwind reads them as written):
 // `text` for words and chips, `bg` for a dot or a bar, `soft` for a tinted ground, `line` for a border, `wash` for the
 // tint a live arrival leaves on what it changed (lib/motion).
-import type { SessionState, TimelineEvent } from '@/data/contract';
+import type { SessionState, StoreEvent, TimelineEvent } from '@/data/contract';
 
 export interface Tone {
   text: string;
@@ -118,6 +118,21 @@ export function eventTone(e: Pick<TimelineEvent, 'type' | 'status' | 'statusNow'
   if (e.type === 'change') return TONE.active;
   return TONE.quiet;
 }
+
+/** The same for an event as the stream delivers it, which carries no status: a decision opened is proposed, a write
+ *  to a decision's status most often decides it. */
+export const streamTone = (e: Pick<StoreEvent, 'type' | 'op' | 'fields'>): Tone =>
+  eventTone({
+    type: e.type,
+    status:
+      e.type !== 'decision'
+        ? undefined
+        : e.op === 'created'
+          ? 'proposed'
+          : e.fields?.includes('status')
+            ? 'decided'
+            : undefined,
+  });
 
 /** The glow a live dot carries. */
 export const GLOW = 'shadow-[0_0_0_3px_color-mix(in_srgb,var(--live)_25%,transparent)]';

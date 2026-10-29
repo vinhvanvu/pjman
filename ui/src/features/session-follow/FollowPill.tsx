@@ -8,8 +8,11 @@ import { useSessionView } from '@/data/queries';
 import { Pulse } from '@/components/presence/Presence';
 import type { PageSearch } from '@/routes/-search';
 import { useFollow } from '@/state/follow';
+import { dockArrivals } from '@/features/dock/model';
+import { Flash } from '@/lib/motion';
+import { useFreshEvents } from '@/state/arrivals';
 import { away, followName, followState } from './model';
-import { SESSION, TONE } from '@/lib/tones';
+import { SESSION, streamTone, TONE } from '@/lib/tones';
 
 const WORDS = { following: 'following', paused: 'paused on', ended: 'ended' } as const;
 
@@ -20,8 +23,12 @@ export function FollowPill({ className }: { className?: string }) {
   const search = useSearch({ strict: false }) as PageSearch;
   const navigate = useNavigate();
   const { data } = useSessionView(home);
+  const fresh = useFreshEvents();
   if (!home) return null;
   const session = data?.session;
+  // the pill's dot is the dock's now marker: each live event of the followed session, or on its change, flashes it
+  // in that event's colour (change:motion-design)
+  const arrival = dockArrivals(fresh, session?.key ?? `session:${home}`, session?.on).any;
   const standing = {
     onSessionRoute: match?.params.id === home,
     looking: !!search.sel || (!!search.tab && search.tab !== 'overview'),
@@ -37,17 +44,20 @@ export function FollowPill({ className }: { className?: string }) {
       )}
       title={`session ${home}`}
     >
-      {state === 'following' && session?.state === 'live' ? (
-        <Pulse />
-      ) : (
-        <span
-          aria-hidden="true"
-          className={cn(
-            'inline-block size-2 shrink-0 rounded-full',
-            state === 'ended' ? SESSION.ended.bg : state === 'paused' ? TONE.waits.bg : SESSION.working.bg,
-          )}
-        />
-      )}
+      <span className="relative inline-grid shrink-0 place-items-center rounded-full">
+        {state === 'following' && session?.state === 'live' ? (
+          <Pulse />
+        ) : (
+          <span
+            aria-hidden="true"
+            className={cn(
+              'inline-block size-2 shrink-0 rounded-full',
+              state === 'ended' ? SESSION.ended.bg : state === 'paused' ? TONE.waits.bg : SESSION.working.bg,
+            )}
+          />
+        )}
+        {arrival && <Flash arrival={arrival.seq} className={streamTone(arrival).text} />}
+      </span>
       <span className="shrink-0 text-ink-muted">{WORDS[state]}</span>
       <span className="min-w-0 truncate font-medium text-ink">{name}</span>
       {away(standing) && (

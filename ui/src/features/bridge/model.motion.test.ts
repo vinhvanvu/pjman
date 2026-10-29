@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BridgeSession, TimelineEvent } from '@/data/contract';
-import { changeOfDecision, lastArrival, strip, stripRows } from './model';
+import { lastArrival, strip, stripRows } from './model';
 
 const session = (key: string, over: Partial<BridgeSession> = {}): BridgeSession => ({
   key,
@@ -36,13 +36,6 @@ describe('stripRows', () => {
       'h:ended',
     ]);
     expect(rows[0]).toMatchObject({ kind: 'head', words: 'none' });
-  });
-});
-
-describe('changeOfDecision', () => {
-  it('reads the change a decision sits under, and nothing for another kind', () => {
-    expect(changeOfDecision('decision:pjman/live-sessions/rolling-window')).toBe('change:pjman/live-sessions');
-    expect(changeOfDecision('change:pjman/live-sessions')).toBeUndefined();
   });
 });
 

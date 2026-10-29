@@ -5,6 +5,7 @@
 // the most recent write comes first. A session shown on a waiting change is not repeated in the groups below.
 import type { BridgeSession, SessionState, TimelineEvent, WaitingChange } from '@/data/contract';
 import { ago, plural } from '@/lib/format';
+import { changeOfDecision } from '@/lib/keys';
 
 /** A change with decisions proposed on it, and the session on it when one is in the window. */
 export interface WaitItem extends WaitingChange {
@@ -173,14 +174,6 @@ export function stripRows({ waits, groups }: StripData): StripRow[] {
     rows.push(...g.sessions.map(sessionRow));
   }
   return rows;
-}
-
-/** The change a decision's key sits under: decision:<product>/<change>/<slug> → change:<product>/<change>. */
-export function changeOfDecision(key: string): string | undefined {
-  if (!key.startsWith('decision:')) return undefined;
-  const rest = key.slice('decision:'.length);
-  const cut = rest.lastIndexOf('/');
-  return cut > 0 ? `change:${rest.slice(0, cut)}` : undefined;
 }
 
 /** The last of the live arrivals that touched a card: written by its session, or to its change or a decision on it. */

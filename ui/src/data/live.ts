@@ -44,7 +44,7 @@ export function useLiveInvalidation(): LiveState {
     const onEvent = (ev: MessageEvent) => {
       const e = JSON.parse(ev.data as string) as StoreEvent;
       setState({ connected: true, last: e });
-      useArrivals.getState().arrive(e.seq);
+      useArrivals.getState().arrive(e);
       invalidate();
     };
     for (const op of OPS) es.addEventListener(op, onEvent as EventListener);
