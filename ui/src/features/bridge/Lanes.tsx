@@ -48,7 +48,7 @@ export function Lanes({
     >
       <EventTip tip={tips.tip} now={r.now} />
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <Label>Sessions · last 12 hours</Label>
+        <Label>Recent sessions · last 12 hours</Label>
         <span className="text-meta text-ink-faint">
           each line a session wrote is a beat · a flag where it opened a decision
         </span>

@@ -31,17 +31,18 @@ export function Bridge({
   const held = cursor.at || cursor.event ? momentWords(cursor, resolved) : undefined;
   return (
     <div className="flex flex-col gap-5 p-5 md:p-6 lg:h-full lg:min-h-0" data-scroll-restoration-id="bridge">
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-        <h2 className="text-section font-semibold">
-          Sessions by need{held && <span className={cn('font-normal', TONE.waits.text)}>, {held}</span>}
-        </h2>
-        <span className="text-meta text-ink-faint">
-          {plural(data.sessions.length, 'session')} across {productName} in the last{' '}
-          {data.days === 1 ? 'day' : plural(data.days, 'day')}
-          {working ? ` · ${working} working` : ''}
-          {data.waiting ? ` · ${plural(data.waiting, 'decision')} on you` : ''}
-        </span>
-      </div>
+      {/* no title of its own: the top bar names the page and each column names itself; the line says what the page
+          holds, and the moment when it is held at one */}
+      <h2 className="sr-only">Bridge</h2>
+      <p className="text-meta text-ink-faint">
+        {held && (
+          <span className={cn('font-medium', TONE.waits.text)}>{held[0]!.toUpperCase() + held.slice(1)} · </span>
+        )}
+        {plural(data.sessions.length, 'session')} across {productName} in the last{' '}
+        {data.days === 1 ? 'day' : plural(data.days, 'day')}
+        {working ? ` · ${working} working` : ''}
+        {data.waiting ? ` · ${plural(data.waiting, 'decision')} on you` : ''}
+      </p>
       {/* the canvas's columns: what shows on the left (the lanes now, the stage above them later), what commands on
           the right, each scrolling on its own at desktop width; narrow, they stack and the page scrolls */}
       <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">

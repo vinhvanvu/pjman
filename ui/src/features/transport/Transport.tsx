@@ -332,12 +332,12 @@ export function Transport({ product }: { product: string }) {
               {clock(selected.at, now)} · {whoWrote(selected) ? `${whoWrote(selected)} ` : ''}
               {eventWords(selected)}
             </span>
-          ) : (
+          ) : timeline.data ? (
             <span className="text-ink-muted">
               {resolved && resolved.seq === cursor.event ? `${clock(resolved.at, now)} · ` : ''}a write outside this
               product
             </span>
-          )}
+          ) : null}
         </div>
       )}
     </div>
