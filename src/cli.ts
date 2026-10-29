@@ -20,7 +20,8 @@ import { syncGithub } from './sync/github.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
 import { sessionBind, sessionFocus, type BindReason, sessionLog, sessionObserve, sessionUnbind } from './commands/session.js';
-import { brief, formatBriefSize } from './hydrate.js';
+import { brief, followWakes, formatBriefSize, type Wake } from './hydrate.js';
+import { note } from './commands/note.js';
 import { envelope } from './write.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
@@ -71,6 +72,10 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge; unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
     usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change> [--reason prompt|created|branch]', 'pjman session unbind <id> <change>', 'pjman session observe <id> <edge> <from> <to>', 'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)'] },
+  { name: 'note', about: "a note to whoever works a change, or to one running session: one line under Notes on that record, given in full in the session's next brief; a session working the change, or the one addressed, is woken for it where its adapter can (pjman undo <commit> takes it back)",
+    usage: ['pjman note <change|session:<id>> <text>'] },
+  { name: 'wakes', about: "the events that wake a session: a decision on its bound change set decided, a note on that change or on the session, by anyone but the session; --follow keeps printing them as they land, from the stream's tail (or --since), until the session's process ends",
+    usage: ['pjman wakes --session <id> [--since <seq>] [--follow] [--json]'] },
   { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
     usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
   { name: 'ls', about: 'list records, by type, status, project and kind; bugs come worst first, then oldest', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--kind bug|work] [--json]'] },
@@ -194,8 +199,9 @@ function parse(args: string[]) {
     from: { type: 'string' },
     watch: { type: 'boolean' },
     detach: { type: 'boolean' },
-    receipt: { type: 'boolean' },
     full: { type: 'boolean' },
+    follow: { type: 'boolean' },
+    receipt: { type: 'boolean' },
     reason: { type: 'string' },
     before: { type: 'string' },
     after: { type: 'string' },
@@ -261,7 +267,7 @@ function main(argv: string[]): number {
 }
 
 /** The commands that write the store. */
-const WRITE_COMMANDS = new Set(['init', 'new', 'set', 'session', 'mv', 'rm', 'fmt', 'sync', 'order', 'apply', 'undo', 'migrate']);
+const WRITE_COMMANDS = new Set(['init', 'new', 'set', 'note', 'session', 'mv', 'rm', 'fmt', 'sync', 'order', 'apply', 'undo', 'migrate']);
 
 type Parsed = ReturnType<typeof parse>;
 
@@ -331,6 +337,32 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         const r = sessionFocus(store, id, rest[0]);
         out(r.moved ? `focus moved in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `focus already there in ${r.path}`);
       } else throw new CliError('usage: pjman session <log|bind|unbind|observe|focus> …');
+      return 0;
+    }
+    case 'note': {
+      const store = scoped(requireStore(cwd, v.store));
+      const [, ref, ...rest] = pos;
+      if (!ref || !rest.length) throw new CliError('usage: pjman note <change|session:<id>> <text>');
+      const r = note(store, ref, rest.join(' '), { writer: v.writer, session: v.session });
+      out(`noted on ${r.key}${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} takes it back)` : ''}`);
+      return 0;
+    }
+    case 'wakes': {
+      if (!v.session) throw new CliError('usage: pjman wakes --session <id> [--since <seq>] [--follow] [--json]');
+      const store = scoped(requireStore(cwd, v.store));
+      const tail = readEvents(store).at(-1)?.seq ?? 0;
+      const print = (w: Wake) => out(v.json ? JSON.stringify(w) : `#${w.seq} ${w.why}`);
+      if (!v.follow) {
+        const stop = followWakes(store, v.session, v.since !== undefined ? Number(v.since) : 0, print);
+        stop();
+        return 0;
+      }
+      followWakes(store, v.session, v.since !== undefined ? Number(v.since) : tail, print);
+      // a follower outlives nothing: once the process that started it is gone, it goes too
+      const parent = process.ppid;
+      setInterval(() => {
+        if (process.ppid !== parent) process.exit(0);
+      }, 5000);
       return 0;
     }
     case 'validate': {

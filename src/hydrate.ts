@@ -6,12 +6,13 @@
 // working on (`changes`, the last one bound); it drives the brief. Focus is what it is looking at: the change whose
 // context it last read, or the change it last wrote; the dock follows it.
 import type { Store } from './config.js';
-import { readEvents, type StoreEvent } from './events.js';
+import { follow, readEvents, type StoreEvent } from './events.js';
 import { eventKeysOf, findSession, loadStore, type Loaded, type Rec } from './records.js';
 import { receiptLines } from './receipt.js';
 import { LIVE_MINUTES } from './scope.js';
 import { changeContext, formatChangeContext } from './commands/view.js';
 import { sessionBriefed } from './commands/session.js';
+import { notesOf } from './commands/note.js';
 import { effectsOf, live } from './tree.js';
 import { CliError } from './util.js';
 
@@ -133,6 +134,47 @@ export function formatNeighbour(n: Neighbour, now = Date.now()): string {
   return `${who} ${where}, last moved ${ago(n.last, now)}${touched}${warn}`;
 }
 
+const isNote = (e: StoreEvent) => e.op === 'log' && !!e.fields?.includes('notes');
+
+/** The notes a session is given after `from`: those on the session itself and on the change it is bound to, written by
+ *  anyone but the session, each in full (decision messages/note-is-a-line-on-its-record). The k-th note event on a record
+ *  after the point is the k-th of its last lines, so a note is matched to the write that made it. */
+export function notesFor(session: Rec, change: Rec | undefined, events: StoreEvent[], from: number): string[] {
+  const out: string[] = [];
+  for (const rec of [session, change]) {
+    if (!rec) continue;
+    const keys = eventKeysOf(rec);
+    const later = events.filter((e) => e.seq > from && isNote(e) && keys.includes(e.key));
+    if (!later.length) continue;
+    const lines = notesOf(rec.sections.get('Notes')).slice(-later.length);
+    later.forEach((e, i) => {
+      const n = lines[i];
+      if (!n || e.session === session.key) return;
+      const to = rec === session ? 'to this session' : `on ${rec.key}`;
+      out.push(`${n.writer ?? 'someone'} ${to}, ${n.at.replace('T', ' ').slice(0, 16)}: ${n.text}`);
+    });
+  }
+  return out;
+}
+
+/** Why an event wakes a session that is idle, or nothing: a decision on the change it is bound to set decided, or a note
+ *  on that change or on the session itself, by anyone but the session (decision messages/module-asks-the-server). Every
+ *  other event waits for the session's next prompt. */
+export function wakeOf(loaded: Loaded, session: Rec, e: StoreEvent): string | undefined {
+  if (e.session === session.key) return undefined;
+  const change = boundOf(loaded, session);
+  if (isNote(e)) {
+    if (eventKeysOf(session).includes(e.key)) return 'a note to this session';
+    if (change && live(loaded, e.key)?.key === change.key) return `a note on ${change.key}`;
+    return undefined;
+  }
+  if (e.type === 'decision' && e.op === 'set' && e.fields?.includes('status') && change && changeOfDecision(loaded, e.key)?.key === change.key) {
+    const d = live(loaded, e.key);
+    if (d?.data.status === 'decided') return `${d.key} decided${typeof d.data.decided_by === 'string' ? ` by ${d.data.decided_by}` : ''}`;
+  }
+  return undefined;
+}
+
 export interface Brief {
   session: string;
   /** full: the binding moved, the change's context whole; delta: what changed since the last brief; none: nothing to say. */
@@ -140,6 +182,8 @@ export interface Brief {
   change?: string;
   /** The delta, one line per record (decision hydration/delta-one-line-per-record). */
   lines: string[];
+  /** The notes the session is given, each in full: on the session and on its bound change. */
+  notes?: string[];
   neighbours: string[];
   text: string;
   /** The last sequence number the brief saw: where the next one starts. */
@@ -164,8 +208,14 @@ export function computeBrief(store: Store, id: string, opts: { full?: boolean; l
   const tail = events.at(-1);
   const base = { session: session.key, seq: tail?.seq ?? 0, at: tail?.at ?? new Date(now).toISOString() };
   const change = boundOf(loaded, session);
-  if (!change) return { ...base, mode: 'none', lines: [], neighbours: [], text: '', size: sizeOf('') };
   const mark = session.data.briefed as { change?: string; seq?: number; at?: string } | undefined;
+  if (!change) {
+    // an unbound session has no brief but the notes addressed to it
+    const notes = notesFor(session, undefined, events, since(events, mark));
+    if (!notes.length) return { ...base, mode: 'none', lines: [], neighbours: [], text: '', size: sizeOf('') };
+    const text = `pjman brief: notes for this session:\n${notes.map((l) => `- ${l}`).join('\n')}\n`;
+    return { ...base, mode: 'delta', lines: [], notes, neighbours: [], text, size: sizeOf(text) };
+  }
   const neighbours = neighboursOf(loaded, session, change, events, now);
   if (opts.full || live(loaded, mark?.change)?.key !== change.key) {
     let text = `pjman brief: this session is bound to ${change.key}; its context in full.\n\n${formatChangeContext(changeContext(store, change.key, loaded))}`;
@@ -175,25 +225,48 @@ export function computeBrief(store: Store, id: string, opts: { full?: boolean; l
   const from = since(events, mark);
   const after = events.filter((e) => e.seq > from);
   const scope = scopeOf(loaded, change);
-  const delta = after.filter((e) => e.session !== session.key && (scope.has(e.key) || (e.type === 'decision' && changeOfDecision(loaded, e.key)?.key === change.key)));
+  const delta = after.filter((e) => e.session !== session.key && !isNote(e) && (scope.has(e.key) || (e.type === 'decision' && changeOfDecision(loaded, e.key)?.key === change.key)));
   const lines = receiptLines(delta, loaded, { counts: true });
+  const notes = notesFor(session, change, events, from);
   // a neighbour is news when it moved since the last brief; the same line is not repeated on every prompt
   const fresh = neighbours.filter((n) => n.last > (mark?.at ?? ''));
-  if (!lines.length && !fresh.length) return { ...base, mode: 'none', change: change.key, lines: [], neighbours: [], text: '', size: sizeOf('') };
+  if (!lines.length && !fresh.length && !notes.length) return { ...base, mode: 'none', change: change.key, lines: [], neighbours: [], text: '', size: sizeOf('') };
   let text = `pjman brief: since this session's last brief, on ${change.key} and what it touches:\n`;
   if (lines.length) text += lines.map((l) => `- ${l}`).join('\n') + '\n';
-  if (fresh.length) text += `${lines.length ? '\n' : ''}Other live sessions near this work:\n${fresh.map((n) => `- ${formatNeighbour(n, now)}`).join('\n')}\n`;
+  if (notes.length) text += `${lines.length ? '\n' : ''}Notes:\n${notes.map((l) => `- ${l}`).join('\n')}\n`;
+  if (fresh.length) text += `${lines.length || notes.length ? '\n' : ''}Other live sessions near this work:\n${fresh.map((n) => `- ${formatNeighbour(n, now)}`).join('\n')}\n`;
   text += `(pjman context ${change.key} has the whole record.)\n`;
-  return { ...base, mode: 'delta', change: change.key, lines, neighbours: fresh.map((n) => formatNeighbour(n, now)), text, size: sizeOf(text) };
+  return { ...base, mode: 'delta', change: change.key, lines, notes, neighbours: fresh.map((n) => formatNeighbour(n, now)), text, size: sizeOf(text) };
 }
 
 /** Compute the brief and, when it says something, record how far it reached: the session's watermark. */
 export function brief(store: Store, id: string, opts: { full?: boolean; now?: number } = {}): Brief {
   const b = computeBrief(store, id, opts);
-  if (b.mode !== 'none' && b.change) sessionBriefed(store, b.session, { change: b.change, seq: b.seq, at: b.at });
+  if (b.mode !== 'none') sessionBriefed(store, b.session, { change: b.change, seq: b.seq, at: b.at });
   return b;
 }
 
 export function formatBriefSize(b: Pick<Brief, 'mode' | 'change' | 'size'>): string {
-  return `${b.mode === 'full' ? 'full context' : 'what changed'} on ${b.change}: ${b.size.lines} line${b.size.lines === 1 ? '' : 's'}, ~${b.size.tokens} tokens`;
+  return `${b.mode === 'full' ? 'full context' : b.change ? 'what changed' : 'notes'}${b.change ? ` on ${b.change}` : ''}: ${b.size.lines} line${b.size.lines === 1 ? '' : 's'}, ~${b.size.tokens} tokens`;
+}
+
+export interface Wake {
+  seq: number;
+  key: string;
+  why: string;
+}
+
+/** The events after `since` that wake the session, then each one as it lands while `follow` holds: what the adapter's
+ *  waking module reads for the session's life. The store is read again only for an event that could wake it. */
+export function followWakes(store: Store, id: string, since: number, fn: (w: Wake) => void): () => void {
+  const sid = id.replace(/^session:/, '');
+  return follow(store, since, (e) => {
+    const maybe = isNote(e) || (e.type === 'decision' && e.op === 'set' && !!e.fields?.includes('status'));
+    if (!maybe) return;
+    const loaded = loadStore(store);
+    const session = findSession(loaded, sid);
+    if (!session) return;
+    const why = wakeOf(loaded, session, e);
+    if (why) fn({ seq: e.seq, key: e.key, why });
+  });
 }

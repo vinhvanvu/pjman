@@ -71,10 +71,12 @@ export function sessionFocus(store: Store, id: string, changeKey: string): { pat
   return { path: rec.path, commit, moved: true };
 }
 
-/** The watermark: the change the last brief was for and the stream position it reached. */
-export function sessionBriefed(store: Store, id: string, mark: { change: string; seq: number; at: string }): { path: string; commit: string | null } {
+/** The watermark: the change the last brief was for (none when it carried only notes to an unbound session) and the
+ *  stream position it reached. */
+export function sessionBriefed(store: Store, id: string, mark: { change?: string; seq: number; at: string }): { path: string; commit: string | null } {
   const { rec } = load(store, id);
-  const commit = save(store, rec, { ...rec.data, briefed: { change: mark.change, seq: mark.seq, at: mark.at } }, rec.body, `pjman: session briefed ${rec.key} ${mark.change}`, 'briefed');
+  const briefed = mark.change ? { change: mark.change, seq: mark.seq, at: mark.at } : { seq: mark.seq, at: mark.at };
+  const commit = save(store, rec, { ...rec.data, briefed }, rec.body, `pjman: session briefed ${rec.key}${mark.change ? ` ${mark.change}` : ''}`, 'briefed');
   return { path: rec.path, commit };
 }
 
