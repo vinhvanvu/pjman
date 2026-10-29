@@ -1,8 +1,8 @@
 // The dock before a session binds a change is a pickup list (decision fresh-dock-readiness): the product's open changes
 // by the feature each names, the groups in the roadmap's order, and within a group the change nearest to being fully
 // decided first, so what is closest to executable sits at the top. Pure: the scope in, groups out.
-import type { ChangeRow, Scope, ScopeNode, WaitingDecision } from '@/data/contract';
-import { short } from '@/lib/keys';
+import type { ChangeRow, Scope, ScopeNode, StoreEvent, WaitingDecision } from '@/data/contract';
+import { changeOfDecision, short } from '@/lib/keys';
 
 export interface Pickup {
   row: ChangeRow;
@@ -83,4 +83,30 @@ export function readiness(row: Pick<ChangeRow, 'waiting' | 'decided'>): Readines
   if (total === 0) return { text: 'no decisions', state: 'undecided' };
   if (row.waiting === 0) return { text: 'ready', state: 'ready' };
   return { text: `${row.decided} of ${total} decided`, state: 'deciding' };
+}
+
+/** What the live stream just changed on the dock (change:motion-design), the newest arrival on each part it draws: a
+ *  line the session wrote, the change's next or its status, a decision opened on it; `any` is the newest of them all,
+ *  which flashes the following pill. Each washes once, in that event's colour. */
+export interface DockArrivals {
+  line?: StoreEvent;
+  next?: StoreEvent;
+  status?: StoreEvent;
+  opened: ReadonlyMap<string, StoreEvent>;
+  any?: StoreEvent;
+}
+
+export function dockArrivals(events: readonly StoreEvent[], session: string, change?: string): DockArrivals {
+  const opened = new Map<string, StoreEvent>();
+  const out: DockArrivals = { opened };
+  for (const e of events) {
+    const onChange = !!change && (e.key === change || changeOfDecision(e.key) === change);
+    if (e.session !== session && e.key !== session && !onChange) continue;
+    out.any = e;
+    if (e.key === session && e.op === 'log') out.line = e;
+    if (change && e.key === change && e.fields?.includes('next')) out.next = e;
+    if (change && e.key === change && e.fields?.includes('status')) out.status = e;
+    if (onChange && e.type === 'decision' && e.op === 'created') opened.set(e.key, e);
+  }
+  return out;
 }

@@ -6,17 +6,33 @@
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { ChevronRight } from 'lucide-react';
+import { AnimatePresence, m } from 'motion/react';
 import { useState } from 'react';
-import type { ChangeContext, Lens, Scope, SessionFacts } from '@/data/contract';
+import type { ChangeContext, Lens, Scope, SessionFacts, StoreEvent } from '@/data/contract';
 import { ago, plural } from '@/lib/format';
+import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
+import { liveItem, Wash } from '@/lib/motion';
+import { statusTone, TONE } from '@/lib/tones';
+import { useFreshEvents } from '@/state/arrivals';
+import { useAt } from '@/state/moment';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords, newestLines } from '@/features/session-follow';
-import { pickups, readiness, type Pickup } from './model';
+import { dockArrivals, pickups, readiness, type Pickup } from './model';
 
 const LIVE_LINES = 5;
+const NO_EVENTS: readonly StoreEvent[] = [];
+const keyOf = (d: { key: string }) => d.key;
+const lineKey = (l: { at: string }) => l.at;
+
+/** A decision that stops waiting: it holds, washed done green, then fades where it stands (decision
+ *  space-follows-the-element); its children take the label, so the wash shows. */
+const DECIDED = {
+  decided: { opacity: [1, 1, 0], scale: [1, 1, 0.97], transition: { duration: 0.9, times: [0, 0.6, 1] } },
+};
+const DECIDED_MARK = { decided: { opacity: 1, transition: { duration: 0.15 } } };
 
 export function Dock({ scope, session, lens }: { scope: Scope; session?: SessionFacts; lens: Lens }) {
   return session?.on && scope.change ? (
@@ -43,13 +59,23 @@ function DockChange({
   const features = Array.isArray(c.data.features) ? (c.data.features as string[]) : [];
   // the feature path the change sits under, nearest first, the product left out: the rail names it
   const under = scope.crumbs.filter((k) => !k.key.startsWith('product:')).toReversed();
+  // alive (change:motion-design): what the stream just changed washes in place, and the dock holds still under the
+  // pointer or focus; at a held moment nothing on it is arriving
+  const at = useAt();
+  const fresh = useFreshEvents();
+  const arrivals = dockArrivals(at ? NO_EVENTS : fresh, session.key, c.key);
+  const hold = useHold();
+  const { shown: waits } = useHeldList(waiting, hold.held, keyOf);
   return (
-    <article className="flex flex-col gap-5 p-4">
+    <article className="flex flex-col gap-5 p-4" {...hold.props}>
       <header className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <Label>{c.data.kind === 'bug' ? 'bug' : 'change'}</Label>
           <span className="text-ink-faint">·</span>
-          <StatusChip status={c.status} />
+          <span className="relative overflow-hidden rounded-chip">
+            <StatusChip status={c.status} />
+            <Wash arrival={arrivals.status?.seq} className={statusTone(c.status).wash} />
+          </span>
           {ctx.parent && (
             <NodeLink to={ctx.parent.key} lens={lens}>
               <Chip tone="quiet">↳ {short(ctx.parent.key)}</Chip>
@@ -89,22 +115,30 @@ function DockChange({
 
       <section className="flex flex-col gap-2">
         <div className="flex items-center gap-2">
-          <Label className={waiting.length ? 'text-primary' : undefined}>Waits on you</Label>
-          {waiting.length > 0 && <span className="text-meta text-ink-faint">{plural(waiting.length, 'decision')}</span>}
+          <Label className={waits.length ? 'text-primary' : undefined}>Waits on you</Label>
+          <span className="text-meta text-ink-faint">
+            {waits.length > 0
+              ? plural(waits.length, 'decision')
+              : `nothing${ctx.decisions.length > 0 ? ` · ${plural(ctx.decisions.length, 'decision')} decided` : ''}`}
+          </span>
         </div>
-        {waiting.length === 0 ? (
-          <div className="text-xs text-ink-faint">
-            Nothing.{ctx.decisions.length > 0 ? ` ${plural(ctx.decisions.length, 'decision')} decided.` : ''}
-          </div>
-        ) : (
-          <ol className="flex flex-col gap-2">
-            {waiting.map((d) => (
-              <li key={d.key}>
+        {/* a decision that stops waiting flashes done where it stands, fades, and only then gives up its space */}
+        <ol key={at ?? 'now'} className="flex flex-col empty:hidden">
+          <AnimatePresence initial={false}>
+            {waits.map((d) => (
+              <m.li key={d.key} {...liveItem} exit="decided" variants={DECIDED} className="pb-2">
                 <NodeLink
                   to={d.key}
                   lens={lens}
-                  className="flex flex-col gap-1.5 rounded-card border border-primary bg-surface px-3.5 py-3 hover:bg-raised"
+                  className="relative flex flex-col gap-1.5 overflow-hidden rounded-card border border-primary bg-surface px-3.5 py-3 hover:bg-raised"
                 >
+                  <Wash arrival={arrivals.opened.get(d.key)?.seq} className={TONE.waits.wash} />
+                  <m.span
+                    aria-hidden="true"
+                    initial={{ opacity: 0 }}
+                    variants={DECIDED_MARK}
+                    className={cn('pointer-events-none absolute inset-0', TONE.done.wash)}
+                  />
                   <span className="line-clamp-2 font-medium leading-[1.35]">{d.title ?? short(d.key)}</span>
                   {d.decision && <span className="line-clamp-3 text-xs text-ink-muted">{d.decision}</span>}
                   <span className="flex items-center gap-2 text-meta text-ink-faint">
@@ -112,20 +146,23 @@ function DockChange({
                     {d.created && <span>{d.created}</span>}
                   </span>
                 </NodeLink>
-              </li>
+              </m.li>
             ))}
-          </ol>
-        )}
+          </AnimatePresence>
+        </ol>
       </section>
 
       {typeof c.data.next === 'string' && c.data.next && (
         <section className="flex flex-col gap-1.5">
           <Label>Next</Label>
-          <p className="rounded-card bg-raised px-3.5 py-2.5 text-[13px] leading-relaxed">{c.data.next}</p>
+          <p className="relative overflow-hidden rounded-card bg-raised px-3.5 py-2.5 text-[13px] leading-relaxed">
+            <Wash arrival={arrivals.next?.seq} className={TONE.active.wash} />
+            {c.data.next}
+          </p>
         </section>
       )}
 
-      <LiveLines session={session} />
+      <LiveLines session={session} arrival={arrivals.line} held={hold.held} moment={at} />
 
       {ctx.summary && <Clamped label="Summary" text={ctx.summary} />}
 
@@ -248,9 +285,24 @@ function PickupRow({ pickup: { row, proposed }, lens }: { pickup: Pickup; lens: 
 }
 
 /** This session's own lines, newest first: what it last said at every stop. */
-function LiveLines({ session }: { session: SessionFacts }) {
+function LiveLines({
+  session,
+  arrival,
+  held,
+  moment,
+}: {
+  session: SessionFacts;
+  /** The line the stream just brought, which washes the newest line. */
+  arrival?: StoreEvent;
+  held?: boolean;
+  moment?: string;
+}) {
   const [all, setAll] = useState(false);
-  const lines = all ? session.log.toReversed() : newestLines(session.log, LIVE_LINES);
+  const { shown: lines } = useHeldList(
+    all ? session.log.toReversed() : newestLines(session.log, LIVE_LINES),
+    held ?? false,
+    lineKey,
+  );
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
@@ -261,13 +313,22 @@ function LiveLines({ session }: { session: SessionFacts }) {
       {lines.length === 0 ? (
         <div className="text-xs text-ink-faint">Nothing written yet.</div>
       ) : (
-        <ol className="flex flex-col gap-1.5">
-          {lines.map((l) => (
-            <li key={l.at} className="flex items-start gap-2.5 text-xs">
-              <span className="w-8 shrink-0 pt-px text-right font-mono text-meta text-ink-faint">{ago(l.at)}</span>
-              <span className={cn('min-w-0 leading-relaxed', all ? '' : 'line-clamp-2')}>{l.text}</span>
-            </li>
-          ))}
+        // a new line opens its space at the top and fades in; the oldest is pushed out at the bottom as it fades;
+        // showing all or fewer, or another moment, redraws at once
+        <ol key={`${moment ?? 'now'}|${all}`} className="flex flex-col">
+          <AnimatePresence initial={false}>
+            {lines.map((l, i) => (
+              <m.li
+                key={l.at}
+                {...liveItem}
+                className="relative flex items-start gap-2.5 overflow-hidden rounded-row pb-1.5 text-xs"
+              >
+                {i === 0 && <Wash arrival={arrival?.seq} className={TONE.live.wash} />}
+                <span className="w-8 shrink-0 pt-px text-right font-mono text-meta text-ink-faint">{ago(l.at)}</span>
+                <span className={cn('min-w-0 leading-relaxed', all ? '' : 'line-clamp-2')}>{l.text}</span>
+              </m.li>
+            ))}
+          </AnimatePresence>
         </ol>
       )}
       {session.log.length > LIVE_LINES && (

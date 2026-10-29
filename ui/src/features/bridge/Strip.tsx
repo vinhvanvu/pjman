@@ -4,22 +4,33 @@
 // above it, its last line and when, the next it left; its subagents are a count on it, never rows. A card with a
 // session opens that session's dock, which adopts the session for the tab; one without opens the change. At desktop
 // the strip is the bridge's command panel beside the stage; until the stage exists it stands alone.
+// It is alive (change:motion-design): the headings and cards are one list, so a card that changes group slides there;
+// a card that arrives opens its space and fades in, one that leaves fades and then closes its space; a card a live
+// event touched washes in that event's colour. Under the pointer or keyboard focus it holds still, every card in
+// place while what it says keeps updating; leaving it, the strip settles. A new moment (a scrub, a step, another
+// product) redraws it at once.
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
+import { AnimatePresence, m } from 'motion/react';
 import type { ReactNode } from 'react';
-import type { BridgeChange, BridgeSession, Lens, SessionState, WaitingChange, WaitingDecision } from '@/data/contract';
+import type { BridgeChange, BridgeSession, Lens, TimelineEvent, WaitingDecision } from '@/data/contract';
 import { plural } from '@/lib/format';
+import { useHeldList, useHold } from '@/lib/hold';
 import { restOf, short } from '@/lib/keys';
+import { liveItem, Wash } from '@/lib/motion';
 import { Label, StatusChip } from '@/components/chips/Chip';
-import { cardWhen, proposedWhen, strip, subagentWords, type WaitItem } from './model';
-import { SESSION, sessionDot, TONE } from '@/lib/tones';
-
-const EMPTY: Record<SessionState, string> = {
-  waiting: 'Nothing waits on you.',
-  stopped: 'No session stopped with a next set.',
-  working: 'No session is working now.',
-  ended: 'No session ended today with its work in review.',
-};
+import {
+  cardWhen,
+  lastArrival,
+  proposedWhen,
+  sessionRow,
+  strip,
+  stripRows,
+  subagentWords,
+  type StripRow,
+  type WaitItem,
+} from './model';
+import { eventTone, SESSION, sessionDot, TONE } from '@/lib/tones';
 
 /** What the event the page is locked on touched: the session that wrote it, the change it wrote or decided on. */
 export interface Touched {
@@ -31,6 +42,9 @@ export interface Touched {
 const isTouched = (t: Touched | undefined, session?: BridgeSession, change?: BridgeChange): boolean =>
   !!t && ((!!t.session && t.session === session?.key) || (!!t.change && t.change === change?.key));
 
+/** No arrivals: one array, so a card without any keeps a stable prop. */
+const NONE: readonly TimelineEvent[] = [];
+
 const OUTLINE = 'ring-2 ring-primary ring-offset-2 ring-offset-ground';
 
 export function Strip({
@@ -38,90 +52,90 @@ export function Strip({
   sessions,
   lens,
   touched,
+  arrivals = NONE,
+  moment,
   className,
 }: {
-  waitingOn: readonly WaitingChange[];
+  waitingOn: Parameters<typeof strip>[0]['waitingOn'];
   sessions: readonly BridgeSession[];
   lens: Lens;
   touched?: Touched;
+  /** The events that arrived live a moment ago, oldest first; a card they touched washes in their colour. */
+  arrivals?: readonly TimelineEvent[];
+  /** What the page reads as of (the product and the cursor): a new one redraws the strip at once, unanimated. */
+  moment?: string;
   className?: string;
 }) {
-  const { waits, groups } = strip({ waitingOn, sessions });
-  const decisions = waits.reduce((n, w) => n + w.proposed.length, 0);
+  const live = stripRows(strip({ waitingOn, sessions }));
+  const hold = useHold();
+  // held, a card keeps its place but says what its session says now, wherever the session has moved to
+  const { shown, pending } = useHeldList(live, hold.held, rowKey, (k) => {
+    const row = live.find((r) => r.key === k);
+    if (row || !k.startsWith('s:')) return row;
+    const s = sessions.find((x) => x.key === k.slice(2));
+    return s && sessionRow(s);
+  });
   return (
-    <div className={cn('flex flex-col gap-5', className)}>
-      <Section
-        label="Waits on you"
-        tone={waits.length > 0 ? TONE.waits.text : undefined}
-        words={
-          waits.length > 0
-            ? `${plural(decisions, 'decision')} on ${plural(waits.length, 'change')} · newest first`
-            : 'none'
-        }
-        empty={EMPTY.waiting}
-        items={waits.map((w) => (
-          <WaitCard key={w.change.key} item={w} lens={lens} touched={touched} />
-        ))}
-      />
-      {groups.map((g) => (
-        <Section
-          key={g.state}
-          label={g.label}
-          tone={g.sessions.length > 0 && g.state === 'working' ? SESSION.working.text : undefined}
-          words={
-            g.sessions.length > 0
-              ? `${plural(g.sessions.length, 'session')}${g.sessions.length > 1 ? ' · by last write' : ''}`
-              : 'none'
-          }
-          empty={EMPTY[g.state]}
-          items={g.sessions.map((s) => (
-            <SessionCard key={s.key} session={s} lens={lens} touched={touched} />
+    <div className={cn('relative', className)}>
+      {hold.held && (
+        <span
+          className={cn(
+            'absolute top-0 right-0 z-[1] rounded-chip px-2 py-0.5 text-meta font-medium',
+            TONE.waits.soft,
+            TONE.waits.text,
+          )}
+        >
+          {pending ? `held · ${plural(pending, 'card')} to move` : 'held'}
+        </span>
+      )}
+      <ol key={moment} aria-label="Sessions by need" className="flex flex-col" {...hold.props}>
+        <AnimatePresence initial={false}>
+          {shown.map((r) => (
+            <m.li
+              key={r.key}
+              {...liveItem}
+              className={cn('pb-2', r.kind === 'head' && r.key !== 'h:waiting' && 'pt-3')}
+            >
+              {r.kind === 'head' ? (
+                <Heading row={r} />
+              ) : r.kind === 'wait' ? (
+                <WaitCard item={r.item} lens={lens} touched={touched} arrivals={arrivals} />
+              ) : (
+                <SessionCard session={r.session} lens={lens} touched={touched} arrivals={arrivals} />
+              )}
+            </m.li>
           ))}
-        />
-      ))}
+        </AnimatePresence>
+      </ol>
     </div>
   );
 }
 
-function Section({
-  label,
-  tone,
-  words,
-  empty,
-  items,
-}: {
-  label: string;
-  tone?: string;
-  words: string;
-  empty: string;
-  items: ReactNode[];
-}) {
+const rowKey = (r: StripRow) => r.key;
+
+function Heading({ row }: { row: Extract<StripRow, { kind: 'head' }> }) {
+  const tone =
+    row.count > 0 && row.state === 'waiting'
+      ? TONE.waits.text
+      : row.count > 0 && row.state === 'working'
+        ? SESSION.working.text
+        : undefined;
   return (
-    <section className="flex flex-col gap-2" aria-label={label}>
-      <div className="flex items-center gap-2">
-        <Label className={tone}>{label}</Label>
-        <span className="text-meta text-ink-faint">{words}</span>
-      </div>
-      {items.length === 0 ? (
-        <div className="text-xs text-ink-faint">{empty}</div>
-      ) : (
-        <ol className="flex flex-col gap-2">
-          {items.map((it, i) => (
-            <li key={i}>{it}</li>
-          ))}
-        </ol>
-      )}
-    </section>
+    <div className="flex items-center gap-2">
+      <Label className={tone}>{row.label}</Label>
+      <span className="text-meta text-ink-faint">{row.words}</span>
+    </div>
   );
 }
 
 /** The frame every card shares: a link to the session's dock when there is a session, else to the change on the
  *  product map, on `tab` when one is named. The bridge has no record pane, so a change always opens on the map, never
- *  as a selection on the bridge. */
+ *  as a selection on the bridge. The last live event that touched the card washes over it. */
 function CardFrame({
   session,
   change,
   tab,
+  arrival,
   className,
   children,
 }: {
@@ -129,10 +143,15 @@ function CardFrame({
   change?: BridgeChange;
   lens: Lens;
   tab?: 'decisions';
+  arrival?: TimelineEvent;
   className?: string;
   children: ReactNode;
 }) {
-  const frame = cn('flex flex-col gap-1.5 rounded-card border bg-surface px-3.5 py-3 hover:bg-raised', className);
+  const frame = cn(
+    'relative flex flex-col gap-1.5 overflow-hidden rounded-card border bg-surface px-3.5 py-3 hover:bg-raised',
+    className,
+  );
+  const wash = arrival && <Wash arrival={arrival.seq} className={eventTone(arrival).wash} />;
   if (session)
     return (
       <Link
@@ -142,16 +161,23 @@ function CardFrame({
         className={frame}
         aria-label={`Open the session on ${change ? (change.title ?? short(change.key)) : 'no change yet'}`}
       >
+        {wash}
         {children}
       </Link>
     );
   if (change)
     return (
       <Link to="/$lens/$" params={{ lens: 'feature', _splat: change.key }} search={{ tab }} className={frame}>
+        {wash}
         {children}
       </Link>
     );
-  return <div className={frame}>{children}</div>;
+  return (
+    <div className={frame}>
+      {wash}
+      {children}
+    </div>
+  );
 }
 
 /** The feature path above a change, then what the session last did, then its subagents. Plain words: the card
@@ -196,7 +222,17 @@ function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
 }
 
 /** A change with decisions proposed on it, doubling as the card of the session on it when one is in the window. */
-export function WaitCard({ item, lens, touched }: { item: WaitItem; lens: Lens; touched?: Touched }) {
+export function WaitCard({
+  item,
+  lens,
+  touched,
+  arrivals = NONE,
+}: {
+  item: WaitItem;
+  lens: Lens;
+  touched?: Touched;
+  arrivals?: readonly TimelineEvent[];
+}) {
   const { change, proposed, session } = item;
   return (
     <CardFrame
@@ -204,6 +240,7 @@ export function WaitCard({ item, lens, touched }: { item: WaitItem; lens: Lens; 
       change={change}
       lens={lens}
       tab="decisions"
+      arrival={lastArrival(arrivals, session, change)}
       className={cn(TONE.waits.line, isTouched(touched, session, change) && OUTLINE)}
     >
       <span className="flex items-center gap-2">
@@ -224,13 +261,24 @@ export function WaitCard({ item, lens, touched }: { item: WaitItem; lens: Lens; 
 }
 
 /** One session as the strip carries it. */
-export function SessionCard({ session: s, lens, touched }: { session: BridgeSession; lens: Lens; touched?: Touched }) {
+export function SessionCard({
+  session: s,
+  lens,
+  touched,
+  arrivals = NONE,
+}: {
+  session: BridgeSession;
+  lens: Lens;
+  touched?: Touched;
+  arrivals?: readonly TimelineEvent[];
+}) {
   const title = s.change ? (s.change.title ?? short(s.change.key)) : 'No change yet';
   return (
     <CardFrame
       session={s}
       change={s.change}
       lens={lens}
+      arrival={lastArrival(arrivals, s, s.change)}
       className={cn('border-line', s.state === 'ended' && 'opacity-70', isTouched(touched, s, s.change) && OUTLINE)}
     >
       <span className="flex items-center gap-2">

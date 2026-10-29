@@ -4,7 +4,8 @@
 // rail-destinations/three-destinations makes the first group the inbox). Need is the stable frame; inside a group
 // the most recent write comes first. A session shown on a waiting change is not repeated in the groups below.
 import type { BridgeSession, SessionState, TimelineEvent, WaitingChange } from '@/data/contract';
-import { ago } from '@/lib/format';
+import { ago, plural } from '@/lib/format';
+import { changeOfDecision } from '@/lib/keys';
 
 /** A change with decisions proposed on it, and the session on it when one is in the window. */
 export interface WaitItem extends WaitingChange {
@@ -132,4 +133,58 @@ export function lanesOf(sessions: readonly BridgeSession[], events: readonly Tim
     const lane = s.state === 'ended' && !s.change ? undefined : by.get(s.key);
     return lane ? [{ session: s, ...lane }] : [];
   });
+}
+
+// The strip as one list (change:motion-design): every group's heading and its cards in a row, so a card that moves
+// between groups slides there as one motion, and a held strip freezes one order.
+
+export type StripRow =
+  | { key: string; kind: 'head'; state: SessionState; label: string; count: number; words: string }
+  | { key: string; kind: 'wait'; item: WaitItem }
+  | { key: string; kind: 'session'; session: BridgeSession };
+
+export const sessionRow = (s: BridgeSession): StripRow => ({ key: `s:${s.key}`, kind: 'session', session: s });
+
+/** The headings and cards in the order of need. */
+export function stripRows({ waits, groups }: StripData): StripRow[] {
+  const decisions = waits.reduce((n, w) => n + w.proposed.length, 0);
+  const rows: StripRow[] = [
+    {
+      key: 'h:waiting',
+      kind: 'head',
+      state: 'waiting',
+      label: 'Waits on you',
+      count: waits.length,
+      words: waits.length
+        ? `${plural(decisions, 'decision')} on ${plural(waits.length, 'change')} · newest first`
+        : 'none',
+    },
+    ...waits.map((item): StripRow => ({ key: `w:${item.change.key}`, kind: 'wait', item })),
+  ];
+  for (const g of groups) {
+    const n = g.sessions.length;
+    rows.push({
+      key: `h:${g.state}`,
+      kind: 'head',
+      state: g.state,
+      label: g.label,
+      count: n,
+      words: n ? `${plural(n, 'session')}${n > 1 ? ' · by last write' : ''}` : 'none',
+    });
+    rows.push(...g.sessions.map(sessionRow));
+  }
+  return rows;
+}
+
+/** The last of the live arrivals that touched a card: written by its session, or to its change or a decision on it. */
+export function lastArrival(
+  arrivals: readonly TimelineEvent[],
+  session?: Pick<BridgeSession, 'key'>,
+  change?: { key: string },
+): TimelineEvent | undefined {
+  return arrivals.findLast(
+    (e) =>
+      (!!session && (e.session === session.key || e.key === session.key)) ||
+      (!!change && (e.key === change.key || changeOfDecision(e.key) === change.key)),
+  );
 }

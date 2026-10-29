@@ -6,7 +6,9 @@
 import type { Bridge as BridgeData, Lens } from '@/data/contract';
 import { momentWords } from '@/features/moment';
 import { plural } from '@/lib/format';
-import { useCursor, useResolved } from '@/state/moment';
+import { useRolling } from '@/features/transport';
+import { useFresh } from '@/state/arrivals';
+import { useAt, useCursor, useResolved } from '@/state/moment';
 import { Lanes } from './Lanes';
 import { Strip, type Touched } from './Strip';
 import { TONE } from '@/lib/tones';
@@ -29,6 +31,11 @@ export function Bridge({
   const cursor = useCursor();
   const resolved = useResolved();
   const held = cursor.at || cursor.event ? momentWords(cursor, resolved) : undefined;
+  // what arrived live a moment ago, which the strip washes; at a held moment nothing on the page is arriving
+  const fresh = useFresh();
+  const { events } = useRolling(product);
+  const arrivals = held ? [] : events.filter((e) => fresh(e.seq));
+  const moment = `${product}|${useAt() ?? 'now'}`;
   return (
     <div className="flex flex-col gap-5 p-5 md:p-6 lg:h-full lg:min-h-0" data-scroll-restoration-id="bridge">
       {/* no title of its own: the top bar names the page and each column names itself; the line says what the page
@@ -47,13 +54,15 @@ export function Bridge({
           the right, each scrolling on its own at desktop width; narrow, they stack and the page scrolls */}
       <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
         <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4 lg:overflow-y-auto">
-          <Lanes product={product} sessions={data.sessions} />
+          <Lanes product={product} sessions={data.sessions} moment={moment} />
         </div>
         <Strip
           waitingOn={data.waitingOn}
           sessions={data.sessions}
           lens={lens}
           touched={touched}
+          arrivals={arrivals}
+          moment={moment}
           className="min-w-0 flex-[1_1_360px] lg:w-[380px] lg:flex-none lg:overflow-y-auto lg:pr-1"
         />
       </div>

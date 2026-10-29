@@ -1,7 +1,9 @@
 // The event stream keeps the cache honest: every event invalidates everything under the pjman key, debounced so a
-// burst of writes (one command, several records) refetches once. The hook also reports whether the stream is open.
+// burst of writes (one command, several records) refetches once. Each event is recorded as a live arrival, the one
+// thing the page animates (state/arrivals). The hook also reports whether the stream is open.
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { useArrivals } from '@/state/arrivals';
 import { BASE } from './client';
 import type { StoreEvent } from './contract';
 import { queryKeys } from './queries';
@@ -42,6 +44,7 @@ export function useLiveInvalidation(): LiveState {
     const onEvent = (ev: MessageEvent) => {
       const e = JSON.parse(ev.data as string) as StoreEvent;
       setState({ connected: true, last: e });
+      useArrivals.getState().arrive(e);
       invalidate();
     };
     for (const op of OPS) es.addEventListener(op, onEvent as EventListener);

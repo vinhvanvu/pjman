@@ -5,8 +5,9 @@
 //
 // The bar rolls: ticks, hour marks and a held head are placed once, at their instants, on a layer that slides left
 // as the clock moves, so nothing on it is redrawn as time passes and only real arrivals and departures appear or
-// leave. The timeline is read now, so a paused page still sees what arrived after it. No other motion yet
-// (change:motion-design).
+// leave. The timeline is read now, so a paused page still sees what arrived after it. Each event that arrives live
+// flashes the now marker at the bar's right edge in that event's colour (change:motion-design), the moment its beat
+// on the lanes and its card on the strip light up.
 import { useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Pause, Play, StepBack, StepForward } from 'lucide-react';
@@ -15,6 +16,8 @@ import type { Moment, TimelineEvent } from '@/data/contract';
 import { useTimeline } from '@/data/queries';
 import { clock } from '@/features/moment';
 import { ago } from '@/lib/format';
+import { Flash } from '@/lib/motion';
+import { useFresh } from '@/state/arrivals';
 import { useCursor, useResolved, type Cursor } from '@/state/moment';
 import {
   along,
@@ -30,7 +33,7 @@ import {
   whoWrote,
   WINDOW_MS,
 } from './model';
-import { decisionTone, TONE } from '@/lib/tones';
+import { decisionTone, eventTone, TONE } from '@/lib/tones';
 import { EventTip, useEventTip } from './EventTip';
 
 /** How often the bar's clock moves; the layer glides between readings. */
@@ -141,6 +144,8 @@ export function useRolling(product: string | undefined) {
 export function Transport({ product }: { product: string }) {
   const r = useRolling(product);
   const { cursor, resolved, mode, now, view, span, timeline, events, selected, heldAt, layerStart, layer, go } = r;
+  const fresh = useFresh();
+  const latest = events.findLast((e) => fresh(e.seq));
   const [drag, setDrag] = useState<number | null>(null);
   const bar = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLDivElement>(null);
@@ -280,6 +285,15 @@ export function Transport({ product }: { product: string }) {
               <span className="pointer-events-none absolute top-0 right-0 h-full w-px bg-ink-faint" />
             )}
           </div>
+          {/* now, at the right edge: it flashes as each live event lands */}
+          {latest && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute top-4 right-0 z-[3] h-6 w-[3px] rounded-sm"
+            >
+              <Flash arrival={latest.seq} className={eventTone(latest).text} />
+            </span>
+          )}
           {/* the head, a flag: held, it rides the layer at its instant and slides with the ticks; live or dragged, it
               stands where it is */}
           {mode !== 'live' && drag === null ? (

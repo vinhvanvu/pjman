@@ -1,0 +1,78 @@
+// Holding still (decision motion-design/hold-still-while-in-the-strip): while the pointer is over a live list or focus
+// is inside it, nothing in it changes place. No item is re-sorted, inserted or removed; each keeps updating what it
+// says where it stands. When the pointer leaves (after a grace, so brushing the edge does not release it) or focus
+// leaves, the list settles to the live order, the moves played as arrivals. A touch has no hover, so it never holds.
+import { useCallback, useEffect, useRef, useState, type FocusEvent, type PointerEvent } from 'react';
+
+const GRACE_MS = 450;
+
+export function useHold() {
+  const [held, setHeld] = useState(false);
+  const pointer = useRef(false);
+  const focus = useRef(false);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const hold = useCallback(() => {
+    clearTimeout(timer.current);
+    setHeld(true);
+  }, []);
+  const release = useCallback(() => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      if (!pointer.current && !focus.current) setHeld(false);
+    }, GRACE_MS);
+  }, []);
+  const props = {
+    onPointerEnter: (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+      pointer.current = true;
+      hold();
+    },
+    onPointerLeave: (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return;
+      pointer.current = false;
+      release();
+    },
+    onFocus: () => {
+      focus.current = true;
+      hold();
+    },
+    onBlur: (e: FocusEvent) => {
+      // focus moving between items inside the list keeps it held
+      if (e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
+      focus.current = false;
+      release();
+    },
+  };
+  return { held, props };
+}
+
+/** What a held list shows: the items in the order held, each the live one when it still exists (by key, from `find`),
+ *  else as it was last seen; anything new is left out until the release. `pending` counts the items whose place the
+ *  release will change: new, gone, or moved. */
+export function heldOrder<T>(
+  frozen: readonly T[],
+  live: readonly T[],
+  keyOf: (t: T) => string,
+  find: (key: string) => T | undefined = (k) => live.find((t) => keyOf(t) === k),
+): { shown: T[]; pending: number } {
+  const shown = frozen.map((t) => find(keyOf(t)) ?? t);
+  const was = frozen.map(keyOf);
+  const now = live.map(keyOf);
+  const pending = new Set([...now.filter((k, i) => was[i] !== k), ...was.filter((k) => !now.includes(k))]).size;
+  return { shown, pending };
+}
+
+/** A list that holds still while `held`: the order shown when the hold began, kept until it ends. */
+export function useHeldList<T>(
+  live: readonly T[],
+  held: boolean,
+  keyOf: (t: T) => string,
+  find?: (key: string) => T | undefined,
+): { shown: readonly T[]; pending: number } {
+  const [frozen, setFrozen] = useState<readonly T[] | undefined>(undefined);
+  // set while rendering, as derived state: the hold takes the list as it stands when it begins
+  if (held && !frozen) setFrozen(live);
+  if (!held && frozen) setFrozen(undefined);
+  return held && frozen ? heldOrder(frozen, live, keyOf, find) : { shown: live, pending: 0 };
+}
