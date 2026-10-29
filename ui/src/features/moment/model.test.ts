@@ -6,7 +6,7 @@ const same = (iso: string) => iso;
 describe('momentWords', () => {
   const resolved = { seq: 1842, at: '2026-10-28T14:02:00Z', commit: 'abc' };
   it('names a time by its clock and a selected event by its number', () => {
-    expect(momentWords({ at: '2026-10-28T14:02' }, resolved, same)).toBe('as of 2026-10-28T14:02:00Z');
+    expect(momentWords({ at: '2026-10-28T14:16' }, resolved, same)).toBe('as of 2026-10-28T14:16');
     expect(momentWords({ event: 1842 }, resolved, same)).toBe('event #1842 · 2026-10-28T14:02:00Z');
   });
   it('shows the cursor as given until the server answers', () => {

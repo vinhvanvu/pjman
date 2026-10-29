@@ -67,8 +67,23 @@ export function useLockedEvent(product: string | undefined): TimelineEvent | und
 
 const agoWords = (a: string) => (a === 'just now' || !/^\d/.test(a) ? a : `${a} ago`);
 
-/** A label kept inside the bar: centred on its place, or held to the edge it would cross. */
-const anchored = (pct: number) => (pct > 88 ? '-translate-x-full' : pct < 12 ? 'translate-x-0' : '-translate-x-1/2');
+/** The head: a pole through the bar with its label flown from the top, on the side that keeps it inside the bar,
+ *  the corner at the pole square so the two read as one piece. */
+function Flag({ pct, label, side }: { pct: number; label: string; side: 'left' | 'right' }) {
+  return (
+    <span className="pointer-events-none absolute inset-y-0 z-[2]" style={{ left: `min(${pct}%, calc(100% - 1px))` }}>
+      <span className="absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary" />
+      <span
+        className={cn(
+          'absolute top-0 bg-primary px-1.5 text-[10.5px] leading-4 font-medium whitespace-nowrap text-primary-foreground tabular-nums',
+          side === 'left' ? '-right-px rounded-l-sm rounded-tr-sm' : '-left-px rounded-r-sm rounded-tl-sm',
+        )}
+      >
+        {label}
+      </span>
+    </span>
+  );
+}
 
 const iconButton =
   'grid size-8 shrink-0 place-items-center rounded-row border border-line bg-surface text-ink-muted hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-40';
@@ -106,8 +121,8 @@ export function Transport({ product }: { product: string }) {
     if (s === 'live') toLive();
     else if (s) go({ event: s.event }, replace);
   };
-  // the latest write's instant, so the page holds exactly where it stood
-  const pause = () => go({ at: timeline.data?.last?.at ?? new Date(now).toISOString() });
+  // the instant the person paused at: the page reads as of it, and the head stays there as the bar rolls on
+  const pause = () => go({ at: new Date().toISOString() });
 
   const selected = cursor.event ? events.find((e) => e.seq === cursor.event) : undefined;
   const arrived = new Set(arrivedSince(events, cursor).map((e) => e.seq));
@@ -230,32 +245,20 @@ export function Transport({ product }: { product: string }) {
                   onLock={() => go({ event: e.seq })}
                 />
               ))}
-              {mode !== 'live' && drag === null && (
-                <span
-                  className="pointer-events-none absolute top-0 h-full w-0.5 -translate-x-1/2 bg-primary"
-                  style={{ left: `${along(heldAt, layerStart)}%` }}
-                />
-              )}
             </div>
-            {(mode === 'live' || drag !== null) && (
-              <span
-                className="pointer-events-none absolute top-0 h-full w-0.5 -translate-x-1/2 bg-primary"
-                style={{ left: `${headPct}%` }}
-              />
-            )}
             {mode !== 'live' && view.rolling && (
               <span className="pointer-events-none absolute top-0 right-0 h-full w-px bg-ink-faint" />
             )}
           </div>
-          <span
-            className={cn(
-              'pointer-events-none absolute top-0 rounded-sm bg-primary px-1 text-[10.5px] font-medium whitespace-nowrap text-primary-foreground tabular-nums',
-              anchored(headPct),
-            )}
-            style={{ left: `${Math.min(100, Math.max(0, headPct))}%` }}
-          >
-            {headLabel}
-          </span>
+          {/* the head, a flag: held, it rides the layer at its instant and slides with the ticks; live or dragged, it
+              stands where it is */}
+          {mode !== 'live' && drag === null ? (
+            <div key={span.to} aria-hidden="true" {...layer(view.rolling)}>
+              <Flag pct={along(heldAt, layerStart)} label={headLabel} side={headPct > 50 ? 'left' : 'right'} />
+            </div>
+          ) : (
+            <Flag pct={headPct} label={headLabel} side={headPct > 50 ? 'left' : 'right'} />
+          )}
         </div>
 
         <span className="flex w-52 shrink-0 items-center justify-end gap-2 text-xs whitespace-nowrap">

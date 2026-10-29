@@ -10,14 +10,14 @@ export function clock(iso: string, now = Date.now(), locale?: string): string {
   return sameDay ? time : `${d.toLocaleDateString(locale, { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
-/** The chip's words: "as of 14:02" for a time, "event #1842 · 14:02" for a selected event; until the server answers,
- *  the cursor as given. */
+/** The chip's words: "as of 14:16" for a time, the time held and not the last write before it (the moment is the
+ *  time; the event it resolved to is the chip's title), "event #1842 · 14:02" for a selected event; until the server
+ *  answers, the cursor as given. */
 export function momentWords(
   cursor: { at?: string; event?: number },
   resolved?: Moment,
   format: (iso: string) => string = (iso) => clock(iso),
 ): string {
   if (cursor.event) return resolved ? `event #${resolved.seq} · ${format(resolved.at)}` : `event #${cursor.event}`;
-  if (resolved) return `as of ${format(resolved.at)}`;
   return cursor.at ? `as of ${format(cursor.at)}` : 'now';
 }
