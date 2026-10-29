@@ -31,7 +31,8 @@ export interface TreeProps<T> {
   getName: (data: T) => string;
   expanded: string[];
   onExpandedChange: (ids: string[]) => void;
-  selectedId?: string;
+  /** The rows drawn selected: one, or each row of a record drawn more than once. */
+  selectedIds?: string[];
   /** A click on a row. */
   onSelect?: (data: T) => void;
   renderRow: (ctx: TreeRowContext<T>) => ReactNode;
@@ -53,7 +54,7 @@ export function Tree<T>({
   getName,
   expanded,
   onExpandedChange,
-  selectedId,
+  selectedIds,
   onSelect,
   renderRow,
   version,
@@ -67,7 +68,7 @@ export function Tree<T>({
     isItemFolder: (item) => isFolder(item.getItemData()),
     getItemName: (item) => getName(item.getItemData()),
     onPrimaryAction: (item) => onSelect?.(item.getItemData()),
-    state: { expandedItems: expanded, selectedItems: selectedId ? [selectedId] : [] },
+    state: { expandedItems: expanded, selectedItems: selectedIds ?? [] },
     setExpandedItems: (updater) => onExpandedChange(typeof updater === 'function' ? updater(expanded) : updater),
     setSelectedItems: () => undefined,
     features: [syncDataLoaderFeature, selectionFeature, hotkeysCoreFeature, expandAllFeature],

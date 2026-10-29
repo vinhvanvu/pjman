@@ -9,22 +9,37 @@ import { Tree } from './Tree';
 
 export const ROOT = '__root__';
 
-/** Index a scope tree for the generic Tree: items by key, children by key. */
+/** Index a scope tree for the generic Tree: items by id, children by id, and every id a key is drawn at. A row's id is
+ *  its path of keys, since a change naming several features sits under each of them and one key may be drawn twice. */
 export function indexNodes(nodes: ScopeNode[], keep: (n: ScopeNode) => boolean = () => true) {
   const items = new Map<string, ScopeNode>();
   const children = new Map<string, string[]>();
+  const idsOf = new Map<string, string[]>();
   const walk = (list: ScopeNode[], parent: string) => {
     const ids: string[] = [];
     for (const n of list) {
       if (!keep(n)) continue;
-      items.set(n.key, n);
-      ids.push(n.key);
-      walk(n.children, n.key);
+      const id = parent === ROOT ? n.key : `${parent}\n${n.key}`;
+      items.set(id, n);
+      idsOf.set(n.key, [...(idsOf.get(n.key) ?? []), id]);
+      ids.push(id);
+      walk(n.children, id);
     }
     children.set(parent, ids);
   };
   walk(nodes, ROOT);
-  return { items, children };
+  return { items, children, idsOf };
+}
+
+/** Expansion as keys, from the tree's ids: a key stays open while any row of it is, and closes when one of its rows
+ *  is closed. Keys this tree does not draw are kept. */
+export function keysExpanded(ix: ReturnType<typeof indexNodes>, before: string[], ids: string[]): string[] {
+  const now = new Set(ids);
+  const was = new Set(before.flatMap((k) => ix.idsOf.get(k) ?? []));
+  const keyOf = (id: string) => ix.items.get(id)?.key;
+  const closed = new Set([...was].filter((id) => !now.has(id)).map(keyOf));
+  const opened = ids.filter((id) => !was.has(id)).map(keyOf);
+  return [...new Set([...before.filter((k) => !closed.has(k)), ...opened])].filter((k): k is string => !!k);
 }
 
 export function StructureTree({
@@ -59,6 +74,7 @@ export function StructureTree({
     [nodes],
   );
   const real = (n: ScopeNode) => n.type !== 'unassigned';
+  const ids = (keys: string[]) => keys.flatMap((k) => ix.idsOf.get(k) ?? []);
   return (
     <Tree<ScopeNode>
       rootId={ROOT}
@@ -66,9 +82,9 @@ export function StructureTree({
       getChildren={(id) => ix.children.get(id) ?? []}
       isFolder={(n) => n.children.length > 0}
       getName={(n) => n.name ?? n.title ?? n.key}
-      expanded={expanded}
-      onExpandedChange={onExpandedChange}
-      selectedId={selected}
+      expanded={ids(expanded)}
+      onExpandedChange={(next) => onExpandedChange(keysExpanded(ix, expanded, next))}
+      selectedIds={selected ? ids([selected]) : undefined}
       onSelect={(n) => real(n) && onSelect(n.key)}
       version={version}
       label="Structure"
