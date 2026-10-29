@@ -111,7 +111,7 @@ export function ProductMap({
           getName={(n) => n.name ?? n.title ?? n.key}
           expanded={shownExpanded}
           onExpandedChange={filtering ? () => undefined : onExpandedChange}
-          selectedId={selected}
+          selectedIds={selected ? [selected] : undefined}
           onSelect={(n) => onSelect(n.key)}
           version={`${version}:${filtering ? JSON.stringify(filter) : ''}`}
           label="Product map"
