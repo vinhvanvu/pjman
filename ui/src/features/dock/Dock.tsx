@@ -233,9 +233,9 @@ function DockFresh({ scope, session, lens }: { scope: Scope; session?: SessionFa
   );
 }
 
-/** One change to pick up: its title, and how decided it is, the proposed decisions named. */
-function PickupRow({ pickup: { row, proposed }, lens }: { pickup: Pickup; lens: Lens }) {
-  const r = readiness(row);
+/** One change to pick up: its title, and how decided it is, the proposed decisions named; or what it is stacked on. */
+function PickupRow({ pickup: { row, proposed, stackedOn }, lens }: { pickup: Pickup; lens: Lens }) {
+  const r = readiness(row, stackedOn.length > 0);
   return (
     <li className="flex flex-col gap-0.5 px-3.5 py-2">
       <NodeLink to={row.key} lens={lens} className="line-clamp-2 text-xs font-medium hover:text-primary">
@@ -252,8 +252,16 @@ function PickupRow({ pickup: { row, proposed }, lens }: { pickup: Pickup; lens: 
                 : 'text-ink-faint',
           )}
         >
-          {r.text}
+          {r.state === 'stacked' ? 'stacked on' : r.text}
         </span>
+        {stackedOn.map((d, i) => (
+          <span key={d.key} className="flex min-w-0 items-center gap-1.5">
+            {i > 0 && <span className="text-ink-faint">·</span>}
+            <NodeLink to={d.key} lens={lens} className="truncate text-ink-muted hover:text-primary" title={d.title}>
+              {short(d.key)}
+            </NodeLink>
+          </span>
+        ))}
         {proposed.length > 0 && (
           <span className="truncate text-ink-faint" title={proposed.join(', ')}>
             · waits: {proposed.join(', ')}
