@@ -236,7 +236,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/timeline$/.exec(route))) {
       // the axis a moment is placed on: always as of now, whatever at= says
       const q = url.searchParams;
-      return send(res, 200, { data: timeline(store, moment ? loadStore(store) : loaded, { product: `product:${m[1]}`, from: q.get('from') ?? undefined, to: q.get('to') ?? undefined }) });
+      return send(res, 200, { data: timeline(store, moment ? loadStore(store) : loaded, { product: `product:${m[1]}`, from: q.get('from') ?? undefined, to: q.get('to') ?? undefined, after: q.get('after') ? Number(q.get('after')) : undefined }) });
     }
     if (route === '/board') {
       return send(res, 200, { data: storeContext(store, { project: url.searchParams.get('project') ?? null }) });

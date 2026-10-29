@@ -29,8 +29,10 @@ export interface Timeline {
   from: string;
   to: string;
   events: TimelineEvent[];
-  /** The store's last event, whatever its product: what a paused page counts arrivals against. */
+  /** The store's last event, whatever its product: where a pause holds. */
   last?: { seq: number; at: string };
+  /** Asked with `after`: how many of the product's events came after that one, up to now, the window aside. */
+  arrivedAfter?: number;
 }
 
 export interface TimelineOpts {
@@ -39,6 +41,8 @@ export interface TimelineOpts {
   from?: string;
   to?: string;
   now?: number;
+  /** Count the product's events after this sequence number, up to now. */
+  after?: number;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
@@ -106,7 +110,9 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
 
   const all = readEvents(store);
   const events: TimelineEvent[] = [];
+  let arrivedAfter = opts.after === undefined ? undefined : 0;
   for (const e of all) {
+    if (arrivedAfter !== undefined && e.seq > opts.after! && place(e.key).inProduct) arrivedAfter += 1;
     if (e.at < from || e.at >= to) continue;
     const p = place(e.key);
     if (!p.inProduct) continue;
@@ -124,5 +130,5 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
     });
   }
   const last = all.at(-1);
-  return { product: productKey, from, to, events, last: last && { seq: last.seq, at: last.at } };
+  return { product: productKey, from, to, events, last: last && { seq: last.seq, at: last.at }, ...(arrivedAfter === undefined ? {} : { arrivedAfter }) };
 }

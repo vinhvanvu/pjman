@@ -98,9 +98,9 @@ export const api = {
       at,
     ),
   /** The product's events over a window, always as of now: the transport's axis. */
-  timeline: (product: string, from: string, to: string) =>
+  timeline: (product: string, from: string, to: string, after?: number) =>
     call<Timeline>(
-      `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${after ? `&after=${after}` : ''}`,
     ),
   scope: (q: ScopeQuery, at?: string) => {
     const p = new URLSearchParams({ lens: q.lens });

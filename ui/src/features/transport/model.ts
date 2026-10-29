@@ -1,5 +1,5 @@
-// The transport's arithmetic, pure (decision live-sessions/stage-strip-transport): the day the head stands in, the
-// axis the ticks are placed on, the ticks themselves, where previous and next lead, what arrived after a paused
+// The transport's arithmetic, pure (decisions live-sessions/stage-strip-transport and rolling-window): the window the
+// bar shows, the span read for it, where an instant sits along it, where previous and next lead, what arrived after a paused
 // moment, and the words for one event. The cursor is the URL's (at= a time, event= a selection); nothing here keeps
 // state.
 import type { TimelineEvent } from '@/data/contract';
@@ -19,81 +19,34 @@ export function headOf(c: Cursor, resolved: { seq: number; at: string } | undefi
   return c.at ? Date.parse(c.at) : now;
 }
 
-/** The local calendar day an instant falls in, as the window the timeline is asked for. */
-export function dayOf(ms: number): { from: string; to: string } {
-  const start = new Date(ms);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { from: start.toISOString(), to: end.toISOString() };
+/** How much the bar shows (decision live-sessions/rolling-window). */
+export const WINDOW_MS = 12 * HOUR;
+
+/** What the bar shows: the last twelve hours ending now, rolling, while the head is inside them (live, or held at a
+ *  moment not yet near the left edge); a head older than that is centred, and the bar stands still. */
+export function viewOf(head: number, now: number): { start: number; end: number; rolling: boolean } {
+  if (head >= now - WINDOW_MS * 0.95) return { start: now - WINDOW_MS, end: now, rolling: true };
+  return { start: head - WINDOW_MS / 2, end: head + WINDOW_MS / 2, rolling: false };
 }
 
-/** The span the ticks are drawn over: from the hour before the day's first event to now on today, to the hour after
- *  the last event on a past day. An empty day spans its waking hours up to now. */
-export function axisOf(
-  events: readonly { at: string }[],
-  day: { from: string; to: string },
-  now: number,
-): { start: number; end: number } {
-  const dayStart = Date.parse(day.from);
-  const dayEnd = Date.parse(day.to);
-  const first = events[0] ? Date.parse(events[0].at) : Math.min(now, dayEnd) - HOUR;
-  const last = events.at(-1) ? Date.parse(events.at(-1)!.at) : first;
-  const start = Math.max(dayStart, Math.floor(first / HOUR) * HOUR);
-  const end = now < dayEnd ? Math.max(now, last) : Math.min(dayEnd, Math.ceil((last + 1) / HOUR) * HOUR);
-  return { start, end: Math.max(end, start + HOUR) };
+/** The span the events are read for: from twelve hours and two before the view's end to the hour after it. It moves
+ *  only when the hour turns, so the read is not asked again as the bar rolls. */
+export function spanOf(viewEnd: number): { from: string; to: string } {
+  const to = Math.ceil(viewEnd / HOUR) * HOUR + HOUR;
+  return { from: new Date(to - WINDOW_MS - 2 * HOUR).toISOString(), to: new Date(to).toISOString() };
 }
 
-/** Where an instant sits on the axis, 0 to 100. */
-export const place = (ms: number, axis: { start: number; end: number }): number =>
-  Math.min(100, Math.max(0, ((ms - axis.start) / (axis.end - axis.start)) * 100));
+/** Where an instant sits along a window starting at `start`, in percent of the window; outside it is below 0 or
+ *  above 100. */
+export const along = (ms: number, start: number): number => ((ms - start) / WINDOW_MS) * 100;
 
-/** The instant at a place on the axis. */
-export const instantAt = (pct: number, axis: { start: number; end: number }): number =>
-  axis.start + (Math.min(100, Math.max(0, pct)) / 100) * (axis.end - axis.start);
+/** The instant at a place along the window. */
+export const instantAt = (pct: number, start: number): number => start + (pct / 100) * WINDOW_MS;
 
-/** The hour marks: every one, two, three or four hours, so no more than seven are drawn. */
-export function hourMarks(axis: { start: number; end: number }): { pct: number; ms: number }[] {
-  const hours = (axis.end - axis.start) / HOUR;
-  const every = [1, 2, 3, 4, 6].find((n) => hours / n <= 7) ?? 6;
-  const out: { pct: number; ms: number }[] = [];
-  const first = new Date(Math.ceil(axis.start / HOUR) * HOUR);
-  for (let t = first.getTime(); t <= axis.end; t += HOUR) {
-    if (new Date(t).getHours() % every === 0) out.push({ pct: place(t, axis), ms: t });
-  }
-  return out;
-}
-
-export interface Tick {
-  pct: number;
-  /** The last event at this place: what a click locks on. */
-  seq: number;
-  at: string;
-  count: number;
-  /** A decision was opened or moved here. */
-  decision: boolean;
-  /** It arrived after the paused moment. */
-  fresh: boolean;
-}
-
-/** The events as ticks, those that would land on the same place (a 0.25% step) folded into one. */
-export function ticksOf(
-  events: readonly TimelineEvent[],
-  axis: { start: number; end: number },
-  freshAfter?: number,
-): Tick[] {
-  const out: Tick[] = [];
-  for (const e of events) {
-    const pct = Math.round(place(Date.parse(e.at), axis) * 4) / 4;
-    const fresh = freshAfter !== undefined && e.seq > freshAfter;
-    const prev = out.at(-1);
-    if (prev && prev.pct === pct && prev.fresh === fresh) {
-      prev.seq = e.seq;
-      prev.at = e.at;
-      prev.count += 1;
-      prev.decision ||= e.decision;
-    } else out.push({ pct, seq: e.seq, at: e.at, count: 1, decision: e.decision, fresh });
-  }
+/** The hour marks between two instants, every two hours of the local clock. */
+export function hourMarks(from: number, to: number): number[] {
+  const out: number[] = [];
+  for (let t = Math.ceil(from / HOUR) * HOUR; t <= to; t += HOUR) if (new Date(t).getHours() % 2 === 0) out.push(t);
   return out;
 }
 

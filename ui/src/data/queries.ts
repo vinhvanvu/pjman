@@ -20,7 +20,8 @@ export const queryKeys = {
   bridge: (product: string, days?: number, at?: string) =>
     ['pjman', 'bridge', product, days ?? 1, at ?? 'now'] as const,
   /** The one key with no moment: the timeline is the axis a moment is placed on, always read now. */
-  timeline: (product: string, from: string, to: string) => ['pjman', 'timeline', product, from, to] as const,
+  timeline: (product: string, from: string, to: string, after?: number) =>
+    ['pjman', 'timeline', product, from, to, after ?? null] as const,
 };
 
 export function useStore() {
@@ -127,10 +128,10 @@ export function useBridge(product: string | undefined, days?: number) {
 
 /** The product's events over a window (the transport's ticks), read now whatever the page's moment; the stream
  *  invalidates it, so a paused page still sees what arrives. */
-export function useTimeline(product: string | undefined, from: string, to: string) {
+export function useTimeline(product: string | undefined, from: string, to: string, after?: number) {
   return useQuery({
-    queryKey: queryKeys.timeline(product ?? '', from, to),
-    queryFn: () => api.timeline(product!, from, to),
+    queryKey: queryKeys.timeline(product ?? '', from, to, after),
+    queryFn: () => api.timeline(product!, from, to, after),
     enabled: !!product,
     placeholderData: keepPreviousData,
     staleTime: 15_000,

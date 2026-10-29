@@ -146,4 +146,8 @@ test('timeline: the product\'s events in the window, decisions marked, titles as
   assert.deepEqual(t.events.map((e) => e.seq), [...t.events.map((e) => e.seq)].sort((a, b) => a - b), 'in stream order');
   assert.equal(t.last?.seq, Math.max(...t.events.map((e) => e.seq)) + 1, 'the other product\'s write is the store\'s last');
   assert.equal(timeline(store, loadStore(store), { product: 'product:shop', to: '2000-01-01T00:00:00Z' }).events.length, 0);
+  // the count after a moment reaches now whatever the window
+  const third = t.events[2].seq;
+  const early = timeline(store, loadStore(store), { product: 'product:shop', to: '2000-01-01T00:00:00Z', after: third });
+  assert.equal(early.arrivedAfter, t.events.filter((e) => e.seq > third).length);
 });

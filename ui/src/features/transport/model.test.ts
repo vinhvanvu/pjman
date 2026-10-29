@@ -1,18 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { TimelineEvent } from '@/data/contract';
 import {
+  along,
   arrivedSince,
-  axisOf,
-  dayOf,
   eventWords,
+  headOf,
   hourMarks,
   instantAt,
   modeOf,
-  place,
+  spanOf,
   standingOn,
   stepFrom,
-  ticksOf,
   touchedBy,
+  viewOf,
+  WINDOW_MS,
 } from './model';
 
 const ev = (seq: number, at: string, over: Partial<TimelineEvent> = {}): TimelineEvent => ({
@@ -37,52 +38,37 @@ describe('modeOf', () => {
   });
 });
 
-describe('the axis', () => {
-  it('asks for the local day an instant falls in', () => {
-    const d = dayOf(Date.parse('2026-10-28T10:00:00Z'));
-    expect(Date.parse(d.to) - Date.parse(d.from)).toBeGreaterThanOrEqual(23 * 3600_000);
-    expect(Date.parse(d.from)).toBeLessThanOrEqual(Date.parse('2026-10-28T10:00:00Z'));
+describe('the window', () => {
+  const now = Date.parse('2026-10-28T23:17:30Z');
+  const H = 3_600_000;
+  it('rolls the last twelve hours ending now while the head is inside them', () => {
+    expect(viewOf(now, now)).toEqual({ start: now - WINDOW_MS, end: now, rolling: true });
+    expect(viewOf(now - 6 * H, now).rolling).toBe(true);
   });
-  it('runs from the hour of the first event to now today, to the hour after the last on a past day', () => {
-    const day = { from: '2026-10-28T00:00:00Z', to: '2026-10-29T00:00:00Z' };
-    const now = Date.parse('2026-10-28T12:30:00Z');
-    expect(axisOf(events, day, now)).toEqual({ start: Date.parse('2026-10-28T10:00:00Z'), end: now });
-    const later = Date.parse('2026-10-30T00:00:00Z');
-    expect(axisOf(events, day, later).end).toBe(Date.parse('2026-10-28T12:00:00Z'));
+  it('centres an older head and stands still', () => {
+    const head = now - 30 * H;
+    expect(viewOf(head, now)).toEqual({ start: head - 6 * H, end: head + 6 * H, rolling: false });
   });
-  it('places an instant and finds it again', () => {
-    const axis = { start: 0, end: 1000 };
-    expect(place(250, axis)).toBe(25);
-    expect(place(-5, axis)).toBe(0);
-    expect(instantAt(25, axis)).toBe(250);
+  it('reads a span that covers the view and moves only when the hour turns', () => {
+    const a = spanOf(now);
+    expect(a).toEqual(spanOf(now - 10 * 60_000));
+    expect(Date.parse(a.from)).toBeLessThanOrEqual(now - WINDOW_MS);
+    expect(Date.parse(a.to)).toBeGreaterThan(now + 30 * 60_000);
   });
-  it('draws no more than seven hour marks', () => {
-    const start = Date.parse('2026-10-28T06:00:00Z');
-    expect(hourMarks({ start, end: start + 3 * 3600_000 })).toHaveLength(4);
-    expect(hourMarks({ start, end: start + 17 * 3600_000 }).length).toBeLessThanOrEqual(7);
+  it('places an instant along the window and finds it again', () => {
+    expect(along(now, now - WINDOW_MS)).toBe(100);
+    expect(along(now - 6 * H, now - WINDOW_MS)).toBe(50);
+    expect(instantAt(50, now - WINDOW_MS)).toBe(now - 6 * H);
   });
-});
-
-describe('ticksOf', () => {
-  it('folds events at the same place into one tick that locks on the last, keeping a decision mark', () => {
-    const t = ticksOf([...events.slice(0, 2), ev(14, '2026-10-28T11:00:00Z', { decision: true })], {
-      start: Date.parse('2026-10-28T10:00:00Z'),
-      end: Date.parse('2026-10-28T12:00:00Z'),
-    });
-    expect(t).toHaveLength(2);
-    expect(t[1]).toMatchObject({ pct: 50, seq: 14, count: 2, decision: true, fresh: false });
+  it('marks every second hour of the local clock', () => {
+    const marks = hourMarks(now - WINDOW_MS, now);
+    expect(marks).toHaveLength(6);
+    expect(marks.every((t) => new Date(t).getHours() % 2 === 0)).toBe(true);
   });
-  it('keeps what arrived after the paused moment apart', () => {
-    const t = ticksOf(
-      events,
-      { start: Date.parse('2026-10-28T10:00:00Z'), end: Date.parse('2026-10-28T12:00:00Z') },
-      13,
-    );
-    expect(t.map((x) => [x.seq, x.fresh])).toEqual([
-      [10, false],
-      [13, false],
-      [14, true],
-    ]);
+  it('stands the head on the selected event once the server has said when it was', () => {
+    expect(headOf({ event: 7 }, { seq: 7, at: '2026-10-28T10:00:00Z' }, now)).toBe(Date.parse('2026-10-28T10:00:00Z'));
+    expect(headOf({ event: 7 }, { seq: 6, at: '2026-10-28T10:00:00Z' }, now)).toBe(now);
+    expect(headOf({}, undefined, now)).toBe(now);
   });
 });
 
