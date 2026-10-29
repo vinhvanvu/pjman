@@ -17,6 +17,7 @@ import { statusTone, TONE } from '@/lib/tones';
 import { useFreshEvents } from '@/state/arrivals';
 import { useAt } from '@/state/moment';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
+import { DecisionRows } from '@/components/cards/DecisionRows';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords, newestLines } from '@/features/session-follow';
@@ -26,13 +27,6 @@ const LIVE_LINES = 5;
 const NO_EVENTS: readonly StoreEvent[] = [];
 const keyOf = (d: { key: string }) => d.key;
 const lineKey = (l: { at: string }) => l.at;
-
-/** A decision that stops waiting: it holds, washed done green, then fades where it stands (decision
- *  space-follows-the-element); its children take the label, so the wash shows. */
-const DECIDED = {
-  decided: { opacity: [1, 1, 0], scale: [1, 1, 0.97], transition: { duration: 0.9, times: [0, 0.6, 1] } },
-};
-const DECIDED_MARK = { decided: { opacity: 1, transition: { duration: 0.15 } } };
 
 export function Dock({ scope, session, lens }: { scope: Scope; session?: SessionFacts; lens: Lens }) {
   return session?.on && scope.change ? (
@@ -122,34 +116,20 @@ function DockChange({
               : `nothing${ctx.decisions.length > 0 ? ` · ${plural(ctx.decisions.length, 'decision')} decided` : ''}`}
           </span>
         </div>
-        {/* a decision that stops waiting flashes done where it stands, fades, and only then gives up its space */}
-        <ol key={at ?? 'now'} className="flex flex-col empty:hidden">
-          <AnimatePresence initial={false}>
-            {waits.map((d) => (
-              <m.li key={d.key} {...liveItem} exit="decided" variants={DECIDED} className="pb-2">
-                <NodeLink
-                  to={d.key}
-                  lens={lens}
-                  className="relative flex flex-col gap-1.5 overflow-hidden rounded-card border border-primary bg-surface px-3.5 py-3 hover:bg-raised"
-                >
-                  <Wash arrival={arrivals.opened.get(d.key)?.seq} className={TONE.waits.wash} />
-                  <m.span
-                    aria-hidden="true"
-                    initial={{ opacity: 0 }}
-                    variants={DECIDED_MARK}
-                    className={cn('pointer-events-none absolute inset-0', TONE.done.wash)}
-                  />
-                  <span className="line-clamp-2 font-medium leading-[1.35]">{d.title ?? short(d.key)}</span>
-                  {d.decision && <span className="line-clamp-3 text-xs text-ink-muted">{d.decision}</span>}
-                  <span className="flex items-center gap-2 text-meta text-ink-faint">
-                    <Chip tone="quiet">proposed</Chip>
-                    {d.created && <span>{d.created}</span>}
-                  </span>
-                </NodeLink>
-              </m.li>
-            ))}
-          </AnimatePresence>
-        </ol>
+        <DecisionRows
+          items={waits.map((d) => ({
+            key: d.key,
+            title: d.title,
+            change: c.key,
+            decision: d.decision,
+            why: d.why,
+            created: d.created,
+          }))}
+          lens={lens}
+          showChange={false}
+          opened={arrivals.opened}
+          moment={at}
+        />
       </section>
 
       {typeof c.data.next === 'string' && c.data.next && (
