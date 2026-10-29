@@ -73,7 +73,8 @@ pjman context [<change> | project:<slug>] [--all] [--json]   what an agent reads
 pjman get <ref>                        the getter: a key, a URL, a ticket id, a file path or a slug in; the record, its edges both ways and the context of every change within two hops out
 pjman intake <text|->                  what already exists for a request before it is filed: duplicates (open changes sharing its words or named in it), done ones like it, the nodes it may alter with their path, milestones in flight, the order's tail; never writes
 pjman refs <text|->                    every reference in a text, in order, with the change it leads to; what a prompt is about
-pjman view [<ref>] [--session <id>] [--out <file>] [--watch]   the view beside a session, as Markdown: one reference, or what a session is on; --watch re-renders on every event in the stream
+pjman view [<ref>] [--out <file>] [--watch]   one reference as Markdown; --watch re-renders on every event in the stream
+pjman open [--session <id>]   the dashboard brought back, at a session's page when one is named (else PJMAN_SESSION); docked beside the terminal in cmux, the default browser elsewhere
 pjman show <key>
 pjman order <change> --before <change> | --after <change> | --first | --last | --later   move a change in its product's sequence, the roadmap's order; the rest is never touched
 pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; name and sequence on a product; map on a project; on a proposed decision also decision, why; on any decision supersedes, which only adds and marks each named decision superseded in the same commit; ext.<owner>.<field> on any record); a list is comma-separated
