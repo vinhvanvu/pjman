@@ -63,6 +63,8 @@ pjman session log <id> <text>          append to the session's ## Log
 pjman session bind <id> <change> [--reason prompt|created|branch]   record that the run worked on a change (pjman new change binds the session creating it)
 pjman session focus <id> <change>      what the run is looking at (pjman context <change> sets it for the session in PJMAN_SESSION); the dock follows it
 pjman brief --session <id> [--full]    what the store has for the run since its last brief: the bound change in full when the binding moved, else what others changed on it, its milestone, decisions and dependency edges; recorded as its watermark; ends with its size
+pjman note <change|session:<id>> <text>   a note to whoever works a change, or to one running session; given in full in the next brief, and it wakes an idle session bound to it where the adapter can
+pjman wakes --session <id> [--follow]  the events that wake a session (a decision on its bound change decided, a note to it or its change); --follow as they land, for the adapter
 pjman session unbind <id> <change>     back out a binding made in error, with the edges observed on it; logged
 pjman session observe <id> <edge> <from> <to>   record an observed edge (evidence)
 pjman validate [--json]                every record, every reference; errors are reported, never dropped

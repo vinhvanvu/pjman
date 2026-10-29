@@ -1,5 +1,6 @@
 {
   "description": "pjman: the session record, context at start, binding by prompt, observed edges on writes, a log line per turn that acted",
+  "modules": ["./wake.ts"],
   "hooks": {
     "SessionStart": [
       { "hooks": [ { "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/hook.mjs", "SessionStart"], "timeout": 20 } ] }

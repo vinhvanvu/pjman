@@ -92,7 +92,18 @@ export function readEvents(store: Store, since = 0): StoreEvent[] {
 /** Deliver every event after `since`, then each new one as it is appended. Returns a stop function. */
 export function follow(store: Store, since: number, fn: (e: StoreEvent) => void): () => void {
   let last = since;
+  // the file is read again only once it changed: a follower held for a session's life costs a stat every two seconds
+  let seen = '';
   const deliver = () => {
+    let stamp = '';
+    try {
+      const st = fs.statSync(eventsPath(store));
+      stamp = `${st.size}:${st.mtimeMs}`;
+    } catch {
+      // no stream yet
+    }
+    if (stamp && stamp === seen) return;
+    seen = stamp;
     for (const e of readEvents(store, last)) {
       last = e.seq;
       fn(e);
@@ -247,6 +258,7 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       else if (verb === 'session' && rest.startsWith('unbind')) { op = 'set'; fields = ['changes', 'observed', 'log']; }
       else if (verb === 'session' && (rest.startsWith('focus') || rest.startsWith('briefed'))) { op = 'set'; fields = [rest.startsWith('focus') ? 'focus' : 'briefed']; }
       else if (verb === 'session') { op = rest.startsWith('log') ? 'log' : rest.startsWith('bind') ? 'bind' : 'observe'; fields = [op === 'log' ? 'log' : op === 'bind' ? 'changes' : 'observed']; }
+      else if (verb === 'note') { op = 'log'; fields = ['notes']; }
       else if (verb === 'mv') { op = status.startsWith('R') || key === rest.split(' ')[1] ? 'moved' : 'set'; if (op === 'set') fields = ['references']; }
       else if (verb === 'fmt') op = 'formatted';
       else if (verb === 'apply' || verb === 'undo') op = status.startsWith('A') ? 'created' : 'set';
