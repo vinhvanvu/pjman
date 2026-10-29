@@ -1,18 +1,20 @@
 // The bridge's lanes (decision live-sessions/stage-strip-transport): one row per session over the transport's rolling
 // window, on the transport's own layer so a beat here and a tick there stand at the same instant and slide together.
 // Each line the session wrote is a beat, each decision it opened a flag, a bar runs from its first act to its last;
-// beats and bar take the session's state colour, the flag the colour of what waits on the person (lib/tones).
+// beats and bar take the session's state colour, a flag its decision's status now: amber while it still waits on the
+// person, green once decided (lib/tones).
 // Held at a moment, a line marks it on every row and what came after is dimmed; a beat or a flag locks on its event,
 // the row's name opens the session's dock. The stage will stand above them (change:roadmap-graph).
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
+import { useRef } from 'react';
 import type { BridgeSession, TimelineEvent } from '@/data/contract';
 import { clock } from '@/features/moment';
-import { eventWords, hourMarks, useRolling, WINDOW_MS } from '@/features/transport';
+import { EventTip, hourMarks, useEventTip, useRolling, WINDOW_MS } from '@/features/transport';
 import { restOf, short } from '@/lib/keys';
 import { Label } from '@/components/chips/Chip';
 import { lanesOf } from './model';
-import { SESSION, sessionDot, TONE } from '@/lib/tones';
+import { decisionTone, SESSION, sessionDot } from '@/lib/tones';
 
 /** The name column's width; the axis above the rows is offset by it. */
 const WHO = 'w-[150px] shrink-0';
@@ -28,6 +30,8 @@ export function Lanes({
   className?: string;
 }) {
   const r = useRolling(product);
+  const frame = useRef<HTMLElement>(null);
+  const tips = useEventTip(frame);
   const lanes = lanesOf(sessions, r.events);
   const held = r.mode !== 'live';
   // what had not happened yet at the held moment
@@ -35,9 +39,14 @@ export function Lanes({
 
   return (
     <section
+      ref={frame}
       aria-label="Sessions over the day"
-      className={cn('flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 pt-3 pb-2.5', className)}
+      className={cn(
+        'relative flex flex-col gap-1.5 rounded-card border border-line bg-surface px-4 pt-3 pb-2.5',
+        className,
+      )}
     >
+      <EventTip tip={tips.tip} now={r.now} />
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
         <Label>Sessions · last 12 hours</Label>
         <span className="text-meta text-ink-faint">
@@ -94,9 +103,10 @@ export function Lanes({
                         key={e.seq}
                         e={e}
                         pct={r.at(Date.parse(e.at))}
-                        now={r.now}
                         dim={after(e)}
                         onLock={() => r.go({ event: e.seq })}
+                        onTip={(el) => tips.show(e, el)}
+                        onUntip={tips.hide}
                       >
                         <span
                           className={cn(
@@ -111,21 +121,22 @@ export function Lanes({
                         key={e.seq}
                         e={e}
                         pct={r.at(Date.parse(e.at))}
-                        now={r.now}
                         dim={after(e)}
                         onLock={() => r.go({ event: e.seq })}
+                        onTip={(el) => tips.show(e, el)}
+                        onUntip={tips.hide}
                         flag
                       >
                         <span
                           className={cn(
                             'absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2',
-                            e.seq === r.cursor.event ? 'bg-primary' : TONE.waits.bg,
+                            e.seq === r.cursor.event ? 'bg-primary' : decisionTone(e.statusNow ?? e.status).bg,
                           )}
                         />
                         <span
                           className={cn(
                             'absolute top-0 left-1/2 ml-px h-[7px] w-2',
-                            e.seq === r.cursor.event ? 'bg-primary' : TONE.waits.bg,
+                            e.seq === r.cursor.event ? 'bg-primary' : decisionTone(e.statusNow ?? e.status).bg,
                           )}
                           style={{ clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }}
                         />
@@ -149,31 +160,34 @@ export function Lanes({
   );
 }
 
-/** A beat or a flag: placed at its instant, a click locks on its event. */
+/** A beat or a flag: placed at its instant; the pointer on it shows its tip, a click locks on its event. */
 function Mark({
   e,
   pct,
-  now,
   dim,
   flag,
   onLock,
+  onTip,
+  onUntip,
   children,
 }: {
   e: TimelineEvent;
   pct: number;
-  now: number;
   dim: boolean;
   flag?: boolean;
   onLock: () => void;
+  onTip: (el: Element) => void;
+  onUntip: () => void;
   children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      title={`#${e.seq} · ${clock(e.at, now)} · ${eventWords(e)}`}
       aria-label={`Lock on event #${e.seq}`}
-      className={cn('absolute top-0 h-full w-2.5 -translate-x-1/2', flag && 'z-[1]', dim && 'opacity-35')}
+      className={cn('absolute top-0 h-full w-3 -translate-x-1/2', flag && 'z-[1]', dim && 'opacity-35')}
       style={{ left: `${pct}%` }}
+      onPointerEnter={(ev) => onTip(ev.currentTarget)}
+      onPointerLeave={onUntip}
       onClick={onLock}
     >
       {children}

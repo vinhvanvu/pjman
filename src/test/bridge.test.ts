@@ -140,6 +140,7 @@ test('timeline: the product\'s events in the window, decisions marked, titles as
   assert.ok(!keys.has('product:other'), 'another product\'s write is not');
   const opened = t.events.find((e) => e.key === 'decision:shop/card-form/why' && e.op === 'created')!;
   assert.equal(opened.decision, true);
+  assert.equal(opened.status, 'proposed', 'opened, read from its commit');
   assert.equal(opened.title, 'Why');
   assert.equal(t.events.find((e) => e.key === 'session:s-wait' && e.op === 'bind')!.title, 'Card form', 'a session reads by its change');
   assert.ok(t.events.every((e) => e.key.startsWith('decision:') || !e.decision));
@@ -150,4 +151,13 @@ test('timeline: the product\'s events in the window, decisions marked, titles as
   const third = t.events[2].seq;
   const early = timeline(store, loadStore(store), { product: 'product:shop', to: '2000-01-01T00:00:00Z', after: third });
   assert.equal(early.arrivedAfter, t.events.filter((e) => e.seq > third).length);
+});
+
+test('timeline: a decision tick carries the status its write left, and every decision event the status now', () => {
+  set(store, 'decision:shop/card-form/later', ['status=decided', 'decided_by=person:tester', 'decided_on=2026-10-28'], {});
+  const t = timeline(store, loadStore(store), { product: 'product:shop' });
+  const of = (op: string) => t.events.find((e) => e.key === 'decision:shop/card-form/later' && e.op === op)!;
+  assert.equal(of('created').status, 'proposed');
+  assert.equal(of('set').status, 'decided');
+  assert.equal(of('created').statusNow, 'decided', 'opened then, decided now');
 });

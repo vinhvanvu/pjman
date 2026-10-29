@@ -3,6 +3,7 @@
 // placed on. An event belongs to a product when the record it wrote does: a change by its project or the features it
 // names, a decision through its change, a feature or project by the product at the top of its chain, a session by
 // the change it is on. A record that no longer resolves is placed by its key's product segment.
+import { execFileSync } from 'node:child_process';
 import type { Store } from './config.js';
 import { readEvents, type StoreEvent } from './events.js';
 import { productOf } from './commands/order.js';
@@ -22,6 +23,11 @@ export interface TimelineEvent {
   title?: string;
   /** A decision was opened or its status moved: the ticks the transport marks. */
   decision: boolean;
+  /** On such a tick: the status the write left the decision in, read from its commit (proposed when opened,
+   *  decided, superseded). Absent when the commit cannot be read. */
+  status?: string;
+  /** On any write to a decision: its status now, so a decision opened then can say whether it still waits. */
+  statusNow?: string;
 }
 
 export interface Timeline {
@@ -82,6 +88,37 @@ function sessionChange(loaded: Loaded, rec: Rec): Rec | undefined {
     .at(-1);
 }
 
+/** A record's status as a commit left it, by commit and path; a commit never changes, so what is read is kept. */
+const statusAt = new Map<string, string | null>();
+
+/** The statuses the writes left their decisions in, read from their commits in one batch for those not yet known. */
+function readStatuses(root: string, wanted: { commit: string; path: string }[]): void {
+  const fresh = [...new Set(wanted.map((w) => `${w.commit}:${w.path}`))].filter((k) => !statusAt.has(k));
+  if (fresh.length === 0) return;
+  let out: Buffer;
+  try {
+    out = execFileSync('git', ['cat-file', '--batch'], { cwd: root, input: fresh.map((k) => `${k}\n`).join(''), maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] });
+  } catch {
+    for (const k of fresh) statusAt.set(k, null);
+    return;
+  }
+  // each answer is a header line, then that many bytes and a newline; one not found is the header alone
+  let at = 0;
+  for (const k of fresh) {
+    const nl = out.indexOf(10, at);
+    const header = out.subarray(at, nl).toString('utf8');
+    at = nl + 1;
+    const size = /^\S+ blob (\d+)$/.exec(header);
+    if (!size) {
+      statusAt.set(k, null);
+      continue;
+    }
+    const body = out.subarray(at, at + Number(size[1])).toString('utf8');
+    at += Number(size[1]) + 1;
+    statusAt.set(k, /^status:\s*"?([a-z-]+)"?\s*$/m.exec(body)?.[1] ?? null);
+  }
+}
+
 /** `change:shop/card-form` → `shop`; a flat key has no product segment. */
 const keySegment = (key: string): string | undefined => {
   const rest = key.slice(key.indexOf(':') + 1);
@@ -128,6 +165,18 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
       title: p.title,
       decision: e.type === 'decision' && (e.op === 'created' || e.op === 'applied' || !!e.fields?.includes('status')),
     });
+  }
+  // what each decision tick left its decision in, from the write's own commit
+  const ticks = events.filter((e) => e.decision);
+  const commitOf = new Map(all.filter((e) => e.commit).map((e) => [e.seq, { commit: e.commit!, path: e.path }]));
+  readStatuses(store.root, ticks.flatMap((e) => (commitOf.has(e.seq) ? [commitOf.get(e.seq)!] : [])));
+  for (const e of events) {
+    if (e.type !== 'decision') continue;
+    const c = commitOf.get(e.seq);
+    const s = e.decision && c ? statusAt.get(`${c.commit}:${c.path}`) : undefined;
+    if (s) e.status = s;
+    const now = str(live(loaded, e.key)?.data.status);
+    if (now) e.statusNow = now;
   }
   const last = all.at(-1);
   return { product: productKey, from, to, events, last: last && { seq: last.seq, at: last.at }, ...(arrivedAfter === undefined ? {} : { arrivedAfter }) };

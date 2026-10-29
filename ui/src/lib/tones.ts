@@ -73,8 +73,10 @@ export const SESSION: Record<SessionState, Tone> = {
   ended: TONE.faint,
 };
 
-/** A decision: proposed waits on the person; decided is done. */
-export const decisionTone = (status: string | undefined): Tone => (status === 'proposed' ? TONE.waits : TONE.done);
+/** A decision: proposed waits on the person, decided is done, superseded has stepped aside. A status not known reads
+ *  as proposed, since a decision that may still wait is the one to show. */
+export const decisionTone = (status: string | undefined): Tone =>
+  status === 'decided' ? TONE.done : status === 'superseded' ? TONE.faint : TONE.waits;
 
 /** The glow a live dot carries. */
 export const GLOW = 'shadow-[0_0_0_3px_color-mix(in_srgb,var(--live)_25%,transparent)]';

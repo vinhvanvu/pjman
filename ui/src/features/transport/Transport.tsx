@@ -30,7 +30,8 @@ import {
   whoWrote,
   WINDOW_MS,
 } from './model';
-import { TONE } from '@/lib/tones';
+import { decisionTone, TONE } from '@/lib/tones';
+import { EventTip, useEventTip } from './EventTip';
 
 /** How often the bar's clock moves; the layer glides between readings. */
 const ROLL_MS = 5_000;
@@ -142,6 +143,8 @@ export function Transport({ product }: { product: string }) {
   const { cursor, resolved, mode, now, view, span, timeline, events, selected, heldAt, layerStart, layer, go } = r;
   const [drag, setDrag] = useState<number | null>(null);
   const bar = useRef<HTMLDivElement>(null);
+  const frame = useRef<HTMLDivElement>(null);
+  const tips = useEventTip(frame, true);
   const toLive = () => go({});
   const step = (dir: -1 | 1, replace = false) => {
     const s = stepFrom(events, cursor, dir);
@@ -177,7 +180,8 @@ export function Transport({ product }: { product: string }) {
   const lastWrite = events.at(-1)?.at;
 
   return (
-    <div className="border-b border-line bg-surface">
+    <div ref={frame} className="relative border-b border-line bg-surface">
+      <EventTip tip={drag === null ? tips.tip : null} now={now} />
       <div className="flex items-center gap-3 px-4 py-2.5" aria-label="Transport" role="group">
         {mode === 'live' ? (
           <button type="button" className={cn(iconButton, 'text-ink')} aria-label="Pause" onClick={pause}>
@@ -264,10 +268,11 @@ export function Transport({ product }: { product: string }) {
                   key={e.seq}
                   event={e}
                   pct={along(Date.parse(e.at), layerStart)}
-                  now={now}
                   held={e.seq === cursor.event}
                   fresh={mode !== 'live' && arrived.has(e.seq)}
                   onLock={() => go({ event: e.seq })}
+                  onTip={(el) => tips.show(e, el)}
+                  onUntip={tips.hide}
                 />
               ))}
             </div>
@@ -339,37 +344,41 @@ export function Transport({ product }: { product: string }) {
   );
 }
 
-/** One event on the bar: a tick, taller where a decision was opened or moved; a click locks on it. */
+/** One event on the bar: a tick, taller where a decision was opened or moved and coloured by the status it left; the
+ *  pointer on it shows its tip, a click locks on it. */
 function Tick({
   event: e,
   pct,
-  now,
   held,
   fresh,
   onLock,
+  onTip,
+  onUntip,
 }: {
   event: TimelineEvent;
   pct: number;
-  now: number;
   held: boolean;
   fresh: boolean;
   onLock: () => void;
+  onTip: (el: Element) => void;
+  onUntip: () => void;
 }) {
   return (
     <button
       type="button"
       tabIndex={-1}
-      title={`#${e.seq} · ${clock(e.at, now)} · ${eventWords(e)}`}
       aria-label={`Lock on event #${e.seq}`}
       className={cn('group absolute top-0 h-full w-1.5 -translate-x-1/2', e.decision && 'z-[1]')}
       style={{ left: `${pct}%` }}
       onPointerDown={(ev) => ev.stopPropagation()}
+      onPointerEnter={(ev) => onTip(ev.currentTarget)}
+      onPointerLeave={onUntip}
       onClick={onLock}
     >
       <span
         className={cn(
           'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full group-hover:bg-ink',
-          e.decision ? cn('h-4 w-[3px]', TONE.waits.bg) : cn('h-2.5 w-px', TONE.quiet.bg),
+          e.decision ? cn('h-4 w-[3px]', decisionTone(e.status).bg) : cn('h-2.5 w-px', TONE.quiet.bg),
           fresh && !e.decision && 'bg-primary',
           held && 'h-5 w-[3px] bg-primary',
         )}
