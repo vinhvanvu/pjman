@@ -62,9 +62,11 @@ export function DecisionRows({
             <m.li key={d.key} {...liveItem} exit="decided" variants={DECIDED} className="pb-2 last:pb-0">
               <div className="relative flex flex-col overflow-hidden rounded-card border border-line bg-surface">
                 <Wash arrival={opened?.get(d.key)?.seq} className={TONE.waits.wash} />
+                {/* rests hidden by its own style: AnimatePresence's initial={false} skips an initial, so a list
+                    mounted with its rows already there showed every row decided (change:dock-waits-turn-green) */}
                 <m.span
                   aria-hidden="true"
-                  initial={{ opacity: 0 }}
+                  style={{ opacity: 0 }}
                   variants={DECIDED_MARK}
                   className={cn('pointer-events-none absolute inset-0 z-10', TONE.done.wash)}
                 />
