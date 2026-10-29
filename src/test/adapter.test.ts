@@ -215,7 +215,7 @@ test('SessionStart exports the session and the agent as writer to the agent\'s s
   const shellEnv = { ...env };
   for (const m of text.matchAll(/^export (\w+)="(.*)"$/gm)) (shellEnv as Record<string, string>)[m[1]!] = m[2]!;
   execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), 'new', 'decision', 'eight-week-test/from-the-shell', '--title', 'T', '--decision', 'd', '--why', 'w'], { cwd: project, env: shellEnv, encoding: 'utf8' });
-  const rec = loadStore(store).byKey.get('decision:eight-week-test/from-the-shell')![0];
+  const rec = loadStore(store).records.find((r) => r.type === 'decision' && r.key.endsWith('/from-the-shell'))!;
   assert.equal(rec.data.writer, 'agent:claude-code');
   assert.equal(rec.data.session, 'session:sess-env');
   run({ agent_id: 'sub-env' });
