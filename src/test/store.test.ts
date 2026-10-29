@@ -15,7 +15,7 @@ import { set } from '../commands/set.js';
 import { changeContext, decisionLine, formatChangeContext, formatLs, formatStoreContext, ls, storeContext } from '../commands/view.js';
 import { findStore, readUserConfig, writeStoreConfig, type Store } from '../config.js';
 import { findReferences, get, keyFromUrl } from '../graph.js';
-import { renderView } from '../commands/pane.js';
+import { renderView, viewData } from '../commands/pane.js';
 import { BRIEF, installBrief } from '../commands/brief.js';
 import { start, stop } from '../commands/start.js';
 import { readServeAddress } from '../server.js';
@@ -360,7 +360,7 @@ test('a change may have a parent change: any depth, no cycles, children derived,
   for (const c of ['epic-a-1', 'epic-a', 'epic-b', 'epic-c', 'epic']) fs.rmSync(path.join(store.root, 'products/project/changes', c), { recursive: true });
 });
 
-test('the view renders a reference, or what a session is on', () => {
+test('the view renders a reference; the session page reads what a session is on', () => {
   const one = renderView(store, { ref: 'change:project/contract' });
   assert.match(one.markdown, /^# change:project\/contract\n## Schema: v3\n/);
   assert.match(one.markdown, /### Decisions\n- /);
@@ -369,14 +369,14 @@ test('the view renders a reference, or what a session is on', () => {
   assert.match(bySource.markdown, /^# file:SCHEMA.md\n## The schema/);
   assert.match(bySource.markdown, /_reached through links_\n\n# change:project\/contract/);
   newRecord(store, 'session', 'sess-v', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
-  const board = renderView(store, { session: 'sess-v', project: 'project:project' });
+  const board = viewData(store, { session: 'sess-v', project: 'project:project' });
   assert.equal(board.showing.board, 'project:project');
-  assert.match(board.markdown, /^# project:project\n/);
+  assert.equal(board.session?.key, 'session:sess-v');
   sessionBind(store, 'sess-v', 'change:project/contract');
-  const followed = renderView(store, { session: 'session:sess-v' });
+  const followed = viewData(store, { session: 'session:sess-v' });
   assert.equal(followed.showing.key, 'change:project/contract');
-  assert.match(followed.markdown, /following session:sess-v · pjman view_/);
-  assert.throws(() => renderView(store, { session: 'nope' }), /does not resolve to a session/);
+  assert.equal(followed.session?.on, 'change:project/contract');
+  assert.throws(() => viewData(store, { session: 'nope' }), /does not resolve to a session/);
 });
 
 test('every write appends one event per record to the stream; follow delivers new ones; rebuild derives the stream from git', async () => {

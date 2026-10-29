@@ -59,15 +59,11 @@ test('SessionStart creates the session record and injects the board', () => {
   assert.ok(!/Identity \(pjman whoami/.test(context(hook('SessionStart', { source: 'startup', agent_id: 'sub-1' }))), 'a subagent says nothing about identity');
 });
 
-test('the view file follows the session: the board before a bind, the change after', () => {
-  const file = path.join(env.CLAUDE_PLUGIN_DATA, 'view', 'sess-a.md');
-  const before = fs.readFileSync(file, 'utf8');
-  assert.match(before, /^# project(:project)?\n/);
-  assert.match(before, /change:eight-week-test/);
+test('a prompt that binds keeps no Markdown view beside the session: the dashboard is the view', () => {
   hook('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
-  const after = fs.readFileSync(file, 'utf8');
-  assert.match(after, /^# change:eight-week-test\n## The test\n\*\*open\*\*/);
-  assert.match(after, /following session:sess-a/);
+  assert.equal(fs.existsSync(path.join(env.CLAUDE_PLUGIN_DATA, 'view')), false);
+  const st = JSON.parse(fs.readFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-a.json'), 'utf8'));
+  assert.equal(st.watcher, undefined);
 });
 
 test('a prompt naming a change binds it and injects its context once', () => {

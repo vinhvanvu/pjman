@@ -14,9 +14,8 @@
 //   SessionEnd        a closing log line; the view's pane is closed
 //
 //   The view beside the session. In cmux: the dashboard's session page (pjman serve, started if none is running) is docked in a
-//   browser pane at session start and closed at session end. Elsewhere: `pjman view --session <id> --out <file> --watch` runs
-//   beside the session, subscribed to the store's event stream, and keeps view/<id>.md current for any viewer; the hooks only
-//   render it themselves when they bind.
+//   browser pane at session start and closed at session end. Elsewhere, and whenever the pane was closed, `pjman open --session`
+//   brings the page back; the session's id is exported to the agent's shell as PJMAN_SESSION.
 
 import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -68,7 +67,7 @@ function loadState(sid) {
   try {
     return JSON.parse(fs.readFileSync(stateFile(sid), 'utf8'));
   } catch {
-    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null, watcher: null, seq: undefined };
+    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null, seq: undefined };
   }
 }
 function saveState(sid, st) {
@@ -149,36 +148,9 @@ function staleWorktrees(cwd) {
 }
 
 // --- the view beside the session --------------------------------------------------------------
-function viewFile(sid) {
-  return path.join(dataDir, 'view', `${sid}.md`);
-}
-
-/** Re-render what the session is on. Cheap enough to run on every event; the event stream will make it exact. */
-function refreshView(sid, cwd) {
-  const file = viewFile(sid);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  tryPjman(['view', '--session', sid, '--out', file], { cwd });
-  return file;
-}
-
-/** The subscriber: one detached `pjman view --watch` per session, following the stream until the session ends. */
-function startWatcher(st, sid, cwd) {
-  if (st.watcher) {
-    try {
-      process.kill(st.watcher, 0);
-      return; // still running
-    } catch {}
-  }
-  const [cmd, ...pre] = PJMAN;
-  try {
-    const child = spawn(cmd, [...pre, 'view', '--session', sid, '--out', viewFile(sid), '--watch'], { cwd, detached: true, stdio: 'ignore', env: process.env });
-    child.unref();
-    st.watcher = child.pid ?? null;
-  } catch (e) {
-    note(`watcher failed to start: ${e.message}`);
-  }
-}
-function stopWatcher(st) {
+/** A watcher left by an earlier version of this adapter, which kept a Markdown view of the session current
+ *  (decision session-open/open-not-markdown retired it): stopped at session end so none outlives its session. */
+function stopLegacyWatcher(st) {
   if (!st.watcher) return;
   try {
     process.kill(st.watcher);
@@ -231,12 +203,11 @@ function cmux(args) {
     return null;
   }
 }
-function dockView(st, sid, cwd, file) {
+function dockView(st, sid, cwd) {
   if (st.pane || !inCmux()) return;
   const server = ensureServer(cwd);
-  const out = server
-    ? cmux(['browser', 'open', `${server.url}/session/${encodeURIComponent(sid)}`])
-    : cmux(['markdown', 'open', file]);
+  if (!server) return; // no dashboard, no dock; `pjman open --session` brings it back once one runs
+  const out = cmux(['browser', 'open', `${server.url}/session/${encodeURIComponent(sid)}`]);
   const m = out && /surface[=:\s]+(surface:\d+|[0-9a-fA-F-]{36})/.exec(out);
   if (m) st.pane = m[1];
   else if (out) note(`dock: could not read the surface from: ${out.trim().split('\n')[0]}`);
@@ -394,9 +365,7 @@ function main() {
       emitContext(EVENT, text);
       if (!input.agent_id) {
         observeWork(st, sid, cwd, env);
-        const file = refreshView(sid, cwd);
-        dockView(st, sid, cwd, file);
-        if (!st.pane) startWatcher(st, sid, cwd); // no browser pane: keep the document current for any viewer
+        dockView(st, sid, cwd);
         sidebarStatus(st.bound);
         saveState(sid, st);
       }
@@ -418,7 +387,6 @@ function main() {
           observeWork(st, sid, cwd, env);
         }
       }
-      refreshView(sid, cwd);
       if (!st.hydrated.includes(key)) {
         const ctx = tryPjman(['context', key], { cwd });
         if (ctx) {
@@ -487,8 +455,7 @@ function main() {
     }
     case 'SessionEnd': {
       tryPjman(['session', 'log', sid, `session ended (${input.reason || 'other'})`], { cwd, env });
-      stopWatcher(st);
-      refreshView(sid, cwd);
+      stopLegacyWatcher(st);
       undockView(st);
       sidebarStatus(null);
       saveState(sid, st);

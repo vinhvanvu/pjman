@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util';
 import { findStore, globalStore, globalStorePath, readUserConfig, requireStore } from './config.js';
 import { BRIEF } from './commands/brief.js';
 import { start, stop } from './commands/start.js';
+import { openPage, openUrl } from './commands/open.js';
 import { withStoreLock } from './lock.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
@@ -44,6 +45,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman init [--name <project-name>] [--product product:<slug>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
   { name: 'start', about: 'the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL', usage: ['pjman start [--port <n>] [--open]'] },
   { name: 'stop', about: 'stop the dashboard server', usage: ['pjman stop'] },
+  { name: 'open', about: "the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere",
+    usage: ['pjman open [--session <id>]'] },
   { name: 'brief', about: 'print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md)', usage: ['pjman brief'] },
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
@@ -78,8 +81,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman activity <key> [--days 14] [--since <iso>] [--json]'] },
   { name: 'get', about: 'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out (exit 1 when nothing matches)',
     usage: ['pjman get <ref> [--json]'] },
-  { name: 'view', about: "the view beside a session, as a Markdown document: one reference, or what a session is on (its last bound change, else the project's board); --out writes a file, --watch re-renders whenever the store changes",
-    usage: ['pjman view [<ref>] [--session <id>] [--out <file>] [--watch]'] },
+  { name: 'view', about: "one reference as a Markdown document, or the project's board without one; --out writes a file, --watch re-renders whenever the store changes. A session's view is the dashboard's: pjman open --session",
+    usage: ['pjman view [<ref>] [--out <file>] [--watch]'] },
   { name: 'show', about: 'print one record by key', usage: ['pjman show <key> [--json]'] },
   { name: 'validate', about: 'check every record and every reference; errors are reported, never dropped (exit 1 on errors)',
     usage: ['pjman validate [--json]'] },
@@ -396,7 +399,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'view': {
       const store = scoped(requireStore(cwd, v.store));
-      const opts = { ref: pos[1], session: v.session, cwd, projectDir: store.projectDir, project: store.project };
+      const opts = { ref: pos[1], cwd, projectDir: store.projectDir, project: store.project };
       const render = () => {
         const view = renderView(store, opts);
         view.markdown = shortenText(view.markdown, scopeProduct); // read by a person inside the project
@@ -514,10 +517,22 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'start': {
       const s = start({ cwd, port: v.port ? Number(v.port) : undefined, log: out });
       out(`dashboard: ${s.address.url}${s.started ? '' : ' (already running)'}${s.ui ? '' : ' (API only: no built app)'}`);
-      if (v.open) {
-        const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-        import('node:child_process').then((cp) => cp.spawn(cmd, [s.address.url], { detached: true, stdio: 'ignore' }).unref());
+      if (v.open) openPage(s.address.url);
+      return 0;
+    }
+    case 'open': {
+      const session = v.session || process.env.PJMAN_SESSION || undefined;
+      if (session) {
+        // a session the store does not hold would open an empty page: say so instead
+        const store = scoped(requireStore(cwd, v.store));
+        const key = session.startsWith('session:') ? session : `session:${session}`;
+        const res = resolve(loadStore(store), key);
+        if (res.status !== 'ok' || res.rec.type !== 'session') throw new CliError(`${key} has no record in the store`);
       }
+      const s = start({ cwd, log: out });
+      const url = openUrl(s.address, session);
+      const where = openPage(url);
+      out(`${where === 'docked' ? 'docked' : 'opened'} ${url}${s.started ? ' (dashboard started)' : ''}`);
       return 0;
     }
     case 'stop': {
