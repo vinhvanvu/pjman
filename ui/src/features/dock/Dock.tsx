@@ -28,29 +28,50 @@ const NO_EVENTS: readonly StoreEvent[] = [];
 const keyOf = (d: { key: string }) => d.key;
 const lineKey = (l: { at: string }) => l.at;
 
-export function Dock({ scope, session, lens }: { scope: Scope; session?: SessionFacts; lens: Lens }) {
+export function Dock({
+  scope,
+  session,
+  lens,
+  settled = true,
+}: {
+  scope: Scope;
+  session?: SessionFacts;
+  lens: Lens;
+  /** The scope is the one asked for, not the last one held while it loads. */
+  settled?: boolean;
+}) {
   const ctx = session?.on ? scope.change : undefined;
   // the dock moves with its session (change:dock-moves; decision dock-swap): keyed on the change it draws, not the one
   // the session is on, so the swap waits for the new change's scope. A live move fades the old view, returns the
-  // column to the top and brings the new one in with its header washed; at a held moment it swaps at once
+  // column to the top and brings the new one in with its header washed. A swap is live only when the view before and
+  // the view after both belong to now: into or out of a held moment it is the person's act, and swaps at once
+  // (change:dock-moves-held-moment)
   const subject = ctx?.change.key ?? 'fresh';
   const at = useAt();
-  const [shown, setShown] = useState(subject);
+  const [shown, setShown] = useState({ subject, from: at });
+  const [live, setLive] = useState(false);
   const [moves, setMoves] = useState(0);
-  if (shown !== subject) {
-    setShown(subject);
-    if (!at) setMoves((n) => n + 1);
+  // the moment the drawn scope belongs to: while the asked-for one loads, the held one is still the last moment's
+  const from = settled ? at : shown.from;
+  if (shown.subject !== subject || shown.from !== from) {
+    setShown({ subject, from });
+    if (shown.subject !== subject) {
+      const move = !from && !shown.from;
+      setLive(move);
+      if (move) setMoves((n) => n + 1);
+    }
   }
-  const moved = moves > 0 && !at ? moves : undefined;
+  const moved = live && !at ? moves : undefined;
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div ref={ref}>
       <AnimatePresence
         mode="wait"
         initial={false}
+        custom={live}
         onExitComplete={() => scrollParent(ref.current)?.scrollTo({ top: 0 })}
       >
-        <m.div key={subject} {...(at ? {} : swapView)}>
+        <m.div key={subject} {...swapView} custom={live} initial={live ? 'enter' : false}>
           {ctx && session ? (
             <DockChange scope={scope} ctx={ctx} session={session} lens={lens} moved={moved} />
           ) : (
