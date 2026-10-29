@@ -5,6 +5,7 @@ export type { ChangeRow, Health, Lens, LiveSession, Scope, ScopeNode, WaitingDec
 export type { Violation } from '@contract/roadmap';
 export type { Bridge, BridgeChange, BridgeSession, SessionState, WaitingChange } from '@contract/bridge';
 export type { OrderResult } from '@contract/commands/order';
+export type { SetResult } from '@contract/commands/set';
 export type { ChangeContext, Row } from '@contract/commands/view';
 export type { SessionFacts } from '@contract/commands/pane';
 export type { StoreEvent } from '@contract/events';
@@ -63,7 +64,12 @@ export interface Resolution {
   changes: { change: Row }[];
 }
 
-/** The one write: where a change goes in its product's sequence. */
+/** Deciding a proposed decision, or reopening a decided one (decision decide-in-place/decide-route-and-reopen). */
+export interface DecideBody {
+  decision: string;
+}
+
+/** A write: where a change goes in its product's sequence. */
 export interface OrderBody {
   change: string;
   before?: string;

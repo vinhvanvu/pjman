@@ -19,13 +19,15 @@ import { TONE } from '@/lib/tones';
 export interface WorkCardProps extends Omit<ChangeMetaProps, 'className' | 'allFeatures'> {
   lens: Lens;
   mode: 'peek' | 'select';
+  /** Decides one of its proposed decisions in place; Accept is drawn only when it is given. */
+  onDecide?: (decision: string) => Promise<unknown>;
   /** The proposed decisions on this change. */
   decisions?: WaitingDecision[];
   selected?: boolean;
   className?: string;
 }
 
-export function WorkCard({ row, lens, mode, decisions = [], selected, className, ...meta }: WorkCardProps) {
+export function WorkCard({ row, lens, mode, decisions = [], onDecide, selected, className, ...meta }: WorkCardProps) {
   const [open, setOpen] = useState(false);
   const asks = asksOf(row, decisions.length);
   const moved = row.moved ?? row.created;
@@ -81,7 +83,7 @@ export function WorkCard({ row, lens, mode, decisions = [], selected, className,
           </div>
         </NodeLink>
         {decisions.length > 0 && (
-          <DecisionRows items={decisions} lens={lens} showChange={false} className="px-3.5 pb-3" />
+          <DecisionRows items={decisions} lens={lens} showChange={false} onDecide={onDecide} className="px-3.5 pb-3" />
         )}
       </div>
     );
@@ -105,7 +107,7 @@ export function WorkCard({ row, lens, mode, decisions = [], selected, className,
               {row.next}
             </p>
           )}
-          {decisions.length > 0 && <DecisionRows items={decisions} lens={lens} showChange={false} />}
+          {decisions.length > 0 && <DecisionRows items={decisions} lens={lens} showChange={false} onDecide={onDecide} />}
           {row.status === 'review' && (
             <p className="text-xs text-ink-muted">In review: the next line says what to look at.</p>
           )}

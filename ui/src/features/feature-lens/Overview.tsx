@@ -11,6 +11,7 @@ import { short } from '@/lib/keys';
 import { byIntent, decisionsByChange, strayDecisions } from '@/lib/work';
 import { Chip, Label, StateDot, StatusChip } from '@/components/chips/Chip';
 import { DecisionRows } from '@/components/cards/DecisionRows';
+import { useDecideAction } from '@/data/queries';
 import { WorkCard } from '@/components/cards/WorkCard';
 import { EmptyState } from '@/components/EmptyState';
 import { NodeLink } from '@/components/links/NodeLink';
@@ -278,6 +279,7 @@ function Work({
   const groups = byIntent(rows);
   const decisions = decisionsByChange(waiting);
   const stray = strayDecisions(waiting, rows);
+  const decide = useDecideAction('decide');
   const showProject = scope.projects.length > 1;
   const at = scope.node?.key;
   if (groups.length === 0 && stray.length === 0) {
@@ -295,7 +297,7 @@ function Work({
       </div>
       {stray.length > 0 && !groups.some((g) => g.intent === 'waiting') && (
         <Section label="Waiting on you" aside={String(stray.length)}>
-          <DecisionRows items={stray} lens={lens} />
+          <DecisionRows items={stray} lens={lens} onDecide={decide} />
         </Section>
       )}
       {groups.map((g) => (
@@ -311,11 +313,12 @@ function Work({
               lens={lens}
               mode="peek"
               decisions={decisions.get(r.key)}
+              onDecide={decide}
               at={at}
               showProject={showProject}
             />
           ))}
-          {g.intent === 'waiting' && stray.length > 0 && <DecisionRows items={stray} lens={lens} />}
+          {g.intent === 'waiting' && stray.length > 0 && <DecisionRows items={stray} lens={lens} onDecide={decide} />}
           {cap && g.rows.length > cap && (
             <span className="text-xs text-ink-faint">and {g.rows.length - cap} more beneath</span>
           )}
@@ -326,11 +329,12 @@ function Work({
 }
 
 function WaitingList({ items, lens, product }: { items: WaitingDecision[]; lens: Lens; product?: string }) {
+  const decide = useDecideAction('decide');
   if (items.length === 0) return null;
   const shown = items.slice(0, 3);
   return (
     <Section label="Waiting on you" aside={String(items.length)}>
-      <DecisionRows items={shown} lens={lens} />
+      <DecisionRows items={shown} lens={lens} onDecide={decide} />
       {items.length > shown.length &&
         (product ? (
           <Link

@@ -18,6 +18,7 @@ import { useFreshEvents } from '@/state/arrivals';
 import { useAt } from '@/state/moment';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { DecisionRows } from '@/components/cards/DecisionRows';
+import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords, newestLines } from '@/features/session-follow';
@@ -123,6 +124,7 @@ function DockChange({
   // alive (change:motion-design): what the stream just changed washes in place, and the dock holds still under the
   // pointer or focus; at a held moment nothing on it is arriving
   const at = useAt();
+  const decide = useDecideAction('decide');
   const fresh = useFreshEvents();
   const arrivals = dockArrivals(at ? NO_EVENTS : fresh, session.key, c.key);
   const hold = useHold();
@@ -197,6 +199,7 @@ function DockChange({
           showChange={false}
           opened={arrivals.opened}
           moment={at}
+          onDecide={decide}
         />
       </section>
 

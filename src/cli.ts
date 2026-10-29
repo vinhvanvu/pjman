@@ -626,6 +626,10 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const register = v.register ? true : v['no-register'] ? false : installedTool();
       const running = readServeAddress();
       if (register && running && !v.port) throw new CliError(`a server is already running at ${running.url} (pid ${running.pid}); pass --port to start another`);
+      // the dashboard writes as the person, never as the session whose shell happened to start it: a write credited to
+      // that session would not wake it, and its receipt would claim the person's act
+      delete process.env.PJMAN_SESSION;
+      delete process.env.PJMAN_WRITER;
       startServer(store, { port: v.port ? Number(v.port) : undefined, host: v.host, staticDir: v.static, register })
         .then(({ address, registered }) => out(`pjman serve: ${address.url} (store ${store.root}; api ${address.url}/api/v1; ctrl-c to stop)${registered ? '' : `\n  not registered: this is a checkout, so the machine's dashboard (${running?.url ?? 'none running'}) is left as it is; --register claims it`}`))
         .catch((e: Error) => {

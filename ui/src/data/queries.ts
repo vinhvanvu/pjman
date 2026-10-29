@@ -78,6 +78,23 @@ export function useOrder() {
   });
 }
 
+/** Deciding a decision in place, or reopening one. The stream invalidates too; this makes the refetch immediate. */
+export function useDecide(kind: 'decide' | 'reopen') {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (decision: string) => (kind === 'decide' ? api.decide({ decision }) : api.reopen({ decision })),
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.all }),
+  });
+}
+
+/** The write a decision's Accept or Reopen calls, or nothing on a page held at a past moment: the past is read, never
+ *  written (decision decide-in-place/accept-holds-then-writes). */
+export function useDecideAction(kind: 'decide' | 'reopen'): ((decision: string) => Promise<unknown>) | undefined {
+  const at = useAt();
+  const mutation = useDecide(kind);
+  return at ? undefined : (decision) => mutation.mutateAsync(decision);
+}
+
 export function useSessionView(id: string | undefined) {
   const at = useAt();
   return useQuery({

@@ -1,5 +1,5 @@
 // Proposed decisions as rows that open in place: the title collapsed; the whole decision, the why, a copy of the
-// reference and a way to the change's decisions tab when open. Nothing navigates on the first click. Alive
+// reference, Accept (change:decide-in-place) and a way to the change's decisions tab when open. Nothing navigates on the first click. Alive
 // (change:motion-design): a decision that arrives slides in, one opened on the stream washes in waits amber, and one
 // that stops waiting washes done green where it stands, fades, and only then gives up its space.
 import { cn } from 'cn';
@@ -12,6 +12,7 @@ import { short } from '@/lib/keys';
 import { liveItem, Wash } from '@/lib/motion';
 import { Chip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
+import { DecideControl } from '@/components/decisions/DecideControl';
 import { NodeLink } from '@/components/links/NodeLink';
 import { TONE } from '@/lib/tones';
 
@@ -37,6 +38,8 @@ export function DecisionRows({
   opened,
   /** The moment the list is read at: a new one swaps the rows without motion, and what is open stays open. */
   moment,
+  /** Decides a decision in place; Accept is drawn only when it is given. */
+  onDecide,
   className,
 }: {
   items: readonly WaitingDecision[];
@@ -44,6 +47,7 @@ export function DecisionRows({
   showChange?: boolean;
   opened?: ReadonlyMap<string, StoreEvent>;
   moment?: string;
+  onDecide?: (decision: string) => Promise<unknown>;
   className?: string;
 }) {
   const [open, setOpen] = useState<Set<string>>(() => new Set());
@@ -106,6 +110,7 @@ export function DecisionRows({
                     )}
                     <div className="flex flex-wrap items-center gap-3 text-meta text-ink-faint">
                       <CopyKey refKey={d.key} />
+                      {onDecide && <DecideControl decision={d.key} onConfirm={() => onDecide(d.key)} />}
                       <NodeLink to={d.key} lens={lens} className="ml-auto hover:text-ink">
                         open on {short(d.change)} →
                       </NodeLink>

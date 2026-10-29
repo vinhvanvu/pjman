@@ -240,3 +240,33 @@ test('the one write: POST /order moves a change in its product\'s sequence as th
   const scope = await getJson('/api/v1/scope?node=product:app');
   assert.deepEqual((scope.body.data as { roadmap: { sequence: string[] } }).roadmap.sequence, ['change:app/login']);
 });
+
+test('POST /decide decides a proposed decision as the person signed in, and POST /reopen is its reverse', async () => {
+  newRecord(store, 'decision', 'login/sessions', { title: 'Sessions', decision: 'Cookies.', why: 'Simple.' });
+  newRecord(store, 'decision', 'login/rotation', { title: 'Rotation', decision: 'Rotate.', why: 'Safe.' });
+  const post = async (route: string, body: unknown) => {
+    const res = await fetch(base + '/api/v1' + route, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: res.status, body: (await res.json()) as { error?: { message: string } } };
+  };
+  const show = async (slug: string) => ((await getJson(`/api/v1/records/decision/app/login/${slug}`)).body.data as { data: Record<string, unknown> }).data;
+  let r = await post('/decide', { decision: 'decision:login/sessions' });
+  assert.equal(r.status, 200);
+  let d = await show('sessions');
+  assert.equal(d.status, 'decided');
+  assert.equal(d.decided_by, 'person:tester');
+  assert.match(String(d.decided_on), /^\d{4}-\d\d-\d\d$/);
+  r = await post('/decide', { decision: 'decision:login/sessions' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error?.message ?? '', /not proposed/);
+  r = await post('/reopen', { decision: 'decision:login/sessions' });
+  assert.equal(r.status, 200);
+  d = await show('sessions');
+  assert.equal(d.status, 'proposed');
+  assert.equal(d.decided_by, undefined);
+  assert.equal(d.decided_on, undefined);
+  r = await post('/reopen', { decision: 'decision:login/rotation' });
+  assert.equal(r.status, 400);
+  assert.match(r.body.error?.message ?? '', /not decided/);
+  r = await post('/decide', {});
+  assert.equal(r.status, 400);
+});
