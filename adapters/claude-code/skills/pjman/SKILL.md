@@ -43,6 +43,7 @@ the context prints them; write the full key only for something in another produc
    `pjman new change <slug> --title "…" --summary "…"` with its answers, and bind this run to it:
    `pjman session bind <session-id> change:<slug>` (the id is in the session-start context). The hook binds only what
    the person's prompt names, never your reply. Name the change as `change:<slug>` in your reply so the person can too.
+   A session bound to a change it is not working on is backed out with `pjman session unbind <session-id> change:<slug>`.
 5. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
    `url:https://…`); a record for a source is optional.
 6. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or

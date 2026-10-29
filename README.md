@@ -61,6 +61,7 @@ pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
 pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>]
 pjman session log <id> <text>          append to the session's ## Log
 pjman session bind <id> <change>       record that the run worked on a change
+pjman session unbind <id> <change>     back out a binding made in error, with the edges observed on it; logged
 pjman session observe <id> <edge> <from> <to>   record an observed edge (evidence)
 pjman validate [--json]                every record, every reference; errors are reported, never dropped
 pjman fmt [--check]                    canonical field order, the YAML rule, repaired quoting
