@@ -384,7 +384,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     >
       {dockHome ? (
         data ? (
-          <Dock scope={data} session={following?.view.session} lens={lens} />
+          <Dock scope={data} session={following?.view.session} lens={lens} settled={!scope.isPlaceholderData} />
         ) : (
           <Pending />
         )

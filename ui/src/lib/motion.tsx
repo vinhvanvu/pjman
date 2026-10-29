@@ -39,6 +39,21 @@ export const liveItem = {
   transition: MOVE,
 } as const;
 
+/** A whole view moving to another subject with what it follows (the dock to the session's new change), inside
+ *  AnimatePresence mode="wait" whose `custom` says whether the swap is live: a live swap fades the old view where it
+ *  stands, then the new one comes in from the top; any other swap is at once. The entering view takes
+ *  `initial={live ? 'enter' : false}`. */
+export const swapView = {
+  variants: {
+    enter: { opacity: 0, y: -8, scale: 0.99 },
+    shown: { opacity: 1, y: 0, scale: 1, transition: { ...ENTER, delay: 0 } },
+    gone: (live: boolean) => ({ opacity: 0, transition: live ? EXIT : { duration: 0 } }),
+  },
+  animate: 'shown',
+  exit: 'gone',
+  style: { transformOrigin: 'top' },
+} as const;
+
 /** The wash an arrival leaves on what it changed: a tint of its colour over the element, fading. Keyed by the
  *  arrival, so each plays once, when it mounts. The parent is `relative`. */
 export function Wash({ arrival, className }: { arrival?: number; className?: string }) {

@@ -7,7 +7,7 @@
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Bug, ChevronRight, GripVertical, TriangleAlert } from 'lucide-react';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeRow, Scope } from '@/data/contract';
 import { useOrder } from '@/data/queries';
 import { plural } from '@/lib/format';
@@ -19,10 +19,14 @@ import {
   bars,
   type Column,
   columns as columnsOf,
+  edgeShape,
+  type EdgeShape,
   featureParents,
   FOUNDATIONS,
   laneOf,
   lanes as lanesOf,
+  type Mark,
+  type MarksOf,
   pastSpan,
   ticks,
   violationText,
@@ -35,6 +39,9 @@ const COL_W = 184;
 const ROW_MIN = 40;
 const MARK_H = 22;
 const BAR_H = 8;
+const DAY_MS = 86_400_000;
+/** The length of an edge head's wings. */
+const HEAD = 6;
 
 export interface RoadmapChartProps {
   scope: Scope;
@@ -70,7 +77,6 @@ export function RoadmapChart({
   const allBars = useMemo(() => bars(rows, now), [rows, now]);
   const x = (t: number) => ((Math.max(t, span.from) - span.from) / (span.to - span.from)) * PAST_W;
   const titles = useMemo(() => new Map(rows.map((r) => [r.key, r.title])), [rows]);
-  const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
   // per lane: the bars in its past cell and the entries in each column cell
   const cells = useMemo(() => {
@@ -90,16 +96,16 @@ export function RoadmapChart({
 
   const [hover, setHover] = useState<string | undefined>();
   const focus = hover ?? selected;
-  const focusRow = focus ? byKey.get(focus) : undefined;
 
-  // the edges drawn on focus: from each dependency to the focused entry, and from it to what needs it
-  const marks = useRef(new Map<string, HTMLElement>());
+  // every dependency edge, drawn always (decision dependency-edges-visible/edges-always-drawn): from the dependency to
+  // what needs it, shaped by edgeShape; focus lights the focused entry's edges and dims the rest
+  const marks = useRef({ past: new Map<string, HTMLElement>(), next: new Map<string, HTMLElement>() });
   const container = useRef<HTMLDivElement>(null);
-  const [edges, setEdges] = useState<{ from: string; to: string; d: string; bad: boolean }[]>([]);
+  const [edges, setEdges] = useState<(EdgeShape & { from: string; to: string; bad: boolean })[]>([]);
   const register = useCallback(
-    (key: string) => (el: HTMLElement | null) => {
-      if (el) marks.current.set(key, el);
-      else marks.current.delete(key);
+    (key: string, side: 'past' | 'next') => (el: HTMLElement | null) => {
+      if (el) marks.current[side].set(key, el);
+      else marks.current[side].delete(key);
     },
     [],
   );
@@ -107,42 +113,50 @@ export function RoadmapChart({
     () => new Set(scope.roadmap.violations.filter((v) => v.kind === 'order').map((v) => `${v.change}>${v.against}`)),
     [scope.roadmap.violations],
   );
+  // the container resizing moves the marks without `cells` changing
+  const [resized, setResized] = useState(0);
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(() => setResized((n) => n + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useLayoutEffect(() => {
-    if (!focusRow || !container.current) {
+    if (!container.current) {
       setEdges([]);
       return;
     }
-    const pairs: [string, string][] = [
-      ...focusRow.dependsOn.map((d): [string, string] => [d, focusRow.key]),
-      ...rows.filter((r) => r.dependsOn.includes(focusRow.key)).map((r): [string, string] => [focusRow.key, r.key]),
-    ];
+    const pairs = rows.flatMap((r) => r.dependsOn.map((d): [string, string] => [d, r.key]));
     const box = container.current.getBoundingClientRect();
     const sl = container.current.scrollLeft;
     const st = container.current.scrollTop;
-    const rect = (k: string) => {
-      const el = marks.current.get(k);
+    const rect = (el: HTMLElement | undefined): Mark | undefined => {
       if (!el) return undefined;
       const r = el.getBoundingClientRect();
       return { x1: r.left - box.left + sl, x2: r.right - box.left + sl, y: r.top - box.top + st + r.height / 2 };
     };
+    const at = (k: string): MarksOf => ({
+      past: rect(marks.current.past.get(k)),
+      next: rect(marks.current.next.get(k)),
+    });
     setEdges(
       pairs
         .map(([from, to]) => {
-          const a = rect(from);
-          const b = rect(to);
-          if (!a || !b) return undefined;
-          const forward = a.x2 <= b.x1;
-          const sx = forward ? a.x2 : a.x1;
-          const ex = forward ? b.x1 : b.x2;
-          const dx = Math.max(40, Math.abs(ex - sx) / 2);
-          const d = `M ${sx} ${a.y} C ${sx + (forward ? dx : -dx)} ${a.y}, ${ex - (forward ? dx : -dx)} ${b.y}, ${ex} ${b.y}`;
-          return { from, to, d, bad: violationKeys.has(`${to}>${from}`) };
+          const shape = edgeShape(
+            at(from),
+            at(to),
+            LABEL_W + PAST_W,
+            BAR_H / 2,
+            (DAY_MS / (span.to - span.from)) * PAST_W,
+          );
+          return shape && { ...shape, from, to, bad: shape.late || violationKeys.has(`${to}>${from}`) };
         })
         .filter((e): e is NonNullable<typeof e> => !!e),
     );
     // `cells` is the signal that the layout changed and the marks moved
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
-  }, [focusRow, rows, violationKeys, cells]);
+  }, [rows, violationKeys, cells, resized, span]);
 
   // drag to reorder: a column header, or a loose entry, dropped on a column header
   const order = useOrder();
@@ -326,7 +340,7 @@ export function RoadmapChart({
                     <button
                       key={b.row.key}
                       type="button"
-                      ref={register(b.row.key)}
+                      ref={register(b.row.key, 'past')}
                       onClick={() => onSelect(b.row.key)}
                       onMouseEnter={() => setHover(b.row.key)}
                       onMouseLeave={() => setHover(undefined)}
@@ -384,7 +398,7 @@ export function RoadmapChart({
                       <button
                         key={e.key}
                         type="button"
-                        ref={register(e.key)}
+                        ref={register(e.key, 'next')}
                         draggable={loose}
                         onDragStart={
                           loose
@@ -440,38 +454,35 @@ export function RoadmapChart({
           )}
         </div>
 
-        {/* the edges on focus */}
+        {/* the edges, always; the focused entry's lit */}
         {edges.length > 0 && (
           <svg
             className="pointer-events-none absolute top-0 left-0 z-20 h-full w-full overflow-visible"
             aria-hidden="true"
           >
-            <defs>
-              <marker
-                id="roadmap-arrow"
-                viewBox="0 0 8 8"
-                refX="7"
-                refY="4"
-                markerWidth="7"
-                markerHeight="7"
-                orient="auto-start-reverse"
-              >
-                <path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor" />
-              </marker>
-            </defs>
-            {edges.map((e) => (
-              <path
-                key={`${e.from}>${e.to}`}
-                d={e.d}
-                fill="none"
-                strokeWidth={2}
-                strokeLinecap="round"
-                markerEnd="url(#roadmap-arrow)"
-                className={e.bad ? TONE.alarm.text : 'text-primary'}
-                stroke="currentColor"
-                opacity={0.85}
-              />
-            ))}
+            {edges.map((e) => {
+              const lit = !!focus && (e.from === focus || e.to === focus);
+              const w = lit ? 2 : 1.25;
+              // an open chevron, its wings swept back from the tip along the arriving direction
+              const wing = (turn: number) =>
+                `${e.end.x - HEAD * Math.cos(e.angle + turn)} ${e.end.y - HEAD * Math.sin(e.angle + turn)}`;
+              return (
+                <g
+                  key={`${e.from}>${e.to}`}
+                  className={e.bad ? TONE.alarm.text : 'text-primary'}
+                  stroke="currentColor"
+                  strokeWidth={w}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                  opacity={lit ? 0.9 : focus ? 0.12 : e.bad ? 0.7 : 0.35}
+                >
+                  <path d={e.d} />
+                  <path d={`M ${wing(-0.55)} L ${e.end.x} ${e.end.y} L ${wing(0.55)}`} />
+                  <circle cx={e.start.x} cy={e.start.y} r={w + 0.75} fill="currentColor" stroke="none" />
+                </g>
+              );
+            })}
           </svg>
         )}
       </div>

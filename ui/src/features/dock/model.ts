@@ -1,6 +1,7 @@
 // The dock before a session binds a change is a pickup list (decision fresh-dock-readiness): the product's open changes
 // by the feature each names, the groups in the roadmap's order, and within a group the change nearest to being fully
-// decided first, so what is closest to executable sits at the top. Pure: the scope in, groups out.
+// decided first, so what is closest to executable sits at the top; a change stacked on unfinished work sits below the
+// rest (decision dependency-edges-visible/stacked). Pure: the scope in, groups out.
 import type { ChangeRow, Scope, ScopeNode, StoreEvent, WaitingDecision } from '@/data/contract';
 import { changeOfDecision, short } from '@/lib/keys';
 
@@ -8,6 +9,8 @@ export interface Pickup {
   row: ChangeRow;
   /** The proposed decisions on it, as people name them (the slug). */
   proposed: string[];
+  /** The unfinished changes it depends on, in its own order; empty when nothing stacks it. */
+  stackedOn: ChangeRow[];
 }
 
 export interface PickupGroup {
@@ -41,6 +44,7 @@ export function pickups(scope: PickupScope): PickupGroup[] {
   const features = mapOrder(scope.tree);
   const proposedOn = new Map<string, WaitingDecision[]>();
   for (const d of scope.waitingOn) proposedOn.set(d.change, [...(proposedOn.get(d.change) ?? []), d]);
+  const byKey = new Map(scope.changes.map((r) => [r.key, r]));
   const groups = new Map<string | null, PickupGroup>();
   for (const row of scope.changes.filter(OPEN)) {
     const f = row.features[0];
@@ -51,11 +55,14 @@ export function pickups(scope: PickupScope): PickupGroup[] {
       g = { key, name: key ? (named?.name ?? f?.title ?? short(key)) : 'no feature', changes: [] };
       groups.set(key, g);
     }
-    g.changes.push({ row, proposed: (proposedOn.get(row.key) ?? []).map((d) => slug(d.key)) });
+    // a dependency outside the scope can't be read, so it doesn't stack
+    const stackedOn = row.dependsOn.map((k) => byKey.get(k)).filter((d): d is ChangeRow => !!d && OPEN(d));
+    g.changes.push({ row, proposed: (proposedOn.get(row.key) ?? []).map((d) => slug(d.key)), stackedOn });
   }
   for (const g of groups.values()) {
     g.changes = g.changes.toSorted(
       (a, b) =>
+        Number(a.stackedOn.length > 0) - Number(b.stackedOn.length > 0) ||
         a.row.waiting - b.row.waiting ||
         at(a.row) - at(b.row) ||
         (a.row.title ?? a.row.key).localeCompare(b.row.title ?? b.row.key),
@@ -73,12 +80,14 @@ export function pickups(scope: PickupScope): PickupGroup[] {
 }
 
 export interface Readiness {
-  /** 'ready' when nothing is proposed, 'n of m decided' while something is, 'no decisions' when none were opened. */
+  /** 'stacked' while a dependency is unfinished; else 'ready' when nothing is proposed, 'n of m decided' while something
+   *  is, 'no decisions' when none were opened. */
   text: string;
-  state: 'ready' | 'deciding' | 'undecided';
+  state: 'stacked' | 'ready' | 'deciding' | 'undecided';
 }
 
-export function readiness(row: Pick<ChangeRow, 'waiting' | 'decided'>): Readiness {
+export function readiness(row: Pick<ChangeRow, 'waiting' | 'decided'>, stacked = false): Readiness {
+  if (stacked) return { text: 'stacked', state: 'stacked' };
   const total = row.waiting + row.decided;
   if (total === 0) return { text: 'no decisions', state: 'undecided' };
   if (row.waiting === 0) return { text: 'ready', state: 'ready' };
