@@ -7,6 +7,7 @@ import type { ChangeContext, Lens, Scope, ScopeNode } from '@/data/contract';
 import { plural, sinceDays } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
+import { CopyKey } from '@/components/links/CopyKey';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Figures } from '@/components/stats/Figures';
 import { Ring } from '@/components/stats/Ring';
@@ -150,6 +151,7 @@ export function MilestonePage({
               </span>
               <span className="min-w-0 flex-1 truncate">{d.title ?? short(d.key)}</span>
               {d.status !== 'decided' && <span className={cn('text-meta', TONE.waits.text)}>waiting</span>}
+              <CopyKey refKey={d.key} bare />
             </NodeLink>
           ))}
         </section>

@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
 import { Chip } from '@/components/chips/Chip';
+import { CopyKey } from '@/components/links/CopyKey';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
 import { AppShell } from '@/components/shell/AppShell';
@@ -442,7 +443,7 @@ function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
             </p>
           )}
           <div className="flex items-center gap-2 text-meta text-ink-faint">
-            <span className="font-mono">{short(d.key)}</span>
+            <CopyKey refKey={d.key} />
             {d.status === 'proposed' && (
               <span className="ml-auto font-mono">pjman set {short(d.key)} status=decided</span>
             )}

@@ -3,7 +3,7 @@
 // (change:motion-design): a decision that arrives slides in, one opened on the stream washes in waits amber, and one
 // that stops waiting washes done green where it stands, fades, and only then gives up its space.
 import { cn } from 'cn';
-import { Check, ChevronRight, Copy } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import { useState } from 'react';
 import type { Lens, StoreEvent, WaitingDecision } from '@/data/contract';
@@ -11,6 +11,7 @@ import { truncate } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { liveItem, Wash } from '@/lib/motion';
 import { Chip } from '@/components/chips/Chip';
+import { CopyKey } from '@/components/links/CopyKey';
 import { NodeLink } from '@/components/links/NodeLink';
 import { TONE } from '@/lib/tones';
 
@@ -104,8 +105,7 @@ export function DecisionRows({
                       </p>
                     )}
                     <div className="flex flex-wrap items-center gap-3 text-meta text-ink-faint">
-                      <span className="font-mono">{short(d.key)}</span>
-                      <CopyRef text={d.key} />
+                      <CopyKey refKey={d.key} />
                       <NodeLink to={d.key} lens={lens} className="ml-auto hover:text-ink">
                         open on {short(d.change)} →
                       </NodeLink>
@@ -118,26 +118,5 @@ export function DecisionRows({
         })}
       </AnimatePresence>
     </ol>
-  );
-}
-
-/** Copies a reference for pasting into a session; says so for a moment. */
-export function CopyRef({ text, className }: { text: string; className?: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        void navigator.clipboard?.writeText(text).then(() => {
-          setDone(true);
-          setTimeout(() => setDone(false), 1500);
-        });
-      }}
-      className={cn('inline-flex items-center gap-1 hover:text-ink', className)}
-      title="Copy the reference"
-    >
-      {done ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
-      {done ? 'copied' : 'copy'}
-    </button>
   );
 }
