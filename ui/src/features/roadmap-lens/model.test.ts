@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeRow, Scope, ScopeNode } from '@/data/contract';
-import { bars, bySeverity, columns, featureParents, FOUNDATIONS, laneOf, lanes, LATER, pastSpan, ticks } from './model';
+import {
+  bars,
+  bySeverity,
+  columns,
+  edgeShape,
+  featureParents,
+  FOUNDATIONS,
+  laneOf,
+  lanes,
+  LATER,
+  pastSpan,
+  ticks,
+} from './model';
 
 const row = (key: string, r: Partial<ChangeRow> = {}): ChangeRow => ({
   key: `change:${key}`,
@@ -137,5 +149,42 @@ describe('bugs', () => {
       ['Cosmetic', 1],
       ['No severity yet', 1],
     ]);
+  });
+});
+
+const m = (x1: number, x2: number, y: number) => ({ x1, x2, y });
+
+describe('edgeShape', () => {
+  const SEAM = 300;
+  it('draws a straight line from the end of the dependency to the start of what began after it', () => {
+    const e = edgeShape({ past: m(10, 50, 20) }, { past: m(80, 120, 60) }, SEAM, 4)!;
+    expect(e.d).toBe('M 50 20 L 80 60');
+    expect(e.late).toBe(false);
+  });
+  it('lands on the bar edge at the moment the dependency finished when they overlapped', () => {
+    const down = edgeShape({ past: m(10, 100, 20) }, { past: m(40, 160, 60) }, SEAM, 4)!;
+    expect(down.d).toBe('M 100 20 L 100 56');
+    const up = edgeShape({ past: m(10, 100, 60) }, { past: m(40, 160, 20) }, SEAM, 4)!;
+    expect(up.d).toBe('M 100 60 L 100 24');
+  });
+  it('runs backwards, late, only when the dependent finished first', () => {
+    const e = edgeShape({ past: m(10, 200, 20) }, { past: m(40, 120, 60) }, SEAM, 4)!;
+    expect(e.d).toBe('M 200 20 L 120 60');
+    expect(e.late).toBe(true);
+  });
+  it('runs straight to the now line, then curves into an entry after it', () => {
+    const e = edgeShape({ past: m(10, 200, 20) }, { next: m(340, 500, 60) }, SEAM, 4)!;
+    expect(e.d).toBe('M 200 20 L 300 20 C 340 20, 300 60, 340 60');
+    expect(e.start).toEqual({ x: 200, y: 20 });
+  });
+  it('curves between entries after now, from the dependency entry when it has one', () => {
+    const e = edgeShape({ past: m(10, 300, 20), next: m(320, 480, 20) }, { next: m(520, 680, 60) }, SEAM, 4)!;
+    expect(e.d).toBe('M 480 20 C 520 20, 480 60, 520 60');
+  });
+  it('reads a dependent finishing less than a day first as the same moment, not late', () => {
+    const e = edgeShape({ past: m(10, 104, 20) }, { past: m(40, 100, 60) }, SEAM, 4, 5)!;
+    expect(e.d).toBe('M 104 20 L 100 56');
+    expect(e.late).toBe(false);
+    expect(edgeShape({ past: m(10, 110, 20) }, { past: m(40, 100, 60) }, SEAM, 4, 5)!.late).toBe(true);
   });
 });

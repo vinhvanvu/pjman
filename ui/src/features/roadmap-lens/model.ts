@@ -185,6 +185,82 @@ export function bars(rows: ChangeRow[], now: number): Bar[] {
   return out;
 }
 
+/** A mark as the chart drew it: its left and right ends and its middle, in the chart's own pixels. */
+export interface Mark {
+  x1: number;
+  x2: number;
+  y: number;
+}
+
+/** Where a change is drawn: its bar in the past, its entry after now, or both while in flight. */
+export interface MarksOf {
+  past?: Mark;
+  next?: Mark;
+}
+
+export interface EdgeShape {
+  d: string;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  /** The direction the edge arrives in, in radians, for its head. */
+  angle: number;
+  /** The record contradicts itself in time: the dependent finished before what it needs. */
+  late: boolean;
+}
+
+type Point = { x: number; y: number };
+
+const line = (s: Point, e: Point, late = false): EdgeShape => ({
+  d: `M ${s.x} ${s.y} L ${e.x} ${e.y}`,
+  start: s,
+  end: e,
+  angle: Math.atan2(e.y - s.y, e.x - s.x),
+  late,
+});
+const curve = (s: Point, e: Point, lead = ''): EdgeShape => {
+  const forward = s.x <= e.x;
+  const dx = Math.max(40, Math.abs(e.x - s.x) / 2) * (forward ? 1 : -1);
+  return {
+    d: `M ${s.x} ${s.y} ${lead}C ${s.x + dx} ${s.y}, ${e.x - dx} ${e.y}, ${e.x} ${e.y}`,
+    start: s,
+    end: e,
+    angle: forward ? 0 : Math.PI,
+    late: false,
+  };
+};
+
+/** One dependency edge (decision dependency-edges-visible/edge-shapes). The past is time, so an edge between bars is a
+ *  straight line leaving the end of the dependency's bar: to the dependent's start when it began after, onto its bar at
+ *  the moment the dependency finished when they overlapped, back to its end only when it finished first (late). An edge
+ *  into an entry after now runs straight to the now line, then curves; between entries it curves as the order runs.
+ *  `seam` is the now line's x; `half` the bar's half-height, so a vertical edge lands on the bar's edge; `day` a day's width,
+ *  within which a dependent finishing first is the same moment, not late. */
+export function edgeShape(from: MarksOf, to: MarksOf, seam: number, half: number, day = 0): EdgeShape | undefined {
+  const a = from.next ?? from.past;
+  if (!a) return undefined;
+  if (to.next) {
+    if (from.next) {
+      const forward = from.next.x2 <= to.next.x1;
+      return curve(
+        { x: forward ? from.next.x2 : from.next.x1, y: from.next.y },
+        { x: forward ? to.next.x1 : to.next.x2, y: to.next.y },
+      );
+    }
+    const s = { x: from.past!.x2, y: from.past!.y };
+    const bend = { x: Math.max(seam, s.x), y: s.y };
+    const shape = curve(bend, { x: to.next.x1, y: to.next.y });
+    return { ...shape, d: `M ${s.x} ${s.y} L ${bend.x} ${bend.y} ${shape.d.slice(shape.d.indexOf('C'))}`, start: s };
+  }
+  const b = to.past;
+  if (!b) return undefined;
+  // a dependency not yet begun, needed by work already in the past: as late as it gets
+  if (!from.past) return line({ x: a.x1, y: a.y }, { x: b.x2, y: b.y }, true);
+  const s = { x: from.past.x2, y: from.past.y };
+  if (b.x1 >= s.x) return line(s, { x: b.x1, y: b.y });
+  if (b.x2 >= s.x - day) return line(s, { x: Math.min(s.x, b.x2), y: b.y + (s.y < b.y ? -half : half) });
+  return line(s, { x: b.x2, y: b.y }, true);
+}
+
 /** Where a violation's warning reads from, one line. */
 export function violationText(v: Violation, titles: Map<string, string | undefined>): string {
   const name = (k?: string) => (k ? (titles.get(k) ?? short(k)) : '');
