@@ -12,7 +12,8 @@ import { asksOf } from '@/lib/work';
 import { Chip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { ChangeMeta, type ChangeMetaProps } from './ChangeCard';
-import { CopyRef, DecisionRows } from './DecisionRows';
+import { CopyKey } from '@/components/links/CopyKey';
+import { DecisionRows } from './DecisionRows';
 import { TONE } from '@/lib/tones';
 
 export interface WorkCardProps extends Omit<ChangeMetaProps, 'className' | 'allFeatures'> {
@@ -110,8 +111,7 @@ export function WorkCard({ row, lens, mode, decisions = [], selected, className,
           )}
           {row.status === 'blocked' && <p className="text-xs text-ink-muted">Blocked: the next line says on what.</p>}
           <div className="flex flex-wrap items-center gap-3 text-meta text-ink-faint">
-            <span className="font-mono">{short(row.key)}</span>
-            <CopyRef text={row.key} />
+            <CopyKey refKey={row.key} />
             {moved && <span>moved {ago(moved)}</span>}
             <NodeLink to={row.key} lens={lens} className="ml-auto hover:text-ink">
               open →

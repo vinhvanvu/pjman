@@ -19,6 +19,7 @@ import { useHeldList, useHold } from '@/lib/hold';
 import { restOf, short } from '@/lib/keys';
 import { liveItem, Wash } from '@/lib/motion';
 import { Label, StatusChip } from '@/components/chips/Chip';
+import { CopyKey } from '@/components/links/CopyKey';
 import {
   cardWhen,
   lastArrival,
@@ -216,7 +217,10 @@ function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
         <span className="line-clamp-2 min-w-0 font-medium text-ink">{d.title ?? short(d.key)}</span>
       </span>
       {d.decision && <span className="line-clamp-2 text-ink-muted">{d.decision}</span>}
-      <span className="text-meta text-ink-faint">{proposedWhen(d.created)}</span>
+      <span className="flex items-center gap-2 text-meta text-ink-faint">
+        <span className="shrink-0">{proposedWhen(d.created)}</span>
+        <CopyKey refKey={d.key} className="ml-auto" />
+      </span>
     </span>
   );
 }

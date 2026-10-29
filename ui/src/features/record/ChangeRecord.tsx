@@ -4,7 +4,7 @@ import type { ChangeContext, Lens } from '@/data/contract';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { GitBranch } from 'lucide-react';
-import { CopyRef } from '@/components/cards/DecisionRows';
+import { CopyKey, CopyRef } from '@/components/links/CopyKey';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
@@ -138,6 +138,7 @@ export function ChangeRecord({
                     {d.title ?? short(d.key)}
                   </NodeLink>
                   <span className="text-meta text-ink-faint">{d.status}</span>
+                  <CopyKey refKey={d.key} bare />
                 </div>
                 {d.decision && <p className="line-clamp-2 text-xs text-ink-muted">{d.decision}</p>}
               </li>
