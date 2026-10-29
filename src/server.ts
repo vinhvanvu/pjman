@@ -16,6 +16,7 @@ import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
 import { order } from './commands/order.js';
+import { decide, reopen } from './commands/decide.js';
 import { withStoreLock } from './lock.js';
 import { intake } from './intake.js';
 import { CliError } from './util.js';
@@ -81,6 +82,9 @@ class HttpError extends Error {
 }
 
 /** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
+/** The routes that write; everything else reads. */
+const WRITES = ['/order', '/decide', '/reopen'];
+
 export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const staticDir = opts.staticDir === undefined ? defaultStaticDir() : opts.staticDir;
 
@@ -102,9 +106,10 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     send(res, 500, { error: { code: 'internal', message: (e as Error).message } });
   };
 
-  /** The one write: reorder the roadmap, through the same function the command uses, as the person signed in. */
+  /** The writes, each through the same function the command uses, as the person signed in: reorder the roadmap, and
+   *  decide a proposed decision or reopen a decided one (decision decide-in-place/decide-route-and-reopen). */
   const write = (req: http.IncomingMessage, res: http.ServerResponse, route: string): void => {
-    if (route !== '/order') throw new HttpError(405, 'method-not-allowed', `${req.method} ${route} is not allowed; the only write is POST /order`);
+    if (!WRITES.includes(route)) throw new HttpError(405, 'method-not-allowed', `${req.method} ${route} is not allowed; the writes are ${WRITES.map((w) => `POST ${w}`).join(', ')}`);
     let text = '';
     req.setEncoding('utf8');
     req.on('data', (chunk: string) => { text += chunk; });
@@ -112,10 +117,16 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       try {
         const body = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
         const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
-        if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
         const writer = readUserConfig().actor;
         if (!writer) throw new HttpError(403, 'no-actor', 'no person is signed in: set actor in ~/.pjman/config.yaml');
-        const r = withStoreLock(store.root, () => order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer }));
+        if (route === '/order') {
+          if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
+          const r = withStoreLock(store.root, () => order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer }));
+          return send(res, 200, { data: r });
+        }
+        const key = s(body.decision);
+        if (!key) throw new HttpError(400, 'bad-request', 'decision is required');
+        const r = withStoreLock(store.root, () => (route === '/decide' ? decide(store, key, { by: writer }) : reopen(store, key)));
         send(res, 200, { data: r });
       } catch (e) {
         fail(res, e);
@@ -130,7 +141,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       return;
     }
     if (req.method === 'POST') return write(req, res, route);
-    if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API reads, and writes only through POST /order`);
+    if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API reads, and writes only through ${WRITES.map((w) => `POST ${w}`).join(', ')}`);
     // as of a moment (at=<event seq|instant>): the records at its commit, the stream cut after it, the clock set to it
     const atParam = url.searchParams.get('at');
     let moment: Moment | undefined;
@@ -290,7 +301,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/products/{slug}/timeline?from=&to=', '/bridge?product=&days=', '/events?since=&until=', 'POST /order {change, before|after|first|last|later}'], asOf: 'every read takes at=<event seq|instant> and answers as of that moment, stamped with the moment it resolved to' } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/products/{slug}/timeline?from=&to=', '/bridge?product=&days=', '/events?since=&until=', 'POST /order {change, before|after|first|last|later}', 'POST /decide {decision}', 'POST /reopen {decision}'], asOf: 'every read takes at=<event seq|instant> and answers as of that moment, stamped with the moment it resolved to' } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

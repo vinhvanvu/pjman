@@ -5,6 +5,8 @@ import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { GitBranch } from 'lucide-react';
 import { CopyKey, CopyRef } from '@/components/links/CopyKey';
+import { DecideControl } from '@/components/decisions/DecideControl';
+import { useDecideAction } from '@/data/queries';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
@@ -25,6 +27,7 @@ export function ChangeRecord({
       ? (c.data.binds as string[]).find((b) => /^(github-issue|linear|jira):/.test(b))
       : undefined;
   const features = Array.isArray(c.data.features) ? (c.data.features as string[]) : [];
+  const decide = useDecideAction('decide');
   const waiting = ctx.decisions.filter((d) => d.status === 'proposed');
   const decided = ctx.decisions.filter((d) => d.status !== 'proposed');
   return (
@@ -137,7 +140,11 @@ export function ChangeRecord({
                   <NodeLink to={d.key} lens={lens} className="min-w-0 flex-1 truncate font-medium hover:text-primary">
                     {d.title ?? short(d.key)}
                   </NodeLink>
-                  <span className="text-meta text-ink-faint">{d.status}</span>
+                  {d.status === 'proposed' && decide ? (
+                    <DecideControl decision={d.key} onConfirm={() => decide(d.key)} />
+                  ) : (
+                    <span className="text-meta text-ink-faint">{d.status}</span>
+                  )}
                   <CopyKey refKey={d.key} bare />
                 </div>
                 {d.decision && <p className="line-clamp-2 text-xs text-ink-muted">{d.decision}</p>}

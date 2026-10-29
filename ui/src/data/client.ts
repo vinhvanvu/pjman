@@ -2,6 +2,7 @@
 import { useMoment } from '@/state/moment';
 import type {
   Bridge,
+  DecideBody,
   Moment,
   OrderBody,
   OrderResult,
@@ -10,6 +11,7 @@ import type {
   Scope,
   ScopeQuery,
   SessionView,
+  SetResult,
   StoreInfo,
   Timeline,
 } from './contract';
@@ -110,6 +112,8 @@ export const api = {
     if (q.retired) p.set('retired', '1');
     return call<Scope>(`/scope?${p}`, at);
   },
-  /** The one write: reorder the roadmap, as the person signed in. */
+  /** The writes, as the person signed in: reorder the roadmap; decide a proposed decision, or reopen a decided one. */
   order: (body: OrderBody) => post<OrderResult>('/order', body),
+  decide: (body: DecideBody) => post<SetResult>('/decide', body),
+  reopen: (body: DecideBody) => post<SetResult>('/reopen', body),
 };

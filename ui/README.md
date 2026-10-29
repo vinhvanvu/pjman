@@ -37,9 +37,13 @@ the done and retired flags, the window, the milestone filter). The acts live in 
 no component chooses push or replace on its own. Each pane carries a `data-scroll-restoration-id`, so Back and Forward
 restore its scroll.
 
-The app writes once: reordering the roadmap. Dragging a column, or a loose entry onto one, calls `POST /order` through
-`useOrder` (`data/queries.ts`), the same library function `pjman order` runs, as the person signed in; the event stream
-then invalidates everything. Nothing else writes, and no component calls the client directly.
+The app writes in two ways, each through the same library function the command runs, as the person signed in; the
+event stream then invalidates everything. Reordering the roadmap: dragging a column, or a loose entry onto one, calls
+`POST /order` through `useOrder` (`data/queries.ts`). Deciding in place (change:decide-in-place): Accept on a proposed
+decision, wherever one shows its text, turns into Confirm on the first click and calls `POST /decide` on the second;
+Reopen on a decided one in the change's Decisions tab calls `POST /reopen`. The control is
+`components/decisions/DecideControl`, handed its write by the feature through `useDecideAction`, which gives none on a
+page held at a past moment. Nothing else writes, and no component calls the client directly.
 
 ## Folders and boundaries
 

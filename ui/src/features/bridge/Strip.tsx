@@ -20,6 +20,8 @@ import { restOf, short } from '@/lib/keys';
 import { liveItem, Wash } from '@/lib/motion';
 import { Label, StatusChip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
+import { DecideControl } from '@/components/decisions/DecideControl';
+import { useDecideAction } from '@/data/queries';
 import {
   cardWhen,
   lastArrival,
@@ -208,8 +210,9 @@ function Meta({ change, session }: { change?: BridgeChange; session?: BridgeSess
   );
 }
 
-/** One proposed decision on a card: its title, its recommendation clamped, when it was proposed. */
+/** One proposed decision on a card: its title, its recommendation clamped, when it was proposed, Accept. */
 function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
+  const decide = useDecideAction('decide');
   return (
     <span className={cn('flex flex-col gap-1 rounded-row px-2.5 py-2 text-xs', TONE.waits.soft)}>
       <span className="flex items-start gap-2">
@@ -219,7 +222,8 @@ function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
       {d.decision && <span className="line-clamp-2 text-ink-muted">{d.decision}</span>}
       <span className="flex items-center gap-2 text-meta text-ink-faint">
         <span className="shrink-0">{proposedWhen(d.created)}</span>
-        <CopyKey refKey={d.key} className="ml-auto" />
+        {decide && <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />}
+        <CopyKey refKey={d.key} />
       </span>
     </span>
   );

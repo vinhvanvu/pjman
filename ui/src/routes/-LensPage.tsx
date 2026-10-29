@@ -10,6 +10,7 @@ import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
 import { Chip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
+import { DecideControl } from '@/components/decisions/DecideControl';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
 import { AppShell } from '@/components/shell/AppShell';
@@ -18,7 +19,7 @@ import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
 import type { ChangeContext, Lens, ProductRow, Scope, SessionView, Tab } from '@/data/contract';
-import { useBridge, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
+import { useBridge, useDecideAction, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
@@ -414,8 +415,11 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   );
 }
 
-/** The decisions tab: proposed first, each with its recommendation and why. */
+/** The decisions tab: proposed first, each with its recommendation and why, Accept on a proposed one and Reopen on a
+ *  decided one (change:decide-in-place). */
 function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
+  const decide = useDecideAction('decide');
+  const reopen = useDecideAction('reopen');
   const items = [
     ...ctx.decisions.filter((d) => d.status === 'proposed'),
     ...ctx.decisions.filter((d) => d.status !== 'proposed'),
@@ -444,14 +448,17 @@ function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
           )}
           <div className="flex items-center gap-2 text-meta text-ink-faint">
             <CopyKey refKey={d.key} />
-            {d.status === 'proposed' && (
-              <span className="ml-auto font-mono">pjman set {short(d.key)} status=decided</span>
+            {d.status === 'proposed' && decide && (
+              <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />
+            )}
+            {d.status === 'decided' && reopen && (
+              <DecideControl decision={d.key} onConfirm={() => reopen(d.key)} reopen className="ml-auto" />
             )}
           </div>
         </li>
       ))}
       <li className="text-xs text-ink-faint">
-        Decisions are made in the terminal for now; the bridge lists what waits on you.{' '}
+        Accepting decides it as you and wakes the sessions working this change; the bridge lists what waits on you.{' '}
         <NodeLink to={ctx.change.key} lens={lens} className="hover:text-primary">
           Back to the change
         </NodeLink>
