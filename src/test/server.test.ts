@@ -125,7 +125,7 @@ test("a session's view and a project's board", async () => {
   assert.equal(bound.showing.key, 'change:app/login');
   assert.equal(bound.session.on, 'change:app/login');
   assert.equal(bound.session.state, 'ended');
-  assert.equal(bound.session.log.length, 2);
+  assert.deepEqual(bound.session.log.map((l) => l.text), ['session started', 'bound change:app/login (by hand)', 'session ended (other)']);
   const board = await getJson('/api/v1/projects/app/board');
   assert.deepEqual((board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key), ['change:app/login']);
 });

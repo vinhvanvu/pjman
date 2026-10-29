@@ -391,6 +391,19 @@ export function validate(loaded: Loaded): Problem[] {
             });
           }
         }
+        // focus: the change the session last read the context of; briefed: how far its brief has reached in the stream
+        for (const f of ['focus', 'briefed'] as const) {
+          if (d[f] === undefined) continue;
+          const m = d[f] as Record<string, unknown>;
+          if (!m || typeof m !== 'object' || Array.isArray(m)) {
+            err(r, `'${f}' must be a mapping {change, at${f === 'briefed' ? ', seq' : ''}}`);
+            continue;
+          }
+          checkRef(r, `${f}.change`, m.change, ['change']);
+          if (!isTimestamp(m.at)) err(r, `${f}.at must be a timestamp`);
+          if (f === 'briefed' && (typeof m.seq !== 'number' || !Number.isInteger(m.seq) || m.seq < 0)) err(r, `briefed.seq must be a whole number`);
+          for (const k of Object.keys(m)) if (!['change', 'at', 'seq'].includes(k) || (f === 'focus' && k === 'seq')) warn(r, `${f}: unknown field '${k}'`);
+        }
         if (!r.sections.has('Log')) warn(r, `body has no '## Log' section`);
         break;
       }

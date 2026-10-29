@@ -22,17 +22,18 @@ export function receipt(store: Store, opts: { since?: number; session?: string; 
 
 /** One line per record, in order of first appearance: the strongest verb wins (removed > created > moved > set),
  *  the fields a set touched are listed, a status change shows the value it reached, a title is added when known. */
-export function receiptLines(events: StoreEvent[], loaded: Loaded): string[] {
+export function receiptLines(events: StoreEvent[], loaded: Loaded, opts: { counts?: boolean } = {}): string[] {
   const order: string[] = [];
-  const byKey = new Map<string, { ops: Set<string>; fields: Set<string>; type: string; log: number }>();
+  const byKey = new Map<string, { ops: Set<string>; fields: Set<string>; type: string; log: number; n: number }>();
   for (const e of events) {
     if (e.op === 'init' || e.op === 'write' || e.op === 'formatted') continue;
     let r = byKey.get(e.key);
     if (!r) {
-      r = { ops: new Set(), fields: new Set(), type: e.type, log: 0 };
+      r = { ops: new Set(), fields: new Set(), type: e.type, log: 0, n: 0 };
       byKey.set(e.key, r);
       order.push(e.key);
     }
+    r.n++;
     if (e.op === 'log') r.log++;
     else r.ops.add(e.op);
     for (const f of e.fields ?? []) r.fields.add(f);
@@ -65,7 +66,9 @@ export function receiptLines(events: StoreEvent[], loaded: Loaded): string[] {
       detail = parts.length ? ` (${parts.join(', ')})` : '';
     }
     const named = title && verb !== 'set' ? ` — ${title.length > 90 ? title.slice(0, 87) + '…' : title}` : '';
-    lines.push(`${verb} ${key}${detail}${named}`);
+    // with counts, a record written more than once says how many times: churn stays visible though the line holds only the end
+    const times = opts.counts && r.n > 1 ? ` (${r.n} writes)` : '';
+    lines.push(`${verb} ${key}${detail}${times}${named}`);
   }
   return lines;
 }
