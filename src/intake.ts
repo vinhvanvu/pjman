@@ -4,7 +4,7 @@
 import type { Store } from './config.js';
 import { findReferences, type GetOpts } from './graph.js';
 import type { Loaded, Rec } from './records.js';
-import { productOf, sequenceOf } from './commands/order.js';
+import { ahead, productOf } from './commands/order.js';
 import { progressOf } from './commands/view.js';
 import { derivedStatus, effectsOf, levelOf, live, structuralParent } from './tree.js';
 
@@ -144,7 +144,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   const projectRec = store.project ? live(loaded, store.project) : undefined;
   const mine = changes.find((c) => projectRec && live(loaded, c.data.project)?.key === projectRec.key);
   const product = (mine && productOf(loaded, mine)) ?? (products.length === 1 ? products[0] : undefined);
-  const sequence = product ? sequenceOf(loaded, product) : [];
+  const sequence = product ? ahead(loaded, product) : [];
   const sequenced = new Set(sequence);
   const onSequence = (c: Rec): boolean => {
     const seen = new Set<string>();

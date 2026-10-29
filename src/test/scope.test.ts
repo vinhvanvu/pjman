@@ -6,6 +6,7 @@ import path from 'node:path';
 import { before, test } from 'node:test';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
+import { ahead, order } from '../commands/order.js';
 import { rm } from '../commands/rm.js';
 import { sessionBind } from '../commands/session.js';
 import { set } from '../commands/set.js';
@@ -200,9 +201,10 @@ test('bugs: one home at the severity level, counts roll up with the worst named,
   assert.deepEqual(s.bugs.map((b) => b.key), ['change:shop/down', 'change:shop/cards-crash', 'change:shop/slow-search', 'change:shop/typo']);
   const search = scope(store, loadStore(store), { lens: 'feature', node: 'feature:shop/search' });
   assert.deepEqual(search.bugs.map((b) => b.key), ['change:shop/down', 'change:shop/slow-search', 'change:shop/typo']);
-  // the roadmap: the sequence in scope, children take their milestone's place, the loose come after, bugs never
+  // the roadmap: what is ahead in the sequence in scope (old is done), children take their milestone's place, the
+  // loose come after, bugs never
   assert.equal(s.roadmap.product, 'product:shop');
-  assert.deepEqual(s.roadmap.sequence, ['change:shop/cards', 'change:shop/old']);
+  assert.deepEqual(s.roadmap.sequence, ['change:shop/cards']);
   assert.equal(byKey['change:shop/card-form'].position, 0);
   assert.equal(byKey['change:shop/card-tests'].position, 0);
   assert.equal(byKey['change:shop/chore'].position, undefined);
@@ -226,4 +228,30 @@ test('bugs: one home at the severity level, counts roll up with the worst named,
   set(store, 'change:shop/chore', ['status=done'], {});
   const fin = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop', done: true }).changes.find((c) => c.key === 'change:shop/chore')!;
   assert.ok(fin.finished && fin.began && fin.began <= fin.finished);
+});
+
+test('the order reads what is ahead: done entries drop out and stay stored, a done milestone keeps its place for open children, a reopened change is back in its place', () => {
+  newRecord(store, 'change', 'phase', { title: 'Phase', summary: 's', project: 'project:web', status: 'done' });
+  newRecord(store, 'change', 'phase-kid', { title: 'Phase kid', summary: 's', project: 'project:web', parent: 'change:shop/phase' });
+  newRecord(store, 'change', 'shipped', { title: 'Shipped', summary: 's', project: 'project:web', status: 'done' });
+  newRecord(store, 'change', 'upcoming', { title: 'Upcoming', summary: 's', project: 'project:web' });
+  set(store, 'product:shop', ['sequence=change:phase,change:shipped,change:upcoming'], {});
+  const product = () => loadStore(store).byKey.get('product:shop')![0];
+  const aheadNow = () => ahead(loadStore(store), product());
+  assert.deepEqual(aheadNow(), ['change:shop/phase', 'change:shop/upcoming']);
+  const s = scope(store, loadStore(store), { lens: 'feature', node: 'product:shop' });
+  assert.deepEqual(s.roadmap.sequence, ['change:shop/phase', 'change:shop/upcoming']);
+  assert.equal(s.changes.find((c) => c.key === 'change:shop/phase-kid')!.position, 0);
+  // the milestone's last open child done: nothing open beneath it, so it drops out too
+  set(store, 'change:shop/phase-kid', ['status=done'], {});
+  assert.deepEqual(aheadNow(), ['change:shop/upcoming']);
+  // a write moves only the entry named; the done entries stay as the person wrote them
+  const r = order(store, 'change:shop/upcoming', { first: true });
+  assert.deepEqual(r.sequence, ['change:shop/upcoming']);
+  assert.deepEqual(product().data.sequence, ['change:shop/upcoming', 'change:shop/phase', 'change:shop/shipped']);
+  // what is no longer ahead is no anchor
+  assert.throws(() => order(store, 'change:shop/chore', { after: 'change:shop/shipped' }), /no longer ahead/);
+  // reopened, it is back where it was
+  set(store, 'change:shop/shipped', ['status=open'], {});
+  assert.deepEqual(aheadNow(), ['change:shop/upcoming', 'change:shop/shipped']);
 });
