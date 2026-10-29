@@ -7,7 +7,7 @@
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Bug, ChevronRight, GripVertical, TriangleAlert } from 'lucide-react';
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeRow, Scope } from '@/data/contract';
 import { useOrder } from '@/data/queries';
 import { plural } from '@/lib/format';
@@ -70,7 +70,6 @@ export function RoadmapChart({
   const allBars = useMemo(() => bars(rows, now), [rows, now]);
   const x = (t: number) => ((Math.max(t, span.from) - span.from) / (span.to - span.from)) * PAST_W;
   const titles = useMemo(() => new Map(rows.map((r) => [r.key, r.title])), [rows]);
-  const byKey = useMemo(() => new Map(rows.map((r) => [r.key, r])), [rows]);
 
   // per lane: the bars in its past cell and the entries in each column cell
   const cells = useMemo(() => {
@@ -90,9 +89,9 @@ export function RoadmapChart({
 
   const [hover, setHover] = useState<string | undefined>();
   const focus = hover ?? selected;
-  const focusRow = focus ? byKey.get(focus) : undefined;
 
-  // the edges drawn on focus: from each dependency to the focused entry, and from it to what needs it
+  // every dependency edge, drawn always (decision dependency-edges-visible/edges-always-drawn): from the dependency to
+  // what needs it; focus lights the focused entry's edges and dims the rest
   const marks = useRef(new Map<string, HTMLElement>());
   const container = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState<{ from: string; to: string; d: string; bad: boolean }[]>([]);
@@ -107,15 +106,21 @@ export function RoadmapChart({
     () => new Set(scope.roadmap.violations.filter((v) => v.kind === 'order').map((v) => `${v.change}>${v.against}`)),
     [scope.roadmap.violations],
   );
+  // the container resizing moves the marks without `cells` changing
+  const [resized, setResized] = useState(0);
+  useEffect(() => {
+    const el = container.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setResized((n) => n + 1));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   useLayoutEffect(() => {
-    if (!focusRow || !container.current) {
+    if (!container.current) {
       setEdges([]);
       return;
     }
-    const pairs: [string, string][] = [
-      ...focusRow.dependsOn.map((d): [string, string] => [d, focusRow.key]),
-      ...rows.filter((r) => r.dependsOn.includes(focusRow.key)).map((r): [string, string] => [focusRow.key, r.key]),
-    ];
+    const pairs = rows.flatMap((r) => r.dependsOn.map((d): [string, string] => [d, r.key]));
     const box = container.current.getBoundingClientRect();
     const sl = container.current.scrollLeft;
     const st = container.current.scrollTop;
@@ -142,7 +147,7 @@ export function RoadmapChart({
     );
     // `cells` is the signal that the layout changed and the marks moved
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
-  }, [focusRow, rows, violationKeys, cells]);
+  }, [rows, violationKeys, cells, resized]);
 
   // drag to reorder: a column header, or a loose entry, dropped on a column header
   const order = useOrder();
@@ -440,7 +445,7 @@ export function RoadmapChart({
           )}
         </div>
 
-        {/* the edges on focus */}
+        {/* the edges, always; the focused entry's lit */}
         {edges.length > 0 && (
           <svg
             className="pointer-events-none absolute top-0 left-0 z-20 h-full w-full overflow-visible"
@@ -459,19 +464,22 @@ export function RoadmapChart({
                 <path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor" />
               </marker>
             </defs>
-            {edges.map((e) => (
-              <path
-                key={`${e.from}>${e.to}`}
-                d={e.d}
-                fill="none"
-                strokeWidth={2}
-                strokeLinecap="round"
-                markerEnd="url(#roadmap-arrow)"
-                className={e.bad ? TONE.alarm.text : 'text-primary'}
-                stroke="currentColor"
-                opacity={0.85}
-              />
-            ))}
+            {edges.map((e) => {
+              const lit = !!focus && (e.from === focus || e.to === focus);
+              return (
+                <path
+                  key={`${e.from}>${e.to}`}
+                  d={e.d}
+                  fill="none"
+                  strokeWidth={lit ? 2 : 1.25}
+                  strokeLinecap="round"
+                  markerEnd="url(#roadmap-arrow)"
+                  className={e.bad ? TONE.alarm.text : 'text-primary'}
+                  stroke="currentColor"
+                  opacity={lit ? 0.9 : focus ? 0.12 : e.bad ? 0.7 : 0.35}
+                />
+              );
+            })}
           </svg>
         )}
       </div>
