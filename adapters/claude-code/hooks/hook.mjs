@@ -286,13 +286,14 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
   return tryPjman(args, { cwd, env }) !== null;
 }
 
-/** What a prompt is about: the last reference in it that leads to a change. The tool scans the text (`pjman refs`); the
+/** What a prompt is about: the last reference in it that leads to a change and is not weak. The tool scans the text (`pjman refs`); the
  *  hook knows no shapes. A ticket of the project's tracker with no record is read from the tracker and applied through
  *  the sync, which creates the change with its real title; where the hook has no reader for the tracker, the agent is
  *  told to read and sync it. A pattern match alone never creates a record. */
 function promptChange(prompt, { cwd, env }) {
   const refs = tryPjman(['refs', '-', '--json'], { cwd, json: true, input: prompt }) ?? [];
   for (const r of refs.reverse()) {
+    if (r.weak) continue; // a bare #1: as often a list item as an issue
     if (r.change) return { key: r.change };
     if (!r.creatable) continue;
     const created = createFromTracker(r, { cwd, env });

@@ -20,6 +20,9 @@ export interface Grammar {
   rest?: (m: RegExpExecArray, scope: Scope) => string | undefined;
   /** Whether the match carries its own scope (`owner/repo#12`) and so resolves anywhere. Default: never. */
   qualified?: (m: RegExpExecArray) => boolean;
+  /** Whether the match is too ambiguous to act on (`#1` is as often a list item as an issue): listed and resolved,
+   *  never binding a session or creating a change. Default: never. */
+  weak?: (m: RegExpExecArray) => boolean;
   /** Whether the project's scope admits the match (its team, its repository). Default: always. */
   inScope?: (m: RegExpExecArray, scope: Scope) => boolean;
   /** The key rest a URL of this kind names. */
@@ -50,6 +53,7 @@ export const GRAMMARS: Grammar[] = [
     id: new RegExp(`(?<![\\w/.#-])(?:(${REPO}))?#(\\d+)\\b`, 'g'),
     rest: (m, scope) => (m[1] ?? scope.repo ? `${m[1] ?? scope.repo}#${m[2]}` : undefined),
     qualified: (m) => !!m[1],
+    weak: (m) => !m[1],
     inScope: (m, scope) => !m[1] || !scope.repo || m[1].toLowerCase() === scope.repo.toLowerCase(),
     url: (u) => {
       const seg = githubRepo(u);
@@ -172,17 +176,24 @@ export interface Mention {
   at: number;
   /** `change`, `url`, or the grammar's kind for a short form. */
   shape: 'change' | 'url' | 'slug' | string;
+  /** A short form too ambiguous to act on (the grammar's `weak`). */
+  weak?: boolean;
 }
+
+/** What an agent's interface writes into a prompt for a pasted image or text (`[Image #2]`, `[Pasted text #1 +12 lines]`):
+ *  never a reference, whatever it contains. */
+const PLACEHOLDER = /\[(?:Image|Pasted text)\b[^\]\n]*\]/g;
 
 /** Every reference-shaped span in a text, in order: `change:<slug>`, a URL, each grammar's short form, and (when
  *  `slugs` is given) a bare existing change slug containing a hyphen, as a whole word. */
 export function mentions(text: string, slugs: string[] = []): Mention[] {
+  text = text.replace(PLACEHOLDER, (p) => ' '.repeat(p.length)); // blanked, so every offset still points into the input
   const found: Mention[] = [];
   for (const m of text.matchAll(/\bchange:([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)/g)) found.push({ text: `change:${m[1]}`, at: m.index!, shape: 'change' });
   for (const m of text.matchAll(/https?:\/\/[^\s<>()"']+/g)) found.push({ text: m[0].replace(/[.,;:!?]+$/, ''), at: m.index!, shape: 'url' });
   for (const g of GRAMMARS) {
     if (!g.id) continue;
-    for (const m of text.matchAll(g.id)) if (!g.not?.test(m[0])) found.push({ text: m[0], at: m.index!, shape: g.kind });
+    for (const m of text.matchAll(g.id)) if (!g.not?.test(m[0])) found.push({ text: m[0], at: m.index!, shape: g.kind, ...(g.weak?.(m) ? { weak: true } : {}) });
   }
   for (const slug of slugs) {
     if (!slug.includes('-')) continue;

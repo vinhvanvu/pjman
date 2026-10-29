@@ -29,7 +29,7 @@ The project may name a tracker (\`pjman where --json\` shows it). Read tickets w
 get_issue, list_issues; GitHub: \`pjman sync github\` with no --from prints the gh command to run) and hand pjman the
 answer as JSON: \`pjman sync linear --from - <<'EOF' … EOF\` or \`<that gh command> | pjman sync github --from -\`. The ticket
 becomes a source and the change that binds it; title, status and parent follow the ticket; next, summary, plan and
-decisions stay pjman's. A ticket named in a prompt binds its change when the store has one; otherwise you are told to
+decisions stay pjman's. A ticket named in a prompt (its id, owner/repo#n or its URL; a bare #n never binds) binds its change when the store has one; otherwise you are told to
 read it and sync, which creates the change. \`pjman refs <text>\` shows what a text refers to.
 
 The product tree

@@ -321,12 +321,16 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
 
   // the scanner: every reference in a text, in order, with the change it leads to; a shape of another tracker is not a reference here
   const refs = findReferences(loaded, 'see change:contract, then #8 (not #77, UTF-8 or XYZ-77) and https://linear.app/acme/issue/ABC-1234/x', { project: 'project:project' });
-  assert.deepEqual(refs.map((r) => [r.text, r.key, r.change, r.creatable]), [
-    ['change:contract', 'change:project/contract', 'change:project/contract', false],
-    ['#8', 'github-issue:acme/app#8', 'change:project/app-8', false],
-    ['#77', 'github-issue:acme/app#77', undefined, true],
-    ['https://linear.app/acme/issue/ABC-1234/x', 'linear:ABC-1234', 'change:project/abc', false],
+  // a bare #n is listed with what it would lead to but is weak: it never binds or creates; the qualified form does
+  assert.deepEqual(refs.map((r) => [r.text, r.key, r.change, r.creatable, r.weak]), [
+    ['change:contract', 'change:project/contract', 'change:project/contract', false, false],
+    ['#8', 'github-issue:acme/app#8', 'change:project/app-8', false, true],
+    ['#77', 'github-issue:acme/app#77', undefined, false, true],
+    ['https://linear.app/acme/issue/ABC-1234/x', 'linear:ABC-1234', 'change:project/abc', false, false],
   ]);
+  assert.deepEqual(findReferences(loaded, 'then acme/app#77', { project: 'project:project' }).map((r) => [r.key, r.creatable, r.weak]), [['github-issue:acme/app#77', true, false]]);
+  // what an interface writes for a pasted image or text is not a reference
+  assert.deepEqual(findReferences(loaded, '[Image #8] and [Pasted text #8 +3 lines]', { project: 'project:project' }), []);
   assert.equal(findReferences(loaded, 'nothing here', { project: 'project:project' }).length, 0);
   fs.rmSync(path.join(store.root, 'products/project/changes/abc'), { recursive: true });
 });

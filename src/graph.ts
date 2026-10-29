@@ -323,10 +323,12 @@ export interface Reference {
   change?: string;
   /** A ticket of the project's tracker with no record yet: the tracker can be asked and the sync would create the change. */
   creatable: boolean;
+  /** Too ambiguous to act on (a bare `#1`): listed with what it would lead to, never binding a session or creating a change. */
+  weak: boolean;
 }
 
 /** Every reference in a text that resolves to something, in order of appearance, each with the change it leads to.
- *  The last mention is what a prompt is about. Never writes. */
+ *  The last mention that is not weak is what a prompt is about. Never writes. */
 export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {}): Reference[] {
   // bare slugs: changes still in play (a dropped change is reached by its full key only)
   const slugs = [...new Set(loaded.records.filter((r) => r.type === 'change' && r.data.status !== 'dropped').map((r) => r.changeSlug!))];
@@ -350,12 +352,13 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
       const r = resolveRef(loaded, `change:${slugFor('branch', key.slice('branch:'.length))}`, opts);
       if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) change = r.key;
     }
-    out.push({ text: m.text, at: m.at, shape: m.shape, resolution, key, change, creatable: !change && resolution.status === 'key' && kind === tracker });
+    const weak = !!m.weak;
+    out.push({ text: m.text, at: m.at, shape: m.shape, resolution, key, change, creatable: !weak && !change && resolution.status === 'key' && kind === tracker, weak });
   }
   return out;
 }
 
 export function formatReferences(refs: Reference[]): string {
   if (!refs.length) return 'no references';
-  return refs.map((r) => `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''})${r.change ? ` · ${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`).join('\n');
+  return refs.map((r) => `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''}${r.weak ? ', bare: never binds' : ''})${r.change ? ` · ${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`).join('\n');
 }
