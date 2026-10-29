@@ -198,3 +198,26 @@ test('binding observes the branch as a source of the change', () => {
   assert.ok(observed.includes('change:work/abc-1234 branch:feat/login'), observed.join(', '));
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });
+
+test('SessionStart exports the session and the agent as writer to the agent\'s shell; a subagent\'s start does not', () => {
+  const file = path.join(tmp, 'claude-env');
+  const run = (input: Record<string, unknown>) =>
+    execFileSync(process.execPath, [HOOK, 'SessionStart'], {
+      input: JSON.stringify({ cwd: project, session_id: 'sess-env', source: 'startup', ...input }),
+      encoding: 'utf8',
+      env: { ...env, CLAUDE_ENV_FILE: file },
+    });
+  run({});
+  const text = fs.readFileSync(file, 'utf8');
+  assert.match(text, /^export PJMAN_WRITER="agent:claude-code"$/m);
+  assert.match(text, /^export PJMAN_SESSION="session:sess-env"$/m);
+  // what the shell then runs carries them: a decision opened from it is stamped with the session and the agent
+  const shellEnv = { ...env };
+  for (const m of text.matchAll(/^export (\w+)="(.*)"$/gm)) (shellEnv as Record<string, string>)[m[1]!] = m[2]!;
+  execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), 'new', 'decision', 'eight-week-test/from-the-shell', '--title', 'T', '--decision', 'd', '--why', 'w'], { cwd: project, env: shellEnv, encoding: 'utf8' });
+  const rec = loadStore(store).byKey.get('decision:eight-week-test/from-the-shell')![0];
+  assert.equal(rec.data.writer, 'agent:claude-code');
+  assert.equal(rec.data.session, 'session:sess-env');
+  run({ agent_id: 'sub-env' });
+  assert.equal(fs.readFileSync(file, 'utf8'), text, 'a subagent shares its parent\'s');
+});
