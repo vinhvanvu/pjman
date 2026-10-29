@@ -244,6 +244,7 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       else if (verb === 'rm') { op = 'set'; fields = ['references']; } // a record that lost a reference to the removed one
       else if (verb === 'new') { op = 'set'; fields = ['status']; } // the record a new decision superseded
       else if (verb === 'set') { op = 'set'; fields = rest.split(' ').slice(1); }
+      else if (verb === 'session' && rest.startsWith('unbind')) { op = 'set'; fields = ['changes', 'observed', 'log']; }
       else if (verb === 'session') { op = rest.startsWith('log') ? 'log' : rest.startsWith('bind') ? 'bind' : 'observe'; fields = [op === 'log' ? 'log' : op === 'bind' ? 'changes' : 'observed']; }
       else if (verb === 'mv') { op = status.startsWith('R') || key === rest.split(' ')[1] ? 'moved' : 'set'; if (op === 'set') fields = ['references']; }
       else if (verb === 'fmt') op = 'formatted';

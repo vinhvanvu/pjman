@@ -274,6 +274,21 @@ function firstLine(text, max = 200) {
   return line.length > max ? line.slice(0, max - 1) + '…' : line;
 }
 
+/** The session's writer and session, exported to the agent's own shell for the rest of the session (decision
+ *  agent-writes-carry-session/writer-is-the-agent): the harness reads the file it names at every later shell command,
+ *  so a pjman write the agent runs carries the agent as writer and this session, as the hook's own writes do. A
+ *  subagent's shell inherits its parent's (decision subagents-share-the-parent). No file, nothing to do. */
+function exportToShell(env) {
+  const file = process.env.CLAUDE_ENV_FILE;
+  if (!file) return;
+  const lines = Object.entries(env).map(([k, v]) => `export ${k}=${JSON.stringify(v)}\n`);
+  try {
+    fs.appendFileSync(file, lines.join(''));
+  } catch (e) {
+    note(`could not export the session to the shell: ${e.message}`);
+  }
+}
+
 function ensureSession(store, sid, env, { parent, cwd } = {}) {
   const rows = tryPjman(['ls', 'session', '--json'], { cwd, json: true }) ?? [];
   if (rows.some((r) => r.key === `session:${sid}`)) return true;
@@ -286,13 +301,14 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
   return tryPjman(args, { cwd, env }) !== null;
 }
 
-/** What a prompt is about: the last reference in it that leads to a change. The tool scans the text (`pjman refs`); the
+/** What a prompt is about: the last reference in it that leads to a change and is not weak. The tool scans the text (`pjman refs`); the
  *  hook knows no shapes. A ticket of the project's tracker with no record is read from the tracker and applied through
  *  the sync, which creates the change with its real title; where the hook has no reader for the tracker, the agent is
  *  told to read and sync it. A pattern match alone never creates a record. */
 function promptChange(prompt, { cwd, env }) {
   const refs = tryPjman(['refs', '-', '--json'], { cwd, json: true, input: prompt }) ?? [];
   for (const r of refs.reverse()) {
+    if (r.weak) continue; // a bare #1: as often a list item as an issue
     if (r.change) return { key: r.change };
     if (!r.creatable) continue;
     const created = createFromTracker(r, { cwd, env });
@@ -342,6 +358,7 @@ function main() {
   switch (EVENT) {
     case 'SessionStart': {
       if (!ensureSession(store, sid, env, { cwd })) return;
+      if (!input.agent_id) exportToShell(env);
       if (st.seq === undefined) st.seq = tryPjman(['events', '--receipt', '--json'], { cwd, json: true })?.seq ?? 0; // receipts start from here
       const source = input.source || 'startup';
       const started = { startup: 'session started', clear: 'session started after /clear', resume: 'session resumed; context rehydrated', compact: 'context compacted and rehydrated', fork: 'session forked; context rehydrated' };

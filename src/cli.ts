@@ -18,7 +18,7 @@ import { syncLinear } from './sync/linear.js';
 import { syncGithub } from './sync/github.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
-import { sessionBind, sessionLog, sessionObserve } from './commands/session.js';
+import { sessionBind, sessionLog, sessionObserve, sessionUnbind } from './commands/session.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
 import { rm } from './commands/rm.js';
@@ -63,8 +63,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman set <key> <field>=<value>...'] },
   { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
     usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
-  { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge',
-    usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },
+  { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge; unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
+    usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session unbind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },
   { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
     usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
   { name: 'ls', about: 'list records, by type, status, project and kind; bugs come worst first, then oldest', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--kind bug|work] [--json]'] },
@@ -295,11 +295,15 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (!id || !rest[0]) throw new CliError('usage: pjman session bind <id> <change>');
         const r = sessionBind(store, id, rest[0]);
         out(r.added ? `bound in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `already bound in ${r.path}`);
+      } else if (sub === 'unbind') {
+        if (!id || !rest[0]) throw new CliError('usage: pjman session unbind <id> <change>');
+        const r = sessionUnbind(store, id, rest[0]);
+        out(`unbound in ${r.path}${r.dropped ? `; ${r.dropped} observed edge${r.dropped === 1 ? '' : 's'} dropped` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'observe') {
         if (!id || rest.length < 3) throw new CliError('usage: pjman session observe <id> <edge> <from> <to>');
         const r = sessionObserve(store, id, rest[0], rest[1], rest[2]);
         out(`observed in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
-      } else throw new CliError('usage: pjman session <log|bind|observe> …');
+      } else throw new CliError('usage: pjman session <log|bind|unbind|observe> …');
       return 0;
     }
     case 'validate': {

@@ -13,21 +13,24 @@ function load(store: Store, id: string) {
   return { loaded, rec };
 }
 
-function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: 'log' | 'bind' | 'observe'): string | null {
+function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: 'log' | 'bind' | 'observe' | 'unbind'): string | null {
   const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render('session', data, body));
   validateOrUndo(store, [rec.path], [], prior);
-  const fields = { log: ['log'], bind: ['changes'], observe: ['observed'] }[op];
-  return finishWrite(store, message, rec.key, [{ op, key: rec.key, type: 'session', path: rec.path, fields, writer: envelope({}).writer }]);
+  const fields = { log: ['log'], bind: ['changes'], observe: ['observed'], unbind: ['changes', 'observed', 'log'] }[op];
+  return finishWrite(store, message, rec.key, [{ op: op === 'unbind' ? 'set' : op, key: rec.key, type: 'session', path: rec.path, fields, writer: envelope({}).writer }]);
 }
+
+const withLogLine = (rec: ReturnType<typeof load>['rec'], text: string): string => {
+  let body = rec.body.replace(/\s+$/, '');
+  if (!rec.sections.has('Log')) body += `${body ? '\n\n' : ''}## Log`;
+  return `${body}\n- ${nowIso()} — ${text.trim()}\n`;
+};
 
 /** Append one line to `## Log`. */
 export function sessionLog(store: Store, id: string, text: string): { path: string; commit: string | null } {
   const { rec } = load(store, id);
-  let body = rec.body.replace(/\s+$/, '');
-  if (!rec.sections.has('Log')) body += `${body ? '\n\n' : ''}## Log`;
-  body += `\n- ${nowIso()} — ${text.trim()}`;
-  const commit = save(store, rec, rec.data, body + '\n', `pjman: session log ${rec.key}`, 'log');
+  const commit = save(store, rec, rec.data, withLogLine(rec, text), `pjman: session log ${rec.key}`, 'log');
   return { path: rec.path, commit };
 }
 
@@ -43,6 +46,25 @@ export function sessionBind(store: Store, id: string, changeKey: string): { path
   changes.push(key);
   const commit = save(store, rec, { ...rec.data, changes }, rec.body, `pjman: session bind ${rec.key} ${key}`, 'bind');
   return { path: rec.path, commit, added: true };
+}
+
+/** Back out a binding made in error: the change leaves `changes`, the edges observed on it go with it, and the
+ *  unbinding is a line in `## Log`, so the session still says it happened. One commit. */
+export function sessionUnbind(store: Store, id: string, changeKey: string): { path: string; commit: string | null; dropped: number } {
+  const { loaded, rec } = load(store, id);
+  const raw = changeKey.startsWith('change:') ? changeKey : `change:${changeKey}`;
+  const res = resolve(loaded, raw);
+  const key = res.status === 'ok' || res.status === 'alias' ? res.rec.key : fullKey(loaded, raw); // a removed change can still be unbound
+  const changes = Array.isArray(rec.data.changes) ? (rec.data.changes as string[]) : [];
+  if (!changes.includes(key)) throw new CliError(`${rec.key} is not bound to ${key}`);
+  const observed = Array.isArray(rec.data.observed) ? (rec.data.observed as { from?: string; to?: string }[]) : [];
+  const kept = observed.filter((o) => o.from !== key && o.to !== key);
+  const data: Record<string, unknown> = { ...rec.data, changes: changes.filter((c) => c !== key), observed: kept };
+  if (!kept.length) delete data.observed;
+  const dropped = observed.length - kept.length;
+  const line = `unbound ${key}${dropped ? `; dropped ${dropped} edge${dropped === 1 ? '' : 's'} observed on it` : ''}`;
+  const commit = save(store, rec, data, withLogLine(rec, line), `pjman: session unbind ${rec.key} ${key}`, 'unbind');
+  return { path: rec.path, commit, dropped };
 }
 
 /** Append an observed edge `{edge, from, to, at}`. */

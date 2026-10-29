@@ -133,7 +133,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234']);
   assert.equal(at('see https://linear.app/acme/issue/ABC-1234/the-title.'), '');
   assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
-  // a GitHub project: #12 in the prompt is an issue of its repository; the hook reads it with gh and the sync creates the change
+  // a GitHub project: acme/app#12 or its URL in the prompt is an issue; the hook reads it with gh and the sync creates the change
   assert.equal(at('fix #12 first'), '');
   set(g, 'project:work', ['tracker=github-issue', 'ext.github.repo=acme/app'], {});
   const bin = path.join(tmp, 'bin');
@@ -141,13 +141,19 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\ncase "$*" in *"issue view 12"*) echo \'{"number":12,"title":"Twelve","url":"https://github.com/acme/app/issues/12","state":"OPEN","labels":[{"name":"in progress"}],"milestone":null}\';; *) exit 1;; esac\n', { mode: 0o755 });
   const withGh = { ...env, PATH: `${bin}:${process.env.PATH ?? ""}` };
   const atGh = (prompt: string) => execFileSync(process.execPath, [HOOK, 'UserPromptSubmit'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', prompt }), encoding: 'utf8', env: withGh });
-  assert.match(context(atGh('fix #12 first')), /^# change:app-12 — Twelve/);
+  // a bare #12 is too ambiguous to act on, as is an image's placeholder: nothing is read, created or bound
+  assert.equal(atGh('fix #12 first'), '');
+  assert.equal(atGh('look at [Image #12]'), '');
+  assert.ok(!loadStore(g).byKey.has('change:work/app-12'));
+  assert.match(context(atGh('fix acme/app#12 first')), /^# change:app-12 — Twelve/);
   const twelve = loadStore(g).byKey.get('change:work/app-12')![0];
   assert.deepEqual(twelve.data.binds, ['github-issue:acme/app#12']);
   assert.equal(twelve.data.writer, 'agent:github-sync');
-  assert.equal(atGh('and acme/app#12 again'), ''); // already hydrated: bound, no second injection
+  assert.equal(atGh('and https://github.com/acme/app/issues/12 again'), ''); // already hydrated: bound, no second injection
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234', 'change:work/app-12']);
-  assert.match(context(atGh('fix #13 too')), /#13 is github-issue:acme\/app#13; the store has no record/); // gh knows no 13
+  assert.equal(atGh('then #1 of your list'), ''); // bare, even with a change of its own nearby
+  assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234', 'change:work/app-12']);
+  assert.match(context(atGh('fix acme/app#13 too')), /acme\/app#13 is github-issue:acme\/app#13; the store has no record/); // gh knows no 13
   // the receipt at the end of the turn: what the store received, for the person
   const stop = JSON.parse(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'done' }), encoding: 'utf8', env: withGh })) as { systemMessage?: string };
   assert.match(stop.systemMessage ?? '', /pjman recorded:/);
@@ -191,4 +197,27 @@ test('binding observes the branch as a source of the change', () => {
   const observed = (rec.data.observed as { from: string; to: string }[]).map((o) => `${o.from} ${o.to}`);
   assert.ok(observed.includes('change:work/abc-1234 branch:feat/login'), observed.join(', '));
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
+});
+
+test('SessionStart exports the session and the agent as writer to the agent\'s shell; a subagent\'s start does not', () => {
+  const file = path.join(tmp, 'claude-env');
+  const run = (input: Record<string, unknown>) =>
+    execFileSync(process.execPath, [HOOK, 'SessionStart'], {
+      input: JSON.stringify({ cwd: project, session_id: 'sess-env', source: 'startup', ...input }),
+      encoding: 'utf8',
+      env: { ...env, CLAUDE_ENV_FILE: file },
+    });
+  run({});
+  const text = fs.readFileSync(file, 'utf8');
+  assert.match(text, /^export PJMAN_WRITER="agent:claude-code"$/m);
+  assert.match(text, /^export PJMAN_SESSION="session:sess-env"$/m);
+  // what the shell then runs carries them: a decision opened from it is stamped with the session and the agent
+  const shellEnv = { ...env };
+  for (const m of text.matchAll(/^export (\w+)="(.*)"$/gm)) (shellEnv as Record<string, string>)[m[1]!] = m[2]!;
+  execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), 'new', 'decision', 'eight-week-test/from-the-shell', '--title', 'T', '--decision', 'd', '--why', 'w'], { cwd: project, env: shellEnv, encoding: 'utf8' });
+  const rec = loadStore(store).records.find((r) => r.type === 'decision' && r.key.endsWith('/from-the-shell'))!;
+  assert.equal(rec.data.writer, 'agent:claude-code');
+  assert.equal(rec.data.session, 'session:sess-env');
+  run({ agent_id: 'sub-env' });
+  assert.equal(fs.readFileSync(file, 'utf8'), text, 'a subagent shares its parent\'s');
 });
