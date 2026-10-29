@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-BX5dh3L7.js";import{t}from"./-LensPage-DM1F4mq3.js";import{i as n}from"./index-NXPEkzRV.js";var r=e();function i(){let{lens:e,_splat:i}=n.useParams();return(0,r.jsx)(t,{lens:e,node:i||void 0})}export{i as component};
