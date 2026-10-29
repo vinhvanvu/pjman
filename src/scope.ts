@@ -6,7 +6,7 @@ import type { Store } from './config.js';
 import { readEvents, type StoreEvent } from './events.js';
 import { eventKeysOf, resolve, type Loaded, type Rec } from './records.js';
 import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row } from './commands/view.js';
-import { productOf, sequenceOf } from './commands/order.js';
+import { ahead, productOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
@@ -252,7 +252,7 @@ class Index {
   sequenceIndex(product: Rec): Map<string, number> {
     let m = this.sequences.get(product.key);
     if (!m) {
-      m = new Map(sequenceOf(this.loaded, product).map((k, i) => [k, i]));
+      m = new Map(ahead(this.loaded, product).map((k, i) => [k, i]));
       this.sequences.set(product.key, m);
     }
     return m;
@@ -558,7 +558,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   else if (node?.type === 'change') product = ix.productOf(node);
   else if (products.length === 1) product = products[0];
   const inScopeKeys = new Set(inScope.map((c) => c.key));
-  const sequence = product ? sequenceOf(loaded, product).filter((k) => inScopeKeys.has(k)) : [];
+  const sequence = product ? ahead(loaded, product).filter((k) => inScopeKeys.has(k)) : [];
   const loose = new Set(shown.filter((c) => isOpen(c) && c.data.kind !== 'bug' && ix.positionOf(c) === undefined).map((c) => c.key));
   const later = [...loose].filter((k) => { const p = ix.parentOf(loaded.byKey.get(k)![0]); return !p || !loose.has(p); });
   const roadmapRows: RoadmapRow[] = inScope.map((c) => ({

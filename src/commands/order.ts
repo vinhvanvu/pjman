@@ -1,5 +1,8 @@
 // pjman order: move a change in its product's sequence, the roadmap's order. The sequence is the person's; the tool
 // moves what it is told to and never rearranges the rest. The dashboard's reorder calls this same function.
+// The stored list is the order as the person wrote it; status is the one record of done. Every reader of the order
+// reads ahead(), which combines the two; only this file reads the field as the order (validate and the graph read it
+// as the record's links).
 import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { loadStore, resolve, unresolved, type Loaded, type Rec } from '../records.js';
@@ -38,8 +41,8 @@ export function productOf(loaded: Loaded, change: Rec): Rec | undefined {
   return undefined;
 }
 
-/** The product's sequence as live change keys, dropping what no longer resolves. */
-export function sequenceOf(loaded: Loaded, product: Rec): string[] {
+/** The product's sequence as written, live change keys only, done entries kept: what a write moves within. */
+function planned(loaded: Loaded, product: Rec): string[] {
   const raw = Array.isArray(product.data.sequence) ? product.data.sequence : [];
   const out: string[] = [];
   for (const k of raw) {
@@ -47,6 +50,30 @@ export function sequenceOf(loaded: Loaded, product: Rec): string[] {
     if (rec && !out.includes(rec.key)) out.push(rec.key);
   }
   return out;
+}
+
+const isOpen = (r: Rec) => r.data.status !== 'done' && r.data.status !== 'dropped';
+
+/** An entry is ahead while it is open or anything beneath it is: a done milestone keeps its place for its open
+ *  children, which take theirs from it. */
+function isAhead(loaded: Loaded, key: string): boolean {
+  const rec = loaded.byKey.get(key)?.[0];
+  if (!rec || isOpen(rec)) return true;
+  return loaded.records.some((r) => {
+    if (!r.valid || r.type !== 'change' || !isOpen(r)) return false;
+    const seen = new Set<string>();
+    for (let cur = live(loaded, r.data.parent); cur && !seen.has(cur.key); cur = live(loaded, cur.data.parent)) {
+      if (cur.key === key) return true;
+      seen.add(cur.key);
+    }
+    return false;
+  });
+}
+
+/** What is ahead in the product's order: the sequence without the entries done or dropped with nothing open beneath
+ *  them. The stored list keeps those, so a change reopened is back in its place. */
+export function ahead(loaded: Loaded, product: Rec): string[] {
+  return planned(loaded, product).filter((k) => isAhead(loaded, k));
 }
 
 export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): OrderResult {
@@ -60,7 +87,7 @@ export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): Or
   const wants = [opts.before, opts.after, opts.first, opts.last, opts.later].filter((x) => x).length;
   if (wants !== 1) throw new CliError('say where: --before <change>, --after <change>, --first, --last or --later');
 
-  const seq = sequenceOf(loaded, product).filter((k) => k !== change.key);
+  const seq = planned(loaded, product).filter((k) => k !== change.key);
   const anchor = (raw: string): number => {
     const ref = raw.startsWith('change:') ? raw : `change:${raw}`;
     const res = resolve(loaded, ref, product.productSlug);
@@ -68,6 +95,7 @@ export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): Or
     const rec = res.rec;
     const i = seq.indexOf(rec.key);
     if (i < 0) throw new CliError(`${rec.key} is not on ${product.key}'s sequence; place it first`);
+    if (!isAhead(loaded, rec.key)) throw new CliError(`${rec.key} is ${String(rec.data.status)}, no longer ahead in the order; place it against an entry that is`);
     return i;
   };
   if (opts.before) seq.splice(anchor(opts.before), 0, change.key);
@@ -89,5 +117,5 @@ export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): Or
   }
   const env = envelope(opts);
   const commit = finishWrite(store, `pjman: order ${change.key} in ${product.key}`, env.session, [{ op: 'set', key: product.key, type: 'product', path: product.path, fields: ['sequence'], writer: env.writer }]);
-  return { product: product.key, change: change.key, sequence: seq, commit };
+  return { product: product.key, change: change.key, sequence: seq.filter((k) => isAhead(loaded, k)), commit };
 }
