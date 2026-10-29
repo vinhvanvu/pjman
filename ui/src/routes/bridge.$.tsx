@@ -113,6 +113,7 @@ function BridgePage() {
       <Bridge
         data={bridge.data}
         lens="feature"
+        product={productKey}
         productName={product?.name ?? short(productKey)}
         touched={locked && touchedBy(locked)}
       />

@@ -1,21 +1,24 @@
-// The bridge's content: for now the need strip across the width, what waits on the person first at the grain of the
-// decision, then the sessions by state. The transport stands above it (the page's route); held at a moment, the
+// The bridge's content in the canvas's columns (decision stage-strip-transport): the lanes on the left, the sessions
+// over the transport's window, and the need strip on the right, what waits on the person first at the grain of the
+// decision, then the sessions by state. The transport stands above both (the page's route); held at a moment, the
 // heading says which, and locked on an event, the cards it touched are outlined. The stage (the lineage graph lit by
-// sessions) and the lanes come in later slices; the strip then moves to the right column (decision
-// stage-strip-transport).
+// sessions) comes last, above the lanes.
 import type { Bridge as BridgeData, Lens } from '@/data/contract';
 import { momentWords } from '@/features/moment';
 import { plural } from '@/lib/format';
 import { useCursor, useResolved } from '@/state/moment';
+import { Lanes } from './Lanes';
 import { Strip, type Touched } from './Strip';
 
 export function Bridge({
   data,
   lens,
+  product,
   productName,
   touched,
 }: {
   data: BridgeData;
+  product: string;
   lens: Lens;
   productName: string;
   touched?: Touched;
@@ -37,13 +40,20 @@ export function Bridge({
           {data.waiting ? ` · ${plural(data.waiting, 'decision')} on you` : ''}
         </span>
       </div>
-      <Strip
-        waitingOn={data.waitingOn}
-        sessions={data.sessions}
-        lens={lens}
-        touched={touched}
-        className="max-w-[720px]"
-      />
+      {/* the canvas's columns: what shows on the left (the lanes now, the stage above them later), what commands on
+          the right; narrow, they stack */}
+      <div className="flex flex-wrap items-start gap-5">
+        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
+          <Lanes product={product} sessions={data.sessions} />
+        </div>
+        <Strip
+          waitingOn={data.waitingOn}
+          sessions={data.sessions}
+          lens={lens}
+          touched={touched}
+          className="min-w-0 flex-[1_1_360px] lg:max-w-[420px]"
+        />
+      </div>
     </div>
   );
 }

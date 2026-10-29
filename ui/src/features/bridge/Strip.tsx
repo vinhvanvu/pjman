@@ -14,7 +14,7 @@ import { Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { cardWhen, proposedWhen, strip, subagentWords, type WaitItem } from './model';
 
-const DOT: Record<SessionState, string> = {
+export const DOT: Record<SessionState, string> = {
   working: 'bg-live shadow-[0_0_0_3px_color-mix(in_srgb,var(--live)_25%,transparent)]',
   waiting: 'bg-status-review',
   stopped: 'bg-ink-muted',

@@ -88,33 +88,59 @@ function Flag({ pct, label, side }: { pct: number; label: string; side: 'left' |
 const iconButton =
   'grid size-8 shrink-0 place-items-center rounded-row border border-line bg-surface text-ink-muted hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-40';
 
-export function Transport({ product }: { product: string }) {
+/** The rolling window as a page draws it, shared by the transport and the lanes so both stand on one axis: the
+ *  cursor and its mode, the view, the events read for it, the frame things are placed in (`at` gives an instant's
+ *  place in it), the layer that slides that frame to the view, where the held head stands, and the move to a new
+ *  cursor. */
+export function useRolling(product: string | undefined) {
   const cursor = useCursor();
   const resolved = useResolved();
   const mode = modeOf(cursor);
   const now = useNow();
   const navigate = useNavigate();
-  const [drag, setDrag] = useState<number | null>(null);
-  const bar = useRef<HTMLDivElement>(null);
-
-  const head = headOf(cursor, resolved, now);
   const { view, span, timeline } = useWindow(product, cursor, resolved, now);
   const events = timeline.data?.events ?? [];
   // the layer's own frame: twelve hours ending at the span's end, fixed until the hour turns; it is shifted to the
   // view, and the shift is the only thing that changes as the clock moves
   const layerStart = Date.parse(span.to) - WINDOW_MS;
   const shift = along(layerStart, view.start);
-  const layer = (rolling: boolean) => ({
-    className: cn('absolute inset-0', rolling && 'transition-transform ease-linear'),
+  // keyed on span.to where it is used, so a new frame starts without gliding from the old one
+  const layer = (className?: string) => ({
+    className: cn('absolute inset-0', view.rolling && 'transition-transform ease-linear', className),
     style: { transform: `translateX(${shift}%)`, transitionDuration: `${ROLL_MS}ms` },
   });
-
+  const selected = cursor.event ? events.find((e) => e.seq === cursor.event) : undefined;
+  const heldAt = selected ? Date.parse(selected.at) : headOf(cursor, resolved, now);
   const go = (next: Cursor, replace = false) =>
     void navigate({
       to: '.',
       search: (prev: Record<string, unknown>) => ({ ...prev, at: next.at, event: next.event }),
       replace,
     });
+  return {
+    cursor,
+    resolved,
+    mode,
+    now,
+    view,
+    span,
+    timeline,
+    events,
+    selected,
+    heldAt,
+    layerStart,
+    /** An instant's place in the layer's frame, in percent. */
+    at: (ms: number) => along(ms, layerStart),
+    layer,
+    go,
+  };
+}
+
+export function Transport({ product }: { product: string }) {
+  const r = useRolling(product);
+  const { cursor, resolved, mode, now, view, span, timeline, events, selected, heldAt, layerStart, layer, go } = r;
+  const [drag, setDrag] = useState<number | null>(null);
+  const bar = useRef<HTMLDivElement>(null);
   const toLive = () => go({});
   const step = (dir: -1 | 1, replace = false) => {
     const s = stepFrom(events, cursor, dir);
@@ -124,10 +150,8 @@ export function Transport({ product }: { product: string }) {
   // the instant the person paused at: the page reads as of it, and the head stays there as the bar rolls on
   const pause = () => go({ at: new Date().toISOString() });
 
-  const selected = cursor.event ? events.find((e) => e.seq === cursor.event) : undefined;
   const arrived = new Set(arrivedSince(events, cursor).map((e) => e.seq));
   const arrivedCount = timeline.data?.arrivedAfter ?? arrived.size;
-  const heldAt = selected ? Date.parse(selected.at) : head;
   const headPct = drag ?? (mode === 'live' ? 100 : along(heldAt, view.start));
   const headLabel =
     drag !== null
@@ -192,7 +216,7 @@ export function Transport({ product }: { product: string }) {
           className="relative h-10 min-w-0 flex-1 overflow-hidden select-none"
           style={{ maskImage: 'linear-gradient(to right, transparent 0, black 6%)' }}
         >
-          <div key={span.to} aria-hidden="true" {...layer(view.rolling)}>
+          <div key={span.to} aria-hidden="true" {...layer()}>
             {hourMarks(layerStart - WINDOW_MS, Date.parse(span.to)).map((t) => (
               <span
                 key={t}
@@ -233,7 +257,7 @@ export function Transport({ product }: { product: string }) {
             }}
           >
             <div className="absolute inset-x-0 top-1/2 h-px bg-line-strong" />
-            <div key={span.to} {...layer(view.rolling)}>
+            <div key={span.to} {...layer()}>
               {events.map((e) => (
                 <Tick
                   key={e.seq}
@@ -253,7 +277,7 @@ export function Transport({ product }: { product: string }) {
           {/* the head, a flag: held, it rides the layer at its instant and slides with the ticks; live or dragged, it
               stands where it is */}
           {mode !== 'live' && drag === null ? (
-            <div key={span.to} aria-hidden="true" {...layer(view.rolling)}>
+            <div key={span.to} aria-hidden="true" {...layer()}>
               <Flag pct={along(heldAt, layerStart)} label={headLabel} side={headPct > 50 ? 'left' : 'right'} />
             </div>
           ) : (

@@ -3,7 +3,7 @@
 // one is in the window), then the sessions by state (decision stage-strip-transport; decision
 // rail-destinations/three-destinations makes the first group the inbox). Need is the stable frame; inside a group
 // the most recent write comes first. A session shown on a waiting change is not repeated in the groups below.
-import type { BridgeSession, SessionState, WaitingChange } from '@/data/contract';
+import type { BridgeSession, SessionState, TimelineEvent, WaitingChange } from '@/data/contract';
 import { ago } from '@/lib/format';
 
 /** A change with decisions proposed on it, and the session on it when one is in the window. */
@@ -86,4 +86,48 @@ export function proposedWhen(created: string | undefined, now = Date.now()): str
   return since === 'just now' || /^\d/.test(since)
     ? `proposed ${since === 'just now' ? since : `${since} ago`}`
     : `proposed ${since}`;
+}
+
+// The bridge's lanes, pure (decision live-sessions/stage-strip-transport): one row per session over the transport's
+// window, each line it wrote a beat, a flag where it opened a decision, a bar from its first act to its last. Rows
+// are read from the same events the transport draws, so the two stand on one axis; a subagent's events are its
+// parent's row, as the strip carries a subagent under its parent.
+
+export interface Lane {
+  session: BridgeSession;
+  /** The lines it wrote, in order. */
+  beats: TimelineEvent[];
+  /** The decisions it opened. */
+  flags: TimelineEvent[];
+  /** Its first and last act inside the window, lines and writes alike. */
+  first: string;
+  last: string;
+}
+
+/** The session an event belongs to: the one stamped on it, or the session record it wrote. */
+export const sessionOf = (e: TimelineEvent): string | undefined =>
+  e.session ?? (e.type === 'session' ? e.key : undefined);
+
+/** The rows: the bridge's sessions in its order (most recent act first), those with something in the window. */
+export function lanesOf(sessions: readonly BridgeSession[], events: readonly TimelineEvent[]): Lane[] {
+  const row = new Map<string, string>();
+  for (const s of sessions) {
+    row.set(s.key, s.key);
+    for (const c of s.children) row.set(c.key, s.key);
+  }
+  const by = new Map<string, Omit<Lane, 'session'>>();
+  for (const e of events) {
+    const s = sessionOf(e);
+    const key = s && row.get(s);
+    if (!key) continue;
+    let lane = by.get(key);
+    if (!lane) by.set(key, (lane = { beats: [], flags: [], first: e.at, last: e.at }));
+    lane.last = e.at;
+    if (e.op === 'log' && e.type === 'session') lane.beats.push(e);
+    if (e.type === 'decision' && e.op === 'created') lane.flags.push(e);
+  }
+  return sessions.flatMap((s) => {
+    const lane = by.get(s.key);
+    return lane ? [{ session: s, ...lane }] : [];
+  });
 }
