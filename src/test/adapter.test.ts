@@ -77,6 +77,21 @@ test('a prompt naming a change binds it and injects its context once', () => {
   assert.deepEqual(loadStore(store).byKey.get('session:sess-a')![0].data.changes, ['change:project/eight-week-test']);
 });
 
+test('a prompt naming several changes binds none and says so; the turn shows the person what the brief cost', () => {
+  newRecord(store, 'change', 'other-work', { title: 'Other', summary: 's', writer: 'person:tester' });
+  const at = (input: Record<string, unknown>) => hook('UserPromptSubmit', { session_id: 'sess-m', ...input });
+  hook('SessionStart', { session_id: 'sess-m', source: 'startup' });
+  const said = context(at({ prompt: 'compare change:eight-week-test with change:other-work' }));
+  assert.match(said, /names several changes \(change:(project\/)?eight-week-test, change:(project\/)?other-work\); none was bound/);
+  assert.equal(loadStore(store).byKey.get('session:sess-m')![0].data.changes, undefined);
+  const full = context(at({ prompt: 'now change:other-work' }));
+  assert.match(full, /^pjman brief: this session is bound to change:other-work; its context in full\./);
+  const stop = JSON.parse(hook('Stop', { session_id: 'sess-m', last_assistant_message: 'ok' })) as { systemMessage: string };
+  assert.match(stop.systemMessage, /^pjman briefed:\n- full context on change:other-work: \d+ lines, ~\d+ tokens/);
+  // the next turn's brief starts after this one: nothing new, nothing said
+  assert.equal(at({ prompt: 'carry on' }), '');
+});
+
 test('a file write records an observed edge; a store write does not; a turn that acted gets a log line', () => {
   hook('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'cat README.md && npm test' } });
   hook('Stop', { last_assistant_message: 'Read only.' });
@@ -103,7 +118,7 @@ test('a subagent is a child session with parent', () => {
 
 test('compaction rehydrates the bound change; the store stays valid; a non-pjman directory is silent', () => {
   const ctx = context(hook('SessionStart', { source: 'compact' }));
-  assert.match(ctx, /Bound change:\n\n# change:eight-week-test/);
+  assert.match(ctx, /pjman brief: this session is bound to change:eight-week-test; its context in full\.\n\n# change:eight-week-test/);
   hook('SessionEnd', { reason: 'other' });
   assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error'), []);
   assert.equal(hook('SessionStart', { cwd: os.tmpdir(), session_id: 'zzz', source: 'startup' }), '');
@@ -129,7 +144,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   // once the sync (here: the record) exists, the id binds it
   newRecord(g, 'change', 'abc-1234', { title: 'ABC-1234', summary: 's', project: 'project:work', binds: ['linear:ABC-1234'] });
   const ctx = context(at('continue ABC-1234'));
-  assert.match(ctx, /^# change:abc-1234 — ABC-1234/);
+  assert.match(ctx, /^pjman brief: this session is bound to change:abc-1234; its context in full\.\n\n# change:abc-1234 — ABC-1234/);
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234']);
   assert.equal(at('see https://linear.app/acme/issue/ABC-1234/the-title.'), '');
   assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
@@ -145,7 +160,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.equal(atGh('fix #12 first'), '');
   assert.equal(atGh('look at [Image #12]'), '');
   assert.ok(!loadStore(g).byKey.has('change:work/app-12'));
-  assert.match(context(atGh('fix acme/app#12 first')), /^# change:app-12 — Twelve/);
+  assert.match(context(atGh('fix acme/app#12 first')), /^pjman brief: this session is bound to change:app-12; its context in full\.\n\n# change:app-12 — Twelve/);
   const twelve = loadStore(g).byKey.get('change:work/app-12')![0];
   assert.deepEqual(twelve.data.binds, ['github-issue:acme/app#12']);
   assert.equal(twelve.data.writer, 'agent:github-sync');

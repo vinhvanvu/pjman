@@ -1,0 +1,199 @@
+// Hydration: what the store has for a session since it was last briefed. The mirror of the receipt: the receipt is what
+// the store received from a session since a point, the brief is what the store has for it since a point. Deterministic,
+// so an adapter can hand it to the agent on every prompt and show the person its size.
+//
+// Two signals about a session (decision hydration/binding-follows-writes). Binding is what the session is credited with
+// working on (`changes`, the last one bound); it drives the brief. Focus is what it is looking at: the change whose
+// context it last read, or the change it last wrote; the dock follows it.
+import type { Store } from './config.js';
+import { readEvents, type StoreEvent } from './events.js';
+import { eventKeysOf, findSession, loadStore, type Loaded, type Rec } from './records.js';
+import { receiptLines } from './receipt.js';
+import { LIVE_MINUTES } from './scope.js';
+import { changeContext, formatChangeContext } from './commands/view.js';
+import { sessionBriefed } from './commands/session.js';
+import { effectsOf, live } from './tree.js';
+import { CliError } from './util.js';
+
+const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
+/** The change a decision sits on, from its key (decision:<product>/<change>/<slug>), through aliases. */
+function changeOfDecision(loaded: Loaded, key: string): Rec | undefined {
+  const m = /^decision:(.+)\/[^/]+$/.exec(key);
+  return m ? live(loaded, `change:${m[1]}`) : undefined;
+}
+
+/** The change an event is about: a change, or the change a decision sits on. */
+function changeOfEvent(loaded: Loaded, e: StoreEvent): Rec | undefined {
+  if (e.type === 'change') return live(loaded, e.key);
+  if (e.type === 'decision') return changeOfDecision(loaded, e.key);
+  return undefined;
+}
+
+/** The change the session is bound to: the last one in `changes` that still resolves. */
+export function boundOf(loaded: Loaded, session: Rec): Rec | undefined {
+  return list(session.data.changes).map((k) => live(loaded, k)).filter((r): r is Rec => !!r).at(-1);
+}
+
+/** What the session is looking at, and since when: the latest of the context it read (`focus`), a change or a decision it
+ *  wrote, and a change it bound. A batch is one move, onto the change it was for, never onto each record it touched. */
+export function focusOf(loaded: Loaded, session: Rec, events: StoreEvent[]): { change: string; at: string } | undefined {
+  let best: { change: string; at: string } | undefined;
+  const consider = (change: Rec | undefined, at: string | undefined) => {
+    if (change && at && (!best || at >= best.at)) best = { change: change.key, at };
+  };
+  const read = session.data.focus as { change?: string; at?: string } | undefined;
+  if (read) consider(live(loaded, read.change), read.at);
+  const batches = new Set(events.filter((e) => e.op === 'applied' && e.commit).map((e) => e.commit));
+  for (const e of events) {
+    if (e.session !== session.key) continue;
+    if (e.op === 'applied') consider(live(loaded, e.key), e.at);
+    else if (e.commit && batches.has(e.commit)) continue;
+    else if (e.key === session.key && e.op === 'bind') consider(boundOf(loaded, session), e.at);
+    else if (e.op !== 'log') consider(changeOfEvent(loaded, e), e.at);
+  }
+  return best;
+}
+
+/** The keys whose events a session bound to `change` is told about: the change, its milestone, the changes on either
+ *  end of its dependency edges; and the decisions on it, matched by the change they sit on. */
+function scopeOf(loaded: Loaded, change: Rec): Set<string> {
+  const keys = new Set<string>(eventKeysOf(change));
+  const add = (r: Rec | undefined) => r && eventKeysOf(r).forEach((k) => keys.add(k));
+  add(live(loaded, change.data.parent));
+  for (const d of list(change.data.depends_on)) add(live(loaded, d));
+  for (const r of loaded.records) if (r.type === 'change' && r.valid && list(r.data.depends_on).some((d) => live(loaded, d)?.key === change.key)) add(r);
+  return keys;
+}
+
+/** Where the last brief reached: its sequence number when the event there is still the one it saw, else the last event
+ *  at or before its instant (a rebuilt stream renumbers). */
+function since(events: StoreEvent[], mark: { seq?: number; at?: string } | undefined): number {
+  if (!mark || typeof mark.at !== 'string') return 0;
+  const same = events.find((e) => e.seq === mark.seq);
+  if (same && same.at === mark.at) return mark.seq!;
+  let seq = 0;
+  for (const e of events) if (e.at <= mark.at) seq = e.seq;
+  return seq;
+}
+
+const LOG_LINE = /^-\s*(\S+)\s+—\s+(.*)$/;
+
+function ago(at: string, now: number): string {
+  const min = Math.max(0, Math.round((now - Date.parse(at)) / 60_000));
+  return min < 1 ? 'just now' : `${min} min ago`;
+}
+
+const files = (s: Rec): string[] => (Array.isArray(s.data.observed) ? (s.data.observed as { to?: unknown }[]) : []).map((o) => o.to).filter((t): t is string => typeof t === 'string' && t.startsWith('file:'));
+
+export interface Neighbour {
+  session: string;
+  on: string;
+  /** The feature node both changes name, when the neighbour is on another change. */
+  feature?: string;
+  last: string;
+  touched?: string;
+  /** Files both sessions touched. */
+  shared: string[];
+}
+
+/** The other live sessions on the same change, or on a change naming the exact same feature node (decision
+ *  hydration/neighbours-inform-and-warn). Live is the dashboard's one definition: a write within LIVE_MINUTES, not ended. */
+export function neighboursOf(loaded: Loaded, session: Rec, change: Rec, events: StoreEvent[], now = Date.now()): Neighbour[] {
+  const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
+  const last = new Map<string, string>();
+  for (const e of events) if (e.session && e.at >= liveSince && (!last.has(e.session) || e.at > last.get(e.session)!)) last.set(e.session, e.at);
+  const mine = new Set(effectsOf(change).map((f) => live(loaded, f.key)?.key ?? f.key));
+  const myFiles = new Set(files(session));
+  const out: Neighbour[] = [];
+  for (const [key, at] of last) {
+    if (key === session.key) continue;
+    const s = findSession(loaded, key.replace(/^session:/, ''));
+    if (!s?.valid) continue;
+    const log = (s.sections.get('Log') ?? '').split('\n').map((l) => LOG_LINE.exec(l.trim())).filter((m): m is RegExpExecArray => !!m);
+    if (log.at(-1)?.[2].startsWith('session ended')) continue;
+    const on = boundOf(loaded, s);
+    if (!on) continue;
+    let feature: string | undefined;
+    if (on.key !== change.key) {
+      feature = effectsOf(on).map((f) => live(loaded, f.key)?.key ?? f.key).find((f) => mine.has(f));
+      if (!feature) continue;
+    }
+    const theirs = files(s);
+    out.push({ session: key, on: on.key, feature, last: at, touched: theirs.at(-1), shared: [...new Set(theirs.filter((f) => myFiles.has(f)))] });
+  }
+  return out.sort((a, b) => b.last.localeCompare(a.last));
+}
+
+export function formatNeighbour(n: Neighbour, now = Date.now()): string {
+  const who = `session:${n.session.replace(/^session:/, '').slice(0, 8)}`;
+  const where = n.feature ? `on ${n.on}, which also names ${n.feature}` : `on this change`;
+  const touched = n.touched ? `, last touched ${n.touched}` : '';
+  const warn = n.shared.length ? ` — warning: it also touched ${n.shared.join(', ')}` : '';
+  return `${who} ${where}, last moved ${ago(n.last, now)}${touched}${warn}`;
+}
+
+export interface Brief {
+  session: string;
+  /** full: the binding moved, the change's context whole; delta: what changed since the last brief; none: nothing to say. */
+  mode: 'full' | 'delta' | 'none';
+  change?: string;
+  /** The delta, one line per record (decision hydration/delta-one-line-per-record). */
+  lines: string[];
+  neighbours: string[];
+  text: string;
+  /** The last sequence number the brief saw: where the next one starts. */
+  seq: number;
+  at: string;
+  /** No ceiling (decision hydration/no-ceiling-show-size): the size is shown instead. Tokens are approximate. */
+  size: { lines: number; chars: number; tokens: number };
+}
+
+const sizeOf = (text: string) => ({ lines: text ? text.split('\n').filter((l) => l.trim()).length : 0, chars: text.length, tokens: Math.ceil(text.length / 4) });
+
+/** The brief for a session, computed and not recorded. Full when the session's binding has moved since its last brief
+ *  (or `full` asks for it, as after the harness compacted the conversation); otherwise the delta over the bound change,
+ *  its milestone, its decisions and its dependency edges, without the session's own writes (decision
+ *  hydration/brief-with-watermark). An unbound session has no brief. */
+export function computeBrief(store: Store, id: string, opts: { full?: boolean; loaded?: Loaded; now?: number } = {}): Brief {
+  const loaded = opts.loaded ?? loadStore(store);
+  const now = opts.now ?? Date.now();
+  const session = findSession(loaded, id.replace(/^session:/, ''));
+  if (!session) throw new CliError(`session:${id.replace(/^session:/, '')} does not exist`);
+  const events = readEvents(store);
+  const tail = events.at(-1);
+  const base = { session: session.key, seq: tail?.seq ?? 0, at: tail?.at ?? new Date(now).toISOString() };
+  const change = boundOf(loaded, session);
+  if (!change) return { ...base, mode: 'none', lines: [], neighbours: [], text: '', size: sizeOf('') };
+  const mark = session.data.briefed as { change?: string; seq?: number; at?: string } | undefined;
+  const neighbours = neighboursOf(loaded, session, change, events, now);
+  if (opts.full || live(loaded, mark?.change)?.key !== change.key) {
+    let text = `pjman brief: this session is bound to ${change.key}; its context in full.\n\n${formatChangeContext(changeContext(store, change.key, loaded))}`;
+    if (neighbours.length) text += `\nOther live sessions near this work:\n${neighbours.map((n) => `- ${formatNeighbour(n, now)}`).join('\n')}\n`;
+    return { ...base, mode: 'full', change: change.key, lines: [], neighbours: neighbours.map((n) => formatNeighbour(n, now)), text, size: sizeOf(text) };
+  }
+  const from = since(events, mark);
+  const after = events.filter((e) => e.seq > from);
+  const scope = scopeOf(loaded, change);
+  const delta = after.filter((e) => e.session !== session.key && (scope.has(e.key) || (e.type === 'decision' && changeOfDecision(loaded, e.key)?.key === change.key)));
+  const lines = receiptLines(delta, loaded, { counts: true });
+  // a neighbour is news when it moved since the last brief; the same line is not repeated on every prompt
+  const fresh = neighbours.filter((n) => n.last > (mark?.at ?? ''));
+  if (!lines.length && !fresh.length) return { ...base, mode: 'none', change: change.key, lines: [], neighbours: [], text: '', size: sizeOf('') };
+  let text = `pjman brief: since this session's last brief, on ${change.key} and what it touches:\n`;
+  if (lines.length) text += lines.map((l) => `- ${l}`).join('\n') + '\n';
+  if (fresh.length) text += `${lines.length ? '\n' : ''}Other live sessions near this work:\n${fresh.map((n) => `- ${formatNeighbour(n, now)}`).join('\n')}\n`;
+  text += `(pjman context ${change.key} has the whole record.)\n`;
+  return { ...base, mode: 'delta', change: change.key, lines, neighbours: fresh.map((n) => formatNeighbour(n, now)), text, size: sizeOf(text) };
+}
+
+/** Compute the brief and, when it says something, record how far it reached: the session's watermark. */
+export function brief(store: Store, id: string, opts: { full?: boolean; now?: number } = {}): Brief {
+  const b = computeBrief(store, id, opts);
+  if (b.mode !== 'none' && b.change) sessionBriefed(store, b.session, { change: b.change, seq: b.seq, at: b.at });
+  return b;
+}
+
+export function formatBriefSize(b: Pick<Brief, 'mode' | 'change' | 'size'>): string {
+  return `${b.mode === 'full' ? 'full context' : 'what changed'} on ${b.change}: ${b.size.lines} line${b.size.lines === 1 ? '' : 's'}, ~${b.size.tokens} tokens`;
+}

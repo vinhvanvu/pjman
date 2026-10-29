@@ -4,6 +4,7 @@ import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
 import { LIVE_MINUTES } from '../scope.js';
 import { live, rootProductOf } from '../tree.js';
+import { focusOf } from '../hydrate.js';
 import { CliError } from '../util.js';
 import { decisionLine, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
 
@@ -28,8 +29,11 @@ export interface SessionFacts {
   started?: string;
   /** The log as written, oldest first: the instant and the line. */
   log: { at: string; text: string }[];
-  /** What it is on: its last bound change that still resolves. */
+  /** What it is on, the change the dock follows: its focus (the change whose context it last read or that it last
+   *  wrote), else its last bound change that still resolves. */
   on?: string;
+  /** What it is credited with working on: its last bound change that still resolves. */
+  bound?: string;
   /** The product that change is in, else the current project's; absent when neither is known. */
   product?: string;
   /** live: something it did reached the stream inside the live window; ended: its closing line was written; quiet
@@ -58,17 +62,19 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
     .filter((m): m is RegExpExecArray => !!m)
     .map((m) => ({ at: m[1], text: m[2] }));
   const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : []).map((k) => live(loaded, k)).filter((r): r is Rec => !!r);
-  const on = bound[bound.length - 1];
+  const events = readEvents(store);
+  const binding = bound[bound.length - 1];
+  const on = live(loaded, focusOf(loaded, rec, events)?.change) ?? binding;
   const project = live(loaded, rec.data.project ?? opts.project);
   const product = rootProductOf(loaded, on ?? project ?? rec);
   // the last instant the session itself wrote: its own log lines and the writes stamped with it. A write that merely
   // touched its file (a migration, a format) is not the session acting
   let last = log.length ? log[log.length - 1].at : undefined;
-  for (const e of readEvents(store)) if (e.session === rec.key && (!last || e.at > last)) last = e.at;
+  for (const e of events) if (e.session === rec.key && (!last || e.at > last)) last = e.at;
   const ended = log.length > 0 && log[log.length - 1].text.startsWith('session ended');
   const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
   const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, product: product?.key, state, last };
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, product: product?.key, state, last };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };

@@ -6,9 +6,13 @@
 //                     `pjman context` (and the bound change's context on resume/compact); observe the branch and the open PR;
 //                     at startup and /clear, who the person is checked against the apps (`pjman whoami --verify`, cached a day
 //                     by the tool), injected only when something is off, the rename or claim offered and never run
-//   UserPromptSubmit  a prompt naming a change, a ticket or a URL binds the change it leads to (pjman refs); a ticket of the project's tracker with no record is read from the tracker and created through the sync (gh for GitHub), or the agent is told to; the change's context is injected the first time
+//   UserPromptSubmit  a prompt naming one change, a ticket or a URL binds the change it leads to (pjman refs); one naming several binds none and
+//                     the agent is told the candidates; a ticket of the project's tracker with no record is read from the tracker and created
+//                     through the sync (gh for GitHub), or the agent is told to; then the brief (pjman brief --session): the bound change's
+//                     context in full when the binding moved, else what changed on it since the last brief
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
-//   Stop              a turn that acted appends one log line, from the harness's last message; the receipt of what the store received since the last turn is shown to the person
+//   Stop              a turn that acted appends one log line, from the harness's last message; the size of each brief given this turn and the
+//                     receipt of what the store received since the last turn are shown to the person
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed
@@ -68,7 +72,7 @@ function loadState(sid) {
   try {
     return JSON.parse(fs.readFileSync(stateFile(sid), 'utf8'));
   } catch {
-    return { acted: 0, bound: null, hydrated: [], observed: [], pane: null, watcher: null, seq: undefined };
+    return { acted: 0, bound: null, observed: [], pane: null, watcher: null, seq: undefined, briefs: [] };
   }
 }
 function saveState(sid, st) {
@@ -260,9 +264,13 @@ function readStdin() {
   }
 }
 
+// the harness cuts a hook's injected context at 10,000 characters; the tool's brief has no ceiling, so what does not fit
+// is pointed to, and the person is told the brief was cut
+const CONTEXT_MAX = 9500;
+
 function emitContext(event, text) {
   if (!text) return;
-  const capped = text.length > 9500 ? text.slice(0, 9500) + '\n…(truncated; run pjman context for the rest)\n' : text;
+  const capped = text.length > CONTEXT_MAX ? text.slice(0, CONTEXT_MAX) + '\n…(cut by the harness; run pjman context for the rest)\n' : text;
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: capped } }));
 }
 
@@ -307,6 +315,9 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
  *  told to read and sync it. A pattern match alone never creates a record. */
 function promptChange(prompt, { cwd, env }) {
   const refs = tryPjman(['refs', '-', '--json'], { cwd, json: true, input: prompt }) ?? [];
+  // a prompt naming several changes is about none of them for certain: nothing binds, the agent is told the candidates
+  const named = [...new Set(refs.filter((r) => !r.weak && r.change).map((r) => r.change))];
+  if (named.length > 1) return { hint: `This prompt names several changes (${named.join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.` };
   for (const r of refs.reverse()) {
     if (r.weak) continue; // a bare #1: as often a list item as an issue
     if (r.change) return { key: r.change };
@@ -328,6 +339,15 @@ function createFromTracker(r, { cwd, env }) {
   if (tryPjman(['sync', 'github', '--from', '-', '--json'], { cwd, env, input: issue }) === null) return null;
   const n = tryPjman(['get', r.key, '--json'], { cwd, json: true });
   return n?.changes?.[0]?.change?.key ?? null;
+}
+
+/** The brief for this session: what the store has for it since its last brief, composed and recorded by the tool. Its
+ *  size is kept for the person, shown with the receipt when the turn ends. */
+function briefFor(st, sid, cwd, env, full = false) {
+  const b = tryPjman(['brief', '--session', sid, '--json', ...(full ? ['--full'] : [])], { cwd, env, json: true });
+  if (!b || b.mode === 'none' || !b.text) return '';
+  st.briefs = [...(st.briefs ?? []), { mode: b.mode, change: b.change, lines: b.size.lines, tokens: b.size.tokens, cut: b.text.length > CONTEXT_MAX }];
+  return b.text;
 }
 
 // --- main ---------------------------------------------------------------------------------------
@@ -366,19 +386,17 @@ function main() {
       let text = (tryPjman(['brief'], { cwd }) ?? '') + `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
       text += tryPjman(['context'], { cwd }) ?? '';
       if ((source === 'resume' || source === 'compact') && st.bound) {
-        const ctx = tryPjman(['context', st.bound], { cwd });
-        if (ctx) text += `\n---\nBound change:\n\n${ctx}`;
+        // the conversation lost what it had been told: the bound change's context in full again
+        const b = briefFor(st, sid, cwd, env, true);
+        if (b) text += `\n---\n${b}`;
       }
       if (!st.bound && !input.agent_id) {
         // the ground the session stands on: a branch named for a change binds it before any prompt does
         const key = changeOfBranch(cwd);
-        if (key && tryPjman(['session', 'bind', sid, key], { cwd, env }) !== null) {
+        if (key && tryPjman(['session', 'bind', sid, key, '--reason', 'branch'], { cwd, env }) !== null) {
           st.bound = key;
-          const ctx = tryPjman(['context', key], { cwd });
-          if (ctx) {
-            st.hydrated.push(key);
-            text += `\n---\nBound from the branch:\n\n${ctx}`;
-          }
+          const b = briefFor(st, sid, cwd, env);
+          if (b) text += `\n---\nBound from the branch.\n${b}`;
         }
       }
       if (!input.agent_id) {
@@ -405,27 +423,20 @@ function main() {
     case 'UserPromptSubmit': {
       const prompt = String(input.prompt ?? '');
       const found = promptChange(prompt, { cwd, env });
-      if (!found) return;
-      if (found.hint) {
-        emitContext(EVENT, found.hint);
-        return;
-      }
-      const key = found.key;
-      if (st.bound !== key) {
-        if (tryPjman(['session', 'bind', sid, key], { cwd, env }) !== null) {
-          st.bound = key;
-          sidebarStatus(key);
+      const parts = [];
+      if (found?.hint) parts.push(found.hint);
+      else if (found?.key && st.bound !== found.key) {
+        if (tryPjman(['session', 'bind', sid, found.key, '--reason', 'prompt'], { cwd, env }) !== null) {
+          st.bound = found.key;
+          sidebarStatus(found.key);
           observeWork(st, sid, cwd, env);
+          refreshView(sid, cwd);
         }
       }
-      refreshView(sid, cwd);
-      if (!st.hydrated.includes(key)) {
-        const ctx = tryPjman(['context', key], { cwd });
-        if (ctx) {
-          st.hydrated.push(key);
-          emitContext(EVENT, ctx);
-        }
-      }
+      // the brief: in full when the binding moved, else what changed since the last one; nothing when nothing did
+      const b = briefFor(st, sid, cwd, env);
+      if (b) parts.push(b);
+      emitContext(EVENT, parts.join('\n---\n'));
       saveState(sid, st);
       return;
     }
@@ -471,8 +482,14 @@ function main() {
           const product = store.product ? String(store.product).replace(/^product:/, '') : null;
           const trim = (l) => (product ? l.replace(new RegExp(`\\b(feature|change|decision):${product}/`, 'g'), '$1:') : l);
           const lines = r.lines.filter((l) => !l.startsWith(`session:${sid}:`)).map(trim);
-          if (lines.length && st.seq !== undefined) process.stdout.write(JSON.stringify({ systemMessage: `pjman recorded:\n${lines.map((l) => `- ${l}`).join('\n')}` }));
+          // what the agent was handed this turn, by size (the brief has no ceiling; the person sees what it cost)
+          const briefed = (st.briefs ?? []).map((b) => trim(`${b.mode === 'full' ? 'full context' : 'what changed'} on ${b.change}: ${b.lines} line${b.lines === 1 ? '' : 's'}, ~${b.tokens} tokens${b.cut ? ' (cut by the harness at 10,000 characters)' : ''}`));
+          const blocks = [];
+          if (briefed.length) blocks.push(`pjman briefed:\n${briefed.map((l) => `- ${l}`).join('\n')}`);
+          if (lines.length && st.seq !== undefined) blocks.push(`pjman recorded:\n${lines.map((l) => `- ${l}`).join('\n')}`);
+          if (blocks.length) process.stdout.write(JSON.stringify({ systemMessage: blocks.join('\n') }));
           st.seq = r.seq;
+          st.briefs = [];
         }
       }
       saveState(sid, st);

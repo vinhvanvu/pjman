@@ -40,10 +40,15 @@ the context prints them; write the full key only for something in another produc
    `pjman set change:<slug> "next=…"` and the status if it moved (`open, planning, active, blocked, review, done, dropped`).
 4. **A new unit of work is a change, filed through intake.** Follow the `intake` skill first: `pjman intake "<the
    request>"` shows what already exists (duplicates, the nodes it may alter, the milestones, the order's tail); then
-   `pjman new change <slug> --title "…" --summary "…"` with its answers, and bind this run to it:
-   `pjman session bind <session-id> change:<slug>` (the id is in the session-start context). The hook binds only what
-   the person's prompt names, never your reply. Name the change as `change:<slug>` in your reply so the person can too.
-   A session bound to a change it is not working on is backed out with `pjman session unbind <session-id> change:<slug>`.
+   `pjman new change <slug> --title "…" --summary "…"` with its answers; the tool binds this run to the change it
+   creates. Otherwise a session binds only from what it does: a change the person's prompt names (one; a prompt naming
+   several binds none), its branch. Never from your reply, and a write to a change does not bind it. Reading a change's
+   context (`pjman context change:<slug>`) moves the session's focus, which the dock follows, so read it when the
+   conversation moves to another change. Name the change as `change:<slug>` in your reply so the person can too. When
+   the work is a change you did not create and the prompt did not name, bind it: `pjman session bind <session-id>
+   change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`.
+   On every prompt the harness hands you the brief: what others changed on your bound change, its milestone, its
+   decisions and its dependencies since your last brief, and other live sessions near it. Act on what it says.
 5. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
    `url:https://…`); a record for a source is optional.
 6. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or

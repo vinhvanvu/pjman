@@ -18,7 +18,9 @@ import { syncLinear } from './sync/linear.js';
 import { syncGithub } from './sync/github.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
-import { sessionBind, sessionLog, sessionObserve, sessionUnbind } from './commands/session.js';
+import { sessionBind, sessionFocus, type BindReason, sessionLog, sessionObserve, sessionUnbind } from './commands/session.js';
+import { brief, formatBriefSize } from './hydrate.js';
+import { envelope } from './write.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
 import { rm } from './commands/rm.js';
@@ -44,7 +46,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman init [--name <project-name>] [--product product:<slug>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
   { name: 'start', about: 'the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL', usage: ['pjman start [--port <n>] [--open]'] },
   { name: 'stop', about: 'stop the dashboard server', usage: ['pjman stop'] },
-  { name: 'brief', about: 'print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md)', usage: ['pjman brief'] },
+  { name: 'brief', about: "print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md); with --session, what the store has for that session since its last brief: the bound change's context in full when the binding moved (or --full), else what changed on it, its milestone, its decisions and its dependency edges, without the session's own writes, one line per record, and the other live sessions near it; the brief records how far it reached and ends with its size",
+    usage: ['pjman brief', 'pjman brief --session <id> [--full] [--json]'] },
   { name: 'new', about: 'create a record; refused if it would not validate',
     usage: [
       'pjman new product <slug> --title <t> [--name <one to three words>] [--owners <actor>]... [--levels <label>]... [--sequence <change>]... [--summary <s>]',
@@ -64,7 +67,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
     usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge; unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
-    usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change>', 'pjman session unbind <id> <change>', 'pjman session observe <id> <edge> <from> <to>'] },
+    usage: ['pjman session log <id> <text>', 'pjman session bind <id> <change> [--reason prompt|created|branch]', 'pjman session unbind <id> <change>', 'pjman session observe <id> <edge> <from> <to>', 'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)'] },
   { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
     usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
   { name: 'ls', about: 'list records, by type, status, project and kind; bugs come worst first, then oldest', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--kind bug|work] [--json]'] },
@@ -189,6 +192,8 @@ function parse(args: string[]) {
     watch: { type: 'boolean' },
     detach: { type: 'boolean' },
     receipt: { type: 'boolean' },
+    full: { type: 'boolean' },
+    reason: { type: 'string' },
     before: { type: 'string' },
     after: { type: 'string' },
     first: { type: 'boolean' },
@@ -245,7 +250,9 @@ function main(argv: string[]): number {
     return 1;
   }
   const cwd = process.cwd();
-  if (!WRITE_COMMANDS.has(cmd)) return dispatch(v, pos, cmd, cwd);
+  // a session's brief records its watermark, and a session reading a change's context moves its focus: both write
+  const writes = WRITE_COMMANDS.has(cmd) || (cmd === 'brief' && !!v.session) || (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
+  if (!writes) return dispatch(v, pos, cmd, cwd);
   // one writer at a time per store: the lock is held from before the first file is touched to after the commit
   return withStoreLock(findStore(cwd, v.store)?.root ?? globalStorePath(), () => dispatch(v, pos, cmd, cwd));
 }
@@ -276,6 +283,16 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         created: v.created, body: v.body, writer: v.writer, session: v.session,
       };
       const r = newRecord(store, type, ident, flags);
+      // a change the session creates is the session's work: it binds (decision hydration/binding-follows-writes). Only
+      // here, where a person or an agent files it; a sync or a batch that creates changes binds nothing
+      const session = envelope({ session: v.session }).session;
+      if (r.type === 'change' && session) {
+        try {
+          if (sessionBind(store, session, r.key, 'created').added) r.notes.push(`bound ${session} (created)`);
+        } catch {
+          // no such session record: nothing to bind
+        }
+      }
       if (v.json) json(r);
       else {
         out(`created ${r.key} at ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
@@ -292,8 +309,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         const r = sessionLog(store, id, rest.join(' '));
         out(`logged to ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'bind') {
-        if (!id || !rest[0]) throw new CliError('usage: pjman session bind <id> <change>');
-        const r = sessionBind(store, id, rest[0]);
+        if (!id || !rest[0]) throw new CliError('usage: pjman session bind <id> <change> [--reason prompt|created|branch]');
+        const reasons = ['prompt', 'created', 'branch', 'by hand'] as const;
+        const reason = (v.reason ?? 'by hand') as BindReason;
+        if (!reasons.includes(reason)) throw new CliError(`--reason takes ${reasons.join(', ')}`);
+        const r = sessionBind(store, id, rest[0], reason);
         out(r.added ? `bound in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `already bound in ${r.path}`);
       } else if (sub === 'unbind') {
         if (!id || !rest[0]) throw new CliError('usage: pjman session unbind <id> <change>');
@@ -303,7 +323,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (!id || rest.length < 3) throw new CliError('usage: pjman session observe <id> <edge> <from> <to>');
         const r = sessionObserve(store, id, rest[0], rest[1], rest[2]);
         out(`observed in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
-      } else throw new CliError('usage: pjman session <log|bind|unbind|observe> …');
+      } else if (sub === 'focus') {
+        if (!id || !rest[0]) throw new CliError('usage: pjman session focus <id> <change>');
+        const r = sessionFocus(store, id, rest[0]);
+        out(r.moved ? `focus moved in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `focus already there in ${r.path}`);
+      } else throw new CliError('usage: pjman session <log|bind|unbind|observe|focus> …');
       return 0;
     }
     case 'validate': {
@@ -365,6 +389,15 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (pos[1] && !pos[1].startsWith('project:')) {
         const c = changeContext(store, pos[1]);
         v.json ? json(c) : out(formatChangeContext(c));
+        // the session reading it is looking at it: its focus moves there (never its binding). A read never fails for it
+        const session = process.env.PJMAN_SESSION;
+        if (session) {
+          try {
+            sessionFocus(store, session, c.change.key);
+          } catch {
+            // no such session record, or a store that would not take the write: the read stands
+          }
+        }
       } else {
         const c = storeContext(store, { project: v.all ? null : (pos[1] ?? v.project ?? store.project ?? null) });
         v.json ? json(c) : out(formatStoreContext(c));
@@ -526,7 +559,18 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       return 0;
     }
     case 'brief': {
-      out(BRIEF);
+      if (!v.session) {
+        out(BRIEF);
+        return 0;
+      }
+      const store = scoped(requireStore(cwd, v.store));
+      const b = brief(store, v.session, { full: !!v.full });
+      // the text is what the agent reads, so it names records as the context does inside the product; the rest of the
+      // JSON keeps full keys
+      if (v.json) json({ ...b, text: shortenText(b.text, scopeProduct) });
+      else if (b.mode === 'none') out('(nothing new for this session)');
+      else out(`${b.text}
+(${formatBriefSize(b)})`);
       return 0;
     }
     case 'serve': {

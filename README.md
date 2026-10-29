@@ -60,7 +60,9 @@ pjman new source <kind>:<key> [--title …] [--url …]
 pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
 pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>]
 pjman session log <id> <text>          append to the session's ## Log
-pjman session bind <id> <change>       record that the run worked on a change
+pjman session bind <id> <change> [--reason prompt|created|branch]   record that the run worked on a change (pjman new change binds the session creating it)
+pjman session focus <id> <change>      what the run is looking at (pjman context <change> sets it for the session in PJMAN_SESSION); the dock follows it
+pjman brief --session <id> [--full]    what the store has for the run since its last brief: the bound change in full when the binding moved, else what others changed on it, its milestone, decisions and dependency edges; recorded as its watermark; ends with its size
 pjman session unbind <id> <change>     back out a binding made in error, with the edges observed on it; logged
 pjman session observe <id> <edge> <from> <to>   record an observed edge (evidence)
 pjman validate [--json]                every record, every reference; errors are reported, never dropped
