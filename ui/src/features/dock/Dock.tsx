@@ -7,12 +7,12 @@ import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { ChevronRight } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ChangeContext, Lens, Scope, SessionFacts, StoreEvent } from '@/data/contract';
 import { ago, plural } from '@/lib/format';
 import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
-import { liveItem, Wash } from '@/lib/motion';
+import { liveItem, swapView, Wash } from '@/lib/motion';
 import { statusTone, TONE } from '@/lib/tones';
 import { useFreshEvents } from '@/state/arrivals';
 import { useAt } from '@/state/moment';
@@ -29,10 +29,53 @@ const keyOf = (d: { key: string }) => d.key;
 const lineKey = (l: { at: string }) => l.at;
 
 export function Dock({ scope, session, lens }: { scope: Scope; session?: SessionFacts; lens: Lens }) {
-  return session?.on && scope.change ? (
-    <DockChange scope={scope} ctx={scope.change} session={session} lens={lens} />
-  ) : (
-    <DockFresh scope={scope} session={session} lens={lens} />
+  const ctx = session?.on ? scope.change : undefined;
+  // the dock moves with its session (change:dock-moves; decision dock-swap): keyed on the change it draws, not the one
+  // the session is on, so the swap waits for the new change's scope. A live move fades the old view, returns the
+  // column to the top and brings the new one in with its header washed; at a held moment it swaps at once
+  const subject = ctx?.change.key ?? 'fresh';
+  const at = useAt();
+  const [shown, setShown] = useState(subject);
+  const [moves, setMoves] = useState(0);
+  if (shown !== subject) {
+    setShown(subject);
+    if (!at) setMoves((n) => n + 1);
+  }
+  const moved = moves > 0 && !at ? moves : undefined;
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div ref={ref}>
+      <AnimatePresence
+        mode="wait"
+        initial={false}
+        onExitComplete={() => scrollParent(ref.current)?.scrollTo({ top: 0 })}
+      >
+        <m.div key={subject} {...(at ? {} : swapView)}>
+          {ctx && session ? (
+            <DockChange scope={scope} ctx={ctx} session={session} lens={lens} moved={moved} />
+          ) : (
+            <DockFresh scope={scope} session={session} lens={lens} moved={moved} />
+          )}
+        </m.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+/** The nearest ancestor that scrolls: the column the dock stands in. */
+function scrollParent(el: HTMLElement | null): HTMLElement | undefined {
+  for (let p = el?.parentElement; p; p = p.parentElement)
+    if (/auto|scroll/.test(getComputedStyle(p).overflowY)) return p;
+  return undefined;
+}
+
+/** The wash on a header the dock just moved to, a little wider than the text. */
+function Moved({ arrival }: { arrival?: number }) {
+  if (arrival === undefined) return null;
+  return (
+    <span aria-hidden="true" className="pointer-events-none absolute -inset-x-2 -inset-y-1.5 rounded-card">
+      <Wash arrival={arrival} className={TONE.active.wash} />
+    </span>
   );
 }
 
@@ -42,11 +85,14 @@ function DockChange({
   ctx,
   session,
   lens,
+  moved,
 }: {
   scope: Scope;
   ctx: ChangeContext;
   session: SessionFacts;
   lens: Lens;
+  /** The dock just moved here with its session: the header washes. */
+  moved?: number;
 }) {
   const c = ctx.change;
   const waiting = ctx.decisions.filter((d) => d.status === 'proposed');
@@ -62,7 +108,8 @@ function DockChange({
   const { shown: waits } = useHeldList(waiting, hold.held, keyOf);
   return (
     <article className="flex flex-col gap-5 p-4" {...hold.props}>
-      <header className="flex flex-col gap-1.5">
+      <header className="relative flex flex-col gap-1.5">
+        <Moved arrival={moved} />
         <div className="flex flex-wrap items-center gap-2">
           <Label>{c.data.kind === 'bug' ? 'bug' : 'change'}</Label>
           <span className="text-ink-faint">·</span>
@@ -177,13 +224,24 @@ function DockChange({
 
 /** The dock before the session binds a change: a pickup list, what this session could take up (decision
  *  fresh-dock-readiness): open changes by the feature they name, in the roadmap's order, the nearest to fully decided first. */
-function DockFresh({ scope, session, lens }: { scope: Scope; session?: SessionFacts; lens: Lens }) {
+function DockFresh({
+  scope,
+  session,
+  lens,
+  moved,
+}: {
+  scope: Scope;
+  session?: SessionFacts;
+  lens: Lens;
+  moved?: number;
+}) {
   const groups = pickups(scope);
   const open = groups.reduce((n, g) => n + g.changes.length, 0);
   const product = scope.node?.name ?? scope.node?.title ?? (scope.node ? short(scope.node.key) : 'the store');
   return (
     <article className="flex flex-col gap-5 p-4">
-      <header className="flex flex-col gap-1.5">
+      <header className="relative flex flex-col gap-1.5">
+        <Moved arrival={moved} />
         <div className="flex flex-wrap items-center gap-2">
           <Label>session · {product}</Label>
           {session?.started && (
