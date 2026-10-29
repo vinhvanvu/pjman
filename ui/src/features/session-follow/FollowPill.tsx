@@ -9,6 +9,7 @@ import { Pulse } from '@/components/presence/Presence';
 import type { PageSearch } from '@/routes/-search';
 import { useFollow } from '@/state/follow';
 import { away, followName, followState } from './model';
+import { SESSION, TONE } from '@/lib/tones';
 
 const WORDS = { following: 'following', paused: 'paused on', ended: 'ended' } as const;
 
@@ -43,7 +44,7 @@ export function FollowPill({ className }: { className?: string }) {
           aria-hidden="true"
           className={cn(
             'inline-block size-2 shrink-0 rounded-full',
-            state === 'ended' ? 'bg-ink-faint' : state === 'paused' ? 'bg-status-review' : 'bg-live',
+            state === 'ended' ? SESSION.ended.bg : state === 'paused' ? TONE.waits.bg : SESSION.working.bg,
           )}
         />
       )}

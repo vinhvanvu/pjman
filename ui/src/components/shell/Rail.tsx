@@ -14,6 +14,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { TONE } from '@/lib/tones';
 
 /** A product as the rail names it: the short name, and one line of health for the switcher. */
 export interface RailProduct {
@@ -95,7 +96,7 @@ export function Rail({ product, products, current, node, lens, waiting, themeSlo
               >
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-medium">{p.name}</span>
-                  <span className={cn('truncate text-xs text-ink-muted', p.loud && 'text-status-blocked')}>
+                  <span className={cn('truncate text-xs text-ink-muted', p.loud && TONE.alarm.text)}>
                     {healthLine(p)}
                   </span>
                 </span>
@@ -129,7 +130,7 @@ export function Rail({ product, products, current, node, lens, waiting, themeSlo
           >
             <Radar className="size-[15px] shrink-0" />
             Bridge
-            {waiting ? <span className="ml-auto text-xs font-normal text-status-review">{waiting}</span> : null}
+            {waiting ? <span className={cn('ml-auto text-xs font-normal', TONE.waits.text)}>{waiting}</span> : null}
           </Link>
         )}
         {LENS_ITEMS.map(({ lens: l, label, icon: Icon }) => (

@@ -12,13 +12,7 @@ import { plural } from '@/lib/format';
 import { restOf, short } from '@/lib/keys';
 import { Label, StatusChip } from '@/components/chips/Chip';
 import { cardWhen, proposedWhen, strip, subagentWords, type WaitItem } from './model';
-
-export const DOT: Record<SessionState, string> = {
-  working: 'bg-live shadow-[0_0_0_3px_color-mix(in_srgb,var(--live)_25%,transparent)]',
-  waiting: 'bg-status-review',
-  stopped: 'bg-ink-muted',
-  ended: 'bg-ink-faint',
-};
+import { SESSION, sessionDot, TONE } from '@/lib/tones';
 
 const EMPTY: Record<SessionState, string> = {
   waiting: 'Nothing waits on you.',
@@ -58,7 +52,7 @@ export function Strip({
     <div className={cn('flex flex-col gap-5', className)}>
       <Section
         label="Waits on you"
-        tone={waits.length > 0 ? 'text-status-review' : undefined}
+        tone={waits.length > 0 ? TONE.waits.text : undefined}
         words={
           waits.length > 0
             ? `${plural(decisions, 'decision')} on ${plural(waits.length, 'change')} · newest first`
@@ -73,7 +67,7 @@ export function Strip({
         <Section
           key={g.state}
           label={g.label}
-          tone={g.sessions.length > 0 && g.state === 'working' ? 'text-live' : undefined}
+          tone={g.sessions.length > 0 && g.state === 'working' ? SESSION.working.text : undefined}
           words={
             g.sessions.length > 0
               ? `${plural(g.sessions.length, 'session')}${g.sessions.length > 1 ? ' · by last write' : ''}`
@@ -190,9 +184,9 @@ function Meta({ change, session }: { change?: BridgeChange; session?: BridgeSess
 /** One proposed decision on a card: its title, its recommendation clamped, when it was proposed. */
 function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
   return (
-    <span className="flex flex-col gap-1 rounded-row bg-status-review/10 px-2.5 py-2 text-xs">
+    <span className={cn('flex flex-col gap-1 rounded-row px-2.5 py-2 text-xs', TONE.waits.soft)}>
       <span className="flex items-start gap-2">
-        <Label className="mt-px shrink-0 text-status-review">decide</Label>
+        <Label className={cn('mt-px shrink-0', TONE.waits.text)}>decide</Label>
         <span className="line-clamp-2 min-w-0 font-medium text-ink">{d.title ?? short(d.key)}</span>
       </span>
       {d.decision && <span className="line-clamp-2 text-ink-muted">{d.decision}</span>}
@@ -210,12 +204,12 @@ export function WaitCard({ item, lens, touched }: { item: WaitItem; lens: Lens; 
       change={change}
       lens={lens}
       tab="decisions"
-      className={cn('border-status-review/60', isTouched(touched, session, change) && OUTLINE)}
+      className={cn(TONE.waits.line, isTouched(touched, session, change) && OUTLINE)}
     >
       <span className="flex items-center gap-2">
         <span
           aria-hidden="true"
-          className={cn('size-2 shrink-0 rounded-full', session ? DOT[session.state] : DOT.waiting)}
+          className={cn('size-2 shrink-0 rounded-full', sessionDot(session ? session.state : 'waiting'))}
         />
         <span className="min-w-0 flex-1 truncate font-medium">{change.title ?? short(change.key)}</span>
         {!session && change.status && <StatusChip status={change.status} />}
@@ -240,7 +234,7 @@ export function SessionCard({ session: s, lens, touched }: { session: BridgeSess
       className={cn('border-line', s.state === 'ended' && 'opacity-70', isTouched(touched, s, s.change) && OUTLINE)}
     >
       <span className="flex items-center gap-2">
-        <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', DOT[s.state])} />
+        <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', sessionDot(s.state))} />
         <span className={cn('min-w-0 flex-1 truncate font-medium', !s.change && 'text-ink-muted')}>{title}</span>
         {s.change?.status && s.state === 'ended' && <StatusChip status={s.change.status} />}
       </span>

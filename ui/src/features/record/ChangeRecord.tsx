@@ -8,6 +8,7 @@ import { CopyRef } from '@/components/cards/DecisionRows';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
+import { decisionTone, TONE } from '@/lib/tones';
 
 export function ChangeRecord({
   ctx,
@@ -36,7 +37,7 @@ export function ChangeRecord({
           {c.data.kind === 'bug' && typeof c.data.severity === 'string' && (
             <Chip
               tone="quiet"
-              className={c.data.severity === 'product' || c.data.severity === 'feature' ? 'text-status-blocked' : ''}
+              className={c.data.severity === 'product' || c.data.severity === 'feature' ? TONE.alarm.text : ''}
               title="severity: where on the tree the behaviour is lost"
             >
               {c.data.severity === 'nuisance' || c.data.severity === 'cosmetic'
@@ -120,7 +121,7 @@ export function ChangeRecord({
           <div className="flex items-center gap-2">
             <Label>Decisions</Label>
             {waiting.length > 0 && (
-              <Chip tone="quiet" className="text-status-review">
+              <Chip tone="quiet" className={TONE.waits.text}>
                 {waiting.length} waiting
               </Chip>
             )}
@@ -130,7 +131,7 @@ export function ChangeRecord({
               <li key={d.key} className="flex flex-col gap-1 px-3.5 py-2.5">
                 <div className="flex items-center gap-2">
                   <span
-                    className={`size-[7px] shrink-0 rounded-full ${d.status === 'proposed' ? 'bg-status-review' : 'bg-status-done'}`}
+                    className={`size-[7px] shrink-0 rounded-full ${decisionTone(d.status).bg}`}
                     aria-hidden="true"
                   />
                   <NodeLink to={d.key} lens={lens} className="min-w-0 flex-1 truncate font-medium hover:text-primary">
@@ -175,7 +176,7 @@ export function ChangeRecord({
               <Label>Depends on</Label>
               {ctx.dependsOn.map((d) => (
                 <NodeLink key={d.key} to={d.key} lens={lens}>
-                  <Chip tone="quiet" className={d.status === 'done' ? 'text-status-done' : ''}>
+                  <Chip tone="quiet" className={d.status === 'done' ? TONE.done.text : ''}>
                     {d.title && d.title.length <= 32 ? d.title : short(d.key)}
                   </Chip>
                 </NodeLink>

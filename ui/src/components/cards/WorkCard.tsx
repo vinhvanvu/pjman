@@ -13,6 +13,7 @@ import { Chip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { ChangeMeta, type ChangeMetaProps } from './ChangeCard';
 import { CopyRef, DecisionRows } from './DecisionRows';
+import { TONE } from '@/lib/tones';
 
 export interface WorkCardProps extends Omit<ChangeMetaProps, 'className' | 'allFeatures'> {
   lens: Lens;
@@ -42,7 +43,7 @@ export function WorkCard({ row, lens, mode, decisions = [], selected, className,
         {asks.length > 0 && (
           <span className="flex shrink-0 gap-1">
             {asks.map((a) => (
-              <Chip key={a} className="text-status-review">
+              <Chip key={a} className={TONE.waits.text}>
                 {a}
               </Chip>
             ))}

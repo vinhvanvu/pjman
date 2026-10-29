@@ -2,6 +2,7 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from 'cn';
 import type { ComponentProps } from 'react';
+import { statusTone } from '@/lib/tones';
 
 const chip = cva(
   'inline-flex h-5 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip px-[7px] text-meta font-medium leading-none',
@@ -24,17 +25,6 @@ export function Chip({ className, tone, mono, ...props }: ChipProps) {
   return <span data-slot="chip" className={cn(chip({ tone, mono }), className)} {...props} />;
 }
 
-/** A change's status → the token that colours it. Unknown statuses read as open. */
-export const STATUS_COLOR: Record<string, string> = {
-  active: 'text-status-active',
-  review: 'text-status-review',
-  blocked: 'text-status-blocked',
-  planning: 'text-status-planning',
-  open: 'text-status-open',
-  done: 'text-status-done',
-  dropped: 'text-status-dropped',
-};
-
 export function StatusChip({
   status,
   className,
@@ -42,7 +32,7 @@ export function StatusChip({
 }: { status: string | undefined } & Omit<ChipProps, 'children'>) {
   const s = status ?? 'open';
   return (
-    <Chip className={cn(STATUS_COLOR[s] ?? STATUS_COLOR.open, className)} {...props}>
+    <Chip className={cn(statusTone(s).text, className)} {...props}>
       <span aria-hidden="true" className="size-[7px] rounded-full bg-current" />
       {s}
     </Chip>

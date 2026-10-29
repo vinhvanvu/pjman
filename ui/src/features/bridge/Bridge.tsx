@@ -9,6 +9,8 @@ import { plural } from '@/lib/format';
 import { useCursor, useResolved } from '@/state/moment';
 import { Lanes } from './Lanes';
 import { Strip, type Touched } from './Strip';
+import { TONE } from '@/lib/tones';
+import { cn } from 'cn';
 
 export function Bridge({
   data,
@@ -31,7 +33,7 @@ export function Bridge({
     <div className="flex flex-col gap-5 p-5 md:p-6 lg:h-full lg:min-h-0" data-scroll-restoration-id="bridge">
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
         <h2 className="text-section font-semibold">
-          Sessions by need{held && <span className="font-normal text-status-review">, {held}</span>}
+          Sessions by need{held && <span className={cn('font-normal', TONE.waits.text)}>, {held}</span>}
         </h2>
         <span className="text-meta text-ink-faint">
           {plural(data.sessions.length, 'session')} across {productName} in the last{' '}

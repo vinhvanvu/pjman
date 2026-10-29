@@ -1,5 +1,6 @@
 // The roadmap lens with nothing selected: the order as a list, what comes later, the warnings, and the bugs that are
 // loudest. The chart beside it is the picture; this is the same thing read top to bottom.
+import { cn } from 'cn';
 import { Link } from '@tanstack/react-router';
 import { Bug, TriangleAlert } from 'lucide-react';
 import type { Lens, Scope } from '@/data/contract';
@@ -11,6 +12,7 @@ import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { Figures } from '@/components/stats/Figures';
 import { columns, loud, SEVERITY_LABEL, violationText } from './model';
+import { TONE } from '@/lib/tones';
 
 export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
   const cols = columns(scope);
@@ -40,12 +42,12 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
           {
             value: scope.roadmap.violations.length,
             label: scope.roadmap.violations.length === 1 ? 'warning' : 'warnings',
-            tone: scope.roadmap.violations.length ? 'text-status-review' : undefined,
+            tone: scope.roadmap.violations.length ? TONE.waits.text : undefined,
           },
           {
             value: scope.bugs.length,
             label: worst ? `open bugs, worst ${worst}` : 'open bugs',
-            tone: loudBugs ? 'text-status-blocked' : undefined,
+            tone: loudBugs ? TONE.alarm.text : undefined,
           },
         ]}
       />
@@ -80,7 +82,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
                     {p && (
                       <div className="h-1 overflow-hidden rounded-full bg-raised">
                         <div
-                          className="h-full rounded-full bg-status-done"
+                          className={cn('h-full rounded-full', TONE.done.bg)}
                           style={{ width: `${pct(p.done, p.total)}%` }}
                         />
                       </div>
@@ -88,7 +90,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
                     {c.violations.map((v) => (
                       <p
                         key={`${v.kind}:${v.against ?? ''}`}
-                        className="flex items-center gap-1.5 text-xs text-status-review"
+                        className={cn('flex items-center gap-1.5 text-xs', TONE.waits.text)}
                       >
                         <TriangleAlert className="size-3" aria-hidden="true" />
                         {violationText(v, titles)}
@@ -150,7 +152,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
                   {b.severity && (
                     <Chip
                       tone="quiet"
-                      className={b.severity === 'product' || b.severity === 'feature' ? 'text-status-blocked' : ''}
+                      className={b.severity === 'product' || b.severity === 'feature' ? TONE.alarm.text : ''}
                     >
                       {SEVERITY_LABEL[b.severity] ?? b.severity}
                     </Chip>

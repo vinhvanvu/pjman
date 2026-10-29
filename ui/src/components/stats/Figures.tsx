@@ -5,7 +5,7 @@ import type { ComponentProps, ReactNode } from 'react';
 export interface Figure {
   value: ReactNode;
   label: string;
-  /** Draw the value in the colour of a meaning, e.g. `text-status-blocked` when it is not zero. */
+  /** Draw the value in the colour of a meaning, e.g. `TONE.alarm.text` (lib/tones) when it is not zero. */
   tone?: string;
 }
 

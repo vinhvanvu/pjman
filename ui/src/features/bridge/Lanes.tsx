@@ -1,6 +1,7 @@
 // The bridge's lanes (decision live-sessions/stage-strip-transport): one row per session over the transport's rolling
 // window, on the transport's own layer so a beat here and a tick there stand at the same instant and slide together.
-// Each line the session wrote is a beat, each decision it opened a flag, a bar runs from its first act to its last.
+// Each line the session wrote is a beat, each decision it opened a flag, a bar runs from its first act to its last;
+// beats and bar take the session's state colour, the flag the colour of what waits on the person (lib/tones).
 // Held at a moment, a line marks it on every row and what came after is dimmed; a beat or a flag locks on its event,
 // the row's name opens the session's dock. The stage will stand above them (change:roadmap-graph).
 import { Link } from '@tanstack/react-router';
@@ -11,7 +12,7 @@ import { eventWords, hourMarks, useRolling, WINDOW_MS } from '@/features/transpo
 import { restOf, short } from '@/lib/keys';
 import { Label } from '@/components/chips/Chip';
 import { lanesOf } from './model';
-import { DOT } from './Strip';
+import { SESSION, sessionDot, TONE } from '@/lib/tones';
 
 /** The name column's width; the axis above the rows is offset by it. */
 const WHO = 'w-[150px] shrink-0';
@@ -75,17 +76,14 @@ export function Lanes({
                   title={title}
                   className={cn(WHO, 'flex min-w-0 items-center gap-2 text-xs font-medium hover:underline')}
                 >
-                  <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', DOT[s.state])} />
+                  <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', sessionDot(s.state))} />
                   <span className={cn('truncate', !s.change && 'text-ink-muted')}>{title}</span>
                 </Link>
                 <div className="relative h-4 min-w-0 flex-1 overflow-hidden border-b border-line" style={FADE}>
                   <div key={r.span.to} {...r.layer()}>
                     <span
                       aria-hidden="true"
-                      className={cn(
-                        'absolute top-1.5 h-1 rounded-full',
-                        s.state === 'working' ? 'bg-live/55' : 'bg-line-strong',
-                      )}
+                      className={cn('absolute top-1.5 h-1 rounded-full', SESSION[s.state].bg, 'opacity-35')}
                       style={{
                         left: `${r.at(Date.parse(lane.first))}%`,
                         width: `max(4px, ${r.at(Date.parse(lane.last)) - r.at(Date.parse(lane.first))}%)`,
@@ -103,11 +101,7 @@ export function Lanes({
                         <span
                           className={cn(
                             'absolute top-1/2 left-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full',
-                            e.seq === r.cursor.event
-                              ? 'size-2 bg-primary'
-                              : s.state === 'working'
-                                ? 'bg-ink'
-                                : 'bg-ink-muted',
+                            e.seq === r.cursor.event ? 'size-2 bg-primary' : SESSION[s.state].bg,
                           )}
                         />
                       </Mark>
@@ -125,13 +119,13 @@ export function Lanes({
                         <span
                           className={cn(
                             'absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2',
-                            e.seq === r.cursor.event ? 'bg-primary' : 'bg-status-review',
+                            e.seq === r.cursor.event ? 'bg-primary' : TONE.waits.bg,
                           )}
                         />
                         <span
                           className={cn(
                             'absolute top-0 left-1/2 ml-px h-[7px] w-2',
-                            e.seq === r.cursor.event ? 'bg-primary' : 'bg-status-review',
+                            e.seq === r.cursor.event ? 'bg-primary' : TONE.waits.bg,
                           )}
                           style={{ clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }}
                         />

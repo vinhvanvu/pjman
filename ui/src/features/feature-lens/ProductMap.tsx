@@ -1,6 +1,7 @@
 // The product map: features only, opening collapsed every time (only the path to the selection is open), state as a
 // dot, counts faint and right-aligned, connectors from parent to child. A click selects (the record pane shows it); the
 // filter bar narrows the map and opens the matches.
+import { cn } from 'cn';
 import { Bug } from 'lucide-react';
 import { useMemo } from 'react';
 import type { ChangeRow, Scope, ScopeNode } from '@/data/contract';
@@ -21,6 +22,7 @@ import {
   unassigned,
   type MapFilter,
 } from './model';
+import { TONE } from '@/lib/tones';
 
 export interface ProductMapProps {
   scope: Scope;
@@ -182,9 +184,9 @@ function FeatureRow({
             title={bugs.title}
             className={
               bugs.tone === 'loud'
-                ? 'inline-flex items-center gap-1 font-medium text-status-blocked'
+                ? cn('inline-flex items-center gap-1 font-medium', TONE.alarm.text)
                 : bugs.tone === 'warn'
-                  ? 'inline-flex items-center gap-1 text-status-review'
+                  ? cn('inline-flex items-center gap-1', TONE.waits.text)
                   : 'inline-flex items-center gap-1'
             }
           >

@@ -30,6 +30,7 @@ import {
   whoWrote,
   WINDOW_MS,
 } from './model';
+import { TONE } from '@/lib/tones';
 
 /** How often the bar's clock moves; the layer glides between readings. */
 const ROLL_MS = 5_000;
@@ -288,15 +289,27 @@ export function Transport({ product }: { product: string }) {
         <span className="flex w-52 shrink-0 items-center justify-end gap-2 text-xs whitespace-nowrap">
           {mode === 'live' ? (
             <>
-              <span className="inline-flex items-center gap-1.5 rounded-chip bg-live/10 px-2 py-0.5 font-medium text-live">
-                <span className="size-1.5 rounded-full bg-live" aria-hidden="true" />
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1.5 rounded-chip px-2 py-0.5 font-medium',
+                  TONE.live.soft,
+                  TONE.live.text,
+                )}
+              >
+                <span className={cn('size-1.5 rounded-full', TONE.live.bg)} aria-hidden="true" />
                 live
               </span>
               {lastWrite && <span className="truncate text-ink-faint">last write {agoWords(ago(lastWrite, now))}</span>}
             </>
           ) : (
-            <span className="inline-flex min-w-0 items-center gap-1.5 rounded-chip bg-status-review/10 px-2 py-0.5 font-medium text-status-review">
-              <span className="size-1.5 shrink-0 rounded-full bg-status-review" aria-hidden="true" />
+            <span
+              className={cn(
+                'inline-flex min-w-0 items-center gap-1.5 rounded-chip px-2 py-0.5 font-medium',
+                TONE.waits.soft,
+                TONE.waits.text,
+              )}
+            >
+              <span className={cn('size-1.5 shrink-0 rounded-full', TONE.waits.bg)} aria-hidden="true" />
               <span className="truncate">
                 paused · {arrivedCount ? `${arrivedCount} new since` : 'nothing new since'}
               </span>
@@ -356,7 +369,7 @@ function Tick({
       <span
         className={cn(
           'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full group-hover:bg-ink',
-          e.decision ? 'h-4 w-[3px] bg-status-review' : 'h-2.5 w-px bg-ink-muted',
+          e.decision ? cn('h-4 w-[3px]', TONE.waits.bg) : cn('h-2.5 w-px', TONE.quiet.bg),
           fresh && !e.decision && 'bg-primary',
           held && 'h-5 w-[3px] bg-primary',
         )}

@@ -1,5 +1,6 @@
 // The milestone page: a large ring, the next line first, what leads to completion from three sides (changes
 // beneath, features touched, projects involved), the decisions, and what blocks it.
+import { cn } from 'cn';
 import { Link } from '@tanstack/react-router';
 import { Check, Map } from 'lucide-react';
 import type { ChangeContext, Lens, Scope, ScopeNode } from '@/data/contract';
@@ -10,6 +11,7 @@ import { NodeLink } from '@/components/links/NodeLink';
 import { Figures } from '@/components/stats/Figures';
 import { Ring } from '@/components/stats/Ring';
 import { childrenByStatus, decided, featuresTouched, projectsInvolved, proposed, rowsBeneath } from './model';
+import { TONE } from '@/lib/tones';
 
 export function MilestonePage({
   scope,
@@ -83,7 +85,7 @@ export function MilestonePage({
           {
             value: yes.length,
             label: open.length ? `decided · ${open.length} waiting` : 'decisions, all decided',
-            tone: open.length ? 'text-status-review' : undefined,
+            tone: open.length ? TONE.waits.text : undefined,
           },
           { value: ctx.sources.length, label: 'sources' },
           { value: sinceDays(scope.health.staleDays), label: 'last moved' },
@@ -110,7 +112,7 @@ export function MilestonePage({
                   <span
                     className={
                       r.status === 'done'
-                        ? 'grid size-4 place-items-center rounded-full bg-status-done'
+                        ? cn('grid size-4 place-items-center rounded-full', TONE.done.bg)
                         : 'size-4 rounded-full border-[1.5px] border-line-strong'
                     }
                   >
@@ -140,14 +142,14 @@ export function MilestonePage({
               <span
                 className={
                   d.status === 'decided'
-                    ? 'grid size-4 place-items-center rounded-full bg-status-done'
-                    : 'size-4 rounded-full border-[1.5px] border-status-review'
+                    ? cn('grid size-4 place-items-center rounded-full', TONE.done.bg)
+                    : cn('size-4 rounded-full border-[1.5px]', TONE.waits.line)
                 }
               >
                 {d.status === 'decided' && <Check className="size-2.5 text-primary-foreground" strokeWidth={3} />}
               </span>
               <span className="min-w-0 flex-1 truncate">{d.title ?? short(d.key)}</span>
-              {d.status !== 'decided' && <span className="text-meta text-status-review">waiting</span>}
+              {d.status !== 'decided' && <span className={cn('text-meta', TONE.waits.text)}>waiting</span>}
             </NodeLink>
           ))}
         </section>

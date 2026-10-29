@@ -27,6 +27,7 @@ import {
   ticks,
   violationText,
 } from './model';
+import { statusTone, TONE } from '@/lib/tones';
 
 const LABEL_W = 216;
 const PAST_W = 320;
@@ -34,15 +35,6 @@ const COL_W = 184;
 const ROW_MIN = 40;
 const MARK_H = 22;
 const BAR_H = 8;
-
-const STATUS_BG: Record<string, string> = {
-  active: 'bg-status-active',
-  review: 'bg-status-review',
-  blocked: 'bg-status-blocked',
-  planning: 'bg-status-planning',
-  open: 'bg-status-open',
-  done: 'bg-status-done',
-};
 
 export interface RoadmapChartProps {
   scope: Scope;
@@ -184,7 +176,7 @@ export function RoadmapChart({
       title={`${plural(n, 'open bug')}${worst ? `, worst ${worst}` : ''} · on the map`}
       className={cn(
         'ml-auto inline-flex h-5 shrink-0 items-center gap-1 rounded-chip px-1.5 text-meta font-medium hover:bg-raised',
-        worst === 'product' || worst === 'feature' ? 'text-status-blocked' : 'text-ink-faint',
+        worst === 'product' || worst === 'feature' ? TONE.alarm.text : 'text-ink-faint',
       )}
       onClick={(e) => e.stopPropagation()}
     >
@@ -201,16 +193,16 @@ export function RoadmapChart({
           {plural(scope.roadmap.sequence.length, 'entry', 'entries')} in order
           {scope.roadmap.later.length ? ` · ${scope.roadmap.later.length} later` : ''}
           {scope.roadmap.violations.length ? (
-            <span className="text-status-review"> · {plural(scope.roadmap.violations.length, 'warning')}</span>
+            <span className={TONE.waits.text}> · {plural(scope.roadmap.violations.length, 'warning')}</span>
           ) : null}
         </span>
         <span className="ml-auto flex items-center gap-3 text-meta text-ink-faint" aria-label="Legend">
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-6 rounded-[4px] bg-status-done" aria-hidden="true" />
+            <span className={cn('inline-block h-2 w-6 rounded-[4px]', TONE.done.bg)} aria-hidden="true" />
             done, by the day
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-6 rounded-r-[4px] bg-status-active" aria-hidden="true" />
+            <span className={cn('inline-block h-2 w-6 rounded-r-[4px]', TONE.active.bg)} aria-hidden="true" />
             in flight, to now
           </span>
           <span className="flex items-center gap-1.5">
@@ -350,7 +342,7 @@ export function RoadmapChart({
                         className={cn(
                           'block h-full w-full rounded-l-[4px]',
                           b.done ? 'rounded-r-[4px]' : '',
-                          STATUS_BG[b.row.status ?? 'open'] ?? STATUS_BG.open,
+                          statusTone(b.row.status).bg,
                           on ? 'opacity-100 ring-2 ring-ground' : 'opacity-80',
                           selected === b.row.key && 'ring-2 ring-accent',
                         )}
@@ -426,16 +418,13 @@ export function RoadmapChart({
                         )}
                       >
                         <span
-                          className={cn(
-                            'size-[7px] shrink-0 rounded-full',
-                            STATUS_BG[e.status ?? 'open'] ?? STATUS_BG.open,
-                          )}
+                          className={cn('size-[7px] shrink-0 rounded-full', statusTone(e.status).bg)}
                           aria-hidden="true"
                         />
                         <span className="min-w-0 flex-1 truncate">{e.title ?? short(e.key)}</span>
                         {e.live && <Pulse className="size-[6px]" />}
                         {v.length > 0 && (
-                          <TriangleAlert className="size-3 shrink-0 text-status-review" aria-label="warning" />
+                          <TriangleAlert className={cn('size-3 shrink-0', TONE.waits.text)} aria-label="warning" />
                         )}
                       </button>
                     );
@@ -478,7 +467,7 @@ export function RoadmapChart({
                 strokeWidth={2}
                 strokeLinecap="round"
                 markerEnd="url(#roadmap-arrow)"
-                className={e.bad ? 'text-status-blocked' : 'text-primary'}
+                className={e.bad ? TONE.alarm.text : 'text-primary'}
                 stroke="currentColor"
                 opacity={0.85}
               />
@@ -581,7 +570,7 @@ function ColumnHeader({
       )}
       {warn && (
         <span className="group relative shrink-0">
-          <TriangleAlert className="size-3.5 text-status-review" aria-label={warn} />
+          <TriangleAlert className={cn('size-3.5', TONE.waits.text)} aria-label={warn} />
           <span className="pointer-events-none absolute top-full right-0 z-30 mt-1 hidden w-[240px] flex-col gap-1.5 rounded-card border border-line bg-popover p-2.5 text-left text-meta text-ink shadow-lg group-hover:flex group-focus-within:flex">
             <span>{warn}</span>
             {onRepair && (

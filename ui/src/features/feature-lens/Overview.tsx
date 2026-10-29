@@ -2,6 +2,7 @@
 // node's level in the template, so siblings always share one experience: the product is the portfolio, a feature is
 // its capabilities and the work beneath, a capability is the work itself (with whatever nests under it listed first).
 // Work is grouped by intent, what waits on a person first.
+import { cn } from 'cn';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { ChangeRow, Lens, Scope, ScopeNode, WaitingDecision } from '@/data/contract';
@@ -16,6 +17,7 @@ import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { NodeHeader } from '@/components/record/NodeHeader';
 import { allWork, bodyOf, byMotion, featuresBelow, featuresByState, healthWord, inFlight, unassigned } from './model';
+import { TONE } from '@/lib/tones';
 
 const STATES = ['live', 'building', 'planned', 'retired'] as const;
 /** A level label in the plural: capability, capabilities. */
@@ -104,7 +106,7 @@ function ProductBody({ scope, lens }: { scope: Scope; lens: Lens }) {
                     </div>
                     <div className="h-1 overflow-hidden rounded-full bg-raised">
                       <div
-                        className="h-full rounded-full bg-status-done"
+                        className={cn('h-full rounded-full', TONE.done.bg)}
                         style={{ width: `${pct(p.done, p.total)}%` }}
                       />
                     </div>
@@ -236,7 +238,7 @@ function FeatureList({ features, lens }: { features: ScopeNode[]; lens: Lens }) 
               <span
                 className={
                   word === 'stale'
-                    ? 'w-24 text-right text-meta text-status-review'
+                    ? cn('w-24 text-right text-meta', TONE.waits.text)
                     : 'w-24 text-right text-meta text-ink-faint'
                 }
               >

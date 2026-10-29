@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import type { Health } from '@/data/contract';
 import { plural, sinceDays } from '@/lib/format';
 import { Label, StatusChip } from '@/components/chips/Chip';
+import { TONE } from '@/lib/tones';
 
 export type HealthWord = 'active' | 'stale' | 'not started';
 
@@ -38,7 +39,7 @@ export interface NodeHeaderProps {
 
 const WORD_TONE: Record<HealthWord, string> = {
   active: 'text-state-live',
-  stale: 'text-status-review',
+  stale: TONE.waits.text,
   'not started': 'text-ink-faint',
 };
 
@@ -108,7 +109,7 @@ export function NodeHeader({
         {waiting > 0 && (
           <>
             {sep}
-            <span className="font-medium text-status-review">{waiting} waiting on you</span>
+            <span className={cn('font-medium', TONE.waits.text)}>{waiting} waiting on you</span>
           </>
         )}
         {bugs && bugs.count > 0 && (
@@ -121,9 +122,9 @@ export function NodeHeader({
               className={cn(
                 'hover:underline',
                 bugs.worst === 'product' || bugs.worst === 'feature'
-                  ? 'font-medium text-status-blocked'
+                  ? cn('font-medium', TONE.alarm.text)
                   : bugs.worst === 'capability'
-                    ? 'text-status-review'
+                    ? TONE.waits.text
                     : '',
               )}
             >

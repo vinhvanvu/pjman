@@ -34,6 +34,7 @@ import { short } from '@/lib/keys';
 import { usePreferences } from '@/state/preferences';
 import { freshScope, pageProduct } from '@/lib/identity';
 import type { PageSearch } from './-search';
+import { decisionTone } from '@/lib/tones';
 
 export interface LensPageProps {
   lens: Lens;
@@ -424,7 +425,7 @@ function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
       {items.map((d) => (
         <li key={d.key} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <Chip className={d.status === 'proposed' ? 'text-status-review' : 'text-status-done'}>
+            <Chip className={decisionTone(d.status).text}>
               <span aria-hidden="true" className="size-[7px] rounded-full bg-current" />
               {d.status}
             </Chip>

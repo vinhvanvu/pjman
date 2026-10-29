@@ -8,6 +8,7 @@ import { truncate } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Chip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
+import { TONE } from '@/lib/tones';
 
 export function DecisionRows({
   items,
@@ -46,7 +47,7 @@ export function DecisionRows({
                   className={cn('size-3.5 shrink-0 text-ink-faint transition-transform', isOpen && 'rotate-90')}
                   aria-hidden="true"
                 />
-                <Chip className="text-status-review">
+                <Chip className={TONE.waits.text}>
                   <span aria-hidden="true" className="size-[7px] rounded-full bg-current" />
                   decide
                 </Chip>
