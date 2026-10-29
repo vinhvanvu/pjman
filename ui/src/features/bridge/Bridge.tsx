@@ -28,7 +28,7 @@ export function Bridge({
   const resolved = useResolved();
   const held = cursor.at || cursor.event ? momentWords(cursor, resolved) : undefined;
   return (
-    <div className="flex flex-col gap-5 p-5 md:p-6" data-scroll-restoration-id="bridge">
+    <div className="flex flex-col gap-5 p-5 md:p-6 lg:h-full lg:min-h-0" data-scroll-restoration-id="bridge">
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
         <h2 className="text-section font-semibold">
           Sessions by need{held && <span className="font-normal text-status-review">, {held}</span>}
@@ -41,9 +41,9 @@ export function Bridge({
         </span>
       </div>
       {/* the canvas's columns: what shows on the left (the lanes now, the stage above them later), what commands on
-          the right; narrow, they stack */}
-      <div className="flex flex-wrap items-start gap-5">
-        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4">
+          the right, each scrolling on its own at desktop width; narrow, they stack and the page scrolls */}
+      <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
+        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4 lg:overflow-y-auto">
           <Lanes product={product} sessions={data.sessions} />
         </div>
         <Strip
@@ -51,7 +51,7 @@ export function Bridge({
           sessions={data.sessions}
           lens={lens}
           touched={touched}
-          className="min-w-0 flex-[1_1_360px] lg:max-w-[420px]"
+          className="min-w-0 flex-[1_1_360px] lg:w-[380px] lg:flex-none lg:overflow-y-auto lg:pr-1"
         />
       </div>
     </div>

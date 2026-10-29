@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import { useSessionView } from '@/data/queries';
 import { kindOf } from '@/lib/keys';
 import { useFollow } from '@/state/follow';
+import { Pending } from '@/components/Pending';
 import { LensPage } from './-LensPage';
 import { pageSearch } from './-search';
 
@@ -24,7 +25,7 @@ function SessionPage() {
         No session {id}: {error.message}
       </div>
     );
-  if (!data) return null;
+  if (!data) return <Pending />;
   const key = data.showing.key;
   // what the session is on; a session on no change is followed at its product (its project has no lens of its own)
   const node = key && kindOf(key) !== 'project' ? key : data.session?.product;

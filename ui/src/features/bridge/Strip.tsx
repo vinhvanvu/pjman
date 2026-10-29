@@ -11,7 +11,6 @@ import type { BridgeChange, BridgeSession, Lens, SessionState, WaitingChange, Wa
 import { plural } from '@/lib/format';
 import { restOf, short } from '@/lib/keys';
 import { Label, StatusChip } from '@/components/chips/Chip';
-import { NodeLink } from '@/components/links/NodeLink';
 import { cardWhen, proposedWhen, strip, subagentWords, type WaitItem } from './model';
 
 export const DOT: Record<SessionState, string> = {
@@ -122,17 +121,20 @@ function Section({
   );
 }
 
-/** The frame every card shares: a link to the session's dock when there is a session, else to the change. */
+/** The frame every card shares: a link to the session's dock when there is a session, else to the change on the
+ *  product map, on `tab` when one is named. The bridge has no record pane, so a change always opens on the map, never
+ *  as a selection on the bridge. */
 function CardFrame({
   session,
   change,
-  lens,
+  tab,
   className,
   children,
 }: {
   session?: BridgeSession;
   change?: BridgeChange;
   lens: Lens;
+  tab?: 'decisions';
   className?: string;
   children: ReactNode;
 }) {
@@ -151,9 +153,9 @@ function CardFrame({
     );
   if (change)
     return (
-      <NodeLink to={change.key} lens={lens} className={frame}>
+      <Link to="/$lens/$" params={{ lens: 'feature', _splat: change.key }} search={{ tab }} className={frame}>
         {children}
-      </NodeLink>
+      </Link>
     );
   return <div className={frame}>{children}</div>;
 }
@@ -207,6 +209,7 @@ export function WaitCard({ item, lens, touched }: { item: WaitItem; lens: Lens; 
       session={session}
       change={change}
       lens={lens}
+      tab="decisions"
       className={cn('border-status-review/60', isTouched(touched, session, change) && OUTLINE)}
     >
       <span className="flex items-center gap-2">

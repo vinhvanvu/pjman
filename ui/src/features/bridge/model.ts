@@ -108,7 +108,9 @@ export interface Lane {
 export const sessionOf = (e: TimelineEvent): string | undefined =>
   e.session ?? (e.type === 'session' ? e.key : undefined);
 
-/** The rows: the bridge's sessions in its order (most recent act first), those with something in the window. */
+/** The rows: the bridge's sessions in its order (most recent act first), those with something in the window. A
+ *  session that ended without ever naming a change is left out, as the strip leaves it out: it has nothing to show
+ *  and nowhere to open. */
 export function lanesOf(sessions: readonly BridgeSession[], events: readonly TimelineEvent[]): Lane[] {
   const row = new Map<string, string>();
   for (const s of sessions) {
@@ -127,7 +129,7 @@ export function lanesOf(sessions: readonly BridgeSession[], events: readonly Tim
     if (e.type === 'decision' && e.op === 'created') lane.flags.push(e);
   }
   return sessions.flatMap((s) => {
-    const lane = by.get(s.key);
+    const lane = s.state === 'ended' && !s.change ? undefined : by.get(s.key);
     return lane ? [{ session: s, ...lane }] : [];
   });
 }

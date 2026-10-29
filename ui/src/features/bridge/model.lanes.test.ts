@@ -20,7 +20,8 @@ const ev = (seq: number, over: Partial<TimelineEvent>): TimelineEvent => ({
 
 describe('lanesOf', () => {
   const kid = session('session:kid');
-  const sessions = [session('session:a', [kid]), session('session:b'), session('session:quiet')];
+  const idle = { ...session('session:idle'), state: 'ended' as const };
+  const sessions = [session('session:a', [kid]), session('session:b'), session('session:quiet'), idle];
   const events = [
     ev(1, { op: 'log', type: 'session', key: 'session:a' }),
     ev(2, { session: 'session:a' }),
@@ -29,9 +30,10 @@ describe('lanesOf', () => {
     ev(5, { op: 'log', type: 'session', key: 'session:b' }),
     ev(6, { op: 'log', type: 'session', key: 'session:stranger' }),
     ev(7, { writer: 'person:vinh' }),
+    ev(8, { op: 'log', type: 'session', key: 'session:idle' }),
   ];
   const lanes = lanesOf(sessions, events);
-  it("keeps the bridge's order and leaves out a session with nothing in the window and events of no row", () => {
+  it("keeps the bridge's order, leaving out a session with nothing in the window, one that ended on no change and events of no row", () => {
     expect(lanes.map((l) => l.session.key)).toEqual(['session:a', 'session:b']);
   });
   it("draws its lines as beats and the decisions it opened as flags, its subagent's lines on its row", () => {
