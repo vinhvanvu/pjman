@@ -25,7 +25,6 @@ describe('dockArrivals', () => {
   it('takes the newest arrival on each part the dock draws, and nothing from another change or session', () => {
     const a = dockArrivals(events, S, C);
     expect(a.line?.seq).toBe(1);
-    expect(a.next?.seq).toBe(2);
     expect(a.status?.seq).toBe(3);
     expect([...a.opened.keys()]).toEqual(['decision:pjman/x/pick']);
     expect(a.any?.seq).toBe(4);

@@ -95,11 +95,10 @@ export function readiness(row: Pick<ChangeRow, 'waiting' | 'decided'>, stacked =
 }
 
 /** What the live stream just changed on the dock (change:motion-design), the newest arrival on each part it draws: a
- *  line the session wrote, the change's next or its status, a decision opened on it; `any` is the newest of them all,
+ *  line the session wrote, the change's status, a decision opened on it; `any` is the newest of them all,
  *  which flashes the following pill. Each washes once, in that event's colour. */
 export interface DockArrivals {
   line?: StoreEvent;
-  next?: StoreEvent;
   status?: StoreEvent;
   opened: ReadonlyMap<string, StoreEvent>;
   any?: StoreEvent;
@@ -113,7 +112,6 @@ export function dockArrivals(events: readonly StoreEvent[], session: string, cha
     if (e.session !== session && e.key !== session && !onChange) continue;
     out.any = e;
     if (e.key === session && e.op === 'log') out.line = e;
-    if (change && e.key === change && e.fields?.includes('next')) out.next = e;
     if (change && e.key === change && e.fields?.includes('status')) out.status = e;
     if (onChange && e.type === 'decision' && e.op === 'created') opened.set(e.key, e);
   }
