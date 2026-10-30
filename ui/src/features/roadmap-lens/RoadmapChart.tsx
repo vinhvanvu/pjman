@@ -6,7 +6,7 @@
 // uses: the dashboard's first write.
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { Bug, ChevronRight, GripVertical, TriangleAlert } from 'lucide-react';
+import { Bug, ChevronRight, Diamond, GripVertical, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeRow, Scope } from '@/data/contract';
 import { useOrder } from '@/data/queries';
@@ -16,6 +16,7 @@ import { Label, StateDot } from '@/components/chips/Chip';
 import { Pulse } from '@/components/presence/Presence';
 import { Ring } from '@/components/stats/Ring';
 import {
+  aspectNames,
   bars,
   type Column,
   columns as columnsOf,
@@ -80,6 +81,11 @@ export function RoadmapChart({
   const allBars = useMemo(() => bars(rows, now), [rows, now]);
   const x = (t: number) => ((Math.max(t, span.from) - span.from) / (span.to - span.from)) * PAST_W;
   const titles = useMemo(() => new Map(rows.map((r) => [r.key, r.title])), [rows]);
+  // an entry that works on an aspect carries a diamond, the aspects named on hover
+  const worksOn = useMemo(
+    () => new Map(rows.map((r) => [r.key, aspectNames(r, scope.aspects).join(', ')])),
+    [rows, scope.aspects],
+  );
 
   // per lane: the bars in its past cell and the entries in each column cell
   const cells = useMemo(() => {
@@ -491,6 +497,14 @@ export function RoadmapChart({
                           />
                           <span className="min-w-0 flex-1 truncate">{e.title ?? short(e.key)}</span>
                           {e.live && <Pulse className="size-[6px]" />}
+                          {worksOn.get(e.key) && (
+                            <span className="shrink-0" title={`works on ${worksOn.get(e.key)}`}>
+                              <Diamond
+                                className="size-3 text-ink-faint"
+                                aria-label={`works on ${worksOn.get(e.key)}`}
+                              />
+                            </span>
+                          )}
                           {v.length > 0 && (
                             <TriangleAlert className={cn('size-3 shrink-0', TONE.waits.text)} aria-label="warning" />
                           )}

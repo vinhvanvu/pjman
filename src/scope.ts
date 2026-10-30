@@ -10,7 +10,7 @@ import { ahead, productOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
-import { aspectKeysOf, aspectsForFeatures, aspectWhole, type AspectAt, type AspectWhole } from './aspects.js';
+import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
 export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
@@ -47,7 +47,8 @@ export interface ChangeRow {
   next?: string;
   /** A parent change is a milestone: done children over children not dropped. */
   progress?: { done: number; total: number };
-  features: { effect: EffectName; key: string; title?: string }[];
+  /** The features it names, then the features of the places it names (`viaPlace`), where the dashboard files it too. */
+  features: { effect: EffectName; key: string; title?: string; viaPlace?: boolean }[];
   /** Proposed decisions on it: what waits on a person. */
   waiting: number;
   /** Decisions on it decided; superseded and reverted ones are history and count in neither. */
@@ -320,6 +321,30 @@ class Index {
     return { began, finished: done ? last ?? (str(c.data.created) ? `${str(c.data.created)}T00:00:00.000Z` : undefined) : undefined };
   }
 
+  private readonly placed = new Map<string, Rec[]>();
+  /** The features of the places a change names (change:aspect-work-on-the-roadmap). The dashboard files the change there
+   *  as if it named them, on the map, on the roadmap and in a lane; the store's ancestry never does, so aspect work
+   *  counts toward no feature's progress or status. */
+  placeFeatures(c: Rec): Rec[] {
+    let out = this.placed.get(c.key);
+    if (!out) {
+      out = aspectKeysOf(this.loaded, c)
+        .map((k) => live(this.loaded, k))
+        .filter((p): p is Rec => p?.type === 'place')
+        .map((p) => featureOfPlace(this.loaded, p))
+        .filter((f): f is Rec => !!f);
+      this.placed.set(c.key, out);
+    }
+    return out;
+  }
+
+  /** The changes filed beneath a feature through a place: the place's feature is the feature or below it. */
+  placedBeneath(key: string): string[] {
+    return this.changes
+      .filter((c) => this.placeFeatures(c).some((f) => f.key === key || (this.ancestors.get(f.key) ?? []).includes(key)))
+      .map((c) => c.key);
+  }
+
   /** The keys beneath a node, the node included; every key when the node is the root. */
   beneath(key: string | null): Set<string> {
     if (key === null) return new Set(this.ancestors.keys());
@@ -359,7 +384,10 @@ class Index {
       key: c.key, title: str(c.data.title), status: str(c.data.status), created: str(c.data.created),
       project: live(this.loaded, c.data.project)?.key, parent: this.parentOf(c), ticket: ticketOf(this.loaded, c), next: str(c.data.next),
       progress: progressOf(kids.map((k) => ({ status: str(k.data.status) }))),
-      features: effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
+      features: [
+        ...effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
+        ...this.placeFeatures(c).map((f) => ({ effect: 'changes' as const, key: f.key, title: str(f.data.title), viaPlace: true })),
+      ],
       waiting: this.waiting.get(c.key) ?? 0, decided: this.decided.get(c.key) ?? 0, live: sessions.length > 0, children: kids.length,
       moved: this.lastMoved(c),
       kind: str(c.data.kind), severity: str(c.data.severity), home: this.homeOf(c), target: str(c.data.target),
@@ -402,7 +430,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     const seen = new Set<string>();
     for (let cur: Rec | undefined = c; cur && !seen.has(cur.key); cur = live(loaded, cur.data.parent)) {
       seen.add(cur.key);
-      const f = effectsOf(cur).map((e) => live(loaded, e.key)).find((x) => x);
+      const f = effectsOf(cur).map((e) => live(loaded, e.key)).find((x) => x) ?? ix.placeFeatures(cur)[0];
       if (f) return f;
     }
     return undefined;
@@ -416,6 +444,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   }
 
   const beneath = ix.beneath(container?.key ?? null);
+  if (container?.type === 'feature') for (const k of ix.placedBeneath(container.key)) beneath.add(k);
   const inScope = ix.changes.filter((c) => beneath.has(c.key) && c.key !== container?.key);
   const shown = inScope.filter((c) => (opts.done ? c.data.status !== 'dropped' : isOpen(c)));
   const shownKeys = new Set(shown.map((c) => c.key));
@@ -456,8 +485,10 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       bugs,
     };
   };
-  const names = (c: Rec, key: string) => effectsOf(c).some((e) => live(loaded, e.key)?.key === key);
-  const namesNothing = (c: Rec) => effectsOf(c).length === 0;
+  // a place a change names files it at the place's feature, as if it named that feature
+  const names = (c: Rec, key: string) =>
+    effectsOf(c).some((e) => live(loaded, e.key)?.key === key) || ix.placeFeatures(c).some((f) => f.key === key);
+  const namesNothing = (c: Rec) => effectsOf(c).length === 0 && ix.placeFeatures(c).length === 0;
   const featureChildren = (key: string) => loaded.records.filter((f) => f.type === 'feature' && f.valid && structuralParent(loaded, f)?.key === key);
   const featureNode = (f: Rec): ScopeNode | null => {
     const d = derivedStatus(loaded, f.key);
@@ -494,7 +525,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       tree = [...children, ...rows(shown.filter((c) => names(c, container!.key)), (k) => names(k, container!.key) || namesNothing(k), true)];
     } else {
       // a project or a milestone: the features its changes name, flat
-      tree = flat(shown.flatMap((c) => effectsOf(c).map((e) => live(loaded, e.key)).filter((f): f is Rec => !!f)), featureNode);
+      tree = flat(shown.flatMap((c) => [...effectsOf(c).map((e) => live(loaded, e.key)).filter((f): f is Rec => !!f), ...ix.placeFeatures(c)]), featureNode);
     }
   } else if (lens === 'project') {
     if (!container) tree = [...products.map((p) => productNode(p, 'project')), ...loaded.records.filter((p) => p.type === 'project' && p.valid && !structuralParent(loaded, p)).map(projectNode)];

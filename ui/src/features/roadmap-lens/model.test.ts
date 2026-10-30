@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { ChangeRow, Scope, ScopeNode } from '@/data/contract';
+import type { ChangeRow, Scope, ScopeAspect, ScopeNode } from '@/data/contract';
 import {
+  aspectNames,
   bars,
   bySeverity,
   columns,
@@ -187,5 +188,16 @@ describe('edgeShape', () => {
     expect(e.d).toBe('M 104 20 L 100 56');
     expect(e.late).toBe(false);
     expect(edgeShape({ past: m(10, 110, 20) }, { past: m(40, 100, 60) }, SEAM, 4, 5)!.late).toBe(true);
+  });
+});
+
+describe('aspectNames', () => {
+  const aspects = [
+    { aspect: 'aspect:p/text', name: 'Text', title: 'How text reads', base: '', places: [] },
+  ] as ScopeAspect[];
+  it('names each aspect an entry works on once, a place by its aspect, an unknown aspect by its slug', () => {
+    const r = row('a', { aspects: ['aspect:p/text', 'aspect:p/text/cart', 'aspect:p/motion'] });
+    expect(aspectNames(r, aspects)).toEqual(['Text', 'motion']);
+    expect(aspectNames(row('b'), aspects)).toEqual([]);
   });
 });
