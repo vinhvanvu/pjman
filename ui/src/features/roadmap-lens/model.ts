@@ -2,8 +2,18 @@
 // (its first feature's lane, or the nearest open ancestor's, or the foundations), the columns of the future (the
 // sequence, then later), the past's span and ticks, and which rows draw as bars. Nothing here knows pixels except the
 // scale it is handed.
-import type { ChangeRow, Scope, ScopeNode, Violation } from '@/data/contract';
-import { short } from '@/lib/keys';
+import type { ChangeRow, Scope, ScopeAspect, ScopeNode, Violation } from '@/data/contract';
+import { aspectOf, short } from '@/lib/keys';
+
+/** The aspects an entry works on, by name, for its diamond (change:aspect-work-on-the-roadmap): each aspect it names,
+ *  and the aspect of each place it names, once. */
+export function aspectNames(row: ChangeRow, aspects: ScopeAspect[]): string[] {
+  const keys = [...new Set(row.aspects.map((k) => aspectOf(k)).filter((k): k is string => !!k))];
+  return keys.map((k) => {
+    const a = aspects.find((x) => x.aspect === k);
+    return a ? (a.name ?? a.title) : short(k);
+  });
+}
 
 export const FOUNDATIONS = '__foundations__';
 export const LATER = '__later__';

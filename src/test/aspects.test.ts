@@ -146,6 +146,21 @@ test('a change row carries the aspects and places it names, as live keys: the ro
   assert.deepEqual(rows.find((r) => r.key === 'change:shop/app-wide')?.aspects, []);
 });
 
+test("a change naming a place is filed at the place's feature by the dashboard, never counted toward it", () => {
+  const atCart = scope(store, loadStore(store), { node: 'feature:shop/cart', lens: 'roadmap' });
+  const row = atCart.changes.find((r) => r.key === 'change:shop/cart-wording');
+  assert.ok(row, "on the feature's roadmap");
+  assert.deepEqual(row.features, [{ effect: 'changes', key: 'feature:shop/cart', title: rec('feature:cart')?.data.title, viaPlace: true }]);
+  assert.ok(atCart.tree.some((n) => n.key === 'change:shop/cart-wording'), 'in its tree, so in its lane');
+  // the store's ancestry is untouched: the feature's own counts leave it out
+  const product = scope(store, loadStore(store), { node: 'product:shop' });
+  const find = (list: typeof product.tree, key: string): (typeof product.tree)[number] | undefined =>
+    list.map((n) => (n.key === key ? n : find(n.children, key))).find((n) => n);
+  const cart = find(product.tree, 'feature:shop/cart');
+  assert.ok(cart?.children.some((n) => n.key === 'change:shop/cart-wording'), 'under the feature on the map');
+  assert.equal(cart?.open, scope(store, loadStore(store), { node: 'feature:shop/cart' }).changes.filter((r) => !r.features.every((f) => f.viaPlace)).length);
+});
+
 test('a feature with a place is not removed from under it; a moved feature takes its places along; an aspect removed takes its places', () => {
   assert.throws(() => rm(store, 'feature:search'), /referenced by[\s\S]*aspect:shop\/text\/search/);
   mv(store, 'feature:search', 'feature:find', {});
