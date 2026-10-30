@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeRow, Scope, ScopeNode } from '@/data/contract';
-import { beneathMilestone, narrowToMilestone, pruneTree } from './narrow';
+import { beneathMilestone, narrowToAspect, narrowToMilestone, pruneTree, worksOn } from './narrow';
 
 const row = (key: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   key: `change:${key}`,
@@ -12,6 +12,7 @@ const row = (key: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   live: false,
   children: 0,
   dependsOn: [],
+  aspects: [],
   ...extra,
 });
 const changeNode = (r: ChangeRow): ScopeNode => ({
@@ -77,5 +78,43 @@ describe('narrowing to a milestone', () => {
     expect(out.changes.map((r) => r.key)).toEqual(['change:a', 'change:b', 'change:sub']);
     expect(out.waitingOn.map((d) => d.key)).toEqual(['decision:a/x']);
     expect(out.health).toBe(scope.health);
+  });
+});
+
+describe('narrowing to an aspect', () => {
+  const named = row('named', { parent: 'change:goal', aspects: ['aspect:p/text'], position: 1 });
+  const placed = row('placed', { aspects: ['aspect:p/text/cart'], position: 2 });
+  const other = row('other', { aspects: ['aspect:p/textual'], position: 0 });
+  const plain = row('plain', { parent: 'change:goal', position: 1 });
+  const parent = row('goal', { children: 2, position: 1 });
+  const bug = row('bug', { kind: 'bug', aspects: ['aspect:p/text'] });
+  const scope = {
+    changes: [other, parent, named, plain, placed, bug],
+    tree: [feature('f', [changeNode(named), changeNode(plain)])],
+    waitingOn: [{ key: 'decision:plain/x', change: 'change:plain' }],
+    bugs: [bug, row('other-bug', { kind: 'bug' })],
+    roadmap: {
+      product: 'product:p',
+      sequence: ['change:other', 'change:goal', 'change:placed'],
+      later: [],
+      violations: [{ kind: 'overdue', change: 'change:other' }],
+    },
+  } as unknown as Scope;
+
+  it('works on the aspect by naming it or one of its places, never an aspect that only shares the prefix', () => {
+    expect(worksOn(named, 'aspect:p/text')).toBe(true);
+    expect(worksOn(placed, 'aspect:p/text')).toBe(true);
+    expect(worksOn(other, 'aspect:p/text')).toBe(false);
+  });
+
+  it('keeps the work and the milestones it sits in, the sequence and positions following', () => {
+    const out = narrowToAspect(scope, 'aspect:p/text');
+    expect(out.changes.map((r) => r.key)).toEqual(['change:goal', 'change:named', 'change:placed', 'change:bug']);
+    expect(out.roadmap.sequence).toEqual(['change:goal', 'change:placed']);
+    expect(out.changes.map((r) => r.position)).toEqual([0, 0, 1, undefined]);
+    expect(out.roadmap.violations).toEqual([]);
+    expect(out.waitingOn).toEqual([]);
+    expect(out.bugs.map((r) => r.key)).toEqual(['change:bug']);
+    expect(out.tree[0]!.children.map((n) => n.key)).toEqual(['change:named']);
   });
 });

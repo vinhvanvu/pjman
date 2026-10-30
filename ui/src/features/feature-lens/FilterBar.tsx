@@ -155,14 +155,17 @@ export function FilterBar({ filter, onChange, matched, changes, aspects, classNa
 
 /** The aspect control: the chosen aspect with its clear, else a searchable list of the product's aspects, nested by
  *  parent, each with how many places it has. Nothing when the product has none. */
-function AspectPicker({
+export function AspectPicker({
   aspects,
   chosen,
   onChoose,
+  narrows = 'map',
 }: {
   aspects: ScopeAspect[];
   chosen?: string;
   onChoose: (aspect: string | undefined) => void;
+  /** What picking narrows: the map to where the aspect applies, the roadmap to the work on it. */
+  narrows?: 'map' | 'roadmap';
 }) {
   const [open, setOpen] = useState(false);
   const picked = chosen ? aspects.find((a) => a.aspect === chosen) : undefined;
@@ -171,7 +174,7 @@ function AspectPicker({
       <button
         type="button"
         onClick={() => onChoose(undefined)}
-        title="Showing only where this aspect applies · click to clear"
+        title={`${narrows === 'map' ? 'Showing only where this aspect applies' : 'Showing only the work on this aspect'} · click to clear`}
         className="inline-flex h-7 max-w-[260px] items-center gap-1.5 rounded-row border border-primary/50 bg-selection px-2 text-xs text-ink"
       >
         <Diamond className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
@@ -186,7 +189,11 @@ function AspectPicker({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         className="inline-flex h-7 items-center gap-1.5 rounded-row border border-line-strong px-2 text-xs text-ink-muted hover:bg-raised hover:text-ink"
-        title="Narrow the map to where one aspect applies"
+        title={
+          narrows === 'map'
+            ? 'Narrow the map to where one aspect applies'
+            : 'Narrow the roadmap to the work on one aspect'
+        }
       >
         <Diamond className="size-3.5" aria-hidden="true" />
         aspect
