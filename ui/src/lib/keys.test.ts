@@ -14,6 +14,16 @@ describe('keys', () => {
     expect(short('feature:pjman/activity', 'product:pjman')).toBe('activity');
     expect(productOf('feature:pjman/shell')).toBe('pjman');
     expect(productOf('decision:pjman/crud/x')).toBe('pjman');
+    expect(productOf('aspect:pjman/text')).toBe('pjman');
+    expect(productOf('aspect:pjman/text/dock')).toBe('pjman');
+    expect(short('aspect:pjman/text/dock')).toBe('text/dock');
+    // an aspect, or a place under one, opens its product's map with the aspect selected
+    expect(targetOf('aspect:pjman/text/dock', 'roadmap')).toEqual({
+      kind: 'node',
+      lens: 'feature',
+      node: 'product:pjman',
+      aspect: 'aspect:pjman/text',
+    });
     expect(changeOfDecision('decision:pjman/crud/x')).toBe('change:pjman/crud');
     expect(changeOfDecision('decision:/x')).toBeUndefined();
     expect(short('github-issue:vinhvanvu/pjman#4')).toBe('#4');

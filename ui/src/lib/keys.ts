@@ -5,8 +5,9 @@ import type { Lens } from '@/data/contract';
 export const kindOf = (key: string): string => key.slice(0, key.indexOf(':'));
 export const restOf = (key: string): string => key.slice(key.indexOf(':') + 1);
 
-/** Kinds keyed beneath a product: `feature:<product>/<slug>`, `change:<product>/<slug>`, `decision:<product>/<change>/<slug>`. */
-const SCOPED = new Set(['feature', 'change', 'decision']);
+/** Kinds keyed beneath a product: `feature:<product>/<slug>`, `change:<product>/<slug>`, `decision:<product>/<change>/<slug>`,
+ *  `aspect:<product>/<slug>` and its places `aspect:<product>/<aspect>/<place>`. */
+const SCOPED = new Set(['feature', 'change', 'decision', 'aspect']);
 
 /** The product segment of a scoped key, or undefined. */
 export function productOf(key: string): string | undefined {
@@ -14,6 +15,7 @@ export function productOf(key: string): string | undefined {
   const rest = restOf(key);
   const parts = rest.split('/');
   if (kindOf(key) === 'decision') return parts.length === 3 ? parts[0] : undefined; // `p/c/s`; a store-level `/s` or product-level `p/s` has no change
+  if (kindOf(key) === 'aspect') return parts.length >= 2 ? parts[0] : undefined; // an aspect `p/a`, a place `p/a/x`
   return parts.length === 2 ? parts[0] : undefined;
 }
 
@@ -41,8 +43,15 @@ export function homeLens(key: string): Lens | undefined {
   return kindOf(key) === 'feature' ? 'feature' : undefined;
 }
 
+/** The aspect a key names: the aspect itself, or the aspect a place sits under. Undefined for any other key. */
+export function aspectOf(key: string): string | undefined {
+  if (kindOf(key) !== 'aspect') return undefined;
+  const parts = restOf(key).split('/');
+  return parts.length >= 2 ? `aspect:${parts[0]}/${parts[1]}` : undefined;
+}
+
 export type Target =
-  | { kind: 'node'; lens: Lens; node: string }
+  | { kind: 'node'; lens: Lens; node: string; aspect?: string }
   | { kind: 'session'; id: string }
   | { kind: 'get'; key: string }
   | { kind: 'external'; url: string };
@@ -53,6 +62,10 @@ export function targetOf(key: string, lens: Lens): Target {
   if (kind === 'session') return { kind: 'session', id: restOf(key) };
   if (kind === 'url') return { kind: 'external', url: restOf(key) };
   if (kind === 'product' || kind === 'change') return { kind: 'node', lens, node: key };
+  // an aspect is read on its product's map, selected there (decision aspects-dashboard/aspect-is-a-map-lens)
+  const aspect = aspectOf(key);
+  const p = productOf(key);
+  if (aspect && p) return { kind: 'node', lens: 'feature', node: `product:${p}`, aspect };
   const home = homeLens(key);
   if (home) return { kind: 'node', lens: home, node: key };
   return { kind: 'get', key };

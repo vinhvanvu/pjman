@@ -1,5 +1,5 @@
 // A change as the selected record: status and ticket, the next line first, summary and plan, decisions (waiting first),
-// sources, sessions, children. The record pane in every lens when the node is a leaf change.
+// the aspects it works under, sources, sessions, children. The record pane in every lens when the node is a leaf change.
 import type { ChangeContext, Lens } from '@/data/contract';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
@@ -10,6 +10,7 @@ import { useDecideAction } from '@/data/queries';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
+import { ChangeAspectsView } from '@/features/aspects';
 import { decisionTone, TONE } from '@/lib/tones';
 
 export function ChangeRecord({
@@ -151,6 +152,13 @@ export function ChangeRecord({
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {ctx.aspects && (
+        <section className="flex flex-col gap-2">
+          <Label>Aspects</Label>
+          <ChangeAspectsView aspects={ctx.aspects} lens={lens} />
         </section>
       )}
 

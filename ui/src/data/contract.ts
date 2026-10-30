@@ -1,7 +1,17 @@
 // The API's types come from the tool itself (its emitted declarations under dist), type-only, so the contract has one
 // definition. Build the tool first (`npm run build` at the root). The constants are repeated on purpose: a value import
 // would pull server code into the bundle.
-export type { ChangeRow, Health, Lens, LiveSession, Scope, ScopeNode, WaitingDecision } from '@contract/scope';
+export type {
+  ChangeRow,
+  Health,
+  Lens,
+  LiveSession,
+  Scope,
+  ScopeAspect,
+  ScopeNode,
+  WaitingDecision,
+} from '@contract/scope';
+export type { AspectAt, AspectWhole, ChangeAspects, Layer, PlaceLine } from '@contract/aspects';
 export type { Violation } from '@contract/roadmap';
 export type { Bridge, BridgeChange, BridgeSession, SessionState, WaitingChange } from '@contract/bridge';
 export type { OrderResult } from '@contract/commands/order';

@@ -1,5 +1,5 @@
 // The feature lens's pure derivations over a scope: the product map is features only; changes appear at the leaf.
-import type { ChangeRow, Health, Scope, ScopeNode } from '@/data/contract';
+import type { ChangeRow, Health, Scope, ScopeAspect, ScopeNode } from '@/data/contract';
 
 export const MAP_ROOT = '__map__';
 
@@ -86,12 +86,51 @@ export interface MapFilter {
   /** Bugs only: the nodes a bug is listed at (its home), with the path to each; the bugs themselves are in the record
    *  pane of the node. The list the rail once had is this filter (decision rail-destinations/three-destinations). */
   bugs?: boolean;
+  /** An aspect (its key): the map narrows to the features it has a place at, each a leaf, since a place covers
+   *  everything beneath it; the ancestors that lead to them stay, faint (decision aspects-dashboard/aspect-is-a-map-lens). */
+  aspect?: string;
 }
 
-export const isFiltering = (f: MapFilter): boolean => !!f.q?.trim() || !!f.states?.length || !!f.milestone || !!f.bugs;
+export const isFiltering = (f: MapFilter): boolean =>
+  !!f.q?.trim() || !!f.states?.length || !!f.milestone || !!f.bugs || !!f.aspect;
 
-export function matches(n: ScopeNode, f: MapFilter): boolean {
+/** The features an aspect has a place at, each to its place: what the aspect filter keeps. */
+export type Places = ReadonlyMap<string, ScopeAspect['places'][number]>;
+
+export function placesAt(aspects: ScopeAspect[], key: string | undefined): Places {
+  const a = key ? aspects.find((x) => x.aspect === key) : undefined;
+  return new Map((a?.places ?? []).map((p) => [p.feature, p]));
+}
+
+/** The aspects as an outline: each under its parent, depth-first, siblings by name. A parent missing from the list
+ *  (another product's) leaves its children at the top. */
+export function aspectOutline(aspects: ScopeAspect[]): { aspect: ScopeAspect; depth: number }[] {
+  const keys = new Set(aspects.map((a) => a.aspect));
+  const byParent = new Map<string | undefined, ScopeAspect[]>();
+  for (const a of aspects) {
+    const p = a.parent && keys.has(a.parent) ? a.parent : undefined;
+    byParent.set(p, [...(byParent.get(p) ?? []), a]);
+  }
+  const out: { aspect: ScopeAspect; depth: number }[] = [];
+  const seen = new Set<string>();
+  const walk = (parent: string | undefined, depth: number) => {
+    for (const a of (byParent.get(parent) ?? []).toSorted((x, y) => nameOf(x).localeCompare(nameOf(y)))) {
+      if (seen.has(a.aspect)) continue;
+      seen.add(a.aspect);
+      out.push({ aspect: a, depth });
+      walk(a.aspect, depth + 1);
+    }
+  };
+  walk(undefined, 0);
+  return out;
+}
+
+/** What an aspect is called in a chip or a list: its name, else its slug. */
+export const nameOf = (a: Pick<ScopeAspect, 'aspect' | 'name'>): string => a.name ?? a.aspect.split('/').pop()!;
+
+export function matches(n: ScopeNode, f: MapFilter, places?: Places): boolean {
   if (n.type !== 'feature' && n.type !== 'product') return false;
+  if (f.aspect && !places?.has(n.key)) return false;
   const q = f.q?.trim().toLowerCase();
   if (q && ![n.name, n.title, n.key].some((s) => s?.toLowerCase().includes(q))) return false;
   if (f.states?.length && !f.states.includes(n.derived ?? n.status ?? 'planned')) return false;
@@ -117,14 +156,15 @@ export function bugMark(
   };
 }
 
-/** The tree narrowed to the features that match, with the ancestors that lead to them. */
-export function filterTree(tree: ScopeNode[], f: MapFilter): ScopeNode[] {
+/** The tree narrowed to the features that match, with the ancestors that lead to them. Under an aspect only places
+ *  match, so what is beneath a place is covered by it and not drawn, except a place beneath it (a fork further down). */
+export function filterTree(tree: ScopeNode[], f: MapFilter, places?: Places): ScopeNode[] {
   if (!isFiltering(f)) return tree;
   const walk = (list: ScopeNode[]): ScopeNode[] =>
     list.flatMap((n) => {
       if (n.type !== 'feature' && n.type !== 'product') return [];
       const kids = walk(n.children);
-      return matches(n, f) || kids.length ? [{ ...n, children: kids }] : [];
+      return matches(n, f, places) || kids.length ? [{ ...n, children: kids }] : [];
     });
   return walk(tree);
 }
