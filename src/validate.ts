@@ -3,11 +3,14 @@ import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
 import { supersedesOf } from './supersede.js';
+import { parseAspectEffect } from './aspects.js';
 import { isDateString, isTimestamp, localDate } from './util.js';
 
 const REQUIRED: Record<RecordType, string[]> = {
   product: ['title'],
   feature: ['title'],
+  aspect: ['title'],
+  place: ['feature'],
   project: ['title'],
   change: ['title', 'status'],
   decision: ['title', 'status'],
@@ -19,6 +22,8 @@ const REQUIRED: Record<RecordType, string[]> = {
 const STRING_FIELDS: Record<RecordType, string[]> = {
   product: ['title', 'name', 'writer', 'session', 'created'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
+  aspect: ['title', 'name', 'parent', 'writer', 'session', 'created'],
+  place: ['feature', 'writer', 'session', 'created'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'writer', 'session', 'created'],
   change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'next', 'writer', 'session', 'created'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'writer', 'session', 'created'], // supersedes: a key or a list, checked below
@@ -30,8 +35,10 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
 const LIST_FIELDS: Record<RecordType, string[]> = {
   product: ['owners', 'levels', 'sequence', 'links', 'aliases'],
   feature: ['owners', 'links', 'aliases'],
+  aspect: ['owners', 'links'],
+  place: ['links'],
   project: ['owners', 'links'],
-  change: ['depends_on', 'features', 'owners', 'binds', 'links', 'aliases'],
+  change: ['depends_on', 'features', 'aspects', 'owners', 'binds', 'links', 'aliases'],
   decision: ['links'],
   source: ['links'],
   session: ['changes'],
@@ -46,15 +53,17 @@ const REQUIRED_SECTIONS: Partial<Record<RecordType, string[]>> = {
 /** Edge name → [from kinds, to kinds]. 'source' stands for any source kind. */
 export const EDGES: Record<string, [string[], string[]]> = {
   binds: [['change'], ['source']],
-  links: [['product', 'feature', 'project', 'change', 'decision', 'source', 'actor'], ['source']],
+  links: [['product', 'feature', 'aspect', 'project', 'change', 'decision', 'source', 'actor'], ['source']],
   supersedes: [['decision'], ['decision']],
-  parent: [['session', 'change', 'feature', 'project'], ['session', 'change', 'feature', 'project']],
+  parent: [['session', 'change', 'feature', 'aspect', 'project'], ['session', 'change', 'feature', 'aspect', 'project']],
   depends_on: [['change'], ['change']],
   sequence: [['product'], ['change']],
   changes: [['session'], ['change']],
   project: [['change', 'session'], ['project']],
   product: [['feature', 'project'], ['product']],
-  owners: [['product', 'feature', 'project', 'change'], ['actor']],
+  owners: [['product', 'feature', 'aspect', 'project', 'change'], ['actor']],
+  feature: [['aspect'], ['feature']],
+  aspects: [['change'], ['aspect']],
   adds: [['change'], ['feature']],
   removes: [['change'], ['feature']],
 };
@@ -91,7 +100,7 @@ export function validate(loaded: Loaded): Problem[] {
       err(r, `${field}: '${String(raw)}' is not a key (kind:rest)`);
       return;
     }
-    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature'].includes(key.kind);
+    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature', 'aspect'].includes(key.kind);
     const cls = isRecordKind ? (isActorKey(key) ? 'actor' : key.kind) : 'source';
     if (cls === 'source' && !sourceKinds.has(key.kind)) {
       err(r, `${field}: '${key.raw}' has unknown kind '${key.kind}' (not a record kind; not in source_kinds)`);
@@ -117,7 +126,7 @@ export function validate(loaded: Loaded): Problem[] {
         break;
       case 'ok':
         // a stored reference is the full key; a bare one still resolves inside the record's product, and fmt will not rewrite it
-        if ((key.kind === 'change' || key.kind === 'feature' || key.kind === 'decision') && x.rec.key !== key.raw) info(r, `${field}: '${key.raw}' is the short form of '${x.rec.key}'`);
+        if ((key.kind === 'change' || key.kind === 'feature' || key.kind === 'decision' || key.kind === 'aspect') && x.rec.key !== key.raw) info(r, `${field}: '${key.raw}' is the short form of '${x.rec.key}'`);
         break;
       default:
         break;
@@ -220,6 +229,29 @@ export function validate(loaded: Loaded): Problem[] {
         checkAliases('feature');
         break;
       }
+      case 'aspect': {
+        if (r.aspectSlug && !SLUG_RE.test(r.aspectSlug)) err(r, `folder name '${r.aspectSlug}' is not a slug`);
+        if (typeof d.name === 'string' && (!d.name.trim() || d.name.trim().split(/\s+/).length > 3)) err(r, `name: one to three words ('${d.name}')`);
+        if (typeof d.parent === 'string') {
+          checkRef(r, 'parent', d.parent, ['aspect']);
+          const p = res(r, d.parent);
+          if ((p.status === 'ok' || p.status === 'alias') && p.rec.type !== 'aspect') err(r, `parent: '${d.parent}' is a place; an aspect nests under an aspect`);
+          else if ((p.status === 'ok' || p.status === 'alias') && p.rec.productSlug !== r.productSlug) err(r, `parent: '${d.parent}' is in another product; an aspect nests inside its own product`);
+          parentCycle('parent');
+        }
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        break;
+      }
+      case 'place': {
+        if (r.placeSlug && !SLUG_RE.test(r.placeSlug)) err(r, `file name '${r.placeSlug}' is not a slug`);
+        if (typeof d.feature === 'string') {
+          checkRef(r, 'feature', d.feature, ['feature']);
+          const f = liveKey(r, d.feature);
+          if (f && productOfKey(f) !== r.productSlug) err(r, `feature: '${d.feature}' is in another product; an aspect applies inside its own product`);
+        }
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        break;
+      }
       case 'project': {
         if (r.projectSlug && !SLUG_RE.test(r.projectSlug)) err(r, `file name '${r.projectSlug}' is not a slug`);
         if (typeof d.product === 'string') checkRef(r, 'product', d.product, ['product']);
@@ -288,6 +320,11 @@ export function validate(loaded: Loaded): Problem[] {
           const e = parseEffect(f);
           if (!e) err(r, `features: '${f}' must be '<effect> feature:<slug>' or 'feature:<slug>' (effects: ${EFFECTS.join(', ')})`);
           else checkRef(r, 'features', e.key, ['feature']);
+        }
+        for (const a of listOf(d.aspects)) {
+          const e = parseAspectEffect(a);
+          if (!e) err(r, `aspects: '${a}' must be '<effect> aspect:<slug>', '<effect> aspect:<aspect>/<place>' or a bare key (effects: ${EFFECTS.join(', ')})`);
+          else checkRef(r, 'aspects', e.key, ['aspect']);
         }
         for (const k of listOf(d.binds)) checkRef(r, 'binds', k, ['source']);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
@@ -428,6 +465,16 @@ export function validate(loaded: Loaded): Problem[] {
     if (recs.length > 1) {
       for (const r of recs) err(r, `duplicate key '${key}'; also at ${recs.filter((x) => x !== r).map((x) => x.path).join(', ')}`);
     }
+  }
+  // an aspect applies at a feature once: a second place there is a second source of truth
+  const placeAt = new Map<string, Rec[]>();
+  for (const r of loaded.records) {
+    if (r.type !== 'place' || !r.valid) continue;
+    const f = liveKey(r, r.data.feature);
+    if (f) placeAt.set(`${r.aspectKey} ${f}`, [...(placeAt.get(`${r.aspectKey} ${f}`) ?? []), r]);
+  }
+  for (const [, recs] of placeAt) {
+    if (recs.length > 1) for (const r of recs) err(r, `${r.aspectKey} already applies at ${String(r.data.feature)} through ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}; one place per feature`);
   }
   const boundBy = new Map<string, Rec[]>();
   for (const r of loaded.records) {

@@ -1,6 +1,6 @@
 # pjman adapter for Claude Code
 
-A plugin: seven hooks, one hooks module (`hooks/wake.ts`, below), three skills (`pjman`, the working rules; `intake`, how a request becomes a record; `map`, how a product gets its tree, or a better one) and one MCP server declaration (Linear's hosted server, so a session can read tickets after the person signs in with `/mcp`; the tool itself never signs in anywhere). Every write goes through `pjman`; the plugin holds no record logic of its own. The view beside the session is `pjman view`, rendered by the tool and docked by the plugin.
+A plugin: seven hooks, one hooks module (`hooks/wake.ts`, below), four skills (`pjman`, the working rules; `intake`, how a request becomes a record; `map`, how a product gets its tree, or a better one; `aspect`, what applies across the product: its base shaped by its kind, forks kept to what differs, reconciled when the base changes) and one MCP server declaration (Linear's hosted server, so a session can read tickets after the person signs in with `/mcp`; the tool itself never signs in anywhere). Every write goes through `pjman`; the plugin holds no record logic of its own. The view beside the session is `pjman view`, rendered by the tool and docked by the plugin.
 
 | Claude Code event | What happens |
 |---|---|

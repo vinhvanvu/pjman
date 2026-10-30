@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../config.js';
-import { changeKey, decisionKey, featureKey, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE, sourceFileSlug } from '../keys.js';
+import { aspectKey, changeKey, decisionKey, featureKey, parseAspectRest, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE, sourceFileSlug } from '../keys.js';
 import { loadStore, recordOf, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { rootProductOf } from '../tree.js';
 import { markSuperseded, resolveSupersedes } from '../supersede.js';
@@ -34,6 +34,9 @@ export interface NewFlags {
   product?: string;
   owners?: string[];
   features?: string[];
+  aspects?: string[];
+  /** A place's feature: where the aspect applies. */
+  feature?: string;
   dependsOn?: string[];
   kind?: string;
   severity?: string;
@@ -77,6 +80,10 @@ export function newRecord(store: Store, type: string, ident: string, flags: NewF
       return newProduct(store, ident, flags);
     case 'feature':
       return newFeature(store, ident, flags);
+    case 'aspect':
+      return newAspect(store, ident, flags);
+    case 'place':
+      return newPlace(store, ident, flags);
     case 'project':
       return newProject(store, ident, flags);
     case 'change':
@@ -90,7 +97,7 @@ export function newRecord(store: Store, type: string, ident: string, flags: NewF
     case 'session':
       return newSession(store, ident, flags);
     default:
-      throw new CliError(`unknown record type '${type}' (product, feature, project, change, decision, source, actor, session)`);
+      throw new CliError(`unknown record type '${type}' (product, feature, aspect, place, project, change, decision, source, actor, session)`);
   }
 }
 
@@ -165,6 +172,49 @@ export function newFeature(store: Store, ident: string, flags: NewFlags): NewRes
   return finish(store, 'feature', key, rel, [rel], flags);
 }
 
+/** The product a new aspect or place is keyed under: the one its key names, else the current project's. */
+function aspectProduct(loaded: Loaded, named: string | null, what: string): string {
+  if (named) return productSlugOf(loaded, named, what);
+  if (loaded.scope) return loaded.scope;
+  throw new CliError(`${what}: no product in scope; name it in the key (aspect:<product>/<slug>)`);
+}
+
+export function newAspect(store: Store, ident: string, flags: NewFlags): NewResult {
+  const rest = ident.startsWith('aspect:') ? ident.slice(7) : ident;
+  const a = parseAspectRest(rest);
+  if (!a || a.segments.length > 2) throw new CliError(`'${rest}' is not a slug (lower-case letters, digits, hyphens), or <product>/<slug>`);
+  if (!flags.title) throw new CliError('--title is required');
+  const loaded = loadStore(store);
+  const [named, slug] = a.segments.length === 2 ? a.segments : [null, a.segments[0]];
+  const product = aspectProduct(loaded, named, 'aspect');
+  const key = aspectKey(product, slug);
+  const rel = path.join('products', product, 'aspects', slug, 'aspect.md');
+  refuseExisting(store, rel);
+  const data: Record<string, unknown> = { title: flags.title, name: flags.name, parent: flags.parent, owners: listOrNone(flags.owners), links: listOrNone(flags.links), ...stamp(flags) };
+  fullKeys(loaded, 'aspect', data, undefined, product);
+  writeFile(store, rel, render('aspect', data, flags.body?.trim() ? flags.body.trim() + '\n' : ''));
+  return finish(store, 'aspect', key, rel, [rel], flags);
+}
+
+export function newPlace(store: Store, ident: string, flags: NewFlags): NewResult {
+  const rest = ident.startsWith('aspect:') ? ident.slice(7) : ident;
+  const a = parseAspectRest(rest);
+  if (!a || a.segments.length < 2) throw new CliError(`'${ident}' must be aspect:<aspect>/<place> (aspect:<product>/<aspect>/<place> in full)`);
+  if (!flags.feature) throw new CliError('--feature is required: the feature the aspect applies at');
+  const loaded = loadStore(store);
+  const [named, aslug, pslug] = a.segments.length === 3 ? a.segments : [null, a.segments[0], a.segments[1]];
+  const product = aspectProduct(loaded, named, 'place');
+  const aspect = loaded.byKey.get(aspectKey(product, aslug))?.[0];
+  if (!aspect || aspect.type !== 'aspect') throw new CliError(`${aspectKey(product, aslug)} does not exist: pjman new aspect ${aslug} --title …`);
+  const key = aspectKey(product, aslug, pslug);
+  const rel = path.join('products', product, 'aspects', aslug, 'places', `${pslug}.md`);
+  refuseExisting(store, rel);
+  const data: Record<string, unknown> = { feature: flags.feature, links: listOrNone(flags.links), ...stamp(flags) };
+  fullKeys(loaded, 'place', data, undefined, product);
+  writeFile(store, rel, render('place', data, flags.body?.trim() ? flags.body.trim() + '\n' : ''));
+  return finish(store, 'place', key, rel, [rel], flags);
+}
+
 export function newProject(store: Store, ident: string, flags: NewFlags): NewResult {
   const slug = ident.startsWith('project:') ? ident.slice(8) : ident;
   if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
@@ -210,6 +260,7 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     parent: flags.parent,
     depends_on: listOrNone(flags.dependsOn),
     features: listOrNone(flags.features),
+    aspects: listOrNone(flags.aspects),
     owners: listOrNone(flags.owners),
     target: flags.target,
     next: flags.next,

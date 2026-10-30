@@ -23,7 +23,9 @@ the context prints them; write the full key only for something in another produc
 
 1. **Read before acting.** When a change is named or implied, run `pjman context change:<slug>` first. It is the
    record of what was decided, what was tried, and what is next. Given a ticket, a URL or a file instead, run
-   `pjman get <it>`: it finds the change through the graph.
+   `pjman get <it>`: it finds the change through the graph. Its **Aspects** section, when there is one, is the
+   contract the work is done under (how text reads, how the app moves, a shared component): follow the `aspect`
+   skill for it, and for anything that creates or edits an aspect.
 2. **Open a decision `proposed` before acting on a choice that forecloses options** (a data model, a boundary, a
    dependency, a scope cut, anything a later reader would ask "why?" about):
    ```

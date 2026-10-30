@@ -103,8 +103,10 @@ export function finishWrite(store: Store, message: string, session: string | und
 const KEY_FIELDS: Record<RecordType, string[]> = {
   product: ['sequence', 'owners'],
   feature: ['product', 'parent', 'owners'],
+  aspect: ['parent', 'owners'],
+  place: ['feature'],
   project: ['product', 'parent', 'owners'],
-  change: ['project', 'parent', 'depends_on', 'features', 'owners'],
+  change: ['project', 'parent', 'depends_on', 'features', 'aspects', 'owners'],
   decision: ['supersedes', 'decided_by'],
   source: [],
   session: ['changes', 'parent', 'project', 'agent', 'on_behalf_of'],
