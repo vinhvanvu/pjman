@@ -27,6 +27,9 @@ export const pageSearch = z.object({
   q: z.string().optional().catch(undefined),
   state: z.string().optional().catch(undefined),
   milestone: z.string().optional().catch(undefined),
+  /** An aspect (its key): the map narrows to its places and the record pane reads it (decision
+   *  aspects-dashboard/aspect-is-a-map-lens). */
+  aspect: z.string().optional().catch(undefined),
   /** Bugs only: the map keeps the nodes a bug is listed at, with the path to each. */
   bugs: z.boolean().optional().catch(undefined),
   /** The moment the page reads as of, and the event selected; every query carries them, so the whole page holds

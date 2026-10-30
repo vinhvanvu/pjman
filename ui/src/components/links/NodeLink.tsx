@@ -44,6 +44,19 @@ export function NodeLink({ to, lens, mode = 'select', children, ...rest }: NodeL
   const t = targetOf(to, lens);
   switch (t.kind) {
     case 'node':
+      if (t.aspect) {
+        const aspect = t.aspect;
+        return (
+          <Link
+            to="/$lens/$"
+            params={{ lens: t.lens, _splat: t.node }}
+            search={(prev: Search) => ({ ...focusSearch(prev), aspect })}
+            {...rest}
+          >
+            {children}
+          </Link>
+        );
+      }
       if (mode === 'select' && t.lens === lens) {
         return (
           <Link to="." search={selectSearch(t.node)} {...rest}>

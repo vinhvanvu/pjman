@@ -31,6 +31,12 @@ function Get() {
     const t = targetOf(key, 'feature');
     if (t.kind === 'node') return <Navigate to="/$lens/$" params={{ lens: t.lens, _splat: t.node }} replace />;
   }
+  // an aspect, or a place under one, opens on its product's map with the aspect selected
+  if (key && kindOf(key) === 'aspect') {
+    const t = targetOf(key, 'feature');
+    if (t.kind === 'node' && t.aspect)
+      return <Navigate to="/$lens/$" params={{ lens: t.lens, _splat: t.node }} search={{ aspect: t.aspect }} replace />;
+  }
   if (key && kindOf(key) === 'session') return <Navigate to="/session/$id" params={{ id: restOf(key) }} replace />;
   if (key && kindOf(key) === 'project') return <ProjectPage project={key} />;
   const change = data.changes[0]?.change.key;

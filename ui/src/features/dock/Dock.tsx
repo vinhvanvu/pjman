@@ -6,10 +6,10 @@
 // the present (change:dock-next-list; decision next-leaves-the-dock).
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Diamond } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import { useRef, useState } from 'react';
-import type { ChangeContext, Lens, Scope, SessionFacts, StoreEvent } from '@/data/contract';
+import type { ChangeAspects, ChangeContext, Lens, Scope, SessionFacts, StoreEvent } from '@/data/contract';
 import { ago, plural } from '@/lib/format';
 import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
@@ -23,6 +23,7 @@ import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords, newestLines } from '@/features/session-follow';
+import { AspectReading, AspectWholeBody } from '@/features/aspects';
 import { dockArrivals, pickups, readiness, type Pickup } from './model';
 
 const LIVE_LINES = 5;
@@ -176,6 +177,7 @@ function DockChange({
             )}
           </div>
         )}
+        {ctx.aspects && <DockAspects aspects={ctx.aspects} lens={lens} />}
       </header>
 
       <section className="flex flex-col gap-2">
@@ -424,6 +426,51 @@ function Clamped({ label, text }: { label: string; text: string }) {
         </button>
       )}
     </section>
+  );
+}
+
+/** The aspects the change works under, as chips under its title (aspect:aspects/dock): no section of their own. A chip
+ *  opens as a drill-in beneath the header: an aspect the change names lists every place it is linked to, each forked
+ *  or the base as it is; any other reads as it applies here. */
+function DockAspects({ aspects, lens }: { aspects: ChangeAspects; lens: Lens }) {
+  const [open, setOpen] = useState<string | undefined>();
+  const chips = [
+    ...aspects.named.map((n) => ({ key: n.aspect, named: true, forked: false })),
+    ...aspects.at.map((x) => ({ key: x.aspect, named: false, forked: x.layers.some((l) => l.from === x.place) })),
+  ];
+  if (!chips.length) return null;
+  const named = aspects.named.find((n) => n.aspect === open);
+  const at = aspects.at.find((x) => x.aspect === open);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            aria-expanded={open === c.key}
+            onClick={() => setOpen(open === c.key ? undefined : c.key)}
+            className={cn(
+              'inline-flex h-6 items-center gap-1 rounded-chip border px-1.5 text-meta',
+              open === c.key
+                ? 'border-primary/50 bg-selection text-ink'
+                : 'border-line-strong text-ink-muted hover:bg-raised hover:text-ink',
+            )}
+            title={c.named ? 'This change works on the aspect' : 'The change works under this aspect'}
+          >
+            <Diamond className="size-3" aria-hidden="true" />
+            {c.key.split('/').pop()}
+            {c.named && <span className="text-ink-faint">· working on it</span>}
+            {c.forked && <span className="text-ink-faint">· forked</span>}
+          </button>
+        ))}
+      </div>
+      {(named || at) && (
+        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface px-3.5 py-3">
+          {named ? <AspectWholeBody whole={named} lens={lens} /> : at && <AspectReading at={at} lens={lens} />}
+        </div>
+      )}
+    </div>
   );
 }
 

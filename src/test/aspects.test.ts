@@ -14,6 +14,7 @@ import { set } from '../commands/set.js';
 import { changeContext, formatChangeContext, show } from '../commands/view.js';
 import { findStore, type Store } from '../config.js';
 import { loadStore, resolve } from '../records.js';
+import { scope } from '../scope.js';
 import { ancestorsOf } from '../tree.js';
 import { validate } from '../validate.js';
 
@@ -118,6 +119,23 @@ test("writing a base lists every place it reaches with each fork; a place's show
   assert.match(shown, /## Read here/);
   assert.match(shown, /Shorter\./);
   assert.match(shown, /two rows/);
+});
+
+test("the dashboard's scope carries the product's aspects whole, and at a feature each aspect read there", () => {
+  const product = scope(store, loadStore(store), { node: 'product:shop' });
+  const text = product.aspects.find((a) => a.aspect === 'aspect:shop/text');
+  assert.ok(text);
+  const cartPlace = text.places.find((p) => p.place === 'aspect:shop/text/cart');
+  assert.equal(cartPlace?.feature, 'feature:shop/cart');
+  assert.equal(cartPlace?.forked, true);
+  assert.ok(cartPlace?.fork);
+  assert.equal(text.places.find((p) => p.place === 'aspect:shop/text/app')?.forked, false);
+  assert.deepEqual(product.aspectsHere, []);
+  // at the cart: its own place, read as the base then the cart's fork
+  const cart = scope(store, loadStore(store), { node: 'feature:shop/cart' });
+  const here = cart.aspectsHere.find((x) => x.aspect === 'aspect:shop/text');
+  assert.equal(here?.place, 'aspect:shop/text/cart');
+  assert.deepEqual(here?.layers.map((l) => l.from), ['aspect:shop/text', 'aspect:shop/text/cart']);
 });
 
 test('a feature with a place is not removed from under it; a moved feature takes its places along; an aspect removed takes its places', () => {

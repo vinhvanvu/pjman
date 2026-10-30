@@ -17,6 +17,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { NodeHeader } from '@/components/record/NodeHeader';
+import { FeatureAspects } from '@/features/aspects';
 import { allWork, bodyOf, byMotion, featuresBelow, featuresByState, healthWord, inFlight, unassigned } from './model';
 import { TONE } from '@/lib/tones';
 
@@ -27,7 +28,7 @@ const many = (label: string) => (label.endsWith('y') ? `${label.slice(0, -1)}ies
 const CAP = 4;
 const TOP = 8;
 
-export function Overview({ scope, lens }: { scope: Scope; lens: Lens }) {
+export function Overview({ scope, lens, aspect }: { scope: Scope; lens: Lens; aspect?: string }) {
   const node = scope.node;
   const body = bodyOf(scope);
   const title = node ? (node.name ?? node.title ?? short(node.key)) : 'Everything';
@@ -51,6 +52,11 @@ export function Overview({ scope, lens }: { scope: Scope; lens: Lens }) {
         waiting={scope.waitingOn.length}
         bugs={{ count: scope.bugs.length, worst: scope.bugs[0]?.severity, node: node?.key }}
       />
+      {scope.aspectsHere.length > 0 && (
+        <Section label="Aspects" aside="what applies here, from here or above">
+          <FeatureAspects here={scope.aspectsHere} lens={lens} selected={aspect} />
+        </Section>
+      )}
       {body === 'product' && <ProductBody scope={scope} lens={lens} />}
       {body === 'feature' && <FeatureBody scope={scope} lens={lens} />}
       {body === 'capability' && <CapabilityBody scope={scope} lens={lens} />}

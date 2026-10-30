@@ -1,6 +1,7 @@
 // The product map: features only, opening collapsed every time (only the path to the selection is open), state as a
 // dot, counts faint and right-aligned, connectors from parent to child. A click selects (the record pane shows it); the
-// filter bar narrows the map and opens the matches.
+// filter bar narrows the map and opens the matches. Under an aspect, each place is a leaf marked as forked or as the
+// base as it is (decision aspects-dashboard/aspect-is-a-map-lens).
 import { cn } from 'cn';
 import { Bug } from 'lucide-react';
 import { useMemo } from 'react';
@@ -18,6 +19,7 @@ import {
   isFiltering,
   MAP_ROOT,
   matches,
+  placesAt,
   productMap,
   unassigned,
   type MapFilter,
@@ -49,7 +51,8 @@ export function ProductMap({
   version,
 }: ProductMapProps) {
   const filtering = isFiltering(filter);
-  const tree = useMemo(() => filterTree(scope.tree, filter), [scope.tree, filter]);
+  const places = useMemo(() => placesAt(scope.aspects, filter.aspect), [scope.aspects, filter.aspect]);
+  const tree = useMemo(() => filterTree(scope.tree, filter, places), [scope.tree, filter, places]);
   const map = useMemo(() => productMap(tree), [tree]);
   const root = useMemo<ScopeNode>(
     () => ({
@@ -70,7 +73,7 @@ export function ProductMap({
   const shownExpanded = filtering ? all : expanded;
   const allOpen = all.length > 0 && all.every((k) => shownExpanded.includes(k));
   const top = map.children.get(MAP_ROOT) ?? [];
-  const matched = filtering ? [...map.items.values()].filter((n) => matches(n, filter)).length : undefined;
+  const matched = filtering ? [...map.items.values()].filter((n) => matches(n, filter, places)).length : undefined;
 
   return (
     <section aria-label="Product map" className="flex min-h-0 flex-1 flex-col">
@@ -92,14 +95,22 @@ export function ProductMap({
           </Button>
         )}
       </div>
-      <FilterBar filter={filter} onChange={onFilterChange} matched={matched} changes={changes} />
+      <FilterBar
+        filter={filter}
+        onChange={onFilterChange}
+        matched={matched}
+        changes={changes}
+        aspects={scope.aspects}
+      />
       <div className="flex-1 px-3 pb-4">
         {top.length === 0 && (
           <p className="px-2 py-3 text-xs text-ink-faint">
             {filtering
-              ? filter.bugs && !filter.q && !filter.states?.length
-                ? 'No open bugs beneath this node.'
-                : 'No feature matches the filter.'
+              ? filter.aspect && !filter.q && !filter.states?.length && !filter.bugs
+                ? 'This aspect applies nowhere beneath this node.'
+                : filter.bugs && !filter.q && !filter.states?.length
+                  ? 'No open bugs beneath this node.'
+                  : 'No feature matches the filter.'
               : 'No features beneath this one. Its changes are in the record pane.'}
           </p>
         )}
@@ -120,7 +131,8 @@ export function ProductMap({
               node={n}
               top={level === 0}
               capabilities={map.children.get(n.key)?.length ?? 0}
-              dim={filtering && !matches(n, filter)}
+              dim={filtering && !matches(n, filter, places)}
+              place={filter.aspect ? places.get(n.key) : undefined}
             />
           )}
         />
@@ -160,11 +172,14 @@ function FeatureRow({
   top,
   capabilities,
   dim,
+  place,
 }: {
   node: ScopeNode;
   top: boolean;
   capabilities: number;
   dim?: boolean;
+  /** Under an aspect: the place at this feature, which covers everything beneath it. */
+  place?: { forked: boolean };
 }) {
   const label = n.name ?? n.title ?? short(n.key);
   const bugs = bugMark(n);
@@ -178,6 +193,11 @@ function FeatureRow({
       <StateDot state={n.derived ?? n.status} title={n.derived ?? n.status} />
       <span className="min-w-0 truncate font-medium">{label}</span>
       {top && n.level && <Label>{n.level}</Label>}
+      {place && (
+        <Chip tone="quiet" title={place.forked ? 'The aspect forks here' : 'The aspect applies here as its base says'}>
+          {place.forked ? 'forked' : 'base'}
+        </Chip>
+      )}
       <span className="ml-auto flex shrink-0 items-center gap-2.5 text-meta text-ink-faint">
         {bugs && (
           <span

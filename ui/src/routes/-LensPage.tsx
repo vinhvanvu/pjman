@@ -23,6 +23,7 @@ import { useBridge, useDecideAction, usePrefetchDestinations, useScope, useStore
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
+import { AspectPane } from '@/features/aspects';
 import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestonePage } from '@/features/milestone-lens';
 import { RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
@@ -96,9 +97,17 @@ export function LensPage({ lens, node, following }: LensPageProps) {
 
   const tab: Tab = search.tab ?? 'overview';
   const filter = useMemo<MapFilter>(
-    () => ({ q: search.q, states: list(search.state), milestone: search.milestone, bugs: search.bugs }),
-    [search.q, search.state, search.milestone, search.bugs],
+    () => ({
+      q: search.q,
+      states: list(search.state),
+      milestone: search.milestone,
+      bugs: search.bugs,
+      aspect: lens === 'feature' ? search.aspect : undefined,
+    }),
+    [search.q, search.state, search.milestone, search.bugs, search.aspect, lens],
   );
+  // the aspect the map is narrowed to: with nothing selected, the record pane reads it whole
+  const chosenAspect = filter.aspect ? scope.data?.aspects.find((a) => a.aspect === filter.aspect) : undefined;
 
   // the rail drawer is open for one page only: any navigation closes it, no effect needed
   const pageKey = `${lens}|${node ?? ''}`;
@@ -136,6 +145,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         state: f.states?.length ? f.states.join(',') : undefined,
         milestone: f.milestone || undefined,
         bugs: f.bugs || undefined,
+        aspect: f.aspect || undefined,
       }),
       replace: true,
     });
@@ -268,16 +278,19 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       ) : (
         <ChangeRecord ctx={shown.change} lens={lens} liveSessions={live} />
       );
+    } else if (isScope && chosenAspect) {
+      // the map narrowed to an aspect and nothing selected: the aspect, read whole
+      body = <AspectPane aspect={chosenAspect} lens={lens} />;
     } else if (lens === 'roadmap' && isScope) {
       // nothing selected in the roadmap lens: the order as a list
       body = <RoadmapHome scope={shown} lens={lens} />;
     } else {
-      body = <Overview scope={shown} lens={lens} />;
+      body = <Overview scope={shown} lens={lens} aspect={filter.aspect} />;
     }
     pane = (
       <div className="flex min-h-0 flex-1 flex-col">
         <RecordHeader
-          kind={lens === 'roadmap' && isScope ? 'scope' : kind}
+          kind={lens === 'roadmap' && isScope ? 'scope' : isScope && chosenAspect ? 'aspect' : kind}
           isScope={isScope}
           path={path}
           tab={tabs.includes(tab) ? tab : 'overview'}

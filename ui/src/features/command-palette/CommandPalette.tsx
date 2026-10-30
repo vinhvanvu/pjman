@@ -18,6 +18,7 @@ import { StatusChip } from '@/components/chips/Chip';
 const GROUPS: { type: RecordType; label: string }[] = [
   { type: 'product', label: 'Products' },
   { type: 'feature', label: 'Features' },
+  { type: 'aspect', label: 'Aspects' },
   { type: 'project', label: 'Projects' },
   { type: 'change', label: 'Changes' },
   { type: 'decision', label: 'Decisions' },
@@ -61,7 +62,12 @@ export function CommandPalette({
   const go = (key: string) => {
     onOpenChange(false);
     const t = targetOf(key, lens);
-    if (t.kind === 'node') void navigate({ to: '/$lens/$', params: { lens: t.lens, _splat: t.node }, search: {} });
+    if (t.kind === 'node')
+      void navigate({
+        to: '/$lens/$',
+        params: { lens: t.lens, _splat: t.node },
+        search: t.aspect ? { aspect: t.aspect } : {},
+      });
     else if (t.kind === 'session') void navigate({ to: '/session/$id', params: { id: t.id } });
     else if (t.kind === 'get') void navigate({ to: '/get/$', params: { _splat: t.key } });
     else window.open(t.url, '_blank', 'noreferrer');
@@ -70,7 +76,7 @@ export function CommandPalette({
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange} title="Jump to" description="Any record, by key or title">
       <Command loop>
-        <CommandInput placeholder="Jump to a feature, change, decision, session…" />
+        <CommandInput placeholder="Jump to a feature, aspect, change, decision, session…" />
         <CommandList className="max-h-[60vh]">
           <CommandEmpty>Nothing by that name.</CommandEmpty>
           {GROUPS.map(({ type, label }) => {

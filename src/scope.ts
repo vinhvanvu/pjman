@@ -10,6 +10,7 @@ import { ahead, productOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
+import { aspectsForFeatures, aspectWhole, type AspectAt, type AspectWhole } from './aspects.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
 export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
@@ -164,6 +165,17 @@ export interface Scope {
   /** The roadmap: the product's sequence as it falls in this scope, what comes after it, and where the order
    *  contradicts a dependency or a date. */
   roadmap: { product: string | null; sequence: string[]; later: string[]; violations: Violation[] };
+  /** The aspects of the product the scope is in (every product's at the store root), each read whole: the base and
+   *  every place with its fork. The map's aspect picker and lens, and the aspect's pane, read these (change:aspects-dashboard). */
+  aspects: ScopeAspect[];
+  /** On a feature: each aspect that applies there, read there, the base then the forks above it then its own. */
+  aspectsHere: AspectAt[];
+}
+
+export interface ScopeAspect extends AspectWhole {
+  name?: string;
+  /** The parent aspect, when it nests under one. */
+  parent?: string;
 }
 
 export interface ScopeOpts {
@@ -566,6 +578,13 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     dependsOn: list(c.data.depends_on).map((k) => live(loaded, k)?.key).filter((k): k is string => !!k),
   }));
   const roadmap = { product: product?.key ?? null, sequence, later, violations: violations(roadmapRows, localDate(new Date(ix.now))) };
+
+  // the aspects: the product's, whole; and on a feature, those that apply there, read there
+  const aspects: ScopeAspect[] = loaded.records
+    .filter((a) => a.type === 'aspect' && a.valid && (!product || a.productSlug === product.productSlug))
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((a) => ({ ...aspectWhole(loaded, a), name: str(a.data.name), parent: live(loaded, a.data.parent)?.key }));
+  const aspectsHere = node?.type === 'feature' ? aspectsForFeatures(loaded, [node]).at : [];
   return {
     lens, days,
     node: node
@@ -576,6 +595,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     projects: [...new Set(changes.map((c) => c.project).filter((p): p is string => !!p))].sort(),
     doneHidden, retiredHidden, health, owners, sessions, waitingOn, recent,
     change: node?.type === 'change' ? changeContext(store, node.key, loaded) : undefined,
-    bugs, roadmap,
+    bugs, roadmap, aspects, aspectsHere,
   };
 }
