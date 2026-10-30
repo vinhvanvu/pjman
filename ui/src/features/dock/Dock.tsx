@@ -1,8 +1,9 @@
 // The dock: the session's page at docked width, one column beside the terminal (change:docked-view; decision
-// dock-column). What the session is on first; what waits on the person next; the handoff; this session's own lines,
-// newest first; the summary clamped; then rows that drill into the record in place. A session with no change yet
+// dock-column). What the session is on first; what waits on the person next; this session's own lines, newest first;
+// the summary clamped; then rows that drill into the record in place. A session with no change yet
 // shows a pickup list, the product's open changes by feature with the nearest to fully decided first, until the first
-// bind moves the dock to the change.
+// bind moves the dock to the change. The change's next is not drawn: with the session live beside it, next restates
+// the present (change:dock-next-list; decision next-leaves-the-dock).
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { ChevronRight } from 'lucide-react';
@@ -202,16 +203,6 @@ function DockChange({
           onDecide={decide}
         />
       </section>
-
-      {typeof c.data.next === 'string' && c.data.next && (
-        <section className="flex flex-col gap-1.5">
-          <Label>Next</Label>
-          <p className="relative overflow-hidden rounded-card bg-raised px-3.5 py-2.5 text-[13px] leading-relaxed">
-            <Wash arrival={arrivals.next?.seq} className={TONE.active.wash} />
-            {c.data.next}
-          </p>
-        </section>
-      )}
 
       <LiveLines session={session} arrival={arrivals.line} held={hold.held} moment={at} />
 
