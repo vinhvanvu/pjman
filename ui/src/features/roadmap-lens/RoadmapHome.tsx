@@ -2,8 +2,16 @@
 // loudest. The chart beside it is the picture; this is the same thing read top to bottom.
 import { cn } from 'cn';
 import { Link } from '@tanstack/react-router';
-import { Bug, TriangleAlert } from 'lucide-react';
+import { Bug, ChevronDown, TriangleAlert } from 'lucide-react';
 import type { Lens, Scope } from '@/data/contract';
+import { useOrder } from '@/data/queries';
+import { useAt } from '@/state/moment';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { pct, plural, truncate } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Chip, Label, StatusChip } from '@/components/chips/Chip';
@@ -13,6 +21,29 @@ import { Pulse } from '@/components/presence/Presence';
 import { Figures } from '@/components/stats/Figures';
 import { columns, loud, SEVERITY_LABEL, violationText } from './model';
 import { TONE } from '@/lib/tones';
+
+/** Ordering a later entry without dragging (change:roadmap-order-affordances): first or last on the sequence, the same
+ *  write as `pjman order`. Nothing on a page held at a past moment: the past is read, never written. */
+function OrderMenu({ change }: { change: string }) {
+  const order = useOrder();
+  const at = useAt();
+  if (at) return <span className="w-4 shrink-0" />;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className="mx-2 inline-flex h-6 shrink-0 items-center gap-1 rounded-row border border-line-strong px-1.5 text-meta text-ink-muted hover:bg-ground hover:text-ink"
+        title="Place it on the sequence"
+      >
+        Order
+        <ChevronDown className="size-3" aria-hidden="true" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-[160px]">
+        <DropdownMenuItem onSelect={() => order.mutate({ change, first: true })}>First</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => order.mutate({ change, last: true })}>Last</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
   const cols = columns(scope);
@@ -55,7 +86,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
       {inOrder.length === 0 ? (
         <EmptyState
           title="Nothing is on the sequence."
-          hint="Drag an entry from Later onto the chart, or: pjman order change:<slug> --first"
+          hint="Order an entry below, drag one from the chart's Later column, or: pjman order change:<slug> --first"
         />
       ) : (
         <div className="flex flex-col gap-2">
@@ -115,12 +146,13 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
           <Label>Later · {later.entries.length}</Label>
           <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
             {later.entries.slice(0, 8).map((r) => (
-              <li key={r.key}>
-                <NodeLink to={r.key} lens={lens} className="flex items-center gap-2 px-4 py-2 hover:bg-raised">
+              <li key={r.key} className="flex items-center hover:bg-raised">
+                <NodeLink to={r.key} lens={lens} className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-4">
                   <span className="min-w-0 flex-1 truncate">{r.title ?? short(r.key)}</span>
                   {r.parent && <Chip tone="quiet">↳ {short(r.parent)}</Chip>}
                   <StatusChip status={r.status} />
                 </NodeLink>
+                <OrderMenu change={r.key} />
               </li>
             ))}
             {later.entries.length > 8 && (
