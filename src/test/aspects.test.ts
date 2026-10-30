@@ -138,6 +138,14 @@ test("the dashboard's scope carries the product's aspects whole, and at a featur
   assert.deepEqual(here?.layers.map((l) => l.from), ['aspect:shop/text', 'aspect:shop/text/cart']);
 });
 
+test('a change row carries the aspects and places it names, as live keys: the roadmap narrows by them', () => {
+  newRecord(store, 'change', 'cart-wording', { title: 'Cart wording', summary: 's', aspects: ['changes aspect:text/cart'] });
+  const rows = scope(store, loadStore(store), { node: 'product:shop' }).changes;
+  assert.deepEqual(rows.find((r) => r.key === 'change:shop/text-base')?.aspects, ['aspect:shop/text']);
+  assert.deepEqual(rows.find((r) => r.key === 'change:shop/cart-wording')?.aspects, ['aspect:shop/text/cart']);
+  assert.deepEqual(rows.find((r) => r.key === 'change:shop/app-wide')?.aspects, []);
+});
+
 test('a feature with a place is not removed from under it; a moved feature takes its places along; an aspect removed takes its places', () => {
   assert.throws(() => rm(store, 'feature:search'), /referenced by[\s\S]*aspect:shop\/text\/search/);
   mv(store, 'feature:search', 'feature:find', {});

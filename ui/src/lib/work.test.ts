@@ -12,6 +12,7 @@ const row = (key: string, status: string, extra: Partial<ChangeRow> = {}): Chang
   live: false,
   children: 0,
   dependsOn: [],
+  aspects: [],
   ...extra,
 });
 

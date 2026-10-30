@@ -172,7 +172,18 @@ export interface ChangeAspects {
   beneath: PlaceLine[];
 }
 
-/** What a change works under: the aspects it names, whole; the aspects at the features it names, read there; a
+/** The aspects and places a change names, as live keys: the work it does on an aspect, which the roadmap narrows by
+ *  (change:aspects-roadmap). */
+export function aspectKeysOf(loaded: Loaded, change: Rec): string[] {
+  const list = Array.isArray(change.data.aspects) ? change.data.aspects : [];
+  return list.flatMap((raw) => {
+    const e = parseAspectEffect(raw);
+    const rec = e ? live(loaded, e.key, change.productSlug ?? null) : undefined;
+    return rec?.type === 'aspect' || rec?.type === 'place' ? [rec.key] : [];
+  });
+}
+
+/** What a change works under:the aspects it names, whole; the aspects at the features it names, read there; a
  *  place it names, read at its feature. Undefined when there is nothing. */
 export function aspectsOfChange(loaded: Loaded, change: Rec, features: Rec[]): ChangeAspects | undefined {
   const named: AspectWhole[] = [];

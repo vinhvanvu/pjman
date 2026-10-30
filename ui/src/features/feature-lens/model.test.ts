@@ -40,6 +40,7 @@ const change = (key: string): ScopeNode => ({
     live: false,
     children: 0,
     dependsOn: [],
+    aspects: [],
   } as ChangeRow,
   children: [],
 });

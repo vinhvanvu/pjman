@@ -12,6 +12,7 @@ const row = (key: string, o: Partial<ChangeRow> = {}): ChangeRow => ({
   live: false,
   children: 0,
   dependsOn: [],
+  aspects: [],
   ...o,
 });
 const feature = (key: string, name: string, children: ScopeNode[] = []): ScopeNode => ({

@@ -10,7 +10,7 @@ import { ahead, productOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
-import { aspectsForFeatures, aspectWhole, type AspectAt, type AspectWhole } from './aspects.js';
+import { aspectKeysOf, aspectsForFeatures, aspectWhole, type AspectAt, type AspectWhole } from './aspects.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
 export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
@@ -67,6 +67,8 @@ export interface ChangeRow {
   target?: string;
   /** What must land before it, live keys. */
   dependsOn: string[];
+  /** The aspects and places it names, live keys: the work it does on an aspect. */
+  aspects: string[];
   /** Its place in the product's sequence: its own index, else its nearest sequenced ancestor's; absent is later. */
   position?: number;
   /** When it first moved out of open (its first status change), and when it reached done. */
@@ -362,6 +364,7 @@ class Index {
       moved: this.lastMoved(c),
       kind: str(c.data.kind), severity: str(c.data.severity), home: this.homeOf(c), target: str(c.data.target),
       dependsOn: list(c.data.depends_on).map((k) => live(this.loaded, k)?.key).filter((k): k is string => !!k),
+      aspects: aspectKeysOf(this.loaded, c),
       position: this.positionOf(c),
       ...this.span(c),
     };

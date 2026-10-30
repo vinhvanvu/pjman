@@ -4,7 +4,7 @@
 // for the selection; client state from the stores.
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Flag, User } from 'lucide-react';
+import { Diamond, Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
@@ -24,10 +24,10 @@ import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
 import { AspectPane } from '@/features/aspects';
-import { Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
+import { AspectPicker, Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestonePage } from '@/features/milestone-lens';
 import { RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
-import { narrowToMilestone } from '@/lib/narrow';
+import { narrowToAspect, narrowToMilestone } from '@/lib/narrow';
 import { ChangeRecord } from '@/features/record';
 import { MomentChip } from '@/features/moment';
 import { FollowPill } from '@/features/session-follow';
@@ -61,6 +61,11 @@ function kindOf(s: Scope): string {
 const isContainer = (s: Scope): boolean =>
   !!s.node && (s.node.type !== 'change' || (s.change?.children.length ?? 0) > 0);
 
+const narrowScope = (s: Scope | undefined, milestone?: string, aspect?: string): Scope | undefined => {
+  const m = s && milestone ? narrowToMilestone(s, milestone) : s;
+  return m && aspect ? narrowToAspect(m, aspect) : m;
+};
+
 const list = (v: string | undefined): string[] | undefined => (v ? v.split(',').filter(Boolean) : undefined);
 
 export function LensPage({ lens, node, following }: LensPageProps) {
@@ -83,13 +88,13 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const isScope = !sel;
   // the milestone filter narrows everything the lens shows, the scope and the selection alike, before anything is drawn
   const milestone = lens === 'feature' ? search.milestone : undefined;
-  const narrowed = useMemo(
-    () => (scope.data && milestone ? narrowToMilestone(scope.data, milestone) : scope.data),
-    [scope.data, milestone],
-  );
+  // on the roadmap an aspect narrows the same way, to the work on it (change:aspects-roadmap); on the map it is a lens
+  // over the tree, applied by the map's own filter
+  const workOn = lens === 'roadmap' ? search.aspect : undefined;
+  const narrowed = useMemo(() => narrowScope(scope.data, milestone, workOn), [scope.data, milestone, workOn]);
   const narrowedSelection = useMemo(
-    () => (selection.data && milestone ? narrowToMilestone(selection.data, milestone) : selection.data),
-    [selection.data, milestone],
+    () => narrowScope(selection.data, milestone, workOn),
+    [selection.data, milestone, workOn],
   );
   const chosenMilestone = milestone ? scope.data?.changes.find((r) => r.key === milestone) : undefined;
   // the record pane's subject: the selection when there is one, else the scope itself
@@ -108,6 +113,13 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   );
   // the aspect the map is narrowed to: with nothing selected, the record pane reads it whole
   const chosenAspect = filter.aspect ? scope.data?.aspects.find((a) => a.aspect === filter.aspect) : undefined;
+  const workedOn = workOn ? scope.data?.aspects.find((a) => a.aspect === workOn) : undefined;
+  const setWorkOn = (aspect: string | undefined) =>
+    void navigate({
+      to: '.',
+      search: (prev: Record<string, unknown>) => ({ ...prev, aspect }),
+      replace: true,
+    });
 
   // the rail drawer is open for one page only: any navigation closes it, no effect needed
   const pageKey = `${lens}|${node ?? ''}`;
@@ -314,6 +326,17 @@ export function LensPage({ lens, node, following }: LensPageProps) {
             </button>
           </div>
         )}
+        {workOn && (
+          <div className="flex items-center gap-2 border-b border-line bg-raised px-5 py-1.5 text-xs text-ink-muted">
+            <Diamond className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
+            <span className="min-w-0 truncate">
+              Showing only the work on {workedOn ? (workedOn.name ?? workedOn.title) : short(workOn)}
+            </span>
+            <button type="button" onClick={() => setWorkOn(undefined)} className="ml-auto shrink-0 hover:text-ink">
+              clear
+            </button>
+          </div>
+        )}
         <div className="min-h-0 flex-1">{body}</div>
       </div>
     );
@@ -343,13 +366,20 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     );
   } else if (lens === 'roadmap' && data.node?.type !== 'change') {
     structure = (
-      <RoadmapChart
-        scope={data}
-        expanded={expanded}
-        onExpandedChange={onExpandedChange}
-        selected={sel}
-        onSelect={select}
-      />
+      <div className="flex min-h-0 flex-1 flex-col">
+        {(data.aspects.length > 0 || workOn) && (
+          <div className="flex items-center justify-end gap-2 px-5 pt-3">
+            <AspectPicker aspects={data.aspects} chosen={workOn} onChoose={setWorkOn} narrows="roadmap" />
+          </div>
+        )}
+        <RoadmapChart
+          scope={data}
+          expanded={expanded}
+          onExpandedChange={onExpandedChange}
+          selected={sel}
+          onSelect={select}
+        />
+      </div>
     );
   } else {
     structure = (
