@@ -88,6 +88,13 @@ export function ancestorsOf(loaded: Loaded, key: string): string[] {
           const f = live(loaded, e.key);
           if (f && push(f.key)) climb(f);
         }
+        // an aspect the change names is above it too, and a place's aspect above that; never the place's feature:
+        // the feature tree is reached only through the features a change names
+        for (const raw of Array.isArray(cur.data.aspects) ? cur.data.aspects : []) {
+          const a = live(loaded, typeof raw === 'string' ? raw.replace(/^(adds|changes|removes)\s+/, '') : undefined);
+          if (a && push(a.key) && a.type === 'place') push(a.aspectKey);
+          if (a) push(`product:${a.productSlug}`);
+        }
         const p = live(loaded, cur.data.project);
         if (p && push(p.key)) climb(p);
         const parent = live(loaded, cur.data.parent);
@@ -106,6 +113,13 @@ export function ancestorsOf(loaded: Loaded, key: string): string[] {
     case 'feature':
     case 'project':
       climb(rec);
+      break;
+    case 'place':
+      push(rec.aspectKey);
+      push(`product:${rec.productSlug}`);
+      break;
+    case 'aspect':
+      push(`product:${rec.productSlug}`);
       break;
     default:
       break;

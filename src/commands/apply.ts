@@ -28,7 +28,8 @@ export interface UndoResult {
   commit: string | null;
 }
 
-/** Split one line as a shell would: whitespace separates, single and double quotes group, a backslash escapes. */
+/** Split one line as a shell would: whitespace separates, single and double quotes group, a backslash escapes; inside
+ *  double quotes `\n` is a line break. */
 export function splitLine(line: string): string[] {
   const out: string[] = [];
   let cur = '';
@@ -38,7 +39,8 @@ export function splitLine(line: string): string[] {
     const c = line[i]!;
     if (quote) {
       if (c === quote) quote = null;
-      else if (c === '\\' && quote === '"' && i + 1 < line.length) cur += line[++i];
+      // inside double quotes \n is a line break, so one line can carry a multi-line text (an aspect's base, a fork)
+      else if (c === '\\' && quote === '"' && i + 1 < line.length) cur += line[++i] === 'n' ? '\n' : line[i];
       else cur += c;
     } else if (c === '"' || c === "'") {
       quote = c;

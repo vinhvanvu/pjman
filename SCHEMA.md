@@ -33,6 +33,7 @@ output read inside a project drops the product segment; JSON keeps it.
 | actor | `person:<handle>` · `agent:<handle>` | `person:vinh`, `agent:claude-code` |
 | product | `product:<slug>` | `product:pjman` |
 | feature | `feature:<product>/<slug>` (inside the product: `feature:<slug>`) | `feature:pjman/store` |
+| aspect | `aspect:<product>/<slug>` (inside the product: `aspect:<slug>`) · a place under it: `aspect:<product>/<aspect>/<place>` (inside: `aspect:<aspect>/<place>`) | `aspect:pjman/text`, `aspect:pjman/text/dock-live` |
 | project | `project:<slug>` | `project:pjman` |
 | change | `change:<product>/<slug>` (inside the product: `change:<slug>`) | `change:pjman/schema` |
 | decision | `decision:<product>/<change>/<slug>` (inside the product: `decision:<change>/<slug>`) · `decision:<product>/<slug>` at product level · `decision:/<slug>` at store level | `decision:pjman/schema/layered-minimal` |
@@ -84,6 +85,33 @@ One nestable kind for everything the product is and does, at any depth: a featur
 | body | A | `## Summary`, optional. |
 
 Derived state: `retired` once a change that `removes` the feature is done; else `live` once a change that `adds` it is done; else `building` while any change affecting it is in flight (`active`, `review` or `blocked`; `planning` and `open` are not building); a child's `live` or `building` lifts its parent; else `planned`. The tree at any release is a replay of the done changes up to it.
+
+### Aspect — `products/<product>/aspects/<slug>/aspect.md`
+
+What applies across the product rather than at one place on the tree: how text reads, how the app moves, a component reused in many views. An aspect is its own tree under the product, beside the features and never inside them; the places it applies are links to existing features (below), so the feature tree keeps one parent per node and nothing rolls up twice.
+
+| field | kind | meaning |
+|---|---|---|
+| `title` | A | Required. |
+| `name` | A | Optional label, one to three words. |
+| `parent` | A | Optional. The aspect above (text, then markdown beneath it); cycles refused; same product. |
+| `owners` | A | Optional list of actor keys: who answers for the base. |
+| `links` | A | Optional source keys. |
+| body | A | The base: the one source of truth for what the aspect says, in markdown. The store imposes no shape on it; the aspect skill shapes it by the kind of aspect. |
+
+Writing the base (`pjman set aspect:<slug> body=-`) prints every place it reaches with each fork in full, so the forks are reconciled with it in the same batch.
+
+### Place — `products/<product>/aspects/<aspect>/places/<place>.md`
+
+Where an aspect applies: one existing feature, at any depth. A place at a feature covers everything beneath it; a place nearer a feature layers over one above it.
+
+| field | kind | meaning |
+|---|---|---|
+| `feature` | A | Required. The feature the aspect applies at, in the aspect's product. An aspect has one place per feature. |
+| `links` | A | Optional source keys: the code that carries the aspect there (`file:ui/src/features/dock/Dock.tsx`). |
+| body | A | The fork: only what differs at this place, in markdown. Empty: the base as it is. A place never copies the base. |
+
+A place is read as the base, then the forks of the places at the features above it, outermost first, then its own, each marked with where it comes from (`pjman show aspect:<aspect>/<place>`). A feature with a place cannot be removed until the place is; renaming the feature rewrites the place; removing an aspect takes its places.
 
 ### Project — `projects/<slug>.md`
 
@@ -195,6 +223,7 @@ A change is keyed under the product its project names; `pjman set <change> proje
 | `status` | A | One canonical word from the vocabulary |
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
+| `aspects` | A | Optional. The aspects or places this change adds, changes or removes, in the same form as `features`: `adds aspect:<slug>`, `aspect:<aspect>/<place>` (changes). Its context then carries the aspect whole (the base and every place). |
 | `owners` | A | Optional list of actor keys; a change without owners answers to its feature's or project's. |
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
@@ -249,8 +278,11 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `sequence` | product → change | product | the roadmap's order; every key must exist; no repeats |
 | `binds` | change → source | change | a source binds at most one change |
 | `product` | feature, project → product | the child | the fixed root of the product tree |
-| `owners` | product, feature, project, change → actor | the node | inherited downward when a node names none |
+| `owners` | product, feature, aspect, project, change → actor | the node | inherited downward when a node names none |
 | `adds`, `changes`, `removes` | change → feature | change | what the change does to the feature; derived state replays the done ones |
+| `adds`, `changes`, `removes` | change → aspect, place | change (`aspects`) | what the change does to the aspect; its context carries it whole |
+| `parent` | aspect → aspect | aspect | same product; no cycles |
+| `feature` | place → feature | place | the feature must exist, in the aspect's product; one place per feature per aspect |
 | `links` | change · decision · source → source | the referrer | — |
 | `supersedes` | decision → decision (one or many) | decision | the target becomes `superseded`; a target already superseded by another decision is refused; no cycles |
 | `parent` | session → session | session | — |

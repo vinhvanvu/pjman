@@ -134,7 +134,7 @@ function mvProduct(store: Store, loaded: Loaded, fromRaw: string, toRaw: string,
   const pathAfter = (rel: string) => (rel.startsWith(oldDir + '/') ? newDir + rel.slice(oldDir.length) : rel);
   const rewrite = (text: string) => {
     let out = rewriteKey(text, from, to);
-    for (const kind of ['feature', 'change', 'decision']) out = rewritePrefix(out, `${kind}:${fromSlug}/`, `${kind}:${toSlug}/`);
+    for (const kind of ['feature', 'change', 'decision', 'aspect']) out = rewritePrefix(out, `${kind}:${fromSlug}/`, `${kind}:${toSlug}/`);
     return out;
   };
   const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) => (r === rec ? withAlias(r, fromSlug, rewrite) : rewrite(text)));

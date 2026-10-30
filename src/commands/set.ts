@@ -4,20 +4,23 @@ import { replaceSection } from '../frontmatter.js';
 import { loadStore, resolve, unresolved, type RecordType } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersedesOf, unmark, type Marked } from '../supersede.js';
 import { CliError } from '../util.js';
+import { reachOfBase } from '../aspects.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo } from '../write.js';
 
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
   product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'summary'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'summary'],
+  aspect: ['title', 'name', 'parent', 'owners', 'links', 'body'],
+  place: ['feature', 'links', 'body'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links'],
-  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'summary', 'plan'],
+  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'aspects', 'owners', 'target', 'next', 'binds', 'links', 'summary', 'plan'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'decision', 'why'],
   source: ['title', 'url', 'links'],
   actor: ['name', 'url', 'links'],
   session: [],
 };
-const LISTS = new Set(['binds', 'links', 'owners', 'features', 'levels', 'depends_on', 'sequence']);
+const LISTS = new Set(['binds', 'links', 'owners', 'features', 'aspects', 'levels', 'depends_on', 'sequence']);
 const SECTIONS: Record<string, string> = { summary: 'Summary', plan: 'Plan', decision: 'Decision', why: 'Why' };
 
 export interface SetResult {
@@ -92,10 +95,12 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
       continue;
     }
     if (SECTIONS[field] && rec.type === 'decision' && rec.data.status !== 'proposed') throw new CliError(`a ${String(rec.data.status)} decision's text is fixed; open a new decision that supersedes it`);
-    if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
+    // an aspect's body is its base and a place's its fork, whole and in no shape the store prescribes
+    if (field === 'body') body = value.trim() ? value.trim() + '\n' : '';
+    else if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
     else data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean) : value;
-    if (value !== '') fullKeys(loaded, rec.type, data, field, rec.productSlug ?? null);
+    if (value !== '' && field !== 'body') fullKeys(loaded, rec.type, data, field, rec.productSlug ?? null);
     changed.push(field);
   }
   const text = render(rec.type, data, body);
@@ -109,5 +114,8 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     throw e;
   }
   const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, writer: env.writer }, ...(marked?.also ?? [])]);
-  return { key: rec.key, path: rec.path, changed, commit, notes: marked?.notes ?? [] };
+  const notes = [...(marked?.notes ?? [])];
+  // a write to a base shows every place it reaches, so each fork is reconciled with it in the same pass
+  if (rec.type === 'aspect' && changed.includes('body')) notes.push(...reachOfBase(loadStore(store), rec));
+  return { key: rec.key, path: rec.path, changed, commit, notes };
 }

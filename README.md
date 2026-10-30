@@ -32,6 +32,8 @@ products/<p>/features/<slug>/feature.md                feature:<p>/<slug>       
 products/<p>/changes/<slug>/change.md                  change:<p>/<slug>           carries its project (a project of <p>)
 products/<p>/changes/<c>/decisions/<date>-<slug>.md    decision:<p>/<c>/<slug>
 products/<p>/decisions/<date>-<slug>.md                decision:<p>/<slug>         (product level)
+products/<p>/aspects/<slug>/aspect.md                  aspect:<p>/<slug>           what applies across the product; the body is the base
+products/<p>/aspects/<a>/places/<place>.md             aspect:<p>/<a>/<place>      where it applies (a feature); the body is the fork
 decisions/<date>-<slug>.md                             decision:/<slug>            (store level)
 projects/<slug>.md                                     project:<slug>              a repository, naming its product
 sources/<kind>/<key-slug>.md                 <kind>:<key>                (optional; a source may exist as a key only)
@@ -53,7 +55,9 @@ pjman init [--name <project-name>] [--map|--no-map] [--brief claude-md] [--no-ad
 pjman new product <slug> --title … [--name <one to three words>] [--owners <actor>]… [--levels <label>]… [--sequence <change>]… [--summary …]
 pjman new feature <slug> --title … --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]…
 pjman new project <slug> --title … [--product <product>] [--parent <project>] [--tracker <source-kind>] [--map propose|skip] [--owners <actor>]… [--links <key>]…
-pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
+pjman new aspect <slug> --title … [--parent <aspect>] [--owners <actor>]… [--body <base>|-]
+pjman new place <aspect>/<place> --feature feature:<slug> [--body <fork>|-]
+pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--aspects "changes aspect:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
                                 [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]
 pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
 pjman new source <kind>:<key> [--title …] [--url …]
@@ -107,6 +111,10 @@ With `--session` (or `PJMAN_SESSION`) set, every write is refused until that ses
 ## The product tree
 
 Three lenses onto the same changes in the library: **project**, where the code lives (a grouping of code one team ships together, with one or more repositories), **feature**, what the product does, and **milestone**, toward what (a parent change, its progress its children done). The dashboard shows two of them, feature and milestone; a project is a chip on a card and a record on the getter page, not a place to stand. Project and feature sit under a product; a milestone lives in the work. A `product:<slug>` is the fixed root. Features are one nestable kind, `feature:<slug>`, any depth; the level names (feature, then capability, by default; `tree_levels` in pjman.yaml, or `levels` on the product) are labels, not kinds. Each level is defined by the question it answers and who asks it, not by size: a **product** is the thing with a name and users, asked about by everyone; a **feature** is what the product does for a person, nameable in a sentence a user would recognise, asked about by owners and users, the top level of the map; a **capability** is a distinct behaviour a change can add, change or remove, asked about by builders and agents, the most specific node a change names, which is why capabilities nest. A product that outgrows one map sets its own levels (`area`, `feature`, `capability`); there is no industry standard to follow, so the definitions are the contract. Projects attach to the product (`product`), and nest too (`parent`). Owners, a list of actors on any node, are inherited downward. A change names the features it affects with an effect, `adds`, `changes` or `removes`, and a feature's status is derived from those changes (live once an adding change is done, retired once a removing one is), with an authored status shown beside it when they differ. `pjman tree` renders the tree with roll-ups; `pjman activity <key>` is the event stream of everything beneath a node, which is where health is read from: when it last moved, what got done, what is new, what is blocked, what waits on a person.
+
+### Aspects
+
+Some work is not one place on the tree: how text reads, how the app moves, a component reused across views. An **aspect** records it once, as its own small tree under the product (`aspect:<slug>`, nesting by `parent`), beside the features and never inside them. Its body is the base, the one source of truth. Each **place** (`aspect:<aspect>/<place>`) names one existing feature where the aspect applies; its body is the fork, only what differs there, empty when the base holds as it is. A place at a feature covers everything beneath it, and a place nearer a feature layers over one above it, so a place reads as the base, then the forks above it, then its own (`pjman show aspect:<aspect>/<place>`). Because places are links, the feature tree keeps one parent per node and nothing is counted twice. A change's context carries an Aspects section for the features it names: each aspect over them read in full, and the places beneath a broad feature one line each; a change that names the aspect itself (`--aspects "changes aspect:<slug>"`) carries the base and every place. Writing a base (`pjman set aspect:<slug> body=- < base.md`) prints every place it reaches with each fork, to be reconciled in the same batch. The store holds no shape for a base or a fork; the `aspect` skill shapes them by the kind of aspect. See `change:aspects`.
 
 ## Trackers: the Linear sync
 

@@ -7,6 +7,7 @@ export { keyFromUrl, repoOf } from './refs.js';
 import { resolve, type Loaded, type Rec } from './records.js';
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
+import { parseAspectEffect } from './aspects.js';
 import { changeContext, row, type ChangeContext, type Row } from './commands/view.js';
 
 // --- edges ---------------------------------------------------------------------------------------
@@ -54,6 +55,16 @@ export function allEdges(loaded: Loaded): Edge[] {
         if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent, s), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
+      case 'aspect':
+        if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent, s), r);
+        for (const k of list(d.links)) edge('links', r.key, k, r);
+        edge('in', r.key, `product:${r.productSlug}`, r);
+        break;
+      case 'place':
+        if (typeof d.feature === 'string') edge('feature', r.key, live(d.feature, s), r);
+        for (const k of list(d.links)) edge('links', r.key, k, r);
+        if (r.aspectKey) edge('in', r.key, r.aspectKey, r);
+        break;
       case 'project':
         if (typeof d.product === 'string') edge('product', r.key, d.product, r);
         if (typeof d.parent === 'string') edge('parent', r.key, live(d.parent, s), r);
@@ -65,6 +76,10 @@ export function allEdges(loaded: Loaded): Edge[] {
         for (const k of list(d.depends_on)) edge('depends_on', r.key, live(k, s), r);
         for (const f of list(d.features)) {
           const e = parseEffect(f);
+          if (e) edge(e.effect, r.key, live(e.key, s), r);
+        }
+        for (const a of list(d.aspects)) {
+          const e = parseAspectEffect(a);
           if (e) edge(e.effect, r.key, live(e.key, s), r);
         }
         for (const k of list(d.binds)) edge('binds', r.key, k, r);

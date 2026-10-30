@@ -4,15 +4,17 @@
 //
 //   feature:<product>/<slug>            change:<product>/<slug>
 //   decision:<product>/<change>/<slug>  decision:<product>/<slug> (product level)  decision:/<slug> (store level)
+//   aspect:<product>/<slug>             aspect:<product>/<aspect>/<place> (a place the aspect applies)
 //
-// Inside a product the slug alone names a record (`feature:<slug>`, `change:<slug>`, `decision:<change>/<slug>`):
+// Inside a product the slug alone names a record (`feature:<slug>`, `change:<slug>`, `decision:<change>/<slug>`,
+// `aspect:<slug>`, `aspect:<aspect>/<place>`):
 // the bare form resolves through the scope at hand (records.ts). The full form is what the store writes.
 import { createHash } from 'node:crypto';
 
 /** Kinds whose keys name records inside the store. Every other kind is a source kind. */
-export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature']);
+export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature', 'aspect']);
 /** Kinds keyed beneath a product. */
-export const SCOPED_KINDS = new Set(['feature', 'change', 'decision']);
+export const SCOPED_KINDS = new Set(['feature', 'change', 'decision', 'aspect']);
 
 export interface Key {
   kind: string;
@@ -85,6 +87,9 @@ export const sessionKey = (id: string): string => `session:${id}`;
 export const decisionKey = (product: string | null, change: string | null, slug: string): string =>
   product ? `decision:${product}/${change ? `${change}/` : ''}${slug}` : `decision:/${slug}`;
 
+/** An aspect's full key, or a place's under it. */
+export const aspectKey = (product: string, slug: string, place?: string): string => `aspect:${product}/${slug}${place ? `/${place}` : ''}`;
+
 /** A feature or change rest taken apart: `<product>/<slug>` is full; `<slug>` is bare (resolved through a scope). */
 export interface ScopedRest {
   product: string | null;
@@ -122,10 +127,26 @@ export function parseDecisionRest(rest: string): DecisionRest | null {
   return SLUG_RE.test(parts[0]) && SLUG_RE.test(parts[1]) ? { head: parts[0], change: parts[1], slug, segments: 3 } : null;
 }
 
+/** An aspect rest taken apart: `<slug>` a bare aspect · `<a>/<b>` a full aspect (`<product>/<slug>`) or a bare place
+ *  (`<aspect>/<place>`), which the resolver tells apart · `<product>/<aspect>/<place>` a full place. */
+export interface AspectRest {
+  segments: string[];
+}
+
+export function parseAspectRest(rest: string): AspectRest | null {
+  const parts = rest.split('/');
+  if (parts.length < 1 || parts.length > 3 || !parts.every((p) => SLUG_RE.test(p))) return null;
+  return { segments: parts };
+}
+
 /** The product segment of a full scoped key, or null when the key is bare or not scoped. */
 export function productOfKey(key: string): string | null {
   const k = parseKey(key);
   if (!k || !SCOPED_KINDS.has(k.kind)) return null;
+  if (k.kind === 'aspect') {
+    const a = parseAspectRest(k.rest);
+    return a && a.segments.length === 3 ? a.segments[0] : null; // two segments are told apart by the resolver
+  }
   if (k.kind === 'decision') {
     const d = parseDecisionRest(k.rest);
     return d && d.segments === 3 ? d.head : null; // a two-segment decision key is told apart by the resolver
@@ -155,5 +176,5 @@ export function shortKey(key: string, product: string | null | undefined): strin
 export function shortenText(text: string, product: string | null | undefined): string {
   if (!product) return text;
   const p = product.startsWith('product:') ? product.slice('product:'.length) : product;
-  return text.replace(new RegExp(`\\b(feature|change|decision):${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g'), '$1:');
+  return text.replace(new RegExp(`\\b(feature|change|decision|aspect):${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g'), '$1:');
 }

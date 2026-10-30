@@ -150,13 +150,16 @@ export function ensureIgnored(store: Store): void {
 // --- rebuild from git -------------------------------------------------------------------------
 
 export const typeOfPath = (p: string): RecordType | null => {
-  // products/<p>/{product.md, features/<f>/feature.md, changes/<c>/change.md, changes/<c>/decisions/<d>.md, decisions/<d>.md};
+  // products/<p>/{product.md, features/<f>/feature.md, changes/<c>/change.md, changes/<c>/decisions/<d>.md, decisions/<d>.md,
+  // aspects/<a>/aspect.md, aspects/<a>/places/<p>.md};
   // the flat forms (products/<p>.md, features/, changes/ at the root) are the layout before the migration, still in the history
   if (p.startsWith('products/')) {
     if (p.endsWith('/product.md') || !p.slice('products/'.length).includes('/')) return 'product';
     if (p.endsWith('/feature.md')) return 'feature';
     if (p.endsWith('/change.md')) return 'change';
     if (p.includes('/decisions/')) return 'decision';
+    if (p.endsWith('/aspect.md')) return 'aspect';
+    if (p.includes('/aspects/') && p.includes('/places/')) return 'place';
     return null;
   }
   if (p.startsWith('features/') && p.endsWith('/feature.md')) return 'feature';
@@ -185,6 +188,8 @@ export function keyOfPath(p: string, type: RecordType, root: string, sha: string
       if (under) return seg[2] === 'changes' ? `decision:${under}/${seg[3]}/${slug}` : `decision:${under}/${slug}`;
       return p.startsWith('decisions/') ? `decision:/${slug}` : `decision:${seg[1]}/${slug}`;
     }
+    case 'aspect': return `aspect:${under}/${seg[3]}`;
+    case 'place': return `aspect:${under}/${seg[3]}/${base}`;
     case 'session': return `session:${dated?.[1] ?? base}`;
     case 'source':
     case 'actor': {

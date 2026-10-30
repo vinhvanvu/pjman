@@ -4,6 +4,8 @@ import { readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
 import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
+import { effectsOf } from '../tree.js';
+import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
 import { CliError } from '../util.js';
 
 export interface Row {
@@ -29,7 +31,7 @@ export function row(r: Rec): Row {
 }
 
 const TYPE_ALIASES: Record<string, RecordType> = {
-  product: 'product', products: 'product', feature: 'feature', features: 'feature',
+  product: 'product', products: 'product', feature: 'feature', features: 'feature', aspect: 'aspect', aspects: 'aspect', place: 'place', places: 'place',
   project: 'project', projects: 'project', change: 'change', changes: 'change', decision: 'decision', decisions: 'decision',
   source: 'source', sources: 'source', session: 'session', sessions: 'session', actor: 'actor', actors: 'actor',
 };
@@ -55,7 +57,7 @@ export function ls(store: Store, opts: { type?: string; status?: string; project
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(row);
   }
-  const typeOrder: RecordType[] = ['product', 'feature', 'project', 'change', 'decision', 'source', 'session', 'actor'];
+  const typeOrder: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'source', 'session', 'actor'];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))
@@ -75,7 +77,16 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
   const loaded = loadStore(store);
   const res = resolve(loaded, key);
   if (res.status === 'ok' || res.status === 'alias' || res.status === 'invalid') {
-    return { rec: res.rec, text: fs.readFileSync(res.rec.abs, 'utf8') };
+    let text = fs.readFileSync(res.rec.abs, 'utf8');
+    // an aspect is shown with every place it reaches; a place with the aspect read there, base then forks
+    if (res.status !== 'invalid' && res.rec.type === 'aspect') text += '\n' + reachOfBase(loaded, res.rec).join('\n') + '\n';
+    if (res.status !== 'invalid' && res.rec.type === 'place') {
+      const aspect = loaded.byKey.get(res.rec.aspectKey ?? '')?.[0];
+      const feature = featureOfPlace(loaded, res.rec);
+      const at = aspect && feature ? aspectAt(loaded, aspect, feature) : undefined;
+      if (at) text += '\n## Read here\n\n' + formatAspectAt(at) + '\n';
+    }
+    return { rec: res.rec, text };
   }
   if (res.status === 'malformed') throw new CliError(`'${key}' is not a key`);
   throw new CliError(`${key} has no record`);
@@ -103,6 +114,8 @@ export interface ChangeContext {
   progress?: { done: number; total: number };
   /** Edges sessions observed from this change (the files it touched), with the session that saw each. */
   observed: { edge: string; to: string; session: string; at?: string }[];
+  /** The aspects the change works under: named by it, or at the features it names (decision aspects/aspect-shape). */
+  aspects?: ChangeAspects;
 }
 
 export interface StoreContext {
@@ -205,7 +218,9 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const branch = seenOn
     ? { name: seenOn.slice('branch:'.length), worktree: worktreeNameFor(rec.key), observed: true }
     : { name: branchNameFor(rec.key, readUserConfig().branch_prefix), worktree: worktreeNameFor(rec.key), observed: false };
-  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed };
+  const features = effectsOf(rec).map((e) => liveKey(e.key)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => r?.type === 'feature');
+  const aspects = aspectsOfChange(loaded, rec, features);
+  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects };
 }
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
@@ -237,6 +252,8 @@ export function formatChangeContext(c: ChangeContext): string {
       if (dec.why) out.push(`\nWhy: ${dec.why}`);
     }
   }
+  // the contract the change works under, after what was decided on it
+  if (c.aspects) out.push('\n' + formatChangeAspects(c.aspects).join('\n').trimEnd());
   if (c.sources.length) {
     out.push('\n## Sources');
     for (const s of c.sources) {

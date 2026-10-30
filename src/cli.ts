@@ -58,7 +58,9 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
       'pjman new feature <slug> --title <t> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>]',
       '        keys are paths under the product (feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug>); inside a project the slug alone names a record',
       'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...',
-      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
+      'pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--owners <actor>]... [--body <base>|-]   (what applies across the product; the body is the base)',
+      'pjman new place <aspect>/<place> --feature feature:<slug> [--body <fork>|-] [--links <key>]...   (where the aspect applies; the body is the fork, empty for the base as it is)',
+      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
       '                                [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date)',
       'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
       '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
@@ -66,8 +68,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...   (a person\'s accounts)',
       'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
     ] },
-  { name: 'set', about: "change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section; a decision's supersedes only adds, and marks each named decision superseded in the same commit)",
-    usage: ['pjman set <key> <field>=<value>...'] },
+  { name: 'set', about: "change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section; body sets an aspect's base or a place's fork whole, and a base written lists every place it reaches; field=- reads the value from stdin; a decision's supersedes only adds, and marks each named decision superseded in the same commit)",
+    usage: ['pjman set <key> <field>=<value>...', 'pjman set <key> <field>=- < file   (one value from stdin)'] },
   { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
     usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge; unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
@@ -166,6 +168,8 @@ function parse(args: string[]) {
     links: { type: 'string', multiple: true },
     owners: { type: 'string', multiple: true },
     features: { type: 'string', multiple: true },
+    aspects: { type: 'string', multiple: true },
+    feature: { type: 'string' },
     'depends-on': { type: 'string', multiple: true },
     kind: { type: 'string' },
     severity: { type: 'string' },
@@ -281,7 +285,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'new': {
       const store = scoped(requireStore(cwd, v.store));
       const [, type, ident] = pos;
-      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|project|change|decision|source|actor|session> <ident> [flags]');
+      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|aspect|place|project|change|decision|source|actor|session> <ident> [flags]');
       const flags: NewFlags = {
         title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary, plan: v.plan, next: v.next,
         binds: v.binds, links: v.links, decidedBy: v['decided-by'], decidedOn: v['decided-on'],
@@ -289,7 +293,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, started: v.started,
         product: v.product, owners: v.owners, features: v.features, level: v.level, levels: v.levels,
         dependsOn: v['depends-on'], kind: v.kind, severity: v.severity, target: v.target, sequence: v.sequence,
-        created: v.created, body: v.body, writer: v.writer, session: v.session,
+        aspects: v.aspects, feature: v.feature,
+        created: v.created, body: v.body === '-' ? fs.readFileSync(0, 'utf8') : v.body, writer: v.writer, session: v.session,
       };
       const r = newRecord(store, type, ident, flags);
       // a change the session creates is the session's work: it binds (decision hydration/binding-follows-writes). Only
@@ -501,7 +506,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'set': {
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1] || !pos[2]) throw new CliError('usage: pjman set <key> <field>=<value>...');
-      const r = set(store, pos[1], pos.slice(2), { session: v.session });
+      // one value may come from stdin, `field=-`: a multi-line text, such as an aspect's base or a place's fork
+      const pairs = pos.slice(2);
+      if (pairs.filter((p) => p.endsWith('=-')).length > 1) throw new CliError('only one field=- reads stdin');
+      const stdinPairs = pairs.map((p) => (p.endsWith('=-') ? `${p.slice(0, -1)}${fs.readFileSync(0, 'utf8')}` : p));
+      const r = set(store, pos[1], stdinPairs, { session: v.session });
       v.json ? json(r) : out(`set ${r.changed.join(', ')} on ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}`);
       return 0;
     }

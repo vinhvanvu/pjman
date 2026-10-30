@@ -2,16 +2,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { parseRecord, sections, type Parsed } from './frontmatter.js';
-import { canonicalSourceKey, decisionKey, parseDecisionRest, parseKey, parseScopedRest, SCOPED_KINDS, type Key } from './keys.js';
+import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecisionRest, parseKey, parseScopedRest, SCOPED_KINDS, type Key } from './keys.js';
 import { CliError } from './util.js';
 
-export type RecordType = 'product' | 'feature' | 'project' | 'change' | 'decision' | 'source' | 'session' | 'actor';
+export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'source' | 'session' | 'actor';
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
+  aspect: ['title', 'name', 'parent', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
+  place: ['feature', 'links', 'writer', 'session', 'created', 'ext'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
-  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'owners', 'target', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
+  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'aspects', 'owners', 'target', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
@@ -21,6 +23,8 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
 export const LAYER_OF: Record<RecordType, string> = {
   product: 'core',
   feature: 'core',
+  aspect: 'core',
+  place: 'core',
   project: 'core',
   change: 'work',
   decision: 'work',
@@ -54,6 +58,10 @@ export interface Rec {
   changeSlug?: string;
   /** A decision under a change: that change's full key. */
   changeKey?: string;
+  /** An aspect's slug; for a place, the slug of the aspect it is under, with that aspect's full key. */
+  aspectSlug?: string;
+  aspectKey?: string;
+  placeSlug?: string;
   decisionSlug?: string;
   fileDate?: string;
   fileSlug?: string;
@@ -222,6 +230,47 @@ export function loadStore(store: Store, src: Source = diskSource(store.root)): L
       }
       if (name === 'decisions' && isDir(path.join(root, sub))) {
         readDecisions(sub, slug, null);
+        continue;
+      }
+      // aspects/<slug>/aspect.md, with places/<place>.md beneath: what applies across the product, and where
+      if (name === 'aspects' && isDir(path.join(root, sub))) {
+        for (const aslug of listDir(path.join(root, sub))) {
+          const adir = path.join(sub, aslug);
+          if (!isDir(path.join(root, adir))) {
+            unexpected(adir);
+            continue;
+          }
+          const afile = path.join(adir, 'aspect.md');
+          const akey = aspectKey(slug, aslug);
+          if (exists(path.join(root, afile))) {
+            const r = readRec(src, store, afile, 'aspect', akey);
+            r.productSlug = slug;
+            r.aspectSlug = aslug;
+            records.push(r);
+          } else problems.push({ level: 'error', path: adir, message: 'aspect folder without aspect.md' });
+          for (const n of listDir(path.join(root, adir))) {
+            if (n === 'aspect.md') continue;
+            const pdir = path.join(adir, n);
+            if (n !== 'places' || !isDir(path.join(root, pdir))) {
+              unexpected(pdir);
+              continue;
+            }
+            for (const f of listDir(path.join(root, pdir))) {
+              const rel = path.join(pdir, f);
+              if (!f.endsWith('.md')) {
+                unexpected(rel);
+                continue;
+              }
+              const pslug = f.slice(0, -3);
+              const r = readRec(src, store, rel, 'place', aspectKey(slug, aslug, pslug));
+              r.productSlug = slug;
+              r.aspectSlug = aslug;
+              r.aspectKey = akey;
+              r.placeSlug = pslug;
+              records.push(r);
+            }
+          }
+        }
         continue;
       }
       unexpected(sub);
@@ -426,6 +475,35 @@ export function resolve(loaded: Loaded, raw: unknown, scope: string | null | und
     if (c.status === 'ambiguous') return { status: 'ambiguous', key, candidates: c.candidates.map((k) => `decision:${k.slice('change:'.length)}/${d.slug}`) };
     return { status: 'missing', key };
   }
+  if (key.kind === 'aspect') {
+    const a = parseAspectRest(key.rest);
+    if (!a) return { status: 'missing', key };
+    const seg = a.segments;
+    const at = (k: string): Resolution | null => {
+      const rec = loaded.byKey.get(k)?.[0];
+      return rec ? found(rec) : null;
+    };
+    if (seg.length === 3) {
+      const p = product(seg[0]);
+      return (p ? at(aspectKey(p, seg[1], seg[2])) : null) ?? { status: 'missing', key };
+    }
+    // one segment: an aspect in the scope, else the one product that has it; two: `<product>/<aspect>` when that
+    // product has the aspect, else `<aspect>/<place>` found the same way as a bare aspect
+    const bare = (tail: string[]): Resolution => {
+      const inScope = scope ? at(aspectKey(scope, tail[0], tail[1])) : null;
+      if (inScope) return inScope;
+      const hits = loaded.records.filter((r) => r.key === aspectKey(r.productSlug ?? '', tail[0], tail[1]) && (r.type === 'aspect' || r.type === 'place'));
+      if (hits.length === 1) return found(hits[0]);
+      if (hits.length > 1) return { status: 'ambiguous', key, candidates: hits.map((r) => r.key) };
+      return { status: 'missing', key };
+    };
+    if (seg.length === 2) {
+      const p = product(seg[0]);
+      const full = p ? at(aspectKey(p, seg[1])) : null;
+      if (full) return full;
+    }
+    return bare(seg);
+  }
   if (key.kind === 'product') return viaAlias(key.raw) ?? { status: 'missing', key };
   if (key.kind === 'session' || key.kind === 'project') return { status: 'missing', key };
   if (key.kind === 'person' || key.kind === 'agent') return viaAlias(key.raw) ?? { status: 'actor-key', key };
@@ -466,7 +544,7 @@ export function eventKeysOf(rec: Rec): string[] {
       if (SCOPED_KINDS.has(rec.type) && !a.includes('/')) out.push(`${kind}:${rec.productSlug}/${a}`);
     }
   }
-  if (SCOPED_KINDS.has(rec.type)) {
+  if (rec.type === 'feature' || rec.type === 'change' || rec.type === 'decision') {
     // the flat key the record had before keys were paths under the product
     const flat = rec.type === 'decision' ? decisionKey(null, null, rec.decisionSlug!).replace('decision:/', rec.changeSlug ? `decision:${rec.changeSlug}/` : 'decision:/') : `${kind}:${rec.key.slice(rec.key.lastIndexOf('/') + 1)}`;
     if (!out.includes(flat)) out.push(flat);

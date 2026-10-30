@@ -26,7 +26,7 @@ export interface RmResult {
   commit: string | null;
 }
 
-const LISTS = ['binds', 'links', 'changes', 'owners', 'features', 'depends_on', 'sequence', 'supersedes'];
+const LISTS = ['binds', 'links', 'changes', 'owners', 'features', 'aspects', 'depends_on', 'sequence', 'supersedes'];
 const SINGLE = ['parent', 'supersedes']; // supersedes is one key or a list; each branch handles its shape
 
 /** Drop `key` from the fields that may lose a reference. Returns the fields changed. */
@@ -85,8 +85,8 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
   if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw new CliError(res.status === 'ambiguous' ? unresolved(res, key.raw) : `${key.raw} does not exist`);
   const rec = res.rec;
 
-  // what goes: a change takes its folder (decisions included); anything else is one file
-  const dir = rec.type === 'change' || rec.type === 'feature' || rec.type === 'product' ? path.dirname(rec.path) : null;
+  // what goes: a change takes its folder (decisions included), an aspect its places; anything else is one file
+  const dir = rec.type === 'change' || rec.type === 'feature' || rec.type === 'product' || rec.type === 'aspect' ? path.dirname(rec.path) : null;
   const going = loaded.records.filter((r) => r.path === rec.path || (dir !== null && r.path.startsWith(dir + '/')));
   const removedPaths = new Set(going.map((r) => r.path));
   const keys = new Set<string>(going.flatMap((r) => eventKeysOf(r)));
