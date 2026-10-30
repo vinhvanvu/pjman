@@ -36,6 +36,9 @@ import { statusTone, TONE } from '@/lib/tones';
 const LABEL_W = 216;
 const PAST_W = 320;
 const COL_W = 184;
+/** The slot after the sequence that opens while an entry is dragged: dropped there, the entry is ordered last. */
+const SLOT_W = 132;
+const SLOT = '__slot__' as const;
 const ROW_MIN = 40;
 const MARK_H = 22;
 const BAR_H = 8;
@@ -158,22 +161,54 @@ export function RoadmapChart({
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [rows, violationKeys, cells, resized, span]);
 
-  // drag to reorder: a column header, or a loose entry, dropped on a column header
+  // drag to reorder (change:roadmap-order-affordances): a column header, or a loose entry, dropped anywhere on a
+  // column, its header or its cells; the half under the cursor says before or after, and the column lights with a line
+  // where the entry lands. While dragging, a slot opens after the sequence: dropped there, the entry is ordered last
   const order = useOrder();
   const [dragging, setDragging] = useState<string | undefined>();
   const [over, setOver] = useState<{ key: string; side: 'before' | 'after' } | undefined>();
   const sequenced = useMemo(() => new Set(scope.roadmap.sequence), [scope.roadmap.sequence]);
-  const dropOn = (col: Column) => {
-    const change = dragging;
+  // the slot opening moves the columns, and changing the layout inside dragstart cancels the drag: it waits a tick
+  const startDrag = (key: string) => void setTimeout(() => setDragging(key));
+  const endDrag = () => {
     setDragging(undefined);
     setOver(undefined);
+  };
+  const dropOn = (col: Column) => {
+    const change = dragging;
+    const side = over?.side ?? 'after';
+    endDrag();
     if (!change || change === col.key) return;
     if (col.kind === 'later') {
       if (sequenced.has(change)) order.mutate({ change, later: true });
       return;
     }
-    order.mutate({ change, [over?.side ?? 'after']: col.key });
+    order.mutate({ change, [side]: col.key });
   };
+  const dropLast = () => {
+    const change = dragging;
+    endDrag();
+    if (change && scope.roadmap.sequence.at(-1) !== change) order.mutate({ change, last: true });
+  };
+  // a column takes the drop: any column of the sequence, and later only an entry already on the sequence
+  const takes = (c: Column) => !!dragging && (c.kind !== 'later' || sequenced.has(dragging));
+  const markOf = (c: Column) => (over?.key === c.key ? (c.kind === 'later' ? 'into' : over.side) : undefined);
+  const dragOver = (c: Column) => (e: React.DragEvent<HTMLElement>) => {
+    if (!takes(c)) return;
+    e.preventDefault();
+    setOver({ key: c.key, side: sideOf(c, e) });
+  };
+  const slotOver = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    setOver({ key: SLOT, side: 'after' });
+  };
+  const slotDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    dropLast();
+  };
+  const ordered = cols.filter((c) => c.kind !== 'later');
+  const later = cols.find((c) => c.kind === 'later');
+  const track: (Column | typeof SLOT)[] = [...ordered, ...(dragging ? [SLOT] : []), ...(later ? [later] : [])];
   const repair = (col: Column) => {
     const v = col.violations.find((w) => w.kind === 'order');
     if (!v?.against) return;
@@ -181,7 +216,7 @@ export function RoadmapChart({
     else order.mutate({ change: col.key, later: true });
   };
 
-  const gridCols = `${LABEL_W}px ${PAST_W}px ${cols.map(() => `${COL_W}px`).join(' ')}`;
+  const gridCols = `${LABEL_W}px ${PAST_W}px ${track.map((c) => `${c === SLOT ? SLOT_W : COL_W}px`).join(' ')}`;
   const bugsLink = (key: string, n: number, worst?: string) => (
     <Link
       to="/$lens/$"
@@ -254,24 +289,40 @@ export function RoadmapChart({
               </span>
             </div>
           </div>
-          {cols.map((c, i) => (
-            <ColumnHeader
-              key={c.key}
-              col={c}
-              index={i}
-              titles={titles}
-              draggable={c.kind !== 'later'}
-              dragging={dragging === c.key}
-              over={over?.key === c.key ? over.side : undefined}
-              onDragStart={() => setDragging(c.key)}
-              onDragOver={(side) => setOver({ key: c.key, side })}
-              onDragLeave={() => setOver((o) => (o?.key === c.key ? undefined : o))}
-              onDrop={() => dropOn(c)}
-              onRepair={c.violations.some((w) => w.kind === 'order') ? () => repair(c) : undefined}
-              onSelect={c.row ? () => onSelect(c.key) : undefined}
-              selected={selected === c.key}
-            />
-          ))}
+          {track.map((c, i) =>
+            c === SLOT ? (
+              <div
+                key={SLOT}
+                className={cn(
+                  'sticky top-0 z-20 flex h-10 items-center justify-center border-r border-b border-dashed border-line-strong bg-ground px-2 text-center text-meta',
+                  over?.key === SLOT ? 'bg-selection text-ink' : 'text-ink-muted',
+                )}
+                onDragOver={slotOver}
+                onDragLeave={() => setOver((o) => (o?.key === SLOT ? undefined : o))}
+                onDrop={slotDrop}
+              >
+                {ordered.length ? 'Drop to order last' : 'Drop to order'}
+              </div>
+            ) : (
+              <ColumnHeader
+                key={c.key}
+                col={c}
+                index={i}
+                titles={titles}
+                draggable={c.kind !== 'later'}
+                dragging={dragging === c.key}
+                over={markOf(c)}
+                onDragStart={() => startDrag(c.key)}
+                onDragOver={dragOver(c)}
+                onDragLeave={() => setOver((o) => (o?.key === c.key ? undefined : o))}
+                onDragEnd={endDrag}
+                onDrop={() => dropOn(c)}
+                onRepair={c.violations.some((w) => w.kind === 'order') ? () => repair(c) : undefined}
+                onSelect={c.row ? () => onSelect(c.key) : undefined}
+                selected={selected === c.key}
+              />
+            ),
+          )}
 
           {/* the lanes */}
           {lanes.map((l) => {
@@ -366,85 +417,89 @@ export function RoadmapChart({
                   );
                 })}
               </div>,
-              ...cols.map((c) => (
-                <div
-                  key={`${l.key}:${c.key}`}
-                  className={cn(
-                    'flex flex-col gap-0.5 border-r border-line border-b px-1.5 py-[5px]',
-                    c.kind === 'later' && 'bg-raised/40',
-                  )}
-                  style={{ height: h }}
-                  onDragOver={
-                    c.kind !== 'later' && dragging && !sequenced.has(dragging)
-                      ? (e) => {
-                          e.preventDefault();
-                          setOver({ key: c.key, side: 'after' });
-                        }
-                      : undefined
-                  }
-                  onDrop={
-                    c.kind !== 'later' && dragging && !sequenced.has(dragging)
-                      ? (e) => {
-                          e.preventDefault();
-                          dropOn(c);
-                        }
-                      : undefined
-                  }
-                >
-                  {cell?.cols.get(c.key)?.map((e) => {
-                    const v = scope.roadmap.violations.filter((w) => w.change === e.key);
-                    const loose = c.kind === 'later';
-                    return (
-                      <button
-                        key={e.key}
-                        type="button"
-                        ref={register(e.key, 'next')}
-                        draggable={loose}
-                        onDragStart={
-                          loose
-                            ? (ev) => {
-                                ev.dataTransfer.setData('text/plain', e.key);
-                                ev.dataTransfer.effectAllowed = 'move';
-                                setDragging(e.key);
-                              }
-                            : undefined
-                        }
-                        onDragEnd={() => {
-                          setDragging(undefined);
-                          setOver(undefined);
-                        }}
-                        onClick={() => onSelect(e.key)}
-                        onMouseEnter={() => setHover(e.key)}
-                        onMouseLeave={() => setHover(undefined)}
-                        onFocus={() => setHover(e.key)}
-                        onBlur={() => setHover(undefined)}
-                        title={`${e.title ?? short(e.key)} · ${e.status ?? 'open'}${e.parent && c.kind === 'later' ? ` · under ${short(e.parent)}` : ''}${v.length ? ` · ${v.map((w) => violationText(w, titles)).join('; ')}` : ''}`}
-                        aria-current={selected === e.key ? 'true' : undefined}
-                        className={cn(
-                          'flex h-5 min-w-0 items-center gap-1.5 rounded-chip border px-1.5 text-left text-meta outline-none',
-                          selected === e.key
-                            ? 'border-accent bg-selection text-ink ring-1 ring-accent'
-                            : focus === e.key
-                              ? 'border-line-strong bg-raised text-ink'
-                              : 'border-line-strong text-ink-muted hover:bg-raised hover:text-ink',
-                          loose && 'cursor-grab active:cursor-grabbing',
-                          dragging === e.key && 'opacity-40',
-                        )}
-                      >
-                        <span
-                          className={cn('size-[7px] shrink-0 rounded-full', statusTone(e.status).bg)}
-                          aria-hidden="true"
-                        />
-                        <span className="min-w-0 flex-1 truncate">{e.title ?? short(e.key)}</span>
-                        {e.live && <Pulse className="size-[6px]" />}
-                        {v.length > 0 && (
-                          <TriangleAlert className={cn('size-3 shrink-0', TONE.waits.text)} aria-label="warning" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )),
+              ...track.map((c) =>
+                c === SLOT ? (
+                  <div
+                    key={`${l.key}:${SLOT}`}
+                    className={cn(
+                      'border-r border-b border-dashed border-line-strong',
+                      over?.key === SLOT && 'bg-selection/60',
+                    )}
+                    style={{ height: h }}
+                    onDragOver={slotOver}
+                    onDrop={slotDrop}
+                  />
+                ) : (
+                  <div
+                    key={`${l.key}:${c.key}`}
+                    className={cn(
+                      'flex flex-col gap-0.5 border-r border-line border-b px-1.5 py-[5px]',
+                      c.kind === 'later' && 'bg-raised/40',
+                      dropMark(markOf(c)),
+                    )}
+                    style={{ height: h }}
+                    onDragOver={dragOver(c)}
+                    onDrop={(e) => {
+                      if (!takes(c)) return;
+                      e.preventDefault();
+                      dropOn(c);
+                    }}
+                  >
+                    {cell?.cols.get(c.key)?.map((e) => {
+                      const v = scope.roadmap.violations.filter((w) => w.change === e.key);
+                      const loose = c.kind === 'later';
+                      return (
+                        <button
+                          key={e.key}
+                          type="button"
+                          ref={register(e.key, 'next')}
+                          draggable={loose}
+                          onDragStart={
+                            loose
+                              ? (ev) => {
+                                  ev.dataTransfer.setData('text/plain', e.key);
+                                  ev.dataTransfer.effectAllowed = 'move';
+                                  startDrag(e.key);
+                                }
+                              : undefined
+                          }
+                          onDragEnd={endDrag}
+                          onClick={() => onSelect(e.key)}
+                          onMouseEnter={() => setHover(e.key)}
+                          onMouseLeave={() => setHover(undefined)}
+                          onFocus={() => setHover(e.key)}
+                          onBlur={() => setHover(undefined)}
+                          title={`${e.title ?? short(e.key)} · ${e.status ?? 'open'}${e.parent && c.kind === 'later' ? ` · under ${short(e.parent)}` : ''}${v.length ? ` · ${v.map((w) => violationText(w, titles)).join('; ')}` : ''}`}
+                          aria-current={selected === e.key ? 'true' : undefined}
+                          className={cn(
+                            'flex h-5 min-w-0 items-center gap-1.5 rounded-chip border px-1.5 text-left text-meta outline-none',
+                            selected === e.key
+                              ? 'border-accent bg-selection text-ink ring-1 ring-accent'
+                              : focus === e.key
+                                ? 'border-line-strong bg-raised text-ink'
+                                : 'border-line-strong text-ink-muted hover:bg-raised hover:text-ink',
+                            loose && 'cursor-grab active:cursor-grabbing',
+                            dragging === e.key && 'opacity-40',
+                          )}
+                        >
+                          {loose && (
+                            <GripVertical className="-ml-1 size-3 shrink-0 text-ink-faint" aria-hidden="true" />
+                          )}
+                          <span
+                            className={cn('size-[7px] shrink-0 rounded-full', statusTone(e.status).bg)}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 flex-1 truncate">{e.title ?? short(e.key)}</span>
+                          {e.live && <Pulse className="size-[6px]" />}
+                          {v.length > 0 && (
+                            <TriangleAlert className={cn('size-3 shrink-0', TONE.waits.text)} aria-label="warning" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ),
+              ),
             ];
           })}
           {lanes.length === 0 && (
@@ -490,6 +545,21 @@ export function RoadmapChart({
   );
 }
 
+/** The side of a column a drag lands on: the half under the cursor; later has no sides. */
+const sideOf = (c: Column, e: React.DragEvent<HTMLElement>): 'before' | 'after' => {
+  if (c.kind === 'later') return 'after';
+  const r = e.currentTarget.getBoundingClientRect();
+  return e.clientX - r.left < r.width / 2 ? 'before' : 'after';
+};
+
+/** Where a drag would land on a column:lit, with a line on the side the entry lands; later is lit whole. */
+const dropMark = (mark?: 'before' | 'after' | 'into') =>
+  cn(
+    mark && 'bg-selection/60',
+    mark === 'before' && 'shadow-[inset_3px_0_0_var(--primary)]',
+    mark === 'after' && 'shadow-[inset_-3px_0_0_var(--primary)]',
+  );
+
 const day = (t: number) => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 function ColumnHeader({
@@ -503,6 +573,7 @@ function ColumnHeader({
   onDragStart,
   onDragOver,
   onDragLeave,
+  onDragEnd,
   onDrop,
   onRepair,
   onSelect,
@@ -512,11 +583,12 @@ function ColumnHeader({
   titles: Map<string, string | undefined>;
   draggable: boolean;
   dragging: boolean;
-  over?: 'before' | 'after';
+  over?: 'before' | 'after' | 'into';
   selected: boolean;
   onDragStart: () => void;
-  onDragOver: (side: 'before' | 'after') => void;
+  onDragOver: (e: React.DragEvent<HTMLElement>) => void;
   onDragLeave: () => void;
+  onDragEnd: () => void;
   onDrop: () => void;
   onRepair?: () => void;
   onSelect?: () => void;
@@ -528,8 +600,7 @@ function ColumnHeader({
       className={cn(
         'sticky top-0 z-20 flex h-10 items-center gap-1.5 border-r border-line border-b bg-ground px-2',
         col.kind === 'later' && 'bg-raised/60',
-        over === 'before' && 'shadow-[inset_3px_0_0_var(--primary)]',
-        over === 'after' && 'shadow-[inset_-3px_0_0_var(--primary)]',
+        dropMark(over),
         dragging && 'opacity-40',
       )}
       draggable={draggable}
@@ -542,12 +613,8 @@ function ColumnHeader({
             }
           : undefined
       }
-      onDragEnd={onDragLeave}
-      onDragOver={(e) => {
-        e.preventDefault();
-        const r = e.currentTarget.getBoundingClientRect();
-        onDragOver(col.kind === 'later' ? 'after' : e.clientX - r.left < r.width / 2 ? 'before' : 'after');
-      }}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={(e) => {
         e.preventDefault();
