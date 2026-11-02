@@ -11,6 +11,7 @@ import { SelectionBadge } from '@/components/SelectionBadge';
 import { Chip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
 import { DecideControl } from '@/components/decisions/DecideControl';
+import { acceptable, Options } from '@/components/decisions/Options';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
 import { AppShell } from '@/components/shell/AppShell';
@@ -459,9 +460,9 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   );
 }
 
-/** The decisions tab: proposed first, each by its name and gist with the recommended option and what it still needs
- *  (the-ladder: the thread stays in the record), Accept on a proposed one that recommends an option and Reopen on a
- *  decided one (change:decide-in-place). */
+/** The decisions tab: proposed first, each by its name and gist, then its options with the recommended or accepted one
+ *  marked and its case as points (change:decision-card), what it still needs, Accept on a proposed one that
+ *  recommends an option and Reopen on a decided one (change:decide-in-place). */
 function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
   const decide = useDecideAction('decide');
   const reopen = useDecideAction('reopen');
@@ -485,24 +486,11 @@ function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
             )}
           </div>
           {d.name && d.title && <p className="text-[13px] leading-relaxed text-ink-muted">{d.title}</p>}
-          {d.status === 'proposed' && d.state.recommendation && (
-            <p className="text-xs leading-relaxed text-ink-faint">
-              <span className="label mr-1.5">Recommended</span>
-              {d.state.options.find((o) => o.recommended)?.text}
-              {d.state.recommendation.text ? ` — ${d.state.recommendation.text}` : ''}
-            </p>
-          )}
-          {d.state.accepted && (
-            <p className="text-xs leading-relaxed text-ink-faint">
-              <span className="label mr-1.5">Accepted</span>
-              {d.state.options.find((o) => o.accepted)?.text}
-              {d.state.accepted.text ? ` — ${d.state.accepted.text}` : ''}
-            </p>
-          )}
+          <Options state={d.state} />
           <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />
           <div className="flex items-center gap-2 text-meta text-ink-faint">
             <CopyKey refKey={d.key} />
-            {d.status === 'proposed' && decide && (d.state.recommendation || d.state.options.length === 1) && (
+            {d.status === 'proposed' && decide && acceptable(d.state) && (
               <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />
             )}
             {d.status === 'decided' && reopen && (

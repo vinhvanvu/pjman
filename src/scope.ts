@@ -11,7 +11,7 @@ import { violations, worstSeverity, type RoadmapRow, type Violation } from './ro
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
-import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf } from './foundation.js';
+import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState } from './foundation.js';
 import { nextLine } from './commands/view.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
@@ -130,18 +130,16 @@ export interface LiveSession {
   lastLine?: string;
 }
 
-/** A proposed decision beneath a node: what waits on a person, read by its rungs (the-ladder): the name, the gist
- *  (the question and the recommended answer while proposed), and which option is recommended. */
+/** A proposed decision beneath a node: what waits on a person, read in the order they want it (the-ladder,
+ *  change:decision-card): the name, the gist, then the options with the recommended one marked and its case as points. */
 export interface WaitingDecision {
   key: string;
   name?: string;
   /** The gist. */
   title?: string;
   change: string;
-  /** The recommended option's id and text, when the thread recommends one. */
-  recommended?: { id: string; text: string };
-  /** The options' ids: what accepting from a card chooses among. */
-  options: string[];
+  /** The thread's state: the options, which is recommended and why; what accepting from a card chooses among. */
+  state: DecisionState;
   needs: string[];
   stale: boolean;
   created?: string;
@@ -153,9 +151,7 @@ export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = ()
   return loaded.records
     .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && !!d.changeKey && keep(d))
     .map((d) => {
-      const s = decisionState(threadOf(d.data));
-      const rec = s.options.find((o) => o.recommended);
-      return { key: d.key, name: str(d.data.name), title: lineOf(d.data), change: d.changeKey!, recommended: rec ? { id: rec.id, text: rec.text } : undefined, options: s.options.map((o) => o.id), needs: needsOf(d), stale: rungsOf(d).stale, created: str(d.data.created) };
+      return { key: d.key, name: str(d.data.name), title: lineOf(d.data), change: d.changeKey!, state: decisionState(threadOf(d.data)), needs: needsOf(d), stale: rungsOf(d).stale, created: str(d.data.created) };
     })
     .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
 }

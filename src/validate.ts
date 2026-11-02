@@ -389,8 +389,7 @@ export function validate(loaded: Loaded): Problem[] {
               if (x.by !== undefined) checkRef(r, `thread[${i}].by`, x.by, ['actor']);
               if (type === 'option') {
                 if (typeof x.id !== 'string' || !SLUG_RE.test(x.id)) err(r, `thread[${i}]: an option needs an id (a slug)`);
-                else if (ids.has(x.id)) err(r, `thread[${i}]: option '${x.id}' is named twice`);
-                else ids.add(x.id);
+                else ids.add(x.id); // a later entry for the same id restates the option
                 if (typeof x.text !== 'string' || !x.text.trim()) err(r, `thread[${i}]: an option needs its text`);
               } else if (type === 'recommendation' || type === 'reject' || type === 'accept') {
                 if (typeof x.option !== 'string' || !ids.has(x.option)) err(r, `thread[${i}]: ${type} names option '${String(x.option)}', which no earlier entry defines`);

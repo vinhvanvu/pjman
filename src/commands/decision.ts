@@ -164,7 +164,7 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     switch (entry.type) {
       case 'option':
         if (!entry.id || !SLUG_RE.test(entry.id)) throw new CliError(`an option needs an id (a slug): --option <id>="<text>"`);
-        if (ids.has(entry.id)) throw new CliError(`option '${entry.id}' is already in the thread; a changed option is a new one with its own id`);
+        if (ids.has(entry.id)) notes.push(`${entry.id} restated; its earlier text and case stay in the thread`);
         break;
       case 'recommendation': case 'reject':
         if (!entry.option || !ids.has(entry.option)) throw new CliError(`${entry.type}: '${String(entry.option)}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`);

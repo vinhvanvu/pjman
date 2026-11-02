@@ -94,7 +94,7 @@ test('feature lens: features nest, a change sits under every feature it names, a
   // the health of the node, the live session beneath it, the window
   assert.equal(s.health.waiting, 1);
   // the inbox: the proposed decision beneath, with the recommendation and the change it is on
-  assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.recommended?.text]), [['decision:shop/card-form/why', 'change:shop/card-form', 'd']]);
+  assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.state.options.find((o) => o.recommended)?.text]), [['decision:shop/card-form/why', 'change:shop/card-form', 'd']]);
   assert.equal(s.health.created, 6);
   assert.equal(s.health.staleDays, 0);
   assert.deepEqual(s.sessions.map((x) => [x.key, x.on]), [['session:live-1', 'change:shop/card-form']]);

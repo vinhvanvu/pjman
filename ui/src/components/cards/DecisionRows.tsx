@@ -1,6 +1,6 @@
 // Proposed decisions as rows that open in place: the name and gist collapsed (the-ladder: views show a decision by
-// its rungs; the options stay in the thread); open, the recommended option, what the decision still needs, a copy of
-// the reference, Accept (change:decide-in-place) and a way to the change's decisions tab. Nothing navigates on the first click. Alive
+// its rungs); open, the options with the recommended one marked and its case as points (change:decision-card), what
+// the decision still needs, a copy of the reference, Accept (change:decide-in-place) and a way to the change's decisions tab. Nothing navigates on the first click. Alive
 // (change:motion-design): a decision that arrives slides in, one opened on the stream washes in waits amber, and one
 // that stops waiting washes done green where it stands, fades, and only then gives up its space.
 import { cn } from 'cn';
@@ -14,6 +14,7 @@ import { liveItem, Wash } from '@/lib/motion';
 import { Chip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
 import { DecideControl } from '@/components/decisions/DecideControl';
+import { acceptable, Options } from '@/components/decisions/Options';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Readiness } from '@/components/record/Foundation';
 import { TONE } from '@/lib/tones';
@@ -104,16 +105,11 @@ export function DecisionRows({
                 {isOpen && (
                   <div className="flex flex-col gap-2.5 border-t border-line px-3.5 py-3 pl-[36px]">
                     {d.name && d.title && <p className="text-[13px] leading-relaxed text-ink-muted">{d.title}</p>}
-                    {d.recommended && (
-                      <p className="text-xs leading-relaxed text-ink-faint">
-                        <span className="label mr-1.5">Recommended</span>
-                        {d.recommended.text}
-                      </p>
-                    )}
+                    <Options state={d.state} />
                     <Readiness needs={d.needs} stale={d.stale} what="decision" />
                     <div className="flex flex-wrap items-center gap-3 text-meta text-ink-faint">
                       <CopyKey refKey={d.key} />
-                      {onDecide && (d.recommended || d.options.length === 1) && (
+                      {onDecide && acceptable(d.state) && (
                         <DecideControl decision={d.key} onConfirm={() => onDecide(d.key)} />
                       )}
                       <NodeLink to={d.key} lens={lens} className="ml-auto hover:text-ink">

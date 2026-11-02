@@ -21,6 +21,7 @@ import { liveItem, Wash } from '@/lib/motion';
 import { Label, StatusChip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
 import { DecideControl } from '@/components/decisions/DecideControl';
+import { acceptable, Options } from '@/components/decisions/Options';
 import { useDecideAction } from '@/data/queries';
 import {
   cardWhen,
@@ -219,11 +220,11 @@ function Meta({ change, session }: { change?: BridgeChange; session?: BridgeSess
   );
 }
 
-/** One proposed decision on a card: its name, its gist clamped, when it was proposed, Accept (when the thread
- *  recommends an option, or holds only one, so accepting from the card chooses nothing the person did not read). */
+/** One proposed decision on a card: its name, its gist clamped, the options with the recommended one marked and its
+ *  points (change:decision-card), when it was proposed, Accept (when the thread recommends an option, or holds only
+ *  one, so accepting from the card chooses nothing the person did not read). */
 function DecideBlock({ decision: d, onDecided }: { decision: WaitingDecision; onDecided?: () => void }) {
   const decide = useDecideAction('decide');
-  const acceptable = !!d.recommended || d.options.length === 1;
   return (
     <span className={cn('flex flex-col gap-1 rounded-row px-2.5 py-2 text-xs', TONE.waits.soft)}>
       <span className="flex items-start gap-2">
@@ -231,9 +232,10 @@ function DecideBlock({ decision: d, onDecided }: { decision: WaitingDecision; on
         <span className="line-clamp-2 min-w-0 font-medium text-ink">{d.name ?? d.title ?? short(d.key)}</span>
       </span>
       {d.name && d.title && <span className="line-clamp-2 text-ink-muted">{d.title}</span>}
+      <Options state={d.state} className="mt-1" />
       <span className="flex items-center gap-2 text-meta text-ink-faint">
         <span className="shrink-0">{proposedWhen(d.created)}</span>
-        {decide && acceptable && (
+        {decide && acceptable(d.state) && (
           <DecideControl decision={d.key} onConfirm={() => decide(d.key).then(onDecided)} className="ml-auto" />
         )}
         <CopyKey refKey={d.key} />

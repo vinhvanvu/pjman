@@ -117,7 +117,7 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
     ['change:shop/card-form', ['decision:shop/card-form/why', 'decision:shop/card-form/later']], // newest proposed first
   ]);
   assert.deepEqual(b.waitingOn[0].change.path.map((f) => f.name), ['Checkout', 'Saved cards']);
-  assert.equal(b.waitingOn[0].proposed[0].recommended?.text, 'd');
+  assert.equal(b.waitingOn[0].proposed[0].state.options.find((o) => o.recommended)?.text, 'd');
   // most recent first
   const lasts = b.sessions.map((s) => s.last ?? '');
   assert.deepEqual(lasts, [...lasts].sort().reverse());

@@ -49,13 +49,17 @@ working it.
    dependency, a scope cut, anything a later reader would ask "why?" about), with the options laid out and one
    recommended:
    ```
-   pjman decision <change-slug>/<decision-slug> --name "…" --gist "<the question and the recommended answer, in a line>" \
-     --question "…" [--criterion "…"]… --option <id>="…" --option <id>="…" [--case <id>="what it costs, what it rules out"]… \
-     --recommend <id>="why it beats the others"
+   pjman decision <change-slug>/<decision-slug> --name "…" --gist "<what is being decided, in a line>" \
+     --question "…" [--criterion "…"]… --option <id>="<one line: what it is>" --option <id>="…" \
+     [--case <id>="<its points, one per line: what it gives, what it costs, what it rules out>"]… \
+     --recommend <id>="<why it beats the others, in a line>"
    ```
-   It is created `proposed`. The same command adds to it later: a reframed `--question`, a new `--option`, the
-   person's words as `--comment "…" --by person:<handle>`, `--reject <id>="why"`, a moved `--recommend`; large ones as
-   JSON on stdin (`--from -`). **Never accept a decision on your own judgment**; deciding is the person's. Say in your
+   The views draw a decision in that order: the name, the gist, the options one line each with the recommended one
+   marked once and its case as bullets, then the why. So the gist never restates the recommendation, an option's text
+   is one line, and its case is points, short enough to read on a card. It is created `proposed`. The same command
+   adds to it later: a reframed `--question`, a new `--option`, the same `--option <id>` again to restate it (its text
+   and case replace the earlier ones; the thread keeps both), the person's words as `--comment "…" --by
+   person:<handle>`, `--reject <id>="why"`, a moved `--recommend`; large ones as JSON on stdin (`--from -`). **Never accept a decision on your own judgment**; deciding is the person's. Say in your
    reply that a decision is open and what you recommend. **When the person decides in chat ("agreed", "go", "accept
    it"), that is the decision: record it at once**, never hand them the command:
    `pjman decision <change>/<slug> --accept <id>="<their words>" --by person:<handle> [--revisit "<when to look again>"]`.
