@@ -78,12 +78,13 @@ export function useOrder() {
   });
 }
 
-/** Deciding a decision in place, or reopening one. The stream invalidates too; this makes the refetch immediate. */
+/** Deciding a decision in place, or reopening one. The stream invalidates too; this makes the refetch immediate, and
+ *  the write settles only once the views have it, so a control never shows its decision as it was before. */
 export function useDecide(kind: 'decide' | 'reopen') {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (decision: string) => (kind === 'decide' ? api.decide({ decision }) : api.reopen({ decision })),
-    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.all }),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }
 

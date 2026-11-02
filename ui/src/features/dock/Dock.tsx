@@ -130,7 +130,15 @@ function DockChange({
   const fresh = useFreshEvents();
   const arrivals = dockArrivals(at ? NO_EVENTS : fresh, session.key, c.key);
   const hold = useHold();
-  const { shown: waits } = useHeldList(waiting, hold.held, keyOf);
+  const { shown: waits, letGo } = useHeldList(waiting, hold.held, keyOf);
+  // the decision the person just decided leaves at once, held or not (decision decide-is-slow/acted-card-leaves-the-hold)
+  const onDecide =
+    decide &&
+    ((k: string) =>
+      decide(k).then(() => {
+        letGo(k);
+        hold.settle();
+      }));
   return (
     <article className="flex flex-col gap-5 p-4" {...hold.props}>
       <header className="relative flex flex-col gap-1.5">
@@ -202,7 +210,7 @@ function DockChange({
           showChange={false}
           opened={arrivals.opened}
           moment={at}
-          onDecide={decide}
+          onDecide={onDecide}
         />
       </section>
 
