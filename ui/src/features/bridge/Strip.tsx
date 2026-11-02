@@ -72,7 +72,7 @@ export function Strip({
   const live = stripRows(strip({ waitingOn, sessions }));
   const hold = useHold();
   // held, a card keeps its place but says what its session says now, wherever the session has moved to
-  const { shown, pending } = useHeldList(live, hold.held, rowKey, (k) => {
+  const { shown, pending, letGo } = useHeldList(live, hold.held, rowKey, (k) => {
     const row = live.find((r) => r.key === k);
     if (row || !k.startsWith('s:')) return row;
     const s = sessions.find((x) => x.key === k.slice(2));
@@ -102,7 +102,16 @@ export function Strip({
               {r.kind === 'head' ? (
                 <Heading row={r} />
               ) : r.kind === 'wait' ? (
-                <WaitCard item={r.item} lens={lens} touched={touched} arrivals={arrivals} />
+                <WaitCard
+                  item={r.item}
+                  lens={lens}
+                  touched={touched}
+                  arrivals={arrivals}
+                  onDecided={() => {
+                    letGo(r.key);
+                    hold.settle();
+                  }}
+                />
               ) : (
                 <SessionCard session={r.session} lens={lens} touched={touched} arrivals={arrivals} />
               )}
@@ -211,7 +220,7 @@ function Meta({ change, session }: { change?: BridgeChange; session?: BridgeSess
 }
 
 /** One proposed decision on a card: its title, its recommendation clamped, when it was proposed, Accept. */
-function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
+function DecideBlock({ decision: d, onDecided }: { decision: WaitingDecision; onDecided?: () => void }) {
   const decide = useDecideAction('decide');
   return (
     <span className={cn('flex flex-col gap-1 rounded-row px-2.5 py-2 text-xs', TONE.waits.soft)}>
@@ -222,7 +231,9 @@ function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
       {d.decision && <span className="line-clamp-2 text-ink-muted">{d.decision}</span>}
       <span className="flex items-center gap-2 text-meta text-ink-faint">
         <span className="shrink-0">{proposedWhen(d.created)}</span>
-        {decide && <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />}
+        {decide && (
+          <DecideControl decision={d.key} onConfirm={() => decide(d.key).then(onDecided)} className="ml-auto" />
+        )}
         <CopyKey refKey={d.key} />
       </span>
     </span>
@@ -235,11 +246,15 @@ export function WaitCard({
   lens,
   touched,
   arrivals = NONE,
+  onDecided,
 }: {
   item: WaitItem;
   lens: Lens;
   touched?: Touched;
   arrivals?: readonly TimelineEvent[];
+  /** After a decision on the card is decided: the strip lets the card go once it has nothing left to decide
+   *  (decision decide-is-slow/acted-card-leaves-the-hold). */
+  onDecided?: () => void;
 }) {
   const { change, proposed, session } = item;
   return (
@@ -261,7 +276,7 @@ export function WaitCard({
       </span>
       <Meta change={change} session={session} />
       {proposed.map((d) => (
-        <DecideBlock key={d.key} decision={d} />
+        <DecideBlock key={d.key} decision={d} onDecided={onDecided} />
       ))}
       {session?.line && <span className="line-clamp-2 text-xs text-ink-muted">{session.line.text}</span>}
     </CardFrame>
