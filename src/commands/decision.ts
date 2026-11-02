@@ -11,9 +11,9 @@ import type { EventInput } from '../events.js';
 import { SLUG_RE } from '../keys.js';
 import { loadStore, resolve, unresolved, type Loaded, type Rec } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersededBy, supersedesOf } from '../supersede.js';
-import { CliError, isDateString, localDate, nowIso, today } from '../util.js';
+import { CliError, isDateString, nowIso, today } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, snapshot, validateOrUndo, writeFile } from '../write.js';
-import { decisionState, foundationHash, foundationOf, gistProblem, nameProblem, threadOf, type DecisionState, type Entry } from '../foundation.js';
+import { dayOf, decisionState, foundationHash, foundationOf, gistProblem, nameProblem, threadOf, type DecisionState, type Entry } from '../foundation.js';
 import { decisionHome } from './new.js';
 
 /** An entry as the command takes it, before the tool stamps it. */
@@ -208,7 +208,7 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     data.status = next;
     if (state.accepted) {
       data.decided_by = state.accepted.by;
-      data.decided_on = localDate(new Date(state.accepted.at));
+      data.decided_on = dayOf(state.accepted.at);
     } else {
       delete data.decided_by;
       delete data.decided_on;

@@ -9,8 +9,9 @@ import { createHash } from 'node:crypto';
 import type { Rec } from './records.js';
 import { localDate } from './util.js';
 
-/** The local calendar day of an instant, as the record's dates are written. */
-const dayOf = (at: string): string => (Number.isNaN(Date.parse(at)) ? at.slice(0, 10) : localDate(new Date(at)));
+/** The calendar day of an instant, as the record's dates are written: the local day, except for an instant at exactly
+ *  midnight UTC, which stands for a date alone (a migrated acceptance carries the day it was decided, no time). */
+export const dayOf = (at: string): string => (Number.isNaN(Date.parse(at)) || at.endsWith('T00:00:00.000Z') ? at.slice(0, 10) : localDate(new Date(at)));
 
 /** A change's sections, in order of depth: a reader who wants more than the gist reads the first and stops. */
 export const CHANGE_SECTIONS = ['Origin', 'Intent', 'Done when', 'Scope', 'Open questions', 'Blocked on', 'Notes'] as const;
@@ -212,15 +213,16 @@ export function rungsOf(rec: Pick<Rec, 'type' | 'data' | 'sections'>): Rungs {
   return { name: str(rec.data.name), gist: str(rec.data.gist), stale };
 }
 
-/** What the record still needs before it is worked: the rungs and the required sections it lacks, in reading order.
- *  Empty for a record that has them all. */
+/** What the record still needs before it is worked: the rungs it lacks, and for a record still in play the required
+ *  sections (a change not done or dropped; a decision still proposed). Empty for a record that has them all. */
 export function needsOf(rec: Pick<Rec, 'type' | 'data' | 'sections'>): string[] {
   const out: string[] = [];
   if (!str(rec.data.name)?.trim()) out.push('name');
   if (!str(rec.data.gist)?.trim()) out.push('gist');
-  if (rec.type === 'change') {
+  const status = str(rec.data.status);
+  if (rec.type === 'change' && status !== 'done' && status !== 'dropped') {
     for (const s of CHANGE_REQUIRED) if (!rec.sections.get(s)?.trim()) out.push(s.toLowerCase());
-  } else if (rec.type === 'decision') {
+  } else if (rec.type === 'decision' && status === 'proposed') {
     const s = decisionState(threadOf(rec.data));
     if (!s.question) out.push('question');
     if (!s.options.length) out.push('an option');

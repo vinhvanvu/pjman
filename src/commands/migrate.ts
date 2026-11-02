@@ -119,12 +119,12 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
       sections.delete('Decision');
       sections.delete('Why');
       const thread: Record<string, unknown>[] = [...(Array.isArray(data.thread) ? (data.thread as Record<string, unknown>[]) : [])];
-      const createdAt = str(data.created) ? `${str(data.created)}T00:00:00.000Z` : at;
+      const createdAt = str(data.created) ? `${str(data.created)}T12:00:00.000Z` : at;
       const by = str(data.writer);
       if (decision || why) thread.push({ type: 'option', at: createdAt, by, id: 'chosen', text: decision || why, case: decision ? why : undefined });
       const decidedBy = str(data.decided_by);
       if (data.status !== 'proposed' && decidedBy?.startsWith('person:') && (decision || why)) {
-        thread.push({ type: 'accept', at: str(data.decided_on) ? `${str(data.decided_on)}T00:00:00.000Z` : createdAt, by: decidedBy, option: 'chosen' });
+        thread.push({ type: 'accept', at: str(data.decided_on) ? `${str(data.decided_on)}T12:00:00.000Z` : createdAt, by: decidedBy, option: 'chosen' });
       } else if (decision || why) thread.push({ type: 'recommendation', at: createdAt, by, option: 'chosen' });
       if (thread.length) data.thread = thread;
       if (data.status === 'decided' && !decidedBy?.startsWith('person:')) {
