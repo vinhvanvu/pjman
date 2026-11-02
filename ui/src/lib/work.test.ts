@@ -50,7 +50,7 @@ describe('work by intent', () => {
     const d = (key: string, change: string): WaitingDecision => ({
       key: `decision:${change}/${key}`,
       change: `change:${change}`,
-      options: [],
+      state: { criteria: [], options: [], comments: [] },
       needs: [],
       stale: false,
     });

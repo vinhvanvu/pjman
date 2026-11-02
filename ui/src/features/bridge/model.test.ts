@@ -12,7 +12,7 @@ const s = (key: string, o: Partial<BridgeSession> = {}): BridgeSession => ({
 const change = (key: string) => ({ key: `change:p/${key}`, title: key, path: [] });
 const w = (key: string, decisions: string[]): WaitingChange => ({
   change: change(key),
-  proposed: decisions.map((d) => ({ key: `decision:p/${key}/${d}`, change: `change:p/${key}`, title: d, options: [], needs: [], stale: false })),
+  proposed: decisions.map((d) => ({ key: `decision:p/${key}/${d}`, change: `change:p/${key}`, title: d, state: { criteria: [], options: [], comments: [] }, needs: [], stale: false })),
 });
 
 describe('strip', () => {

@@ -18,7 +18,7 @@ import { readEvents } from '../events.js';
 import { loadStore } from '../records.js';
 import { scope } from '../scope.js';
 import { validate } from '../validate.js';
-import { decisionState, needsOf, nextStep, rungsOf, stepsOf, threadOf } from '../foundation.js';
+import { decisionState, formatDecisionState, needsOf, nextStep, pointsOf, rungsOf, stepsOf, threadOf } from '../foundation.js';
 import { syncLinear } from '../sync/linear.js';
 import { change } from './shape.js';
 
@@ -137,7 +137,13 @@ test('a decision is a thread: created at any size, added to later, accepted by a
   assert.deepEqual(errors(store), []);
   assert.throws(() => newRecord(store, 'decision', 'login/x', { title: 'x' }), /pjman decision login\/x/, 'new decision points to the verb');
   assert.throws(() => set(store, 'decision:login/link-life', ['status=decided'], {}), /follows its thread/, 'status is not set by hand');
-  assert.throws(() => decision(store, 'login/link-life', { entries: [{ type: 'option', id: 'short', text: 'again' }] }), /already in the thread/, 'an option id is used once');
+  // a later entry for the same id restates the option (change:decision-card): the latest text and case stand, the
+  // recommendation on it stays, the thread keeps both; a case is points, one per line
+  const r1 = decision(store, 'login/link-life', { entries: [{ type: 'option', id: 'short', text: 'Fifteen minutes', case: '- a stolen link is useless soon\n- a slow reader misses it' }] });
+  assert.ok(r1.notes.some((n) => /short restated/.test(n)));
+  assert.deepEqual(r1.state.options.map((o) => [o.id, o.recommended, pointsOf(o.case)]), [['short', true, ['a stolen link is useless soon', 'a slow reader misses it']], ['long', false, []]]);
+  assert.equal(threadOf(loadStore(store).records.find((x) => x.key === 'decision:app/login/link-life')!.data).filter((e) => e.type === 'option' && e.id === 'short').length, 2);
+  assert.match(formatDecisionState(r1.state).join('\n'), /- short \(recommended\): Fifteen minutes\n  - a stolen link is useless soon\n  - a slow reader misses it/);
   assert.throws(() => decision(store, 'login/link-life', { entries: [{ type: 'accept', option: 'short', by: 'agent:bot' }] }), /not the decider/, 'an agent never accepts');
   assert.throws(() => decision(store, 'login/link-life', { entries: [{ type: 'accept', option: 'nope', by: 'person:vinh' }] }), /not an option/, 'an acceptance names an option');
   // the person pushes back and the recommendation moves: the rungs are said to be stale
@@ -159,7 +165,7 @@ test('a decision is a thread: created at any size, added to later, accepted by a
   const ctx = changeContext(store, 'change:login');
   const text = formatChangeContext(ctx);
   assert.match(text, /### decision:app\/login\/link-life — Link life\nHow long a link lives: recommended fifteen minutes\ndecided by person:vinh on \d{4}-\d\d-\d\d\nrungs: stale/);
-  assert.match(text, /Question: How long does a link live\?\nCriteria:\n- a stolen link is useless soon\nOptions:\n- short \(rejected: too tight\): Fifteen minutes\n  \+ safe − a slow reader misses it\n- long: A day\n- hour \(accepted\): An hour\nRecommended hour: the train\nperson:vinh \(\d{4}-\d\d-\d\d\): fifteen is too tight for people on the train\nAccepted hour by person:vinh on \d{4}-\d\d-\d\d: an hour it is/);
+  assert.match(text, /Question: How long does a link live\?\nCriteria:\n- a stolen link is useless soon\nOptions:\n- short \(rejected: too tight\): Fifteen minutes\n  - a stolen link is useless soon\n  - a slow reader misses it\n- long: A day\n- hour \(accepted\): An hour\nWhy hour: the train\nperson:vinh \(\d{4}-\d\d-\d\d\): fifteen is too tight for people on the train\nAccepted hour by person:vinh on \d{4}-\d\d-\d\d: an hour it is/);
   assert.doesNotThrow(() => decision(store, 'login/link-life', { entries: [{ type: 'question', text: 'again?' }] }), 'a decided decision still takes a comment or a question');
   // reopened: the acceptance is no longer in force; the rungs rewritten are fresh
   const ro = reopen(store, 'decision:login/link-life', {});

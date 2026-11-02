@@ -92,7 +92,9 @@ export interface Entry {
   text?: string;
   /** An option's id, a slug: what later entries name. */
   id?: string;
-  /** An option's case: what it costs and what it rules out. */
+  /** An option's case: its points, one per line (what it gives, what it costs, what it rules out); the views draw
+   *  them as bullets. A later option entry with the same id restates the option: its text and case replace the
+   *  earlier ones, the marks on it stay, the thread keeps both. */
   case?: string;
   /** The option a recommendation, a rejection or an acceptance names. */
   option?: string;
@@ -114,7 +116,9 @@ export function threadOf(data: Record<string, unknown>): Entry[] {
 
 export interface OptionState {
   id: string;
+  /** One line: what the option is. */
   text: string;
+  /** Its points, one per line (`pointsOf`). */
   case?: string;
   recommended: boolean;
   /** Why it was set aside, when it was. */
@@ -140,7 +144,13 @@ export function decisionState(entries: Entry[]): DecisionState {
     switch (e.type) {
       case 'question': s.question = e.text; break;
       case 'criterion': if (e.text) s.criteria.push(e.text); break;
-      case 'option': if (e.id && e.text && !option(e.id)) s.options.push({ id: e.id, text: e.text, case: e.case, recommended: false, accepted: false }); break;
+      case 'option': {
+        if (!e.id || !e.text) break;
+        const o = option(e.id);
+        if (o) { o.text = e.text; o.case = e.case; } // restated: the latest statement stands; its marks stay
+        else s.options.push({ id: e.id, text: e.text, case: e.case, recommended: false, accepted: false });
+        break;
+      }
       case 'recommendation': {
         for (const o of s.options) o.recommended = false;
         const o = option(e.option);
@@ -160,8 +170,18 @@ export function decisionState(entries: Entry[]): DecisionState {
   return s;
 }
 
+/** An option's case as its points: one per line, a leading bullet mark dropped, blank lines left out. A case written
+ *  as one paragraph is one point. */
+export function pointsOf(text: string | undefined): string[] {
+  if (!text) return [];
+  return text
+    .split('\n')
+    .map((l) => l.trim().replace(/^(?:[-*•]|\d+[.)])\s+/, ''))
+    .filter(Boolean);
+}
+
 /** The decision's state as an agent reads it in the context: the question, the criteria, the options with their
- *  marks, the comments, the acceptance. */
+ *  marks and their points, the why, the comments, the acceptance. */
 export function formatDecisionState(s: DecisionState): string[] {
   const out: string[] = [];
   if (s.question) out.push(`Question: ${s.question}`);
@@ -170,10 +190,10 @@ export function formatDecisionState(s: DecisionState): string[] {
     out.push('Options:');
     for (const o of s.options) {
       const marks = [o.accepted ? 'accepted' : '', o.recommended && !o.accepted ? 'recommended' : '', o.rejected !== undefined ? `rejected${o.rejected ? `: ${o.rejected}` : ''}` : ''].filter(Boolean);
-      out.push(`- ${o.id}${marks.length ? ` (${marks.join('; ')})` : ''}: ${o.text}${o.case ? `\n  ${o.case.replace(/\n/g, '\n  ')}` : ''}`);
+      out.push(`- ${o.id}${marks.length ? ` (${marks.join('; ')})` : ''}: ${o.text}${pointsOf(o.case).map((p) => `\n  - ${p}`).join('')}`);
     }
   }
-  if (s.recommendation?.text) out.push(`Recommended ${s.recommendation.option}: ${s.recommendation.text}`);
+  if (s.recommendation?.text) out.push(`Why ${s.recommendation.option}: ${s.recommendation.text}`);
   for (const c of s.comments) out.push(`${c.by ?? 'someone'} (${dayOf(c.at)}): ${c.text}`);
   if (s.accepted) out.push(`Accepted ${s.accepted.option}${s.accepted.by ? ` by ${s.accepted.by}` : ''} on ${dayOf(s.accepted.at)}${s.accepted.text ? `: ${s.accepted.text}` : ''}${s.accepted.revisit ? ` (revisit when ${s.accepted.revisit})` : ''}`);
   return out;

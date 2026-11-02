@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ChangeRow, ScopeNode } from '@/data/contract';
 import { pickups, readiness } from './model';
 
+const EMPTY = { criteria: [], options: [], comments: [] };
+
 const row = (key: string, o: Partial<ChangeRow> = {}): ChangeRow => ({
   key,
   title: o.title ?? key.slice(key.lastIndexOf('/') + 1),
@@ -54,9 +56,9 @@ describe('pickups', () => {
     const [g] = pickups({
       tree,
       waitingOn: [
-        { key: 'decision:p/c/why', change: 'change:p/c', options: [], needs: [], stale: false },
-        { key: 'decision:p/c/how', change: 'change:p/c', options: [], needs: [], stale: false },
-        { key: 'decision:p/d/where', change: 'change:p/d', options: [], needs: [], stale: false },
+        { key: 'decision:p/c/why', change: 'change:p/c', state: EMPTY, needs: [], stale: false },
+        { key: 'decision:p/c/how', change: 'change:p/c', state: EMPTY, needs: [], stale: false },
+        { key: 'decision:p/d/where', change: 'change:p/d', state: EMPTY, needs: [], stale: false },
       ],
       changes: [
         row('change:p/c', { features: f('feature:p/store'), waiting: 2, decided: 1, position: 0 }),

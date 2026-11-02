@@ -10,6 +10,7 @@ import { short } from '@/lib/keys';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
 import { DecideControl } from '@/components/decisions/DecideControl';
+import { acceptable } from '@/components/decisions/Options';
 import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Figures } from '@/components/stats/Figures';
@@ -157,7 +158,7 @@ export function MilestonePage({
                 {d.status === 'decided' && <Check className="size-2.5 text-primary-foreground" strokeWidth={3} />}
               </span>
               <span className="min-w-0 flex-1 truncate">{d.name ?? d.title ?? short(d.key)}</span>
-              {d.status === 'proposed' && decide && (d.state.recommendation || d.state.options.length === 1) && (
+              {d.status === 'proposed' && decide && acceptable(d.state) && (
                 <DecideControl decision={d.key} onConfirm={() => decide(d.key)} />
               )}
               <CopyKey refKey={d.key} bare />

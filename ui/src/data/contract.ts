@@ -22,6 +22,7 @@ export type { StoreEvent } from '@contract/events';
 export type { Moment } from '@contract/moment';
 export type { Timeline, TimelineEvent } from '@contract/timeline';
 export type { RecordType } from '@contract/records';
+export type { DecisionState, OptionState } from '@contract/foundation';
 
 import type { SessionFacts } from '@contract/commands/pane';
 import type { Row } from '@contract/commands/view';

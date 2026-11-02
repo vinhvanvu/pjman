@@ -202,14 +202,12 @@ function DockChange({
         </div>
         <DecisionRows
           items={waits.map((d) => {
-            const rec = d.state.options.find((o) => o.recommended);
             return {
               key: d.key,
               name: d.name,
               title: d.title,
               change: c.key,
-              recommended: rec ? { id: rec.id, text: rec.text } : undefined,
-              options: d.state.options.map((o) => o.id),
+              state: d.state,
               needs: d.needs,
               stale: d.stale,
               created: d.created,
