@@ -6,7 +6,8 @@ import { LIVE_MINUTES } from '../scope.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
 import { CliError } from '../util.js';
-import { decisionLine, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
+import { decisionLine, nextLine, readinessLines, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
+import { formatStep, nextStep, stepsOf } from '../foundation.js';
 
 export interface ViewOpts extends GetOpts {
   /** A reference to show, and not follow. */
@@ -92,20 +93,25 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
   const out: string[] = [];
   const d = c.change.data;
   out.push(`# ${c.change.key}`);
-  out.push(`## ${esc(c.change.title)}`);
+  out.push(`## ${esc(c.change.name ?? c.change.key)}`);
+  if (c.change.title) out.push(esc(c.change.title));
   const facts: string[] = [`**${c.change.status ?? '?'}**`];
   if (typeof d.project === 'string') facts.push(d.project);
   if (c.parent) facts.push(`part of \`${c.parent.key}\``);
   for (const s of c.sources.filter((s) => s.via === 'binds')) facts.push(`binds ${link(s.key, s.record?.data.url)}`);
   out.push(facts.join(' · '));
-  if (d.next) out.push(`\n> **next:** ${esc(d.next)}`);
-  if (c.summary) out.push(`\n${c.summary}`);
-  if (c.plan) out.push(`\n### Plan\n\n${c.plan}`);
+  for (const l of readinessLines(c, 'change')) out.push(`\n> ${esc(l)}`);
+  if (c.next) out.push(`\n> **next:** ${esc(nextLine(c.next))}`);
+  for (const [k, v] of Object.entries(c.sections)) {
+    if (k === 'Notes') continue;
+    out.push(`\n### ${k}\n\n${v}`);
+  }
+  if (c.plan.length) out.push(`\n### Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`);
   if (c.decisions.length) {
     out.push('\n### Decisions');
     for (const dec of c.decisions) {
       const slug = dec.key.slice(dec.key.indexOf('/') + 1);
-      out.push(`- ${MARK[dec.status ?? ''] ?? '•'} **${esc(dec.title)}** \`${slug}\` — ${decisionLine(dec)}`);
+      out.push(`- ${MARK[dec.status ?? ''] ?? '•'} **${esc(dec.name ?? slug)}** \`${slug}\` — ${esc(dec.title)} — ${decisionLine(dec)}`);
     }
   }
   if (c.children.length) {
@@ -143,7 +149,10 @@ function boardDoc(store: Store, project: string | null): string[] {
     const rows = groups.get(s);
     if (!rows?.length) continue;
     out.push(`\n### ${s}`);
-    for (const r of rows) out.push(`- \`${r.key}\` — ${esc(r.title)}${!c.project && r.data.project ? ` · ${String(r.data.project)}` : ''}${r.data.next ? `\n  - next: ${esc(r.data.next)}` : ''}`);
+    for (const r of rows) {
+      const next = nextLine(nextStep(stepsOf(r.data)));
+      out.push(`- \`${r.key}\` — ${r.name ? `**${esc(r.name)}** ` : ''}${esc(r.title)}${!c.project && r.data.project ? ` · ${String(r.data.project)}` : ''}${next ? `\n  - next: ${esc(next)}` : ''}`);
+    }
   }
   if (c.proposed.length) {
     out.push('\n### Proposed decisions');

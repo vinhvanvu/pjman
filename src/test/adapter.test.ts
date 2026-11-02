@@ -11,6 +11,7 @@ import { findStore, type Store } from '../config.js';
 import { set } from '../commands/set.js';
 import { loadStore } from '../records.js';
 import { validate } from '../validate.js';
+import { change, decisionRec } from './shape.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.resolve(here, '..', '..', 'adapters', 'claude-code', 'hooks', 'hook.mjs');
@@ -42,7 +43,7 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: project });
   init({ checkers: [], cwd: project, inProject: true });
   store = findStore(project)!;
-  newRecord(store, 'change', 'eight-week-test', { title: 'The test', summary: 's', writer: 'person:tester' });
+  change(store, 'eight-week-test', { title: 'The test', summary: 's', writer: 'person:tester' });
 });
 
 test('SessionStart creates the session record and injects the board', () => {
@@ -74,7 +75,7 @@ test('a prompt naming a change binds it and injects its context once', () => {
 });
 
 test('a prompt naming several changes binds none and says so; the turn shows the person what the brief cost', () => {
-  newRecord(store, 'change', 'other-work', { title: 'Other', summary: 's', writer: 'person:tester' });
+  change(store, 'other-work', { title: 'Other', summary: 's', writer: 'person:tester' });
   const at = (input: Record<string, unknown>) => hook('UserPromptSubmit', { session_id: 'sess-m', ...input });
   hook('SessionStart', { session_id: 'sess-m', source: 'startup' });
   const said = context(at({ prompt: 'compare change:eight-week-test with change:other-work' }));
@@ -138,7 +139,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.ok(!loadStore(g).byKey.has('change:work/abc-1234'));
   assert.ok(!loadStore(g).byKey.has('change:work/utf-8'));
   // once the sync (here: the record) exists, the id binds it
-  newRecord(g, 'change', 'abc-1234', { title: 'ABC-1234', summary: 's', project: 'project:work', binds: ['linear:ABC-1234'] });
+  change(g, 'abc-1234', { title: 'ABC-1234', summary: 's', project: 'project:work', binds: ['linear:ABC-1234'] });
   const ctx = context(at('continue ABC-1234'));
   assert.match(ctx, /^pjman brief: this session is bound to change:abc-1234; its context in full\.\n\n# change:abc-1234 — ABC-1234/);
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234']);
@@ -225,7 +226,7 @@ test('SessionStart exports the session and the agent as writer to the agent\'s s
   // what the shell then runs carries them: a decision opened from it is stamped with the session and the agent
   const shellEnv = { ...env };
   for (const m of text.matchAll(/^export (\w+)="(.*)"$/gm)) (shellEnv as Record<string, string>)[m[1]!] = m[2]!;
-  execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), 'new', 'decision', 'eight-week-test/from-the-shell', '--title', 'T', '--decision', 'd', '--why', 'w'], { cwd: project, env: shellEnv, encoding: 'utf8' });
+  execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), 'decision', 'eight-week-test/from-the-shell', '--name', 'T', '--gist', 'T', '--question', 'q', '--option', 'it=d', '--recommend', 'it=w'], { cwd: project, env: shellEnv, encoding: 'utf8' });
   const rec = loadStore(store).records.find((r) => r.type === 'decision' && r.key.endsWith('/from-the-shell'))!;
   assert.equal(rec.data.writer, 'agent:claude-code');
   assert.equal(rec.data.session, 'session:sess-env');

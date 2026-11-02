@@ -31,6 +31,8 @@ import { formatTree, tree } from './tree.js';
 import { formatReceipt, receipt } from './receipt.js';
 import { activity, formatActivity } from './activity.js';
 import { set } from './commands/set.js';
+import { decision, entriesFromFlags, entriesFromJson } from './commands/decision.js';
+import { formatPlan, step } from './commands/step.js';
 import { order } from './commands/order.js';
 import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
@@ -60,16 +62,31 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
       'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...',
       'pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--owners <actor>]... [--body <base>|-]   (what applies across the product; the body is the base)',
       'pjman new place <aspect>/<place> --feature feature:<slug> [--body <fork>|-] [--links <key>]...   (where the aspect applies; the body is the fork, empty for the base as it is)',
-      'pjman new change <slug> --title <t> [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--summary <s>] [--plan <p>] [--next <n>] [--binds <key>]... [--links <key>]...',
-      '                                [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date)',
-      'pjman new decision <change>/<slug> | /<slug> --title <t> [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>]',
-      '                                             [--decision <text>] [--why <text>] [--links <key>]...   (status: proposed unless decided)',
+      'pjman new change <slug> --name <one to four words> --gist <one line> --origin <the request in the person\'s words, or the key it came from> --intent <the need, for whom> --done-when <the outcome that closes it>',
+      '                        [--scope <in, and out>] [--open-questions <items>] [--blocked-on <an outside blocker>] [--notes <free>] [--status open] [--project <key>] [--parent <change>]',
+      '                        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...',
+      '                        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date; the plan is written with pjman step)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...   (a person\'s accounts)',
       'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
     ] },
-  { name: 'set', about: "change authored fields on a record (a list is comma-separated; an empty value removes the field; summary and plan set the body section; body sets an aspect's base or a place's fork whole, and a base written lists every place it reaches; field=- reads the value from stdin; a decision's supersedes only adds, and marks each named decision superseded in the same commit)",
+  { name: 'set', about: "change authored fields on a record (a list is comma-separated; an empty value removes the field; a change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole, and a base written lists every place it reaches; field=- reads the value from stdin; a decision's supersedes only adds, and marks each named decision superseded in the same commit). A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten",
     usage: ['pjman set <key> <field>=<value>...', 'pjman set <key> <field>=- < file   (one value from stdin)'] },
+  { name: 'decision', about: "write a decision at any size, one commit: created when it does not exist (then --name, --gist, --question and one --option are required), added to otherwise. Its foundation is a thread of entries: the question, criteria, options with their case, the recommendation with its reasoning, the person's comments in their words, rejections, the acceptance (a person's, with their words and when to revisit), a reopening. Status, decider and date follow the thread. --from - takes {name, gist, entries:[{type, text, id, case, option, by, revisit}]} as JSON on stdin",
+    usage: [
+      'pjman decision <change>/<slug> --name <one to four words> --gist <one line> --question <text> [--criterion <text>]... --option <id>=<text>... [--case <id>=<what it costs, what it rules out>]... [--recommend <id>[=<why>]] [--supersedes <decision>] [--links <key>]...',
+      'pjman decision <key> [--question <reframed>] [--option <id>=<text>]... [--comment <the person\'s words> [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]',
+      'pjman decision <key> --accept <id>[=<their words>] --by person:<handle> [--revisit <when to look again>]   (the person decides; an agent never does)',
+      'pjman decision <key> --reopen [--comment <why>]',
+      'pjman decision <key> --from -   (entries as JSON on stdin)',
+    ] },
+  { name: 'step', about: "a change's plan, written only through commands: steps as data, each with a text, a state (open, active, done, dropped) and a note of where the work stands; every move is one commit and one event on the change. The next step (the active one, else the first open), the plan's progress and the active step's note are derived",
+    usage: [
+      'pjman step <change> add <text> [--before <n>|--after <n>|--first|--last] [--note <text>]',
+      'pjman step <change> start|done|drop|reopen <n> [--note <where the work stands>]',
+      'pjman step <change> note <n> <text>',
+      'pjman step <change> move <n> --before <m>|--after <m>|--first|--last',
+    ] },
   { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
     usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge; unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
@@ -100,9 +117,9 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman fmt [--check]'] },
   { name: 'mv', about: 'rename a change or a feature (the folder moves, the old slug stays as an alias; <product>/<slug> moves it to another product), a product (every key beneath it follows), a project (directories bound to it follow), a decision (within or across changes) or a person (the old handle stays as an alias; the user config follows); every reference is rewritten in the same commit',
     usage: ['pjman mv change:<old> change:<new>', 'pjman mv feature:<old> feature:<new>', 'pjman mv product:<old> product:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>', 'pjman mv person:<old> person:<new>'] },
-  { name: 'migrate', about: 'the one move from store-wide keys to keys under the product: every product becomes a folder holding its features and changes, every feature, change and decision key gains its product segment wherever it is written, each moved record keeps its old slug as an alias; one commit, one event, pjman undo <commit> reverts it',
+  { name: 'migrate', about: "the one move the store still waits for, one commit, one event, pjman undo <commit> reverts it. The layout: every product becomes a folder holding its features and changes, every key gains its product segment wherever it is written, each moved record keeps its old slug as an alias. The foundation: every change and decision mapped into its shape, nothing dropped (a title becomes a draft gist, a summary the Intent, next and a prose plan go to Notes, a list plan becomes steps, a decision's text one option accepted by whoever decided it), each marked migrated until it is next written",
     usage: ['pjman migrate'] },
-  { name: 'apply', about: "many writes as one commit: the commands one per line (new, set, mv, rm, order, session; as typed after pjman), run in order with every commit held, then one commit and the events with it, closed by one 'applied' event on the record --for names (a decision that proposed a map, a change). A line that fails refuses the whole batch and nothing is written",
+  { name: 'apply', about: "many writes as one commit: the commands one per line (new, set, decision, step, mv, rm, order, session, note; as typed after pjman), run in order with every commit held, then one commit and the events with it, closed by one 'applied' event on the record --for names (a decision that proposed a map, a change). A line that fails refuses the whole batch and nothing is written",
     usage: ['pjman apply [<file>|-] [--for <key>]'] },
   { name: 'undo', about: 'revert the last batch (or the commit named) as one commit, every record put back; refused while a later write touched a record of that batch',
     usage: ['pjman undo [<commit>]'] },
@@ -164,6 +181,26 @@ function parse(args: string[]) {
     summary: { type: 'string' },
     plan: { type: 'string' },
     next: { type: 'string' },
+    gist: { type: 'string' },
+    origin: { type: 'string' },
+    intent: { type: 'string' },
+    'done-when': { type: 'string' },
+    scope: { type: 'string' },
+    'open-questions': { type: 'string' },
+    'blocked-on': { type: 'string' },
+    notes: { type: 'string' },
+    note: { type: 'string' },
+    question: { type: 'string' },
+    criterion: { type: 'string', multiple: true },
+    option: { type: 'string', multiple: true },
+    case: { type: 'string', multiple: true },
+    recommend: { type: 'string' },
+    comment: { type: 'string' },
+    reject: { type: 'string', multiple: true },
+    accept: { type: 'string' },
+    revisit: { type: 'string' },
+    reopen: { type: 'boolean' },
+    by: { type: 'string' },
     binds: { type: 'string', multiple: true },
     links: { type: 'string', multiple: true },
     owners: { type: 'string', multiple: true },
@@ -271,7 +308,7 @@ function main(argv: string[]): number {
 }
 
 /** The commands that write the store. */
-const WRITE_COMMANDS = new Set(['init', 'new', 'set', 'note', 'session', 'mv', 'rm', 'fmt', 'sync', 'order', 'apply', 'undo', 'migrate']);
+const WRITE_COMMANDS = new Set(['init', 'new', 'set', 'decision', 'step', 'note', 'session', 'mv', 'rm', 'fmt', 'sync', 'order', 'apply', 'undo', 'migrate']);
 
 type Parsed = ReturnType<typeof parse>;
 
@@ -286,10 +323,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       const [, type, ident] = pos;
       if (!type || !ident) throw new CliError('usage: pjman new <product|feature|aspect|place|project|change|decision|source|actor|session> <ident> [flags]');
+      if (type === 'change' && (v.plan !== undefined || v.next !== undefined)) throw new CliError(v.plan !== undefined ? 'the plan is written with pjman step <change> add "…"' : 'next is retired: the next step is the plan\'s first open step (pjman step), an outside blocker is --blocked-on');
       const flags: NewFlags = {
-        title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary, plan: v.plan, next: v.next,
+        title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary,
+        gist: v.gist, origin: v.origin, intent: v.intent, doneWhen: v['done-when'], scope: v.scope, openQuestions: v['open-questions'], blockedOn: v['blocked-on'], notes: v.notes,
         binds: v.binds, links: v.links, decidedBy: v['decided-by'], decidedOn: v['decided-on'],
-        supersedes: v.supersedes, decision: v.decision, why: v.why, name: v.name, url: v.url,
+        supersedes: v.supersedes, name: v.name, url: v.url,
         agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, started: v.started,
         product: v.product, owners: v.owners, features: v.features, level: v.level, levels: v.levels,
         dependsOn: v['depends-on'], kind: v.kind, severity: v.severity, target: v.target, sequence: v.sequence,
@@ -313,6 +352,40 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (r.type === 'change') out(`branch: ${branchNameFor(r.key, readUserConfig().branch_prefix)} (recommended; worktree ${worktreeNameFor(r.key)})`);
         for (const n of r.notes) out(`note: ${n}`);
       }
+      return 0;
+    }
+    case 'decision': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw new CliError('usage: pjman decision <change>/<slug> --name … --gist … --question … --option <id>=<text>… [--recommend <id>[=<why>]] | pjman decision <key> <entries…> | --from -');
+      const writer = envelope({ writer: v.writer }).writer;
+      let name = v.name;
+      let gist = v.gist;
+      let entries = entriesFromFlags({ question: v.question, criterion: v.criterion, option: v.option, case: v.case, recommend: v.recommend, comment: v.comment, reject: v.reject, accept: v.accept, revisit: v.revisit, reopen: v.reopen, by: v.by }, writer);
+      if (v.from !== undefined) {
+        if (v.from !== '-') throw new CliError('--from takes - (the entries as JSON on stdin)');
+        const j = entriesFromJson(fs.readFileSync(0, 'utf8'), writer);
+        name ??= j.name;
+        gist ??= j.gist;
+        entries = [...entries, ...j.entries];
+      }
+      const r = decision(store, pos[1], { name, gist, entries, supersedes: v.supersedes, links: v.links, created: v.created, session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else {
+        out(`${r.created ? 'created' : 'wrote'} ${r.key}${r.appended.length ? ` (${r.appended.join(', ')})` : ''}: ${r.status}${r.state.recommendation ? `, recommended ${r.state.recommendation.option}` : ''}${r.state.accepted ? `, accepted ${r.state.accepted.option}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
+        for (const n of r.notes) out(`note: ${n}`);
+      }
+      return 0;
+    }
+    case 'step': {
+      const store = scoped(requireStore(cwd, v.store));
+      const [, ref, verb, ...rest] = pos;
+      if (!ref || !verb) throw new CliError('usage: pjman step <change> add <text> | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last');
+      const num = (s: string | undefined) => (s === undefined ? undefined : Number(s));
+      const n = verb === 'add' ? undefined : num(rest[0]);
+      const text = verb === 'add' ? rest.join(' ') : verb === 'note' ? rest.slice(1).join(' ') : undefined;
+      const r = step(store, ref, verb, n, { text, note: v.note, before: num(v.before), after: num(v.after), first: v.first, last: v.last, session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else out(`${r.key} step ${r.n} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}`);
       return 0;
     }
     case 'session': {
@@ -547,6 +620,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       const r = migrate(store, { session: v.session, writer: v.writer });
       if (v.json) json(r);
+      else if (r.kind === 'foundation') out(`migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.decisions ?? 0, 'decision')} mapped into the foundation, each marked migrated until it is next written${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : ''}`);
       else out(`migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : ''}`);
       return 0;
     }

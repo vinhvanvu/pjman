@@ -11,6 +11,8 @@ import { violations, worstSeverity, type RoadmapRow, type Violation } from './ro
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
+import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf } from './foundation.js';
+import { nextLine } from './commands/view.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
 export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
@@ -37,14 +39,24 @@ export interface Health {
 
 export interface ChangeRow {
   key: string;
+  /** The change's gist: what it is and why, in a line (the-ladder). */
   title?: string;
+  /** The change's name: which one in a crowd, one to four words. */
+  name?: string;
   status?: string;
   created?: string;
   project?: string;
   parent?: string;
   /** The first tracker ticket the change binds, as people write it, with its page when known. */
   ticket?: { key: string; label: string; url?: string };
+  /** The next step of the plan, as a line: its number, text and note. Derived from the steps, never written. */
   next?: string;
+  /** The plan's progress: steps done over steps not dropped. */
+  plan?: { done: number; total: number };
+  /** What the record still needs before it is worked: name, gist, intent, done when. */
+  needs: string[];
+  /** The name and gist were written from an earlier foundation. */
+  stale: boolean;
   /** A parent change is a milestone: done children over children not dropped. */
   progress?: { done: number; total: number };
   /** The features it names, then the features of the places it names (`viaPlace`), where the dashboard files it too. */
@@ -81,7 +93,7 @@ export interface ScopeNode {
   key: string;
   type: 'product' | 'feature' | 'project' | 'change' | 'unassigned';
   title?: string;
-  /** A feature's short name, what trees and chips show; the title is the sentence. */
+  /** A feature's or a change's short name, what trees and chips show; the title is the sentence (a change's gist). */
   name?: string;
   level?: string;
   /** A feature's authored status, a change's status. */
@@ -118,13 +130,20 @@ export interface LiveSession {
   lastLine?: string;
 }
 
-/** A proposed decision beneath a node: what waits on a person, with the agent's recommendation. */
+/** A proposed decision beneath a node: what waits on a person, read by its rungs (the-ladder): the name, the gist
+ *  (the question and the recommended answer while proposed), and which option is recommended. */
 export interface WaitingDecision {
   key: string;
+  name?: string;
+  /** The gist. */
   title?: string;
   change: string;
-  decision?: string;
-  why?: string;
+  /** The recommended option's id and text, when the thread recommends one. */
+  recommended?: { id: string; text: string };
+  /** The options' ids: what accepting from a card chooses among. */
+  options: string[];
+  needs: string[];
+  stale: boolean;
   created?: string;
 }
 
@@ -133,7 +152,11 @@ export interface WaitingDecision {
 export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = () => true): WaitingDecision[] {
   return loaded.records
     .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && !!d.changeKey && keep(d))
-    .map((d) => ({ key: d.key, title: str(d.data.title), change: d.changeKey!, decision: d.sections.get('Decision'), why: d.sections.get('Why'), created: str(d.data.created) }))
+    .map((d) => {
+      const s = decisionState(threadOf(d.data));
+      const rec = s.options.find((o) => o.recommended);
+      return { key: d.key, name: str(d.data.name), title: lineOf(d.data), change: d.changeKey!, recommended: rec ? { id: rec.id, text: rec.text } : undefined, options: s.options.map((o) => o.id), needs: needsOf(d), stale: rungsOf(d).stale, created: str(d.data.created) };
+    })
     .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
 }
 
@@ -380,9 +403,11 @@ class Index {
   row(c: Rec): ChangeRow {
     const kids = this.childrenOf.get(c.key) ?? [];
     const sessions = this.loaded.records.filter((s) => s.type === 'session' && this.liveSessions.has(s.key) && list(s.data.changes).some((k) => live(this.loaded, k)?.key === c.key));
+    const steps = stepsOf(c.data);
     return {
-      key: c.key, title: str(c.data.title), status: str(c.data.status), created: str(c.data.created),
-      project: live(this.loaded, c.data.project)?.key, parent: this.parentOf(c), ticket: ticketOf(this.loaded, c), next: str(c.data.next),
+      key: c.key, title: lineOf(c.data), name: str(c.data.name), status: str(c.data.status), created: str(c.data.created),
+      project: live(this.loaded, c.data.project)?.key, parent: this.parentOf(c), ticket: ticketOf(this.loaded, c),
+      next: nextLine(nextStep(steps)), plan: planProgress(steps), needs: needsOf(c), stale: rungsOf(c).stale,
       progress: progressOf(kids.map((k) => ({ status: str(k.data.status) }))),
       features: [
         ...effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
@@ -457,7 +482,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     placed.add(c.key);
     const kids = (ix.childrenOf.get(c.key) ?? []).filter((k) => shownKeys.has(k.key) && !placed.has(k.key) && canNest(k));
     const r = ix.row(c);
-    return { key: c.key, type: 'change', title: r.title, status: r.status, owners: [], open: 0, inFlight: 0, projects: [], childCount: 0, row: r, children: kids.map((k) => changeNode(k, canNest)) };
+    return { key: c.key, type: 'change', title: r.title, name: r.name, status: r.status, owners: [], open: 0, inFlight: 0, projects: [], childCount: 0, row: r, children: kids.map((k) => changeNode(k, canNest)) };
   };
   /** Rows for the changes `here`, nested by parent among those that `canNest`. A change already placed is not placed
    *  twice, except where `again` says a change belongs under every node that lists it (a change naming two features). */
@@ -622,7 +647,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   return {
     lens, days,
     node: node
-      ? { ...row(node), name: str(node.data.name), level: node.type === 'change' ? undefined : levelOf(loaded, node), derived: node.type === 'feature' ? derivedStatus(loaded, node.key).status : undefined, summary: node.sections.get('Summary'), progress: node.type === 'project' ? facts(node).progress : undefined }
+      ? { ...row(node), name: str(node.data.name), level: node.type === 'change' ? undefined : levelOf(loaded, node), derived: node.type === 'feature' ? derivedStatus(loaded, node.key).status : undefined, summary: node.sections.get('Summary') ?? node.sections.get('Intent'), progress: node.type === 'project' ? facts(node).progress : undefined }
       : null,
     container: container?.key ?? null,
     crumbs, products: products.map(row), tree, changes,

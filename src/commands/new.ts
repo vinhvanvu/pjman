@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../config.js';
-import { aspectKey, changeKey, decisionKey, featureKey, parseAspectRest, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE, sourceFileSlug } from '../keys.js';
+import { aspectKey, changeKey, decisionKey, featureKey, parseAspectRest, parseDecisionRest, parseKey, parseScopedRest, RECORD_KINDS, SLUG_RE, sourceFileSlug } from '../keys.js';
 import { loadStore, recordOf, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { rootProductOf } from '../tree.js';
-import { markSuperseded, resolveSupersedes } from '../supersede.js';
-import type { EventInput } from '../events.js';
 import { CliError, isDateString, localDate, today } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo, writeFile } from '../write.js';
+import { CHANGE_SECTIONS, foundationHash, foundationOf, gistProblem, nameProblem, type ChangeSection } from '../foundation.js';
+import { sections as parseSections } from '../frontmatter.js';
 
 export interface NewFlags {
   title?: string;
@@ -17,16 +17,21 @@ export interface NewFlags {
   map?: string;
   status?: string;
   summary?: string;
-  plan?: string;
-  next?: string;
+  /** A change's rungs and sections (foundation.ts): name, gist, Origin, Intent, Done when, then the optional ones. */
+  name?: string;
+  gist?: string;
+  origin?: string;
+  intent?: string;
+  doneWhen?: string;
+  scope?: string;
+  openQuestions?: string;
+  blockedOn?: string;
+  notes?: string;
   binds?: string[];
   links?: string[];
   decidedBy?: string;
   decidedOn?: string;
   supersedes?: string;
-  decision?: string;
-  why?: string;
-  name?: string;
   url?: string;
   agent?: string;
   onBehalfOf?: string;
@@ -64,6 +69,25 @@ function stamp(flags: NewFlags): Record<string, unknown> {
 
 function section(name: string, text?: string): string {
   return `## ${name}\n\n${(text ?? '').trim()}\n`;
+}
+
+/** The Origin section: where the work came from, as it was said. A key (a ticket, a document, a change or a decision
+ *  it spun off) is linked, not copied; words are quoted and never edited; the session it was made in is named. */
+export function originText(text: string, env: { session?: string; writer?: string }, date: string): string {
+  const t = text.trim();
+  const key = parseKey(t);
+  const who = [env.session, date].filter(Boolean).join(', ');
+  if (key && !/\s/.test(t)) return `from ${t}\n\n— ${who}`;
+  return `${t.split('\n').map((l) => `> ${l}`).join('\n')}\n\n— ${who}`;
+}
+
+/** The sections of a new change, in order, from the flags; the required three must be given. */
+export function changeBody(flags: Pick<NewFlags, 'origin' | 'intent' | 'doneWhen' | 'scope' | 'openQuestions' | 'blockedOn' | 'notes'>, env: { session?: string; writer?: string }, date: string): string {
+  const text: Partial<Record<ChangeSection, string | undefined>> = {
+    Origin: flags.origin ? originText(flags.origin, env, date) : undefined,
+    Intent: flags.intent, 'Done when': flags.doneWhen, Scope: flags.scope, 'Open questions': flags.openQuestions, 'Blocked on': flags.blockedOn, Notes: flags.notes,
+  };
+  return CHANGE_SECTIONS.filter((s) => text[s]?.trim()).map((s) => section(s, text[s])).join('\n');
 }
 
 export interface NewResult {
@@ -241,7 +265,12 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
   const rest = ident.startsWith('change:') ? ident.slice(7) : ident;
   const s = parseScopedRest(rest);
   if (!s) throw new CliError(`'${rest}' is not a slug (lower-case letters, digits, hyphens), or <product>/<slug>`);
-  if (!flags.title) throw new CliError('--title is required');
+  if (flags.title !== undefined || flags.summary !== undefined) throw new CliError('a change has no title or summary: its rungs are --name (one to four words) and --gist (one line), its foundation --origin, --intent and --done-when (then --scope, --open-questions, --blocked-on, --notes); the plan is written with pjman step');
+  for (const [flag, value] of [['--name', flags.name], ['--gist', flags.gist], ['--origin', flags.origin], ['--intent', flags.intent], ['--done-when', flags.doneWhen]] as const) {
+    if (!value?.trim()) throw new CliError(`${flag} is required: a change is filed with its name, gist, origin (the request in the person's words, or the key of what it came from), intent and done-when`);
+  }
+  const bad = nameProblem(flags.name!) ? `--name: ${nameProblem(flags.name!)}` : gistProblem(flags.gist!) ? `--gist: ${gistProblem(flags.gist!)}` : null;
+  if (bad) throw new CliError(bad);
   const loaded = loadStore(store);
   const projectKey = flags.project ?? store.project;
   if (!projectKey) throw new CliError('no project: run from a registered repository or pass --project project:<slug>');
@@ -251,8 +280,15 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
   const rel = path.join('products', product, 'changes', s.slug, 'change.md');
   refuseExisting(store, rel);
   if (loaded.aliases.has(key)) throw new CliError(`refused: '${s.slug}' is a former name of ${loaded.aliases.get(key)!.join(', ')} in product:${product}`);
+  const env = stamp(flags);
+  // a source the origin names is linked, never copied
+  const originKey = parseKey(flags.origin!.trim());
+  const links = [...(flags.links ?? [])];
+  if (originKey && !/\s/.test(flags.origin!.trim()) && !RECORD_KINDS.has(originKey.kind) && !links.includes(originKey.raw)) links.push(originKey.raw);
+  const body = changeBody(flags, { session: env.session as string | undefined, writer: env.writer as string | undefined }, env.created as string) + (flags.body ? '\n' + flags.body.trim() + '\n' : '');
   const data: Record<string, unknown> = {
-    title: flags.title,
+    name: flags.name!.trim(),
+    gist: flags.gist!.trim(),
     status: flags.status ?? 'open',
     kind: flags.kind,
     severity: flags.severity,
@@ -263,26 +299,21 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     aspects: listOrNone(flags.aspects),
     owners: listOrNone(flags.owners),
     target: flags.target,
-    next: flags.next,
     binds: flags.binds?.length ? flags.binds : undefined,
-    links: flags.links?.length ? flags.links : undefined,
-    ...stamp(flags),
+    links: links.length ? links : undefined,
+    rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))),
+    ...env,
   };
   fullKeys(loaded, 'change', data, undefined, product);
-  let body = section('Summary', flags.summary);
-  if (flags.plan) body += '\n' + section('Plan', flags.plan);
-  if (flags.body) body += '\n' + flags.body.trim() + '\n';
   writeFile(store, rel, render('change', data, body));
   return finish(store, 'change', key, rel, [rel], flags);
 }
 
-export function newDecision(store: Store, ident: string, flags: NewFlags): NewResult {
+/** The place a new decision lives, from its key: under a change, at product level, or at store level. */
+export function decisionHome(loaded: Loaded, ident: string, date: string): { key: string; rel: string; product: string | null; change?: Rec } {
   const rest = ident.startsWith('decision:') ? ident.slice(9) : ident;
   const parsed = parseDecisionRest(rest);
   if (!parsed) throw new CliError(`'${ident}' must be <change>/<decision-slug> (<product>/<change>/<slug> in full), <product>/<slug> at product level, or /<slug> at store level`);
-  if (!flags.title) throw new CliError('--title is required');
-  const loaded = loadStore(store);
-  // where it lives: under a change, at product level, or at store level
   let product: string | null = null;
   let change: Rec | undefined;
   if (parsed.head) {
@@ -300,52 +331,17 @@ export function newDecision(store: Store, ident: string, flags: NewFlags): NewRe
       else throw new CliError(`change:${parsed.head} does not exist (nor does product:${parsed.head})`);
     }
   }
-  const env = stamp(flags);
-  const date = env.created as string;
   const key = decisionKey(product, change?.changeSlug ?? null, parsed.slug);
   const rel = change
     ? path.join('products', product!, 'changes', change.changeSlug!, 'decisions', `${date}-${parsed.slug}.md`)
     : product
       ? path.join('products', product, 'decisions', `${date}-${parsed.slug}.md`)
       : path.join('decisions', `${date}-${parsed.slug}.md`);
-  if (loaded.byKey.has(key)) throw new CliError(`refused: ${key} already exists at ${loaded.byKey.get(key)![0].path}`);
-  refuseExisting(store, rel);
+  return { key, rel, product, change };
+}
 
-  let status = flags.status;
-  if (!status) status = flags.decidedBy || flags.decidedOn ? 'decided' : 'proposed';
-  // A person running the tool decides by default; an agent never does.
-  const writerDecides = typeof env.writer === 'string' && env.writer.startsWith('person:') ? env.writer : undefined;
-  if (status === 'decided' && !flags.decidedBy && !writerDecides) {
-    throw new CliError('a decided decision needs --decided-by <person:…>; an agent is not the decider by default');
-  }
-  const data: Record<string, unknown> = {
-    title: flags.title,
-    status,
-    decided_by: flags.decidedBy ?? (status === 'decided' ? writerDecides : undefined),
-    decided_on: flags.decidedOn ?? (status === 'decided' ? date : undefined),
-    supersedes: flags.supersedes,
-    links: flags.links?.length ? flags.links : undefined,
-    ...env,
-  };
-  fullKeys(loaded, 'decision', data, undefined, product);
-  const notes: string[] = [];
-  const touched: string[] = [];
-  const also: EventInput[] = [];
-  const prior = new Map<string, string>();
-  if (flags.supersedes) {
-    const targets = resolveSupersedes(loaded, [flags.supersedes], product);
-    const m = markSuperseded(targets, env.writer as string | undefined);
-    touched.push(...m.touched);
-    also.push(...m.also);
-    notes.push(...m.notes);
-    for (const [k, v] of m.prior) prior.set(k, v);
-  }
-  let body = section('Decision', flags.decision) + '\n' + section('Why', flags.why);
-  if (flags.body) body += '\n' + flags.body.trim() + '\n';
-  writeFile(store, rel, render('decision', data, body));
-  validateOrUndo(store, [rel, ...touched], [rel], prior);
-  const commit = finishWrite(store, `pjman: new ${key}`, envelope(flags).session, [{ op: 'created', key, type: 'decision', path: rel, writer: env.writer as string | undefined }, ...also]);
-  return { type: 'decision', key, path: rel, commit, notes };
+export function newDecision(_store: Store, ident: string, _flags: NewFlags): NewResult {
+  throw new CliError(`a decision is written with pjman decision ${ident.replace(/^decision:/, '')} --name "…" --gist "…" --question "…" --option <id>="…" [--recommend <id>="…"]: one command at any size, the same one to add to it later`);
 }
 
 export function newSource(store: Store, ident: string, flags: NewFlags): NewResult {

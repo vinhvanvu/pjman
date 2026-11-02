@@ -9,6 +9,7 @@ import { readEvents, type StoreEvent } from './events.js';
 import { productOf } from './commands/order.js';
 import type { Loaded, Rec } from './records.js';
 import { live, rootProductOf } from './tree.js';
+import { lineOf } from './foundation.js';
 
 export interface TimelineEvent {
   seq: number;
@@ -141,7 +142,7 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
     let p = placed.get(key);
     if (p) return p;
     const rec = live(loaded, key);
-    const title = rec && (rec.type === 'session' ? str(sessionChange(loaded, rec)?.data.title) : str(rec.data.title) ?? str(rec.data.name));
+    const title = rec && (rec.type === 'session' ? lineOf(sessionChange(loaded, rec)?.data ?? {}) : str(rec.data.name) ?? lineOf(rec.data));
     const inProduct = !productKey || (rec ? productOfRecord(loaded, rec)?.key === productKey : keySegment(key) === slug);
     p = { inProduct, title };
     placed.set(key, p);

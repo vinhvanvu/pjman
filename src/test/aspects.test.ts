@@ -17,6 +17,7 @@ import { loadStore, resolve } from '../records.js';
 import { scope } from '../scope.js';
 import { ancestorsOf } from '../tree.js';
 import { validate } from '../validate.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-aspects-'));
 let store: Store;
@@ -83,7 +84,7 @@ test('a place is read as the base, then the forks above it, then its own; a feat
 });
 
 test("a change's context: the aspect read at a feature it names in full, places beneath a broad feature one line each, a named aspect whole", () => {
-  newRecord(store, 'change', 'cart-copy', { title: 'Cart copy', summary: 's', features: ['changes feature:cart-line'] });
+  change(store, 'cart-copy', { title: 'Cart copy', summary: 's', features: ['changes feature:cart-line'] });
   const at = changeContext(store, 'change:cart-copy');
   assert.deepEqual(at.aspects?.at.map((x) => x.place), ['aspect:shop/text/cart-line']);
   const text = formatChangeContext(at);
@@ -91,12 +92,12 @@ test("a change's context: the aspect read at a feature it names in full, places 
   assert.match(text, /Short\./);
   assert.match(text, /No line breaks\./);
 
-  newRecord(store, 'change', 'app-wide', { title: 'App wide', summary: 's', features: ['changes feature:app'] });
+  change(store, 'app-wide', { title: 'App wide', summary: 's', features: ['changes feature:app'] });
   const wide = changeContext(store, 'change:app-wide');
   assert.deepEqual(wide.aspects?.at.map((x) => x.place), ['aspect:shop/text/app']);
   assert.deepEqual(wide.aspects?.beneath.map((b) => b.place), ['aspect:shop/text/cart', 'aspect:shop/text/cart-line', 'aspect:shop/text/search']);
 
-  newRecord(store, 'change', 'text-base', { title: 'The text base', summary: 's', aspects: ['changes aspect:text'] });
+  change(store, 'text-base', { title: 'The text base', summary: 's', aspects: ['changes aspect:text'] });
   const named = changeContext(store, 'change:text-base');
   assert.equal(named.aspects?.named[0].aspect, 'aspect:shop/text');
   assert.equal(named.aspects?.named[0].places.length, 4);
@@ -104,7 +105,7 @@ test("a change's context: the aspect read at a feature it names in full, places 
   // the aspect it names is above it, as a feature is above a change that names it
   assert.ok(ancestorsOf(loadStore(store), 'change:shop/text-base').includes('aspect:shop/text'));
 
-  newRecord(store, 'change', 'no-feature', { title: 'Nothing named', summary: 's' });
+  change(store, 'no-feature', { title: 'Nothing named', summary: 's' });
   assert.equal(changeContext(store, 'change:no-feature').aspects, undefined);
   assert.deepEqual(errors(), []);
 });
@@ -139,7 +140,7 @@ test("the dashboard's scope carries the product's aspects whole, and at a featur
 });
 
 test('a change row carries the aspects and places it names, as live keys: the roadmap narrows by them', () => {
-  newRecord(store, 'change', 'cart-wording', { title: 'Cart wording', summary: 's', aspects: ['changes aspect:text/cart'] });
+  change(store, 'cart-wording', { title: 'Cart wording', summary: 's', aspects: ['changes aspect:text/cart'] });
   const rows = scope(store, loadStore(store), { node: 'product:shop' }).changes;
   assert.deepEqual(rows.find((r) => r.key === 'change:shop/text-base')?.aspects, ['aspect:shop/text']);
   assert.deepEqual(rows.find((r) => r.key === 'change:shop/cart-wording')?.aspects, ['aspect:shop/text/cart']);

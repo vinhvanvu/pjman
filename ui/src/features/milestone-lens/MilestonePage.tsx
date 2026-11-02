@@ -1,5 +1,6 @@
-// The milestone page: a large ring, the next line first, what leads to completion from three sides (changes
-// beneath, features touched, projects involved), the decisions, and what blocks it.
+// The milestone page: a large ring, its name and gist, the next step first and the Intent and Done when beneath, what
+// leads to completion from three sides (changes beneath, features touched, projects involved), the decisions by name,
+// and what blocks it.
 import { cn } from 'cn';
 import { Link } from '@tanstack/react-router';
 import { Check, Map } from 'lucide-react';
@@ -13,6 +14,7 @@ import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Figures } from '@/components/stats/Figures';
 import { Ring } from '@/components/stats/Ring';
+import { nextLine, Readiness, Sections } from '@/components/record/Foundation';
 import { childrenByStatus, decided, featuresTouched, projectsInvolved, proposed, rowsBeneath } from './model';
 import { TONE } from '@/lib/tones';
 
@@ -61,8 +63,9 @@ export function MilestonePage({
             {typeof c.data.project === 'string' && <Chip tone="quiet">{short(c.data.project)}</Chip>}
             {typeof c.data.target === 'string' && <Chip tone="quiet">target {c.data.target}</Chip>}
           </div>
-          <h1 className="text-[22px] leading-tight font-semibold tracking-tight">{c.title}</h1>
-          {ctx.summary && <p className="max-w-[640px] text-ink-muted">{ctx.summary}</p>}
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight">{c.name ?? c.title ?? short(c.key)}</h1>
+          {c.name && c.title && c.title !== c.name && <p className="max-w-[640px] text-ink-muted">{c.title}</p>}
+          <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
           <Link
             to="/$lens/$"
             params={{ lens: 'feature', _splat: scope.crumbs[0]?.key.startsWith('product:') ? scope.crumbs[0].key : '' }}
@@ -75,12 +78,13 @@ export function MilestonePage({
         </div>
       </header>
 
-      {typeof c.data.next === 'string' && c.data.next && (
+      {ctx.next && (
         <div className="flex items-start gap-3.5 rounded-card border border-line bg-surface px-4 py-3.5">
           <Label className="shrink-0 pt-[3px]">Next</Label>
-          <p className="min-w-0 flex-1">{c.data.next}</p>
+          <p className="min-w-0 flex-1">{nextLine(ctx.next)}</p>
         </div>
       )}
+      <Sections sections={ctx.sections} only={['Intent', 'Done when']} />
 
       <Figures
         dense
@@ -152,8 +156,10 @@ export function MilestonePage({
               >
                 {d.status === 'decided' && <Check className="size-2.5 text-primary-foreground" strokeWidth={3} />}
               </span>
-              <span className="min-w-0 flex-1 truncate">{d.title ?? short(d.key)}</span>
-              {d.status === 'proposed' && decide && <DecideControl decision={d.key} onConfirm={() => decide(d.key)} />}
+              <span className="min-w-0 flex-1 truncate">{d.name ?? d.title ?? short(d.key)}</span>
+              {d.status === 'proposed' && decide && (d.state.recommendation || d.state.options.length === 1) && (
+                <DecideControl decision={d.key} onConfirm={() => decide(d.key)} />
+              )}
               <CopyKey refKey={d.key} bare />
             </NodeLink>
           ))}

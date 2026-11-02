@@ -7,13 +7,17 @@ import { supersedesOf } from '../supersede.js';
 import { effectsOf } from '../tree.js';
 import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
 import { CliError } from '../util.js';
+import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from '../foundation.js';
 
 export interface Row {
   type: RecordType;
   key: string;
   path: string;
   valid: boolean;
+  /** The record's one line: a title; a change's or a decision's gist (the-ladder). */
   title?: string;
+  /** Which one in a crowd: a feature's, a change's or a decision's name, one to four words. */
+  name?: string;
   status?: string;
   created?: string;
   writer?: string;
@@ -25,7 +29,7 @@ export function row(r: Rec): Row {
   const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
   return {
     type: r.type, key: r.key, path: r.path, valid: r.valid,
-    title: s(r.data.title), status: s(r.data.status), created: s(r.data.created),
+    title: lineOf(r.data), name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
     writer: s(r.data.writer), session: s(r.data.session), data: r.data,
   };
 }
@@ -96,10 +100,20 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
 
 export interface ChangeContext {
   change: Row;
-  summary?: string;
-  plan?: string;
+  /** The foundation's sections as written, in order of depth (Origin, Intent, Done when, Scope, Open questions,
+   *  Blocked on, Notes); only those present. */
   sections: Record<string, string>;
-  decisions: (Row & { decision?: string; why?: string; supersededBy?: string })[];
+  /** The plan: steps as data, their progress, and the next step (the active one, else the first open). */
+  plan: Step[];
+  planProgress?: { done: number; total: number };
+  next?: { n: number; step: Step };
+  /** What the record still needs before it is worked (an ingested or migrated one): name, gist, intent, done when. */
+  needs: string[];
+  /** The name and gist were written from an earlier foundation: rewrite them. */
+  stale: boolean;
+  /** Mapped mechanically from the old shape on this date and not written through the tool since. */
+  migrated?: string;
+  decisions: DecisionRow[];
   sources: { key: string; record?: Row; via: 'binds' | 'links' }[];
   /** The change's branch: one a session was seen on (observed), else the recommended name derived from the key. */
   branch?: { name: string; worktree: string; observed: boolean };
@@ -130,6 +144,21 @@ export interface StoreContext {
   mapPrompt?: string;
 }
 
+/** A decision as a change's context carries it: its rungs on the row, the thread read as its current state, and what it
+ *  still needs. */
+export interface DecisionRow extends Row {
+  state: DecisionState;
+  needs: string[];
+  stale: boolean;
+  migrated?: string;
+  supersededBy?: string;
+}
+
+export function decisionRow(r: Rec, supersededBy?: string): DecisionRow {
+  const rungs = rungsOf(r);
+  return { ...row(r), state: decisionState(threadOf(r.data)), needs: needsOf(r), stale: rungs.stale, migrated: typeof r.data.migrated === 'string' ? r.data.migrated : undefined, supersededBy };
+}
+
 /** Milestone progress: done children over children that were not dropped; undefined without children. */
 export function progressOf(children: { status?: string }[]): { done: number; total: number } | undefined {
   const counted = children.filter((c) => c.status !== 'dropped');
@@ -151,11 +180,12 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const res = resolve(loaded, raw);
   if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
   const rec = res.rec;
+  // the sections in order of depth, the known ones first; anything else the record holds follows
   const sections: Record<string, string> = {};
-  for (const [k, v] of rec.sections) if (k && k !== 'Summary' && k !== 'Plan') sections[k] = v;
-  let plan = rec.sections.get('Plan');
-  const planFile = rec.abs.replace(/change\.md$/, 'plan.md');
-  if (!plan && fs.existsSync(planFile)) plan = fs.readFileSync(planFile, 'utf8').trim();
+  for (const k of CHANGE_SECTIONS) if (rec.sections.get(k)?.trim()) sections[k] = rec.sections.get(k)!;
+  for (const [k, v] of rec.sections) if (k && !(k in sections) && v.trim()) sections[k] = v;
+  const plan = stepsOf(rec.data);
+  const rungs = rungsOf(rec);
 
   const supersededBy = new Map<string, string>();
   for (const r of loaded.records) {
@@ -168,7 +198,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const decisions = loaded.records
     .filter((r) => r.type === 'decision' && r.changeKey === rec.key)
     .sort((a, b) => (a.fileDate! + a.path).localeCompare(b.fileDate! + b.path))
-    .map((r) => ({ ...row(r), decision: r.sections.get('Decision'), why: r.sections.get('Why'), supersededBy: supersededBy.get(r.key) }));
+    .map((r) => decisionRow(r, supersededBy.get(r.key)));
 
   const sources: ChangeContext['sources'] = [];
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -220,7 +250,25 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     : { name: branchNameFor(rec.key, readUserConfig().branch_prefix), worktree: worktreeNameFor(rec.key), observed: false };
   const features = effectsOf(rec).map((e) => liveKey(e.key)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => r?.type === 'feature');
   const aspects = aspectsOfChange(loaded, rec, features);
-  return { change: row(rec), summary: rec.sections.get('Summary'), plan, sections, decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects };
+  return {
+    change: row(rec), sections, plan, planProgress: planProgress(plan), next: nextStep(plan), needs: needsOf(rec), stale: rungs.stale,
+    migrated: typeof rec.data.migrated === 'string' ? rec.data.migrated : undefined,
+    decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects,
+  };
+}
+
+/** The lines that say what a record still needs, that its rungs are stale, or that it was migrated and not yet reviewed. */
+export function readinessLines(c: { needs: string[]; stale: boolean; migrated?: string }, what: 'change' | 'decision'): string[] {
+  const out: string[] = [];
+  if (c.needs.length) out.push(`needs: ${c.needs.join(', ')} (write them before working it${what === 'change' ? ': pjman set <change> name=… gist=… intent=… done-when=…' : ': pjman decision <key> --name … --gist … --question …'})`);
+  if (c.stale) out.push(`rungs: stale (the name and gist were written from an earlier ${what === 'change' ? 'Origin, Intent and Done when' : 'thread'}; rewrite them)`);
+  if (c.migrated) out.push(`migrated: ${c.migrated} (mapped from the old shape, not reviewed since; the first write through the tool clears this)`);
+  return out;
+}
+
+/** The next step as one line: its number, text and note. */
+export function nextLine(next: { n: number; step: Step } | undefined): string | undefined {
+  return next ? `${next.n}. ${next.step.text}${next.step.note ? ` — ${next.step.note}` : ''}` : undefined;
 }
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
@@ -236,20 +284,37 @@ export function decisionLine(dec: Row & { supersededBy?: string }): string {
   return parts.join('; ');
 }
 
+/** `key — name`, the gist beneath: how a change or a decision heads its context. With no name yet (an ingested or
+ *  migrated record), the gist heads it. */
+function heading(level: string, r: Row): string {
+  if (!r.name) return `${level} ${r.key} — ${r.title ?? labelOf(r.data, r.key)}`;
+  return `${level} ${r.key} — ${r.name}${r.title && r.title !== r.name ? `\n${r.title}` : ''}`;
+}
+
+/** `name: gist` on one line, the name left out when it is the gist or absent. */
+export function nameAndLine(r: Pick<Row, 'name' | 'title'>): string {
+  return `${r.name && r.name !== r.title ? `${r.name}: ` : ''}${r.title ?? r.name ?? ''}`;
+}
+
 export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
-  out.push(`# ${c.change.key} — ${c.change.title ?? ''}`);
-  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${d.next ? `\nnext: ${String(d.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`);
-  if (c.summary) out.push(`\n## Summary\n\n${c.summary}`);
-  if (c.plan) out.push(`\n## Plan\n\n${c.plan}`);
-  for (const [k, v] of Object.entries(c.sections)) if (v) out.push(`\n## ${k}\n\n${v}`);
+  out.push(heading('#', c.change));
+  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`);
+  out.push(...readinessLines(c, 'change'));
+  // the foundation in order of depth; the plan sits after Scope, where the work's shape ends and its steps begin
+  for (const [k, v] of Object.entries(c.sections)) {
+    if (k === 'Open questions' && c.plan.length) out.push(`\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`);
+    out.push(`\n## ${k}\n\n${v}`);
+  }
+  if (c.plan.length && !('Open questions' in c.sections)) out.push(`\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`);
   if (c.decisions.length) {
     out.push('\n## Decisions');
     for (const dec of c.decisions) {
-      out.push(`\n### ${dec.key} — ${dec.title ?? ''}\n${decisionLine(dec)}`);
-      if (dec.decision) out.push(`\n${dec.decision}`);
-      if (dec.why) out.push(`\nWhy: ${dec.why}`);
+      out.push(`\n${heading('###', dec)}\n${decisionLine(dec)}`);
+      out.push(...readinessLines(dec, 'decision'));
+      const lines = formatDecisionState(dec.state);
+      if (lines.length) out.push(`\n${lines.join('\n')}`);
     }
   }
   // the contract the change works under, after what was decided on it
@@ -262,17 +327,18 @@ export function formatChangeContext(c: ChangeContext): string {
       out.push(`- ${s.via} ${s.key}${t}${u}`);
     }
   }
+  const line = (ch: Row) => `- ${ch.key} [${ch.status ?? '?'}] — ${nameAndLine(ch)}`;
   if (c.children.length) {
     out.push(`\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} done)` : ''}`);
-    for (const ch of c.children) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
+    for (const ch of c.children) out.push(line(ch));
   }
   if (c.dependsOn.length) {
     out.push('\n## Depends on');
-    for (const ch of c.dependsOn) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
+    for (const ch of c.dependsOn) out.push(line(ch));
   }
   if (c.neededBy.length) {
     out.push('\n## Needed by');
-    for (const ch of c.neededBy) out.push(`- ${ch.key} [${ch.status ?? '?'}] — ${ch.title ?? ''}`);
+    for (const ch of c.neededBy) out.push(line(ch));
   }
   if (c.observed.length) {
     out.push('\n## Observed');
@@ -334,7 +400,8 @@ export function formatStoreContext(c: StoreContext): string {
     const status = depth ? ` [${r.status ?? '?'}]` : '';
     const kids = childrenOf(r.key);
     const p = progressOf(kids);
-    const line = `${pad}- ${r.key}${status} — ${r.title ?? ''}${tag(r)}${p ? ` · ${p.done}/${p.total} done` : ''}${r.data.next ? `\n${pad}  next: ${String(r.data.next)}` : ''}`;
+    const next = nextLine(nextStep(stepsOf(r.data)));
+    const line = `${pad}- ${r.key}${status} — ${nameAndLine(r)}${tag(r)}${p ? ` · ${p.done}/${p.total} done` : ''}${next ? `\n${pad}  next: ${next}` : ''}`;
     return [line, ...childrenOf(r.key).map((ch) => item(ch, depth + 1))].join('\n');
   };
   // a change whose parent is on the board is listed under it, not on its own
@@ -350,7 +417,7 @@ export function formatStoreContext(c: StoreContext): string {
   if (c.project && c.projects.length > 1) out.push(`\nother projects: ${c.projects.filter((p) => p.key !== c.project!.key).map((p) => p.key).join(', ')} (pjman context --all)`);
   if (c.proposed.length) {
     out.push('\n## proposed decisions');
-    for (const r of c.proposed) out.push(`- ${r.key} — ${r.title ?? ''}`);
+    for (const r of c.proposed) out.push(`- ${r.key} — ${nameAndLine(r)}`);
   }
   out.push(`\n${Object.entries(c.counts).map(([k, v]) => `${v} ${k}${v === 1 ? '' : 's'}`).join(', ') || 'no records'}`);
   return out.join('\n') + '\n';

@@ -12,6 +12,7 @@ import { changeContext, formatChangeContext } from '../commands/view.js';
 import { findStore, readUserConfig, writeUserConfig, type Store } from '../config.js';
 import { findReferences } from '../graph.js';
 import { loadStore } from '../records.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-branch-'));
 const project = path.join(tmp, 'project');
@@ -27,7 +28,7 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: project });
   init({ checkers: [], cwd: project, name: 'app' });
   store = findStore(project)!;
-  newRecord(store, 'change', 'card-export', { title: 'Card export', summary: 'Export.' });
+  change(store, 'card-export', { title: 'Card export', summary: 'Export.' });
   newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
 });
 

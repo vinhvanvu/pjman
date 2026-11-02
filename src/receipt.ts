@@ -43,7 +43,7 @@ export function receiptLines(events: StoreEvent[], loaded: Loaded, opts: { count
     const r = byKey.get(key)!;
     const res = resolve(loaded, key);
     const rec = res.status === 'ok' || res.status === 'alias' || res.status === 'invalid' ? res.rec : undefined;
-    const title = str(rec?.data.title) ?? str(rec?.data.name);
+    const title = str(rec?.data.name) ?? str(rec?.data.title) ?? str(rec?.data.gist);
     const verb = r.ops.has('removed') ? 'removed' : r.ops.has('created') ? 'created' : r.ops.has('moved') ? 'renamed to' : r.ops.has('bind') ? 'bound' : r.ops.has('observe') ? 'observed on' : r.ops.has('set') ? 'set' : r.fields.has('notes') ? 'noted' : r.log ? 'logged' : null;
     if (r.ops.has('applied') || r.ops.has('reverted')) {
       // a batch is one line on the record it was for, before the records it touched

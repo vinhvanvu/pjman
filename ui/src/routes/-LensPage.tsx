@@ -38,6 +38,7 @@ import { usePreferences } from '@/state/preferences';
 import { freshScope, pageProduct } from '@/lib/identity';
 import type { PageSearch } from './-search';
 import { decisionTone } from '@/lib/tones';
+import { Readiness } from '@/components/record/Foundation';
 
 export interface LensPageProps {
   lens: Lens;
@@ -458,7 +459,8 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   );
 }
 
-/** The decisions tab: proposed first, each with its recommendation and why, Accept on a proposed one and Reopen on a
+/** The decisions tab: proposed first, each by its name and gist with the recommended option and what it still needs
+ *  (the-ladder: the thread stays in the record), Accept on a proposed one that recommends an option and Reopen on a
  *  decided one (change:decide-in-place). */
 function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
   const decide = useDecideAction('decide');
@@ -477,21 +479,30 @@ function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
               <span aria-hidden="true" className="size-[7px] rounded-full bg-current" />
               {d.status}
             </Chip>
-            <span className="min-w-0 flex-1 font-medium">{d.title ?? short(d.key)}</span>
+            <span className="min-w-0 flex-1 font-medium">{d.name ?? d.title ?? short(d.key)}</span>
             {typeof d.data.decided_on === 'string' && (
               <span className="text-meta text-ink-faint">{d.data.decided_on}</span>
             )}
           </div>
-          {d.decision && <p className="text-[13px] leading-relaxed text-ink-muted">{d.decision}</p>}
-          {d.why && (
+          {d.name && d.title && <p className="text-[13px] leading-relaxed text-ink-muted">{d.title}</p>}
+          {d.status === 'proposed' && d.state.recommendation && (
             <p className="text-xs leading-relaxed text-ink-faint">
-              <span className="label mr-1.5">Why</span>
-              {d.why}
+              <span className="label mr-1.5">Recommended</span>
+              {d.state.options.find((o) => o.recommended)?.text}
+              {d.state.recommendation.text ? ` — ${d.state.recommendation.text}` : ''}
             </p>
           )}
+          {d.state.accepted && (
+            <p className="text-xs leading-relaxed text-ink-faint">
+              <span className="label mr-1.5">Accepted</span>
+              {d.state.options.find((o) => o.accepted)?.text}
+              {d.state.accepted.text ? ` — ${d.state.accepted.text}` : ''}
+            </p>
+          )}
+          <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />
           <div className="flex items-center gap-2 text-meta text-ink-faint">
             <CopyKey refKey={d.key} />
-            {d.status === 'proposed' && decide && (
+            {d.status === 'proposed' && decide && (d.state.recommendation || d.state.options.length === 1) && (
               <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />
             )}
             {d.status === 'decided' && reopen && (

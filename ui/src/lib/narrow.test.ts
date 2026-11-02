@@ -13,6 +13,8 @@ const row = (key: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   children: 0,
   dependsOn: [],
   aspects: [],
+  needs: [],
+  stale: false,
   ...extra,
 });
 const changeNode = (r: ChangeRow): ScopeNode => ({

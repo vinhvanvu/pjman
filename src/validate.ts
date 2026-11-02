@@ -5,6 +5,7 @@ import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, ty
 import { supersedesOf } from './supersede.js';
 import { parseAspectEffect } from './aspects.js';
 import { isDateString, isTimestamp, localDate } from './util.js';
+import { CHANGE_SECTIONS, ENTRY_TYPES, gistProblem, nameProblem, STEP_STATES, threadOf, decisionState, unmigrated } from './foundation.js';
 
 const REQUIRED: Record<RecordType, string[]> = {
   product: ['title'],
@@ -12,8 +13,8 @@ const REQUIRED: Record<RecordType, string[]> = {
   aspect: ['title'],
   place: ['feature'],
   project: ['title'],
-  change: ['title', 'status'],
-  decision: ['title', 'status'],
+  change: ['status'],
+  decision: ['status'],
   source: ['kind', 'key'],
   session: ['agent', 'on_behalf_of', 'started'],
   actor: ['kind'],
@@ -25,8 +26,8 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   aspect: ['title', 'name', 'parent', 'writer', 'session', 'created'],
   place: ['feature', 'writer', 'session', 'created'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'writer', 'session', 'created'],
-  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'next', 'writer', 'session', 'created'],
-  decision: ['title', 'status', 'decided_by', 'decided_on', 'writer', 'session', 'created'], // supersedes: a key or a list, checked below
+  change: ['name', 'gist', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'rungs_from', 'migrated', 'writer', 'session', 'created'],
+  decision: ['name', 'gist', 'status', 'decided_by', 'decided_on', 'rungs_from', 'migrated', 'writer', 'session', 'created'], // supersedes: a key or a list, checked below
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'writer', 'created'],
   actor: ['kind', 'name', 'url', 'writer', 'session', 'created'],
@@ -45,9 +46,15 @@ const LIST_FIELDS: Record<RecordType, string[]> = {
   actor: ['links', 'aliases'],
 };
 
+/** A change's Origin is the one section every path that creates a change writes; Intent and Done when are required of
+ *  a filed change by the command, and an ingested or migrated one says it needs them until it is first worked. */
 const REQUIRED_SECTIONS: Partial<Record<RecordType, string[]>> = {
-  change: ['Summary'],
-  decision: ['Decision', 'Why'],
+  change: ['Origin'],
+};
+/** The sections a record may hold; anything else is a warning, since the foundation is read by its sections. */
+const KNOWN_SECTIONS: Partial<Record<RecordType, readonly string[]>> = {
+  change: CHANGE_SECTIONS,
+  decision: ['Notes'],
 };
 
 /** Edge name → [from kinds, to kinds]. 'source' stands for any source kind. */
@@ -158,7 +165,18 @@ export function validate(loaded: Loaded): Problem[] {
     if (d.created !== undefined && !isDateString(d.created)) err(r, `'created' must be a date (yyyy-mm-dd)`);
     if (d.ext !== undefined && (typeof d.ext !== 'object' || d.ext === null || Array.isArray(d.ext))) err(r, `'ext' must be a mapping`);
 
+    if ((r.type === 'change' || r.type === 'decision') && unmigrated(r)) {
+      err(r, `the record is in the shape before the foundation (a title, a Summary, a Decision section); run \`pjman migrate\` once`);
+      continue;
+    }
     for (const s of REQUIRED_SECTIONS[r.type] ?? []) if (!r.sections.has(s)) err(r, `body is missing the '## ${s}' section`);
+    const knownSections = KNOWN_SECTIONS[r.type];
+    if (knownSections) for (const s of r.sections.keys()) if (s && !knownSections.includes(s)) warn(r, `unknown section '## ${s}' (${knownSections.join(', ')})`);
+    if (r.type === 'change' || r.type === 'decision') {
+      if (typeof d.name === 'string') { const p = nameProblem(d.name); if (p) err(r, `name: ${p} ('${d.name}')`); }
+      if (typeof d.gist === 'string') { const p = gistProblem(d.gist); if (p) err(r, `gist: ${p}`); }
+      if (d.migrated !== undefined && !isDateString(d.migrated)) err(r, `'migrated' must be a date (yyyy-mm-dd)`);
+    }
 
     // a parent chain of the record's own kind that returns to it is a cycle
     const parentCycle = (field: string): void => {
@@ -328,6 +346,21 @@ export function validate(loaded: Loaded): Problem[] {
         }
         for (const k of listOf(d.binds)) checkRef(r, 'binds', k, ['source']);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        // the plan: steps as data, each with its text and a state
+        if (d.plan !== undefined) {
+          if (!Array.isArray(d.plan)) err(r, `'plan' must be a list of steps {text, state, note, at}`);
+          else {
+            d.plan.forEach((s, i) => {
+              if (!s || typeof s !== 'object' || Array.isArray(s)) { err(r, `plan[${i}] must be a mapping {text, state, note, at}`); return; }
+              const step = s as Record<string, unknown>;
+              if (typeof step.text !== 'string' || !step.text.trim()) err(r, `plan[${i}]: a step needs its text`);
+              if (step.state !== undefined && !(STEP_STATES as readonly string[]).includes(String(step.state))) err(r, `plan[${i}]: state '${String(step.state)}' is not one of ${STEP_STATES.join(', ')}`);
+              if (step.note !== undefined && typeof step.note !== 'string') err(r, `plan[${i}]: note must be a string`);
+              if (step.at !== undefined && !isTimestamp(step.at)) err(r, `plan[${i}]: at must be a timestamp`);
+              for (const f of Object.keys(step)) if (!['text', 'state', 'note', 'at'].includes(f)) warn(r, `plan[${i}]: unknown field '${f}'`);
+            });
+          }
+        }
         checkAliases('change');
         if (r.changeSlug && !SLUG_RE.test(r.changeSlug)) err(r, `folder name '${r.changeSlug}' is not a slug`);
         break;
@@ -342,6 +375,35 @@ export function validate(loaded: Loaded): Problem[] {
         }
         if (typeof d.decided_by === 'string') checkRef(r, 'decided_by', d.decided_by, ['actor']);
         if (d.decided_on !== undefined && !isDateString(d.decided_on)) err(r, `'decided_on' must be a date (yyyy-mm-dd)`);
+        // the thread: typed entries in order; an option before anything that names it; status and decider as the thread says
+        if (d.thread !== undefined) {
+          if (!Array.isArray(d.thread)) err(r, `'thread' must be a list of entries {type, at, by, text, …}`);
+          else {
+            const ids = new Set<string>();
+            d.thread.forEach((e, i) => {
+              if (!e || typeof e !== 'object' || Array.isArray(e)) { err(r, `thread[${i}] must be a mapping {type, at, …}`); return; }
+              const x = e as Record<string, unknown>;
+              const type = String(x.type);
+              if (!(ENTRY_TYPES as readonly string[]).includes(type)) { err(r, `thread[${i}]: type '${type}' is not one of ${ENTRY_TYPES.join(', ')}`); return; }
+              if (!isTimestamp(x.at)) err(r, `thread[${i}]: at must be a timestamp`);
+              if (x.by !== undefined) checkRef(r, `thread[${i}].by`, x.by, ['actor']);
+              if (type === 'option') {
+                if (typeof x.id !== 'string' || !SLUG_RE.test(x.id)) err(r, `thread[${i}]: an option needs an id (a slug)`);
+                else if (ids.has(x.id)) err(r, `thread[${i}]: option '${x.id}' is named twice`);
+                else ids.add(x.id);
+                if (typeof x.text !== 'string' || !x.text.trim()) err(r, `thread[${i}]: an option needs its text`);
+              } else if (type === 'recommendation' || type === 'reject' || type === 'accept') {
+                if (typeof x.option !== 'string' || !ids.has(x.option)) err(r, `thread[${i}]: ${type} names option '${String(x.option)}', which no earlier entry defines`);
+                if (type === 'accept' && (typeof x.by !== 'string' || !x.by.startsWith('person:'))) err(r, `thread[${i}]: an acceptance is a person's (by: person:<handle>)`);
+              } else if (type !== 'reopen' && (typeof x.text !== 'string' || !x.text.trim())) err(r, `thread[${i}]: a ${type} needs its text`);
+              for (const f of Object.keys(x)) if (!['type', 'at', 'by', 'text', 'id', 'case', 'option', 'revisit'].includes(f)) warn(r, `thread[${i}]: unknown field '${f}'`);
+            });
+            const st = decisionState(threadOf(d));
+            if (d.status === 'decided' && !st.accepted) err(r, `status is 'decided' but the thread holds no acceptance in force`);
+            if (d.status === 'proposed' && st.accepted) err(r, `status is 'proposed' but the thread holds an acceptance (${st.accepted.option})`);
+            if (st.accepted && d.status === 'decided' && st.accepted.by && d.decided_by !== st.accepted.by) err(r, `decided_by '${String(d.decided_by)}' is not who accepted in the thread (${st.accepted.by})`);
+          }
+        }
         if (d.supersedes !== undefined && typeof d.supersedes !== 'string' && !Array.isArray(d.supersedes)) err(r, `'supersedes' must be a decision key or a list of them`);
         for (const sup of supersedesOf(d)) {
           checkRef(r, 'supersedes', sup, ['decision']);

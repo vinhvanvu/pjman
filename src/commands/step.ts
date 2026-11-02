@@ -1,0 +1,135 @@
+// pjman step: a change's plan, written only through commands (decision record-foundation/plan-steps-are-data). Steps
+// are data on the change, each with a text, a state and a note of where the work stands; every move is one commit and
+// one event on the change, so progress, the next step and the activity are read off the steps and nothing is parsed.
+import fs from 'node:fs';
+import type { Store } from '../config.js';
+import { loadStore, resolve, unresolved, type Rec } from '../records.js';
+import { CliError, nowIso } from '../util.js';
+import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
+import { formatStep, nextStep, planProgress, stepsOf, type Step } from '../foundation.js';
+
+export const STEP_VERBS = ['add', 'start', 'done', 'drop', 'note', 'move', 'reopen'] as const;
+export type StepVerb = (typeof STEP_VERBS)[number];
+
+export interface StepOpts {
+  /** The step's text (add) or note (note, done, drop, start). */
+  text?: string;
+  note?: string;
+  /** Where to place it: add and move. */
+  before?: number;
+  after?: number;
+  first?: boolean;
+  last?: boolean;
+  session?: string;
+  writer?: string;
+}
+
+export interface StepResult {
+  key: string;
+  path: string;
+  verb: StepVerb;
+  /** The step's number after the write, from 1. */
+  n: number;
+  steps: Step[];
+  progress?: { done: number; total: number };
+  next?: { n: number; step: Step };
+  commit: string | null;
+}
+
+function change(store: Store, ref: string): Rec {
+  const loaded = loadStore(store);
+  const raw = ref.startsWith('change:') ? ref : `change:${ref}`;
+  const res = resolve(loaded, raw);
+  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
+  if (res.rec.type !== 'change') throw new CliError(`${res.rec.key} is not a change`);
+  if (!res.rec.valid) throw new CliError(`${res.rec.path} is invalid; fix it before writing its plan`);
+  return res.rec;
+}
+
+/** Where a step lands: by --before, --after, --first, --last; else at the end. The result is an index into the list
+ *  after removal of the moved step, 0-based. */
+function placement(steps: Step[], opts: StepOpts, moving?: number): number {
+  const given = [opts.before, opts.after, opts.first, opts.last].filter((x) => x !== undefined && x !== false).length;
+  if (given > 1) throw new CliError('one of --before, --after, --first, --last');
+  const index = (n: number | undefined, what: string): number => {
+    if (n === undefined) return -1;
+    if (!Number.isInteger(n) || n < 1 || n > steps.length) throw new CliError(`${what} ${n}: the plan has ${steps.length} step${steps.length === 1 ? '' : 's'}`);
+    if (moving !== undefined && n - 1 === moving) throw new CliError(`${what} ${n} is the step itself`);
+    // the list the step is placed in has the moved step taken out
+    return moving !== undefined && n - 1 > moving ? n - 2 : n - 1;
+  };
+  const size = moving !== undefined ? steps.length - 1 : steps.length;
+  if (opts.first) return 0;
+  if (opts.before !== undefined) return index(opts.before, '--before');
+  if (opts.after !== undefined) return index(opts.after, '--after') + 1;
+  return size;
+}
+
+/** One move of the plan: the steps rewritten, one commit, one event on the change with the move named. */
+export function step(store: Store, ref: string, verb: string, n: number | undefined, opts: StepOpts = {}): StepResult {
+  if (!(STEP_VERBS as readonly string[]).includes(verb)) throw new CliError(`usage: pjman step <change> add "<text>" | start|done|drop|reopen <n> [--note "…"] | note <n> "<text>" | move <n> --before <m>|--after <m>|--first|--last`);
+  const rec = change(store, ref);
+  const steps = stepsOf(rec.data);
+  const at = nowIso();
+  let touched: number;
+  const want = (what: string): number => {
+    if (n === undefined || !Number.isInteger(n) || n < 1 || n > steps.length) throw new CliError(`${what} needs a step number from 1 to ${steps.length}${steps.length ? '' : ' (the plan is empty: pjman step <change> add "…")'}`);
+    return n - 1;
+  };
+  switch (verb as StepVerb) {
+    case 'add': {
+      const text = opts.text?.trim();
+      if (!text) throw new CliError('pjman step <change> add "<text>"');
+      const i = placement(steps, opts);
+      steps.splice(i, 0, { text, state: 'open', note: opts.note?.trim() || undefined, at });
+      touched = i;
+      break;
+    }
+    case 'start': case 'done': case 'drop': case 'reopen': {
+      const i = want(verb);
+      const s = steps[i];
+      const next = verb === 'start' ? 'active' : verb === 'done' ? 'done' : verb === 'drop' ? 'dropped' : 'open';
+      if (s.state === next) throw new CliError(`step ${n} is already ${next}`);
+      if (verb === 'reopen' && s.state !== 'done' && s.state !== 'dropped') throw new CliError(`step ${n} is ${s.state}; reopen takes a done or dropped step`);
+      s.state = next;
+      s.at = at;
+      if (opts.note !== undefined) s.note = opts.note.trim() || undefined;
+      else if (verb === 'reopen') delete s.note;
+      touched = i;
+      break;
+    }
+    case 'note': {
+      const i = want('note');
+      const text = (opts.text ?? opts.note)?.trim();
+      if (!text) throw new CliError('pjman step <change> note <n> "<where the work stands>"');
+      steps[i].note = text;
+      steps[i].at = at;
+      touched = i;
+      break;
+    }
+    case 'move': {
+      const i = want('move');
+      const j = placement(steps, opts, i);
+      const [s] = steps.splice(i, 1);
+      steps.splice(j, 0, s);
+      touched = j;
+      break;
+    }
+    default:
+      throw new CliError(`unknown step verb '${verb}'`);
+  }
+  const plan = steps.map((s) => ({ text: s.text, state: s.state, note: s.note, at: s.at }));
+  // a write through the tool is the record reviewed: the migrated mark drops
+  const data: Record<string, unknown> = { ...rec.data, plan: plan.length ? plan : undefined };
+  delete data.migrated;
+  const prior = snapshot(store, [rec.path]);
+  fs.writeFileSync(rec.abs, render('change', data, rec.body));
+  validateOrUndo(store, [rec.path], [], prior);
+  const env = envelope(opts);
+  const commit = finishWrite(store, `pjman: step ${rec.key} ${verb} ${touched + 1}`, env.session, [{ op: 'set', key: rec.key, type: 'change', path: rec.path, fields: ['plan', `step ${verb}`], writer: env.writer }]);
+  return { key: rec.key, path: rec.path, verb: verb as StepVerb, n: touched + 1, steps, progress: planProgress(steps), next: nextStep(steps), commit };
+}
+
+export function formatPlan(steps: Step[]): string {
+  return steps.length ? steps.map((s, i) => formatStep(i + 1, s)).join('\n') : '(no steps)';
+}

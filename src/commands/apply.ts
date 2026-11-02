@@ -11,7 +11,7 @@ import { CliError } from '../util.js';
 import { beginBatch, endBatch, envelope } from '../write.js';
 
 /** The commands a batch may hold: writes to records, nothing that starts a server, reads, or nests. */
-export const BATCH_COMMANDS = ['new', 'set', 'mv', 'rm', 'order', 'session'] as const;
+export const BATCH_COMMANDS = ['new', 'set', 'decision', 'step', 'mv', 'rm', 'order', 'session', 'note'] as const;
 
 export interface ApplyResult {
   lines: number;

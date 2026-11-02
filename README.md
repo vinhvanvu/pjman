@@ -57,9 +57,12 @@ pjman new feature <slug> --title … --product <product> | --parent <feature> [-
 pjman new project <slug> --title … [--product <product>] [--parent <project>] [--tracker <source-kind>] [--map propose|skip] [--owners <actor>]… [--links <key>]…
 pjman new aspect <slug> --title … [--parent <aspect>] [--owners <actor>]… [--body <base>|-]
 pjman new place <aspect>/<place> --feature feature:<slug> [--body <fork>|-]
-pjman new change <slug> --title … [--status open] [--project <key>] [--parent <change>] [--features "adds feature:<slug>"]… [--aspects "changes aspect:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--summary …] [--plan …] [--next …] [--binds <key>]… [--links <key>]…
-                                [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]
-pjman new decision <change>/<slug> | /<slug> --title … [--decided-by <person>] [--decided-on <date>] [--supersedes <decision>] [--decision …] [--why …]
+pjman new change <slug> --name … --gist … --origin … --intent … --done-when … [--scope …] [--open-questions …] [--blocked-on …] [--notes …] [--status open] [--project <key>] [--parent <change>]
+                        [--features "adds feature:<slug>"]… [--aspects "changes aspect:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--binds <key>]… [--links <key>]…
+                        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]
+pjman decision <change>/<slug> --name … --gist … --question … [--criterion …]… --option <id>=…… [--case <id>=…]… [--recommend <id>[=why]] [--supersedes <decision>] [--links <key>]…
+pjman decision <key> [--question …] [--option <id>=…]… [--comment … --by person:<handle>] [--reject <id>[=why]]… [--recommend <id>[=why]] [--accept <id>[=their words] --by person:<handle> [--revisit …]] [--reopen] [--from -]
+pjman step <change> add <text> [--before <n>|--after <n>|--first|--last] | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last
 pjman new source <kind>:<key> [--title …] [--url …]
 pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
 pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>]
@@ -85,9 +88,9 @@ pjman view [<ref>] [--out <file>] [--watch]   one reference as Markdown; --watch
 pjman open [--session <id>]   the dashboard brought back, at a session's page when one is named (else PJMAN_SESSION); docked beside the terminal in cmux, the default browser elsewhere
 pjman show <key>
 pjman order <change> --before <change> | --after <change> | --first | --last | --later   move a change in its product's sequence, the roadmap's order; the rest is never touched
-pjman set <key> <field>=<value>…   change an authored field (title, status, kind, severity, project, parent, depends_on, features, target, next, links, binds, summary, plan; name and sequence on a product; map on a project; on a proposed decision also decision, why; on any decision supersedes, which only adds and marks each named decision superseded in the same commit; ext.<owner>.<field> on any record); a list is comma-separated
+pjman set <key> <field>=<value>…   change an authored field (on a change: name, gist, status, kind, severity, project, parent, depends_on, features, aspects, owners, target, links, binds, and the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; title, name, summary and sequence on a product; map on a project; on a decision name, gist, links and supersedes, which only adds and marks each named decision superseded in the same commit; ext.<owner>.<field> on any record); a list is comma-separated. A decision's thread, status and decider are written with pjman decision; a change's plan with pjman step
 pjman mv <key> <new key>               rename a change or a feature (alias kept), a product, a project or a decision; every reference rewritten
-pjman apply [<file>|-] [--for <key>]   many writes as one commit: the commands one per line (new, set, mv, rm, order, session), one commit and one 'applied' event at the end; a line that fails refuses the whole batch
+pjman apply [<file>|-] [--for <key>]   many writes as one commit: the commands one per line (new, set, decision, step, mv, rm, order, session, note), one commit and one 'applied' event at the end; a line that fails refuses the whole batch
 pjman undo [<commit>]                  revert the last batch (or the commit named) as one commit; refused while a later write touched a record of it
 
 One writer at a time: every write command takes a lock on the store (a file under `~/.pjman/locks`) before it touches a file and releases it after its commit, so two sessions writing at once never commit each other's half-written records; a second writer waits a few seconds, then refuses naming the holder; a lock whose process is gone is reclaimed.
@@ -130,7 +133,8 @@ The app lives in `ui/` (React, Vite) and builds into `dist/ui`, which ships with
 
 - **References are keys** (`person:vinh`, `project:pjman`, `change:schema`, `decision:schema/keys`, `linear:ABC-1`, `file:THESIS.md`). Projects, changes, decisions and sessions must exist; sources and actors need no record.
 - **The YAML rule:** any scalar containing `: ` or `#`, or starting with a special character, is quoted. `validate` reports; `fmt` quotes.
-- **A decision is decided by a person.** `--status decided` needs `--decided-by` unless the writer is a `person:`; `supersedes` marks its targets `superseded`, at creation or later through `pjman set decision:<k> supersedes=<key>,…` (a decision made later retires the proposals it overtook; the list only grows, a target another decision already supersedes is refused).
+- **A change and a decision read as a ladder.** A name (one to four words), a gist (one line), then the foundation in full: a change's sections in order of depth (Origin, Intent, Done when, then Scope, the plan as steps, Open questions, Blocked on, Notes), a decision's append-only thread. Status, progress, the next step and what waits are derived. The name and gist record the foundation they were written from (`rungs_from`); written without them, the foundation leaves them stale, and the context says so. A record mapped by `pjman migrate` from the old shape (title, summary, next, Decision and Why) carries `migrated` until it is next written through the tool.
+- **A decision is decided by a person.** An acceptance is an entry in its thread by a `person:`; an agent never accepts. `supersedes` marks its targets `superseded`, at creation or later through `pjman set decision:<k> supersedes=<key>,…` (a decision made later retires the proposals it overtook; the list only grows, a target another decision already supersedes is refused).
 - **A source binds at most one change.** A second bind is refused on write and reported as a conflict on hand edit.
 - **Nothing is dropped.** An invalid record is reported with its path and reason; a reference to it is "resolved, invalid", not "missing".
 - **Extensions** go under `ext.<owner>.<field>` and are never validated.

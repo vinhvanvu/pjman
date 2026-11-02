@@ -24,6 +24,8 @@ const row = (key: string, r: Partial<ChangeRow> = {}): ChangeRow => ({
   children: 0,
   dependsOn: [],
   aspects: [],
+  needs: [],
+  stale: false,
   ...r,
 });
 const feature = (key: string, children: ScopeNode[] = [], extra: Partial<ScopeNode> = {}): ScopeNode => ({

@@ -10,15 +10,150 @@ import { emit } from '../events.js';
 import { commitAll, git, gitMv, isTracked, toplevel } from '../git.js';
 import { loadLegacy } from '../legacy.js';
 import { isLegacyLayout, loadStore, type Rec } from '../records.js';
-import { CliError } from '../util.js';
+import { CliError, localDate, nowIso } from '../util.js';
 import { envelope, render } from '../write.js';
 import { formatProblems, validate } from '../validate.js';
+import { CHANGE_SECTIONS, foundationHash, foundationOf, unmigrated } from '../foundation.js';
+import { sections as parseSections } from '../frontmatter.js';
 
 export interface MigrateResult {
+  /** Which migration ran: the layout (keys under the product) or the foundation (changes and decisions into their shape). */
+  kind: 'layout' | 'foundation';
   products: number;
   moved: number;
   rewritten: number;
+  /** The foundation migration: how many changes and decisions were mapped. */
+  changes?: number;
+  decisions?: number;
   commit: string | null;
+}
+
+/** The one move that still waits, or null: the layout first, then the foundation. */
+export function pendingMigration(store: Store): 'layout' | 'foundation' | null {
+  if (isLegacyLayout(store.root)) return 'layout';
+  const loaded = loadStore(store);
+  return loaded.records.some((r) => (r.type === 'change' || r.type === 'decision') && r.valid && unmigrated(r)) ? 'foundation' : null;
+}
+
+export function migrate(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  const pending = pendingMigration(store);
+  if (pending === 'layout') return migrateLayout(store, opts);
+  if (pending === 'foundation') return migrateFoundation(store, opts);
+  throw new CliError('nothing to migrate: every record is keyed under its product and every change and decision is in its shape');
+}
+
+const LIST_LINE = /^\s*(?:[-*]|\d+[.)])\s+(.*)$/;
+
+/** The lines of a Plan section as steps, when it reads as a list; else nothing, and the text goes to Notes. */
+function planSteps(text: string, done: boolean, at: string): { steps: Record<string, unknown>[] | null } {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (!lines.length || !lines.every((l) => LIST_LINE.test(l))) return { steps: null };
+  return { steps: lines.map((l) => ({ text: LIST_LINE.exec(l)![1].trim(), state: done ? 'done' : 'open', at })) };
+}
+
+/** A note line as `pjman note` writes one: the instant, then the text. */
+const noteLine = (at: string, text: string): string => `- ${at} — ${text.replace(/\s*\n\s*/g, ' ')}`;
+
+/** The foundation migration (decision record-foundation/migration-maps-old-records): every change and decision in the
+ *  old shape mapped mechanically, nothing dropped. A title becomes a draft gist; a change's Summary its Intent; next and
+ *  a plan that is not a list go to Notes; a plan that is a list becomes steps; Origin says where the record came from;
+ *  a decision's Decision and Why become one option with its case, accepted by whoever decided it, or recommended while
+ *  proposed. Each record is marked migrated until it is next written through the tool. One commit; pjman undo reverts it. */
+export function migrateFoundation(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  const root = store.root;
+  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  const loaded = loadStore(store);
+  const date = localDate();
+  const at = nowIso();
+  const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
+  const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
+  let changes = 0;
+  let decisions = 0;
+  const inGit = toplevel(root) !== null;
+  for (const r of loaded.records) {
+    if (!r.valid || !unmigrated(r)) continue;
+    const data: Record<string, unknown> = { ...r.data };
+    const sections = new Map(r.sections);
+    const made = (lead: string): string => {
+      const from = [str(r.data.created) ? `created ${str(r.data.created)}` : '', str(r.data.writer) ? `by ${str(r.data.writer)}` : '', str(r.data.session) ? `in ${str(r.data.session)}` : ''].filter(Boolean).join(' ');
+      return `${lead}, ${date}.${from ? ` ${from[0].toUpperCase()}${from.slice(1)}.` : ''}`;
+    };
+    if (r.type === 'change') {
+      const title = str(data.title);
+      if (title) data.gist = oneLine(title);
+      delete data.title;
+      const notes: string[] = [];
+      const summary = sections.get('Summary');
+      if (summary?.trim()) sections.set('Intent', summary.trim());
+      sections.delete('Summary');
+      const plan = sections.get('Plan');
+      if (plan?.trim()) {
+        const { steps } = planSteps(plan, data.status === 'done', at);
+        if (steps) data.plan = steps;
+        else notes.push(noteLine(at, `plan (before the foundation): ${plan.trim()}`));
+      }
+      sections.delete('Plan');
+      const planFile = r.abs.replace(/change\.md$/, 'plan.md');
+      if (fs.existsSync(planFile)) {
+        const text = fs.readFileSync(planFile, 'utf8').trim();
+        if (text) {
+          const { steps } = planSteps(text, data.status === 'done', at);
+          if (steps && !data.plan) data.plan = steps;
+          else notes.push(noteLine(at, `plan.md (before the foundation): ${text}`));
+        }
+        if (inGit && isTracked(root, path.relative(root, planFile))) git(root, ['rm', '-q', '--', path.relative(root, planFile)]);
+        else fs.rmSync(planFile, { force: true });
+      }
+      const next = str(data.next);
+      if (next?.trim()) notes.push(noteLine(at, `next (before the foundation): ${next.trim()}`));
+      delete data.next;
+      if (notes.length) sections.set('Notes', [sections.get('Notes')?.trim() ?? '', ...notes].filter(Boolean).join('\n'));
+      sections.set('Origin', made('Mapped from the record as it stood before the foundation (a title, a summary, a next)'));
+      changes++;
+    } else {
+      const title = str(data.title);
+      if (title) data.gist = oneLine(title);
+      delete data.title;
+      const decision = sections.get('Decision')?.trim();
+      const why = sections.get('Why')?.trim();
+      sections.delete('Decision');
+      sections.delete('Why');
+      const thread: Record<string, unknown>[] = [...(Array.isArray(data.thread) ? (data.thread as Record<string, unknown>[]) : [])];
+      const createdAt = str(data.created) ? `${str(data.created)}T00:00:00.000Z` : at;
+      const by = str(data.writer);
+      if (decision || why) thread.push({ type: 'option', at: createdAt, by, id: 'chosen', text: decision || why, case: decision ? why : undefined });
+      const decidedBy = str(data.decided_by);
+      if (data.status !== 'proposed' && decidedBy?.startsWith('person:') && (decision || why)) {
+        thread.push({ type: 'accept', at: str(data.decided_on) ? `${str(data.decided_on)}T00:00:00.000Z` : createdAt, by: decidedBy, option: 'chosen' });
+      } else if (decision || why) thread.push({ type: 'recommendation', at: createdAt, by, option: 'chosen' });
+      if (thread.length) data.thread = thread;
+      if (data.status === 'decided' && !decidedBy?.startsWith('person:')) {
+        // a decided decision nobody accepted (an agent's, or hand-written): it stays decided as the field says, with no
+        // acceptance to show; the validator only checks a thread that holds one
+        delete data.thread;
+        sections.set('Notes', [sections.get('Notes')?.trim() ?? '', noteLine(at, `decision (before the foundation): ${decision ?? ''}${why ? ` Why: ${why}` : ''}`)].filter(Boolean).join('\n'));
+      }
+      decisions++;
+    }
+    const order = r.type === 'change' ? [...CHANGE_SECTIONS] : ['Notes'];
+    const rest = [...sections.keys()].filter((k) => k && !order.includes(k));
+    const body = [...order, ...rest].filter((k) => sections.get(k)?.trim()).map((k) => `## ${k}\n\n${sections.get(k)!.trim()}\n`).join('\n');
+    data.migrated = date;
+    data.rungs_from = foundationHash(foundationOf(r.type, data, parseSections(body)));
+    fs.writeFileSync(r.abs, render(r.type, data, body));
+  }
+  const problems = validate(loadStore(store)).filter((p) => p.level === 'error');
+  if (problems.length) {
+    if (inGit) {
+      git(root, ['reset', '-q', '--hard', 'HEAD']);
+      git(root, ['clean', '-qfd', '--', '.']);
+    }
+    throw new CliError(`refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`);
+  }
+  const env = envelope(opts);
+  const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate changes and decisions into the foundation', env.session) : null;
+  emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${changes} changes`, `${decisions} decisions`], writer: env.writer, session: env.session }], commit);
+  return { kind: 'foundation', products: 0, moved: 0, rewritten: changes + decisions, changes, decisions, commit };
 }
 
 const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -30,7 +165,7 @@ const rewriteFlat = (text: string, kind: string, slug: string, product: string):
 const rewriteDecisions = (text: string, change: string, product: string): string =>
   text.replace(new RegExp(`(^|[^A-Za-z0-9_/:-])decision:${esc(change)}/`, 'g'), `$1decision:${product}/${change}/`);
 
-export function migrate(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+export function migrateLayout(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
   const root = store.root;
   if (!isLegacyLayout(root)) throw new CliError('nothing to migrate: every record is already keyed under its product');
   if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
@@ -173,5 +308,5 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
   const env = envelope(opts);
   const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate keys under the product', env.session) : null;
   emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${moves.length} moved`, `${rewritten} rewritten`], writer: env.writer, session: env.session }], commit);
-  return { products: records.filter((r) => r.type === 'product').length, moved: moves.length, rewritten, commit };
+  return { kind: 'layout', products: records.filter((r) => r.type === 'product').length, moved: moves.length, rewritten, commit };
 }

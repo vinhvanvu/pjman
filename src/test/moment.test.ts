@@ -14,6 +14,7 @@ import { readEvents } from '../events.js';
 import { eventsBetween, gitSource, loadAt, momentCache, resolveMoment } from '../moment.js';
 import { loadStore } from '../records.js';
 import { live } from '../tree.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-moment-'));
 let store: Store;
@@ -39,10 +40,10 @@ before(() => {
   store = findStore(dir)!;
   newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
-  newRecord(store, 'change', 'login', { title: 'Login', summary: 's', project: 'project:web', status: 'open', next: 'n' });
+  change(store, 'login', { title: 'Login', summary: 's', project: 'project:web', status: 'open', next: 'n' });
   firstTitle = lastSeqNow();
   tick();
-  set(store, 'change:login', ['title=Login with magic links'], {});
+  set(store, 'change:login', ['gist=Login with magic links'], {});
   secondTitle = lastSeqNow();
   tick();
   newRecord(store, 'session', 's-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
@@ -76,14 +77,14 @@ test('a moment by instant: the last event at or before it', () => {
 
 test('the store at a moment reads the records as they stood, from the commit, with the working tree untouched', () => {
   const then = loadAt(store, firstTitle);
-  assert.equal(live(then.loaded, 'change:shop/login')?.data.title, 'Login');
+  assert.equal(live(then.loaded, 'change:shop/login')?.data.gist, 'Login');
   const later = loadAt(store, secondTitle);
-  assert.equal(live(later.loaded, 'change:shop/login')?.data.title, 'Login with magic links');
+  assert.equal(live(later.loaded, 'change:shop/login')?.data.gist, 'Login with magic links');
   // the session's record did not exist yet at the first title
   assert.equal(live(then.loaded, 'session:s-1'), undefined);
   assert.ok(live(loadAt(store, firstLine).loaded, 'session:s-1'));
   // the working tree is what it is now
-  assert.equal(live(loadStore(store), 'change:shop/login')?.data.title, 'Login with magic links');
+  assert.equal(live(loadStore(store), 'change:shop/login')?.data.gist, 'Login with magic links');
   assert.equal(then.loaded.problems.filter((p) => p.level === 'error').length, 0);
 });
 

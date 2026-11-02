@@ -15,6 +15,7 @@ import { readEvents } from '../events.js';
 import { loadStore } from '../records.js';
 import { supersededBy, supersedesOf } from '../supersede.js';
 import { validate } from '../validate.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-supersede-'));
 const home = path.join(tmp, 'home');
@@ -37,11 +38,11 @@ before(() => {
   git(project, 'config', 'user.email', 't@example.com');
   init({ checkers: [], cwd: project });
   store = findStore(project)!;
-  newRecord(store, 'change', 'sup', { title: 'Supersession' });
-  newRecord(store, 'decision', 'sup/old-one', { title: 'Old one', decision: 'a', why: 'b' });
-  newRecord(store, 'decision', 'sup/old-two', { title: 'Old two', decision: 'a', why: 'b' });
-  newRecord(store, 'decision', 'sup/newer', { title: 'Newer', decision: 'a', why: 'b', decidedBy: 'person:tester' });
-  newRecord(store, 'decision', 'sup/third', { title: 'Third', decision: 'a', why: 'b' });
+  change(store, 'sup', { title: 'Supersession' });
+  decisionRec(store, 'sup/old-one', { title: 'Old one', decision: 'a', why: 'b' });
+  decisionRec(store, 'sup/old-two', { title: 'Old two', decision: 'a', why: 'b' });
+  decisionRec(store, 'sup/newer', { title: 'Newer', decision: 'a', why: 'b', decidedBy: 'person:tester' });
+  decisionRec(store, 'sup/third', { title: 'Third', decision: 'a', why: 'b' });
 });
 
 test('set supersedes marks the proposed target superseded in the same commit and records both events', () => {
@@ -96,9 +97,9 @@ test('a refused write leaves the target as it was', () => {
 });
 
 test('creating with --supersedes still marks its target, through the same path', () => {
-  const r = newRecord(store, 'decision', 'sup/fourth', { title: 'Fourth', decision: 'a', why: 'b', supersedes: 'decision:sup/third' });
+  const r = decisionRec(store, 'sup/fourth', { title: 'Fourth', decision: 'a', why: 'b', supersedes: 'decision:sup/third' });
   assert.deepEqual(r.notes, ['decision:project/sup/third is now superseded']);
   assert.equal(status(store, 'decision:project/sup/third'), 'superseded');
-  assert.throws(() => newRecord(store, 'decision', 'sup/fifth', { title: 'Fifth', decision: 'a', why: 'b', supersedes: 'decision:sup/third' }), /already superseded by decision:project\/sup\/fourth/);
+  assert.throws(() => decisionRec(store, 'sup/fifth', { title: 'Fifth', decision: 'a', why: 'b', supersedes: 'decision:sup/third' }), /already superseded by decision:project\/sup\/fourth/);
   assert.equal(errors(store).length, 0);
 });

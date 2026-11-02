@@ -13,6 +13,7 @@ import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
 import { loadStore } from '../records.js';
 import { scope, type ScopeNode } from '../scope.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-scope-'));
 let store: Store;
@@ -46,14 +47,14 @@ before(() => {
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:shop/checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
   newRecord(store, 'feature', 'fax', { title: 'Fax orders', product: 'product:shop', status: 'retired' });
-  newRecord(store, 'change', 'cards', { title: 'Cards milestone', summary: 's', project: 'project:web', status: 'planning' });
-  newRecord(store, 'change', 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards', 'feature:shop/search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
-  newRecord(store, 'change', 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards'] });
-  newRecord(store, 'change', 'card-tests', { title: 'Card tests', summary: 's', project: 'project:web', parent: 'change:shop/card-form' });
-  newRecord(store, 'change', 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
-  newRecord(store, 'change', 'old', { title: 'Old', summary: 's', project: 'project:web', features: ['feature:shop/search'], status: 'done' });
-  newRecord(store, 'decision', 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
-  newRecord(store, 'decision', 'card-form/how', { title: 'How', decision: 'h', why: 'w', decidedBy: 'person:tester', decidedOn: '2026-01-02' });
+  change(store, 'cards', { title: 'Cards milestone', summary: 's', project: 'project:web', status: 'planning' });
+  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards', 'feature:shop/search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
+  change(store, 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards'] });
+  change(store, 'card-tests', { title: 'Card tests', summary: 's', project: 'project:web', parent: 'change:shop/card-form' });
+  change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
+  change(store, 'old', { title: 'Old', summary: 's', project: 'project:web', features: ['feature:shop/search'], status: 'done' });
+  decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
+  decisionRec(store, 'card-form/how', { title: 'How', decision: 'h', why: 'w', decidedBy: 'person:tester', decidedOn: '2026-01-02' });
   newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 'live-1', 'change:shop/card-form');
 });
@@ -93,7 +94,7 @@ test('feature lens: features nest, a change sits under every feature it names, a
   // the health of the node, the live session beneath it, the window
   assert.equal(s.health.waiting, 1);
   // the inbox: the proposed decision beneath, with the recommendation and the change it is on
-  assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.decision]), [['decision:shop/card-form/why', 'change:shop/card-form', 'd']]);
+  assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.recommended?.text]), [['decision:shop/card-form/why', 'change:shop/card-form', 'd']]);
   assert.equal(s.health.created, 6);
   assert.equal(s.health.staleDays, 0);
   assert.deepEqual(s.sessions.map((x) => [x.key, x.on]), [['session:live-1', 'change:shop/card-form']]);
@@ -180,10 +181,10 @@ test('health reads the window: a change done today counts, blocked counts as it 
 
 test('bugs: one home at the severity level, counts roll up with the worst named, the queue worst first; the roadmap: the sequence, later, the checks', () => {
   // a capability bug with feature severity is listed at the feature; a product one at the root; a nuisance where named
-  newRecord(store, 'change', 'cards-crash', { title: 'Saving a card crashes', summary: 'b', project: 'project:web', kind: 'bug', severity: 'feature', features: ['feature:shop/saved-cards'] });
-  newRecord(store, 'change', 'down', { title: 'Nothing loads', summary: 'b', project: 'project:web', kind: 'bug', severity: 'product', features: ['feature:shop/search'] });
-  newRecord(store, 'change', 'typo', { title: 'Typo in search', summary: 'b', project: 'project:web', kind: 'bug', severity: 'cosmetic', features: ['feature:shop/search'], created: '2026-01-01' });
-  newRecord(store, 'change', 'slow-search', { title: 'Search is slow', summary: 'b', project: 'project:web', kind: 'bug', severity: 'nuisance', features: ['feature:shop/search'] });
+  change(store, 'cards-crash', { title: 'Saving a card crashes', summary: 'b', project: 'project:web', kind: 'bug', severity: 'feature', features: ['feature:shop/saved-cards'] });
+  change(store, 'down', { title: 'Nothing loads', summary: 'b', project: 'project:web', kind: 'bug', severity: 'product', features: ['feature:shop/search'] });
+  change(store, 'typo', { title: 'Typo in search', summary: 'b', project: 'project:web', kind: 'bug', severity: 'cosmetic', features: ['feature:shop/search'], created: '2026-01-01' });
+  change(store, 'slow-search', { title: 'Search is slow', summary: 'b', project: 'project:web', kind: 'bug', severity: 'nuisance', features: ['feature:shop/search'] });
   set(store, 'product:shop', ['sequence=change:cards,change:old'], {});
   set(store, 'change:shop/cards', ['target=2026-12-01'], {});
   set(store, 'change:shop/chore', ['status=open', 'depends_on=change:cards'], {});
@@ -231,10 +232,10 @@ test('bugs: one home at the severity level, counts roll up with the worst named,
 });
 
 test('the order reads what is ahead: done entries drop out and stay stored, a done milestone keeps its place for open children, a reopened change is back in its place', () => {
-  newRecord(store, 'change', 'phase', { title: 'Phase', summary: 's', project: 'project:web', status: 'done' });
-  newRecord(store, 'change', 'phase-kid', { title: 'Phase kid', summary: 's', project: 'project:web', parent: 'change:shop/phase' });
-  newRecord(store, 'change', 'shipped', { title: 'Shipped', summary: 's', project: 'project:web', status: 'done' });
-  newRecord(store, 'change', 'upcoming', { title: 'Upcoming', summary: 's', project: 'project:web' });
+  change(store, 'phase', { title: 'Phase', summary: 's', project: 'project:web', status: 'done' });
+  change(store, 'phase-kid', { title: 'Phase kid', summary: 's', project: 'project:web', parent: 'change:shop/phase' });
+  change(store, 'shipped', { title: 'Shipped', summary: 's', project: 'project:web', status: 'done' });
+  change(store, 'upcoming', { title: 'Upcoming', summary: 's', project: 'project:web' });
   set(store, 'product:shop', ['sequence=change:phase,change:shipped,change:upcoming'], {});
   const product = () => loadStore(store).byKey.get('product:shop')![0];
   const aheadNow = () => ahead(loadStore(store), product());

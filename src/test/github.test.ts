@@ -10,6 +10,8 @@ import { findStore, type Store } from '../config.js';
 import { loadStore } from '../records.js';
 import { ghIssuesIn, ghReadCommand, mapGhStatus, syncGithub, toGhIssue } from '../sync/github.js';
 import { validate } from '../validate.js';
+import { stepsOf } from '../foundation.js';
+import { next } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-github-'));
 const project = path.join(tmp, 'app');
@@ -91,13 +93,13 @@ test('a sync applies the repository from the project link: sources, changes, par
   assert.deepEqual(again.created, []);
   assert.equal(again.unchanged.length, 4);
   assert.equal(again.commit, null);
-  set(store, 'change:app/app-1', ['next=ship it'], {});
+  next(store, 'change:app/app-1', 'ship it', {});
   const closed = issues.map((i) => (i.number === 1 ? { ...i, state: 'CLOSED', stateReason: 'COMPLETED' } : i));
   const third = syncGithub(store, { from: closed });
-  assert.deepEqual(third.updated, ['change:app/app-1']);
+  assert.deepEqual(third.updated, [], 'pjman owns the status: a closed ticket moves nothing on its change');
   const after = loadStore(store).byKey.get('change:app/app-1')![0];
-  assert.equal(after.data.status, 'done');
-  assert.equal(after.data.next, 'ship it');
+  assert.equal(after.data.status, 'open');
+  assert.equal(stepsOf(after.data)[0]?.text, 'ship it');
   const other = syncGithub(store, { from: [{ number: 7, title: 'x', state: 'OPEN', url: 'https://github.com/other/repo/issues/7', labels: [] }] });
   assert.deepEqual(other.skipped, [{ id: 'other/repo#7', reason: 'repository other/repo is not acme/app' }]);
 });

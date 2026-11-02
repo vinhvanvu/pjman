@@ -10,6 +10,7 @@ import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
 import { formatIntake, intake, words } from '../intake.js';
 import { loadStore } from '../records.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-intake-'));
 let store: Store;
@@ -26,10 +27,10 @@ before(() => {
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search the catalogue', product: 'product:shop' });
-  newRecord(store, 'change', 'cards', { title: 'Cards milestone', summary: 'Everything cards.', status: 'planning', target: '2026-12-01' });
-  newRecord(store, 'change', 'card-form', { title: 'Card form', summary: 'Enter and save a card.', parent: 'change:cards', features: ['adds feature:saved-cards'], status: 'active', binds: ['github-issue:acme/shop#7'] });
-  newRecord(store, 'change', 'old-search', { title: 'Search by colour', summary: 'Colour facets.', features: ['feature:search'], status: 'done' });
-  newRecord(store, 'change', 'chore', { title: 'Upgrade the build', summary: 'Vite 7.' });
+  change(store, 'cards', { title: 'Cards milestone', summary: 'Everything cards.', status: 'planning', target: '2026-12-01' });
+  change(store, 'card-form', { title: 'Card form', summary: 'Enter and save a card.', parent: 'change:cards', features: ['adds feature:saved-cards'], status: 'active', binds: ['github-issue:acme/shop#7'] });
+  change(store, 'old-search', { title: 'Search by colour', summary: 'Colour facets.', features: ['feature:search'], status: 'done' });
+  change(store, 'chore', { title: 'Upgrade the build', summary: 'Vite 7.' });
   set(store, 'product:shop', ['sequence=change:cards'], {});
 });
 

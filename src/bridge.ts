@@ -8,13 +8,18 @@ import { productOf } from './commands/order.js';
 import type { Loaded, Rec } from './records.js';
 import { LIVE_MINUTES, proposedDecisions, type WaitingDecision } from './scope.js';
 import { effectsOf, live, rootProductOf, structuralParent } from './tree.js';
+import { lineOf, nextStep, stepsOf } from './foundation.js';
+import { nextLine } from './commands/view.js';
 
 export type SessionState = 'working' | 'waiting' | 'stopped' | 'ended';
 
 export interface BridgeChange {
   key: string;
+  /** The gist. */
   title?: string;
+  name?: string;
   status?: string;
+  /** The next step of the plan, as a line; derived. */
   next?: string;
   /** The feature path the change names, the product left out, top first: the nearest feature is last. */
   path: { key: string; name: string }[];
@@ -145,7 +150,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     const c = live(loaded, d.change)!;
     proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), d]);
   }
-  const asChange = (c: Rec): BridgeChange => ({ key: c.key, title: str(c.data.title), status: str(c.data.status), next: str(c.data.next), path: featurePath(loaded, c) });
+  const asChange = (c: Rec): BridgeChange => ({ key: c.key, title: lineOf(c.data), name: str(c.data.name), status: str(c.data.status), next: nextLine(nextStep(stepsOf(c.data))), path: featurePath(loaded, c) });
   const waitingOn: WaitingChange[] = [...proposedOn.entries()]
     .map(([key, ds]) => ({ change: asChange(live(loaded, key)!), proposed: [...ds].reverse() }))
     .sort((a, b) => (b.proposed[0].created ?? '').localeCompare(a.proposed[0].created ?? '') || a.change.key.localeCompare(b.change.key));

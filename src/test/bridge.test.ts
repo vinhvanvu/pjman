@@ -12,6 +12,7 @@ import { sessionBind, sessionLog } from '../commands/session.js';
 import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
 import { loadStore } from '../records.js';
+import { accept, change, decisionRec, next } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-bridge-'));
 let store: Store;
@@ -35,10 +36,10 @@ before(() => {
   set(store, 'project:web', ['product=product:shop'], {});
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:shop/checkout' });
-  newRecord(store, 'change', 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active', next: 'Wire the form.' });
-  newRecord(store, 'change', 'chore', { title: 'Chore', summary: 's', project: 'project:web', status: 'review', next: 'Review it.' });
-  newRecord(store, 'decision', 'card-form/later', { title: 'Later', decision: 'd2', why: 'w' });
-  newRecord(store, 'decision', 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
+  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active', next: 'Wire the form.' });
+  change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web', status: 'review', next: 'Review it.' });
+  decisionRec(store, 'card-form/later', { title: 'Later', decision: 'd2', why: 'w' });
+  decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
   // waiting: bound, then stopped with a line, and a decision proposed on its change
   newRecord(store, 'session', 's-wait', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 's-wait', 'change:shop/card-form');
@@ -100,7 +101,7 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
   assert.equal(by['session:s-work'].state, 'working');
   assert.equal(by['session:s-work'].decision, undefined);
   assert.equal(by['session:s-stop'].state, 'stopped');
-  assert.equal(by['session:s-stop'].change?.next, 'Review it.');
+  assert.equal(by['session:s-stop'].change?.next, '1. Review it.');
   assert.deepEqual(by['session:s-stop'].change?.path, []);
   assert.equal(by['session:s-end'].state, 'ended');
   assert.equal(by['session:s-end'].inReview, true);
@@ -116,7 +117,7 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
     ['change:shop/card-form', ['decision:shop/card-form/why', 'decision:shop/card-form/later']], // newest proposed first
   ]);
   assert.deepEqual(b.waitingOn[0].change.path.map((f) => f.name), ['Checkout', 'Saved cards']);
-  assert.equal(b.waitingOn[0].proposed[0].decision, 'd');
+  assert.equal(b.waitingOn[0].proposed[0].recommended?.text, 'd');
   // most recent first
   const lasts = b.sessions.map((s) => s.last ?? '');
   assert.deepEqual(lasts, [...lasts].sort().reverse());
@@ -154,7 +155,7 @@ test('timeline: the product\'s events in the window, decisions marked, titles as
 });
 
 test('timeline: a decision tick carries the status its write left, and every decision event the status now', () => {
-  set(store, 'decision:shop/card-form/later', ['status=decided', 'decided_by=person:tester', 'decided_on=2026-10-28'], {});
+  accept(store, 'decision:shop/card-form/later', 'person:tester', '2026-10-28');
   const t = timeline(store, loadStore(store), { product: 'product:shop' });
   const of = (op: string) => t.events.find((e) => e.key === 'decision:shop/card-form/later' && e.op === op)!;
   assert.equal(of('created').status, 'proposed');
