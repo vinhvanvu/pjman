@@ -14,6 +14,7 @@ import { readEvents, rebuildEvents } from '../events.js';
 import { brief, computeBrief, focusOf, neighboursOf } from '../hydrate.js';
 import { findSession, loadStore } from '../records.js';
 import { validate } from '../validate.js';
+import { accept, change, decisionRec, next } from './shape.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(here, '..', '..', 'bin', 'pjman.js');
@@ -35,11 +36,11 @@ before(() => {
   store = findStore(dir)!;
   newRecord(store, 'feature', 'login', { title: 'Signing in', product: 'product:web' });
   newRecord(store, 'feature', 'billing', { title: 'Paying', product: 'product:web' });
-  newRecord(store, 'change', 'milestone', { title: 'Launch', summary: 's', project: 'project:web' });
-  newRecord(store, 'change', 'auth', { title: 'Auth', summary: 's', project: 'project:web', parent: 'change:milestone', features: ['feature:login'] });
-  newRecord(store, 'change', 'after-auth', { title: 'After auth', summary: 's', project: 'project:web', dependsOn: ['change:auth'] });
-  newRecord(store, 'change', 'sso', { title: 'SSO', summary: 's', project: 'project:web', features: ['feature:login'] });
-  newRecord(store, 'change', 'invoices', { title: 'Invoices', summary: 's', project: 'project:web', features: ['feature:billing'] });
+  change(store, 'milestone', { title: 'Launch', summary: 's', project: 'project:web' });
+  change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web', parent: 'change:milestone', features: ['feature:login'] });
+  change(store, 'after-auth', { title: 'After auth', summary: 's', project: 'project:web', dependsOn: ['change:auth'] });
+  change(store, 'sso', { title: 'SSO', summary: 's', project: 'project:web', features: ['feature:login'] });
+  change(store, 'invoices', { title: 'Invoices', summary: 's', project: 'project:web', features: ['feature:billing'] });
   for (const id of ['me', 'peer', 'near', 'far', 'gone']) newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
 });
 
@@ -63,19 +64,20 @@ test('an unbound session has no brief; binding gives the change in full once, an
 });
 
 test('the delta: what others wrote on the change, its milestone, its decisions and its dependency edges, one line per record', () => {
-  set(store, 'change:auth', ['next=first'], { session: 'session:peer' });
-  set(store, 'change:auth', ['next=second', 'status=active'], { session: 'session:peer' });
-  set(store, 'change:milestone', ['next=launch soon'], { session: 'session:peer' });
-  set(store, 'change:after-auth', ['next=waiting on auth'], { session: 'session:peer' });
-  newRecord(store, 'decision', 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w', session: 'session:peer' });
-  set(store, 'change:invoices', ['next=unrelated'], { session: 'session:peer' });
-  set(store, 'change:auth', ['next=my own'], { session: 'session:me' });
+  next(store, 'change:auth', 'first', { session: 'session:peer' });
+  next(store, 'change:auth', 'second', { session: 'session:peer' });
+  set(store, 'change:auth', ['status=active'], { session: 'session:peer' });
+  next(store, 'change:milestone', 'launch soon', { session: 'session:peer' });
+  next(store, 'change:after-auth', 'waiting on auth', { session: 'session:peer' });
+  decisionRec(store, 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w', session: 'session:peer' });
+  next(store, 'change:invoices', 'unrelated', { session: 'session:peer' });
+  next(store, 'change:auth', 'my own', { session: 'session:me' });
   const b = brief(store, 'me');
   assert.equal(b.mode, 'delta');
   assert.deepEqual(b.lines, [
-    'set change:web/auth (next, status → active) (2 writes)',
-    'set change:web/milestone (next)',
-    'set change:web/after-auth (next)',
+    'set change:web/auth (plan, step add, status → active) (3 writes)',
+    'set change:web/milestone (plan, step add)',
+    'set change:web/after-auth (plan, step add)',
     'created decision:web/auth/tokens — Tokens',
   ]);
   assert.ok(!b.text.includes('invoices'), 'a change outside the scope is not mentioned');
@@ -114,9 +116,9 @@ test('focus follows what the session reads and writes; binding does not move wit
   const at = () => focusOf(loadStore(store), session('me'), readEvents(store))?.change;
   sessionFocus(store, 'me', 'change:invoices');
   assert.equal(at(), 'change:web/invoices');
-  set(store, 'change:sso', ['next=looked'], { session: 'session:me' });
+  next(store, 'change:sso', 'looked', { session: 'session:me' });
   assert.equal(at(), 'change:web/sso');
-  newRecord(store, 'decision', 'after-auth/order', { title: 'Order', decision: 'd', why: 'w', session: 'session:me' });
+  decisionRec(store, 'after-auth/order', { title: 'Order', decision: 'd', why: 'w', session: 'session:me' });
   assert.equal(at(), 'change:web/after-auth', 'a decision moves focus to the change it sits on');
   assert.deepEqual(session('me').data.changes, ['change:web/auth']);
   assert.equal(sessionFocus(store, 'me', 'change:invoices').moved, true, 'reading it again after writing elsewhere moves back');
@@ -127,7 +129,7 @@ test('focus follows what the session reads and writes; binding does not move wit
 test('the CLI: a change filed by a session binds it; reading a change\'s context moves its focus; a brief by --session', () => {
   const env = { ...process.env, PJMAN_SESSION: 'session:me', PJMAN_WRITER: 'agent:claude-code' };
   const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { cwd: dir, env, encoding: 'utf8' });
-  const created = run('new', 'change', 'reset', '--title', 'Reset', '--summary', 's');
+  const created = run('new', 'change', 'reset', '--name', 'Reset', '--gist', 'Reset', '--origin', 'asked', '--intent', 's', '--done-when', 'd');
   assert.match(created, /note: bound session:me \(created\)/);
   assert.equal((session('me').data.changes as string[]).at(-1), 'change:web/reset');
   run('context', 'change:sso');

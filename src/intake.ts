@@ -7,6 +7,7 @@ import type { Loaded, Rec } from './records.js';
 import { ahead, productOf } from './commands/order.js';
 import { progressOf } from './commands/view.js';
 import { derivedStatus, effectsOf, levelOf, live, structuralParent } from './tree.js';
+import { lineOf } from './foundation.js';
 
 export interface Candidate {
   key: string;
@@ -98,11 +99,11 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   const isOpen = (c: Rec) => c.data.status !== 'done' && c.data.status !== 'dropped';
 
   const candidate = (c: Rec): ChangeCandidate => {
-    const hay = `${(c.changeSlug ?? c.key).replace(/-/g, ' ')} ${str(c.data.title) ?? ''} ${c.sections.get('Summary') ?? ''}`;
+    const hay = `${(c.changeSlug ?? c.key).replace(/-/g, ' ')} ${str(c.data.name) ?? ''} ${lineOf(c.data) ?? ''} ${c.sections.get('Intent') ?? c.sections.get('Summary') ?? ''}`;
     const o = overlap(ask, hay);
     const isRef = referenced.has(c.key);
     return {
-      key: c.key, title: str(c.data.title), score: isRef ? 1 : o.score, words: o.words, status: str(c.data.status), kind: str(c.data.kind),
+      key: c.key, title: lineOf(c.data), score: isRef ? 1 : o.score, words: o.words, status: str(c.data.status), kind: str(c.data.kind),
       features: effectsOf(c).map((e) => live(loaded, e.key)?.key).filter((k): k is string => !!k), parent: live(loaded, c.data.parent)?.key, referenced: isRef,
     };
   };
@@ -133,7 +134,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   const childrenOf = (key: string) => changes.filter((c) => live(loaded, c.data.parent)?.key === key);
   const milestones = changes
     .filter((c) => isOpen(c) && childrenOf(c.key).length > 0)
-    .map((c) => ({ key: c.key, title: str(c.data.title), status: str(c.data.status), progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))), target: str(c.data.target) }))
+    .map((c) => ({ key: c.key, title: lineOf(c.data), status: str(c.data.status), progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))), target: str(c.data.target) }))
     .sort((a, b) => {
       const share = (p?: { done: number; total: number }) => (p?.total ? p.done / p.total : 0);
       return share(b.progress) - share(a.progress) || a.key.localeCompare(b.key);

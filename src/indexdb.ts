@@ -105,11 +105,11 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
       const c = { kind: 'duplicate-key', key: r.key, paths: [dup.path, r.path], message: `two records resolve to '${r.key}'` };
       conflicts.push(c);
       // the second record gets its own id, under its path, so nothing is lost
-      insRec.run(uuidv7(), r.key, r.type, r.path, str(r.data.title), str(r.data.status), str(r.data.created), str(r.data.writer), str(r.data.session), r.valid ? 1 : 0, JSON.stringify(r.data));
+      insRec.run(uuidv7(), r.key, r.type, r.path, (str(r.data.title) ?? str(r.data.gist)), str(r.data.status), str(r.data.created), str(r.data.writer), str(r.data.session), r.valid ? 1 : 0, JSON.stringify(r.data));
       continue;
     }
     seenKeys.set(r.key, r);
-    insRec.run(idFor(r.key), r.key, r.type, r.path, str(r.data.title), str(r.data.status), str(r.data.created), str(r.data.writer), str(r.data.session), r.valid ? 1 : 0, JSON.stringify(r.data));
+    insRec.run(idFor(r.key), r.key, r.type, r.path, (str(r.data.title) ?? str(r.data.gist)), str(r.data.status), str(r.data.created), str(r.data.writer), str(r.data.session), r.valid ? 1 : 0, JSON.stringify(r.data));
   }
 
   const edges = allEdges(loaded);

@@ -11,6 +11,7 @@ import { findStore, type Store } from '../config.js';
 import { readEvents, rebuildEvents } from '../events.js';
 import { findSession, loadStore } from '../records.js';
 import { validate } from '../validate.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-unbind-'));
 let store: Store;
@@ -24,8 +25,8 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   init({ checkers: [], cwd: dir, name: 'web' });
   store = findStore(dir)!;
-  newRecord(store, 'change', 'right', { title: 'Right', summary: 's', project: 'project:web' });
-  newRecord(store, 'change', 'wrong', { title: 'Wrong', summary: 's', project: 'project:web' });
+  change(store, 'right', { title: 'Right', summary: 's', project: 'project:web' });
+  change(store, 'wrong', { title: 'Wrong', summary: 's', project: 'project:web' });
   newRecord(store, 'session', 's1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 's1', 'change:right');
   sessionObserve(store, 's1', 'links', 'change:right', 'branch:right');

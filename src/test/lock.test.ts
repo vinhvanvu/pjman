@@ -83,8 +83,8 @@ test('two commands writing the store at once each land in their own commit', asy
   const run = (args: string[]) => new Promise<string>((res, rej) => execFile(process.execPath, [bin, ...args], { cwd: project, env: { ...process.env, PJMAN_LOCK_WAIT_MS: '8000' }, encoding: 'utf8' }, (err, stdout, stderr) => (err ? rej(new Error(stderr || err.message)) : res(stdout))));
   const before = git(store.root, 'rev-list', '--count', 'HEAD');
   const [a, b] = await Promise.all([
-    run(['new', 'change', 'left', '--title', 'Left', '--summary', 'l']),
-    run(['new', 'change', 'right', '--title', 'Right', '--summary', 'r']),
+    run(['new', 'change', 'left', '--name', 'Left', '--gist', 'Left', '--origin', 'asked', '--intent', 'l', '--done-when', 'd']),
+    run(['new', 'change', 'right', '--name', 'Right', '--gist', 'Right', '--origin', 'asked', '--intent', 'r', '--done-when', 'd']),
   ]);
   assert.match(a, /created change:(project\/)?left/);
   assert.match(b, /created change:(project\/)?right/);

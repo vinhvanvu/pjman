@@ -1,5 +1,8 @@
-// The shared half of every tracker sync: observed tickets in, sources and the changes that bind them out.
-// The tracker owns title, status and parent of a change that binds a ticket; pjman owns next, the body and the decisions.
+// The shared half of every tracker sync: observed tickets in, sources and the changes that bind them out. pjman is the
+// source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the
+// change's Origin and never copied. Ingesting it creates the change when none binds it yet, with a draft gist from the
+// ticket's title, its status as the ticket stood then, and nothing else; afterwards the sync writes the source record,
+// the binding and the owners, never a name, a status or a parent onto a change that exists.
 import path from 'node:path';
 import { readUserConfig, type Store } from '../config.js';
 import type { EventInput } from '../events.js';
@@ -9,8 +12,10 @@ import { productOfProject } from '../commands/new.js';
 import { personOf } from '../refs.js';
 import { localDate, nowIso } from '../util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../write.js';
-import { newSession } from '../commands/new.js';
+import { newSession, originText } from '../commands/new.js';
 import { sessionLog } from '../commands/session.js';
+import { foundationHash, foundationOf } from '../foundation.js';
+import { sections as parseSections } from '../frontmatter.js';
 
 /** One observed ticket, already translated to pjman's terms by the tracker's module. */
 export interface Ticket {
@@ -118,18 +123,23 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       const binds = Array.isArray(existing.data.binds) ? (existing.data.binds as string[]) : [];
       const had = Array.isArray(existing.data.owners) ? (existing.data.owners as string[]) : [];
       const merged = [...had, ...owners.filter((o) => !had.includes(o))];
-      write(existing, 'change', rel, changeKey, { ...existing.data, title: t.title, status: t.status, kind: t.kind ?? existing.data.kind, owners: merged.length ? merged : undefined, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['title', 'status', 'kind', 'owners']);
+      write(existing, 'change', rel, changeKey, { ...existing.data, kind: existing.data.kind ?? t.kind, owners: merged.length ? merged : undefined, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['kind', 'owners', 'binds']);
     } else {
-      write(undefined, 'change', rel, changeKey, { title: t.title, status: t.status, kind: t.kind, project: project.key, owners: owners.length ? owners : undefined, binds: [sourceKey], ...stamp }, '## Summary\n\n\n', []);
+      // the gist is a draft from the ticket's title; the name, intent and done-when are written by whoever first works it
+      const gist = t.title.replace(/\s+/g, ' ').trim();
+      const body = `## Origin\n\n${originText(sourceKey, { session }, stamp.created)}\n`;
+      const data = { gist, status: t.status, kind: t.kind, project: project.key, owners: owners.length ? owners : undefined, binds: [sourceKey], links: [sourceKey], rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))), ...stamp };
+      write(undefined, 'change', rel, changeKey, data, body, []);
     }
   }
   if (touched.length) validateOrUndo(store, touched, events.filter((e) => e.op === 'created').map((e) => e.path));
 
-  // pass 2: parents, where the parent change exists
+  // pass 2: parents on the changes this sync created, where the parent change exists; a change that exists keeps its own
   loaded = loadStore(store);
   for (const t of tickets) {
     if (!t.parent) continue;
     const key = changeOf.get(t.id)!;
+    if (!result.created.includes(key)) continue;
     const rec = loaded.byKey.get(key)?.[0];
     const parentKey = changeOf.get(t.parent) ?? byBind.get(`${kind}:${t.parent}`)?.key;
     if (!rec || !parentKey || rec.data.parent === parentKey) {

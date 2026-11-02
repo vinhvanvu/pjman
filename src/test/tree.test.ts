@@ -15,6 +15,7 @@ import { get } from '../graph.js';
 import { loadStore, resolve } from '../records.js';
 import { ancestorsOf, derivedStatus, descendantsOf, effectiveOwners, formatTree, levelOf, parseEffect, tree } from '../tree.js';
 import { validate } from '../validate.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-tree-'));
 let store: Store;
@@ -54,10 +55,10 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   newRecord(store, 'feature', 'saved-cards', { title: 'Pay with a saved card', parent: 'feature:shop/checkout' });
   newRecord(store, 'feature', 'card-scan', { title: 'Scan a card', parent: 'feature:shop/saved-cards', owners: ['person:other'] });
   newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
-  newRecord(store, 'change', 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active' });
-  newRecord(store, 'change', 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', features: ['adds feature:shop/saved-cards'] });
-  newRecord(store, 'change', 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
-  newRecord(store, 'decision', 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
+  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active' });
+  change(store, 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', features: ['adds feature:shop/saved-cards'] });
+  change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
+  decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
   assert.deepEqual(errors(), []);
 
   let loaded = loadStore(store);
@@ -94,7 +95,7 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   loaded = loadStore(store);
   assert.equal(derivedStatus(loaded, 'feature:shop/saved-cards').status, 'live');
   assert.equal(derivedStatus(loaded, 'feature:shop/checkout').status, 'live');
-  newRecord(store, 'change', 'drop-scan', { title: 'Drop card scan', summary: 's', project: 'project:web', features: ['removes feature:shop/card-scan'], status: 'done' });
+  change(store, 'drop-scan', { title: 'Drop card scan', summary: 's', project: 'project:web', features: ['removes feature:shop/card-scan'], status: 'done' });
   loaded = loadStore(store);
   assert.equal(derivedStatus(loaded, 'feature:shop/card-scan').status, 'retired');
   // nothing to derive from: the authored status stands (a cold-started map), and lifts its parent; a change that names it takes over
@@ -105,7 +106,7 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   assert.deepEqual(derivedStatus(loaded, 'feature:shop/cold-kid'), { status: 'live', because: 'authored; no change affects it yet' });
   assert.equal(derivedStatus(loaded, 'feature:shop/cold').status, 'live');
   assert.equal(derivedStatus(loaded, 'feature:shop/cold-plan').status, 'planned');
-  newRecord(store, 'change', 'rework-kid', { title: 'Rework', summary: 's', project: 'project:web', features: ['feature:shop/cold-kid'], status: 'open' });
+  change(store, 'rework-kid', { title: 'Rework', summary: 's', project: 'project:web', features: ['feature:shop/cold-kid'], status: 'open' });
   assert.equal(derivedStatus(loadStore(store), 'feature:shop/cold-kid').status, 'planned');
   set(store, 'change:shop/rework-kid', ['status=active'], {});
   assert.equal(derivedStatus(loadStore(store), 'feature:shop/cold-kid').status, 'building');
@@ -136,8 +137,8 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
 
 test('validation: a feature needs a product or a parent; effects are checked; parent cycles are refused on features and projects', () => {
   assert.throws(() => newRecord(store, 'feature', 'orphan', { title: 'Orphan' }), /--product|--parent/);
-  assert.throws(() => newRecord(store, 'change', 'bad', { title: 'b', summary: 's', features: ['deletes feature:checkout'] }), /must be '<effect> feature:<slug>'/);
-  assert.throws(() => newRecord(store, 'change', 'bad', { title: 'b', summary: 's', features: ['adds feature:shop/nope'] }), /does not resolve/);
+  assert.throws(() => change(store, 'bad', { title: 'b', summary: 's', features: ['deletes feature:checkout'] }), /must be '<effect> feature:<slug>'/);
+  assert.throws(() => change(store, 'bad', { title: 'b', summary: 's', features: ['adds feature:shop/nope'] }), /does not resolve/);
   assert.throws(() => set(store, 'feature:shop/checkout', ['parent=feature:saved-cards'], {}), /cycles/);
   assert.throws(() => set(store, 'feature:shop/search', ['status=shipped'], {}), /not one of planned, building, live, retired/);
   set(store, 'project:api', ['parent=project:web'], {});

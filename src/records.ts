@@ -13,8 +13,11 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   aspect: ['title', 'name', 'parent', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   place: ['feature', 'links', 'writer', 'session', 'created', 'ext'],
   project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
-  change: ['title', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'aspects', 'owners', 'target', 'next', 'binds', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
-  decision: ['title', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'writer', 'session', 'created', 'ext'],
+  // a change and a decision carry the rungs (name, gist) over their foundation: a change's plan of steps and its
+  // sections, a decision's thread; rungs_from is the foundation the rungs were written from; migrated marks a record
+  // mapped mechanically and not yet written through the tool (foundation.ts)
+  change: ['name', 'gist', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'aspects', 'owners', 'target', 'plan', 'binds', 'links', 'aliases', 'rungs_from', 'migrated', 'writer', 'session', 'created', 'ext'],
+  decision: ['name', 'gist', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'thread', 'rungs_from', 'migrated', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
   actor: ['kind', 'name', 'url', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],

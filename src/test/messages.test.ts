@@ -16,6 +16,8 @@ import { brief, wakeOf } from '../hydrate.js';
 import { findSession, loadStore, resolve } from '../records.js';
 import { receiptLines } from '../receipt.js';
 import { validate } from '../validate.js';
+import { accept, change, decisionRec, next } from './shape.js';
+import { decision as writeDecision } from '../commands/decision.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(here, '..', '..', 'bin', 'pjman.js');
@@ -39,10 +41,10 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   init({ checkers: [], cwd: dir, name: 'web' });
   store = findStore(dir)!;
-  newRecord(store, 'change', 'auth', { title: 'Auth', summary: 's', project: 'project:web' });
-  newRecord(store, 'change', 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
-  newRecord(store, 'decision', 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w' });
-  newRecord(store, 'decision', 'billing/cards', { title: 'Cards', decision: 'd', why: 'w' });
+  change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web' });
+  change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
+  decisionRec(store, 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w' });
+  decisionRec(store, 'billing/cards', { title: 'Cards', decision: 'd', why: 'w' });
   for (const id of ['me', 'idle', 'peer']) newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 'me', 'change:auth', 'prompt');
   brief(store, 'me');
@@ -95,13 +97,13 @@ test('an unbound session is still given a note addressed to it, and its watermar
 
 test('what wakes a session: a decision on its bound change decided, a note on that change or to it, by anyone but itself', () => {
   const from = readEvents(store).at(-1)!.seq;
-  set(store, 'decision:auth/tokens', ['decision=d2'], {}); // not a decision being decided
-  set(store, 'decision:billing/cards', ['status=decided', 'decided_by=person:tester', 'decided_on=2026-10-29'], {}); // another change
-  set(store, 'change:auth', ['next=n'], {}); // an ordinary write
+  writeDecision(store, 'decision:auth/tokens', { entries: [{ type: 'comment', text: 'd2' }] }); // not a decision being decided
+  accept(store, 'decision:billing/cards', 'person:tester', '2026-10-29'); // another change
+  next(store, 'change:auth', 'n', {}); // an ordinary write
   note(store, 'change:billing', 'for billing'); // a note elsewhere
   note(store, 'session:me', 'mine', { session: 'session:me' }); // its own
   assert.deepEqual(wakes('me', from), []);
-  set(store, 'decision:auth/tokens', ['status=decided', 'decided_by=person:tester', 'decided_on=2026-10-29'], {});
+  accept(store, 'decision:auth/tokens', 'person:tester', '2026-10-29');
   note(store, 'change:auth', 'go');
   note(store, 'session:me', 'and you', { session: 'session:peer' });
   assert.deepEqual(wakes('me', from), ['decision:web/auth/tokens decided by person:tester', 'a note on change:web/auth', 'a note to this session']);
@@ -123,7 +125,7 @@ test('pjman wakes --follow prints a line for each wake as it lands, and nothing 
   child.stdout.on('data', (d) => (out += d));
   try {
     await new Promise((r) => setTimeout(r, 600));
-    execFileSync(process.execPath, [BIN, 'set', 'change:auth', 'next=quiet'], { cwd: dir, env });
+    execFileSync(process.execPath, [BIN, 'step', 'change:auth', 'add', 'quiet'], { cwd: dir, env });
     execFileSync(process.execPath, [BIN, 'note', 'change:auth', 'wake up'], { cwd: dir, env });
     const deadline = Date.now() + 5000;
     while (!out.includes('\n') && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));

@@ -10,6 +10,7 @@ import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog } from '../commands/session.js';
 import { findStore, type Store } from '../config.js';
 import { readServeAddress, startServer } from '../server.js';
+import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-server-'));
 const project = path.join(tmp, 'project');
@@ -32,8 +33,8 @@ before(async () => {
   execFileSync('git', ['init', '-q'], { cwd: project });
   init({ checkers: [], cwd: project, name: 'app' });
   store = findStore(project)!;
-  newRecord(store, 'change', 'login', { title: 'Login', summary: 'Sign in.', binds: ['linear:APP-1'], links: ['file:README.md'] });
-  newRecord(store, 'decision', 'login/magic-links', { title: 'Magic links', decision: 'Links.', why: 'No passwords.' });
+  change(store, 'login', { title: 'Login', summary: 'Sign in.', binds: ['linear:APP-1'], links: ['file:README.md'] });
+  decisionRec(store, 'login/magic-links', { title: 'Magic links', decision: 'Links.', why: 'No passwords.' });
   newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   const ui = path.join(tmp, 'ui');
   fs.mkdirSync(ui);
@@ -173,7 +174,7 @@ test('the event stream: a list, and server-sent events with ids', async () => {
     };
     void pump();
   });
-  newRecord(store, 'change', 'signup', { title: 'Signup', summary: 's' });
+  change(store, 'signup', { title: 'Signup', summary: 's' });
   const { set } = await import('../commands/set.js');
   set(store, 'change:signup', ['status=active'], {});
   await done;
@@ -218,7 +219,7 @@ test('the scope: one page as data, in a lens, at a node; a bad lens or node is a
 });
 
 test('the one write: POST /order moves a change in its product\'s sequence as the person signed in; anything else is refused', async () => {
-  newRecord(store, 'change', 'second', { title: 'Second', summary: 's' });
+  change(store, 'second', { title: 'Second', summary: 's' });
   const post = async (body: unknown) => {
     const res = await fetch(base + '/api/v1/order', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     return { status: res.status, body: (await res.json()) as { data?: { sequence: string[] }; error?: { code: string; message: string } } };
@@ -242,15 +243,15 @@ test('the one write: POST /order moves a change in its product\'s sequence as th
 });
 
 test('POST /decide decides a proposed decision as the person signed in, and POST /reopen is its reverse', async () => {
-  newRecord(store, 'decision', 'login/sessions', { title: 'Sessions', decision: 'Cookies.', why: 'Simple.' });
-  newRecord(store, 'decision', 'login/rotation', { title: 'Rotation', decision: 'Rotate.', why: 'Safe.' });
+  decisionRec(store, 'login/sessions', { title: 'Sessions', decision: 'Cookies.', why: 'Simple.' });
+  decisionRec(store, 'login/rotation', { title: 'Rotation', decision: 'Rotate.', why: 'Safe.' });
   const post = async (route: string, body: unknown) => {
     const res = await fetch(base + '/api/v1' + route, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
     return { status: res.status, body: (await res.json()) as { error?: { message: string } } };
   };
   const show = async (slug: string) => ((await getJson(`/api/v1/records/decision/app/login/${slug}`)).body.data as { data: Record<string, unknown> }).data;
   let r = await post('/decide', { decision: 'decision:login/sessions' });
-  assert.equal(r.status, 200);
+  assert.equal(r.status, 200, r.body.error?.message);
   let d = await show('sessions');
   assert.equal(d.status, 'decided');
   assert.equal(d.decided_by, 'person:tester');
