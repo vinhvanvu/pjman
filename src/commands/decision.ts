@@ -124,7 +124,8 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   if (!isDateString(date)) throw new CliError('--created must be a date (yyyy-mm-dd)');
   const home = existing ? undefined : decisionHome(loaded, ref, date);
   const key = existing?.key ?? home!.key;
-  const product = existing?.productSlug ?? home!.product;
+  // a store-level decision has no product: its keys resolve store-wide
+  const product = existing ? (existing.productSlug ?? null) : home!.product;
   if (!existing && fs.existsSync(path.join(store.root, home!.rel))) throw new CliError(`refused: ${home!.rel} already exists`);
 
   const data: Record<string, unknown> = existing ? { ...existing.data } : { status: 'proposed', writer: env.writer, session: env.session, created: date };
