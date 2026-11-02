@@ -13,6 +13,8 @@ const row = (key: string, status: string, extra: Partial<ChangeRow> = {}): Chang
   children: 0,
   dependsOn: [],
   aspects: [],
+  needs: [],
+  stale: false,
   ...extra,
 });
 
@@ -48,6 +50,9 @@ describe('work by intent', () => {
     const d = (key: string, change: string): WaitingDecision => ({
       key: `decision:${change}/${key}`,
       change: `change:${change}`,
+      options: [],
+      needs: [],
+      stale: false,
     });
     const waiting = [d('x', 'a'), d('y', 'a'), d('z', 'gone')];
     const by = decisionsByChange(waiting);

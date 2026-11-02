@@ -210,19 +210,21 @@ function Meta({ change, session }: { change?: BridgeChange; session?: BridgeSess
   );
 }
 
-/** One proposed decision on a card: its title, its recommendation clamped, when it was proposed, Accept. */
+/** One proposed decision on a card: its name, its gist clamped, when it was proposed, Accept (when the thread
+ *  recommends an option, or holds only one, so accepting from the card chooses nothing the person did not read). */
 function DecideBlock({ decision: d }: { decision: WaitingDecision }) {
   const decide = useDecideAction('decide');
+  const acceptable = !!d.recommended || d.options.length === 1;
   return (
     <span className={cn('flex flex-col gap-1 rounded-row px-2.5 py-2 text-xs', TONE.waits.soft)}>
       <span className="flex items-start gap-2">
         <Label className={cn('mt-px shrink-0', TONE.waits.text)}>decide</Label>
-        <span className="line-clamp-2 min-w-0 font-medium text-ink">{d.title ?? short(d.key)}</span>
+        <span className="line-clamp-2 min-w-0 font-medium text-ink">{d.name ?? d.title ?? short(d.key)}</span>
       </span>
-      {d.decision && <span className="line-clamp-2 text-ink-muted">{d.decision}</span>}
+      {d.name && d.title && <span className="line-clamp-2 text-ink-muted">{d.title}</span>}
       <span className="flex items-center gap-2 text-meta text-ink-faint">
         <span className="shrink-0">{proposedWhen(d.created)}</span>
-        {decide && <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />}
+        {decide && acceptable && <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />}
         <CopyKey refKey={d.key} />
       </span>
     </span>
@@ -256,7 +258,7 @@ export function WaitCard({
           aria-hidden="true"
           className={cn('size-2 shrink-0 rounded-full', sessionDot(session ? session.state : 'waiting'))}
         />
-        <span className="min-w-0 flex-1 truncate font-medium">{change.title ?? short(change.key)}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">{change.name ?? change.title ?? short(change.key)}</span>
         {!session && change.status && <StatusChip status={change.status} />}
       </span>
       <Meta change={change} session={session} />
@@ -280,7 +282,7 @@ export function SessionCard({
   touched?: Touched;
   arrivals?: readonly TimelineEvent[];
 }) {
-  const title = s.change ? (s.change.title ?? short(s.change.key)) : 'No change yet';
+  const title = s.change ? (s.change.name ?? s.change.title ?? short(s.change.key)) : 'No change yet';
   return (
     <CardFrame
       session={s}

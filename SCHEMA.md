@@ -217,9 +217,12 @@ Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, 
 
 A change is keyed under the product its project names; `pjman set <change> project=` to a project of another product is refused, and `pjman mv change:<product>/<slug> change:<other>/<slug>` moves it (into that product's one project).
 
+A change reads as a ladder (decision record-foundation/the-ladder): its `name`, its `gist`, then its foundation, the sections below in order of depth and the plan as steps. The name and gist are written from the foundation and record which one (`rungs_from`); the foundation written without them leaves them stale, which the context and the views say rather than hide. Status, progress, the next step, what waits on whom and what happened since are derived, never written.
+
 | Field | A/M | Notes |
 |---|---|---|
-| `title` | A | |
+| `name` | A | Which one in a crowd: one to four words. Chips, crumbs, the roadmap's bars. Absent on a change the tool ingested from a ticket or mapped from the old shape until someone writes it |
+| `gist` | A | What it is and why, in one line. Lists, cards, the lead line of the record |
 | `status` | A | One canonical word from the vocabulary |
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
@@ -231,26 +234,32 @@ A change is keyed under the product its project names; `pjman set <change> proje
 | `severity` | A | A bug's only. Where on the tree the behaviour is lost, from worst: `product` (nobody can use it), `feature` (a feature's sentence is false), `capability` (one behaviour is gone; deeper nesting reads as capability), `nuisance` (it works with a workaround), `cosmetic` (nothing is lost). Set at intake from the level of the node the bug names, raised when the blast radius is wider. Orders the bug pool, worst first then oldest; never a priority beside the sequence |
 | `depends_on` | A | Optional list of change keys: what must land before this one. A cycle and a self-dependency are refused. The roadmap draws the edge on focus and checks it against the order; it warns and never reorders |
 | `target` | A | Optional date: a milestone's target, set by a person, shown where present, never required and never inferred |
-| `next` | A | The handoff: the next action. What resume reads first |
+| `plan` | M | The plan as steps, written only through `pjman step`: a list of `{text, state, note, at}`, state one of `open`, `active`, `done`, `dropped`, the note where the work stands on it, `at` when it last moved. Every move is one event on the change (`fields: [plan, step <verb>]`). Derived from it: the next step (the active one, else the first open), the plan's progress (done over not dropped), the active step's note. There is no `next` field: the next step is the plan's |
 | `parent` | A | Optional. The change this one is part of. Depth is unbounded; a cycle is an error; the parent may be in another project. Children are derived, never written. A change with children is a milestone: its progress is the children done over children, dropped excluded, derived |
 | `aliases` | A | Former slugs, appended by `pjman mv` (`<product>/<slug>` for a key once held in another product; the flat slug from before keys were paths under the product, added by `pjman migrate`). A reference to an alias resolves and is reported as "resolves via alias" |
+| `rungs_from` | M | The hash of the foundation (Origin, Intent, Done when) the name and gist were written from. Set whenever they are written; a foundation written without them leaves it behind, and the rungs read as stale |
+| `migrated` | M | The date `pjman migrate` mapped the record from the old shape (a title, a Summary, a next). Dropped by the first write through the tool |
 
-Body: `## Summary` (required), `## Plan` (optional; or `plan.md` beside it), anything else free. Decisions made in the course of the change live in `decisions/` beside it.
+Body: the sections, each `## <name>`, in order of depth; the validator knows them and warns on any other. `## Origin` (required: where the work came from, as it was said: the person's words quoted and never edited, or `from <key>` for a ticket, a document, or the change or decision it spun off, linked and never copied, with the session it was made in), `## Intent` (the need, and for whom; it opens with the need in a sentence or two), `## Done when` (the outcome that closes it), `## Scope` (in, and deliberately out), `## Open questions` (one that needs a choice becomes a decision and links to it), `## Blocked on` (an outside blocker; a blocking change is `depends_on`), `## Notes` (free; `pjman note` appends a line). `pjman new change` requires the name, the gist, Origin, Intent and Done when; a change the tool ingested from a ticket, or mapped from the old shape, is valid without Intent and Done when and says what it needs until someone first works it. Decisions made in the course of the change live in `decisions/` beside it.
 
 ### Decision — `products/<product>/changes/<change>/decisions/<yyyy-mm-dd>-<slug>.md`; `products/<product>/decisions/…` at product level; `decisions/…` at the store root
 
-Opened `proposed` before the work it governs; `decided` when an actor sets it. A decision written after the fact is allowed and is the pattern the test tallies against.
+Opened `proposed` before the work it governs, with its options laid out and one recommended; `decided` once a person accepts an option. A decision is an argument that converges (decision record-foundation/changes-sectioned-decisions-threaded): its foundation is a thread of typed entries, append-only and written only through `pjman decision`, so a rejected option, a recommendation that moved and the person's words at acceptance are part of its record. Its rungs are a `name` and a `gist` (while proposed, the question and the recommended answer; once accepted, the choice). Its status, decider and date are maintained from the thread in the same write.
 
 | Field | A/M | Notes |
 |---|---|---|
-| `title` | A | |
-| `status` | A | `proposed` · `decided` · `superseded` · `reverted` |
-| `decided_by` | A | Actor key; required when `decided`. The tool defaults it to the writer only when the writer is a person; an agent is never the decider by default |
-| `decided_on` | A | Date; required when `decided` |
+| `name` | A | One to four words |
+| `gist` | A | One line |
+| `status` | M | `proposed` · `decided` · `superseded` · `reverted`. Proposed until the thread holds an acceptance in force; a `reopen` entry takes it back to proposed |
+| `decided_by` | M | The person whose acceptance is in force; required when `decided`. An agent never accepts |
+| `decided_on` | M | The date of that acceptance |
 | `supersedes` | A | Optional decision key, or a list of them: the decisions this one replaces. Given at creation (`--supersedes`) or later (`pjman set … supersedes=<key>,…`, which only adds); each target is marked `superseded` in the same commit |
 | `links` | A | Optional source keys |
+| `thread` | M | The entries in order, each `{type, at, by, …}`: `question` (`text`; a later one reframes it), `criterion` (`text`: what the choice must satisfy), `option` (`id`, a slug; `text`; `case`: what it costs and rules out), `recommendation` (`option`; `text`: the reasoning; the latest stands), `comment` (`text`, `by`: the person's words, their Origin), `reject` (`option`; `text`: why), `accept` (`option`; `by`, a person; `text`: their words; `revisit`: when to look again), `reopen`. An option is defined before anything names it; an id is used once. Read off the thread: the current question, the criteria, every option with its marks, the recommendation, the comments, the acceptance in force |
+| `rungs_from` | M | The hash of the question, recommendation and acceptance entries the name and gist were written from; a new one of those without them leaves the rungs stale |
+| `migrated` | M | The date `pjman migrate` mapped the record from the old shape (a title, Decision and Why), its text one option with its case, accepted by whoever decided it or recommended while proposed. Dropped by the first write through the tool |
 
-Body: `## Decision`, `## Why`; anything else free.
+Body: `## Notes` only. The decision's text is its thread.
 
 ### Status vocabulary
 
@@ -264,7 +273,7 @@ Body: `## Decision`, `## Why`; anything else free.
 | `done` | Accepted |
 | `dropped` | Closed without acceptance |
 
-The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. For a change that binds a ticket, the tracker owns `title`, `status` and `parent`; pjman owns `next`, the body and the decisions. Approval and in-effect states are Phase 3's.
+The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. pjman is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the change's Origin. Ingesting it creates the change when none binds it, with a draft gist from the ticket's title and the status as the ticket stood then; afterwards a sync writes the source record, the binding and the owners, never the change's name, status or parent. Approval and in-effect states are Phase 3's.
 
 ---
 
@@ -299,7 +308,7 @@ Every write the tool makes appends one event per record written to `events.jsonl
 |---|---|
 | `seq` | Position in the stream, from 1; a rebuild renumbers |
 | `at` | UTC instant of the write |
-| `op` | `created` · `set` · `log` · `bind` · `observe` · `moved` · `formatted` · `init` · `write` (a rebuild's word for a commit it cannot classify) · `applied` (a batch landed: the key is what it was for, `fields` its size) · `reverted` (a batch undone) |
+| `op` | `created` · `set` (a decision's thread appended to carries `fields: [thread, …]`, a step of a change's plan `[plan, step <verb>]`) · `log` · `bind` · `observe` · `moved` · `formatted` · `init` · `write` (a rebuild's word for a commit it cannot classify) · `applied` (a batch landed: the key is what it was for, `fields` its size) · `reverted` (a batch undone) · `migrated` (the layout or the foundation moved, once, on the store) |
 | `key` | The record written; `store` for `init` |
 | `type` | The record type; `store` for `init` |
 | `path` | The record's path |

@@ -41,6 +41,8 @@ const change = (key: string): ScopeNode => ({
     children: 0,
     dependsOn: [],
     aspects: [],
+    needs: [],
+    stale: false,
   } as ChangeRow,
   children: [],
 });

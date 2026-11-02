@@ -1,9 +1,9 @@
 // The dock: the session's page at docked width, one column beside the terminal (change:docked-view; decision
 // dock-column). What the session is on first; what waits on the person next; this session's own lines, newest first;
-// the summary clamped; then rows that drill into the record in place. A session with no change yet
+// the next step and the Intent clamped; then rows that drill into the record in place. A session with no change yet
 // shows a pickup list, the product's open changes by feature with the nearest to fully decided first, until the first
-// bind moves the dock to the change. The change's next is not drawn: with the session live beside it, next restates
-// the present (change:dock-next-list; decision next-leaves-the-dock).
+// bind moves the dock to the change. The next step is the plan's, derived (change:foundation-views), so it never
+// restates a handoff the way the retired next field did (decision next-leaves-the-dock).
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { ChevronRight, Diamond } from 'lucide-react';
@@ -24,6 +24,7 @@ import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords, newestLines } from '@/features/session-follow';
 import { AspectReading, AspectWholeBody } from '@/features/aspects';
+import { nextLine, Readiness } from '@/components/record/Foundation';
 import { dockArrivals, pickups, readiness, type Pickup } from './model';
 
 const LIVE_LINES = 5;
@@ -148,7 +149,9 @@ function DockChange({
             </NodeLink>
           )}
         </div>
-        <h1 className="text-section font-semibold tracking-tight">{c.title ?? short(c.key)}</h1>
+        <h1 className="text-section font-semibold tracking-tight">{c.name ?? c.title ?? short(c.key)}</h1>
+        {c.name && c.title && c.title !== c.name && <p className="text-xs leading-relaxed text-ink-muted">{c.title}</p>}
+        <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
         {(features.length > 0 || under.length > 0) && (
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-ink-muted">
             {features.map((f) => {
@@ -190,14 +193,20 @@ function DockChange({
           </span>
         </div>
         <DecisionRows
-          items={waits.map((d) => ({
-            key: d.key,
-            title: d.title,
-            change: c.key,
-            decision: d.decision,
-            why: d.why,
-            created: d.created,
-          }))}
+          items={waits.map((d) => {
+            const rec = d.state.options.find((o) => o.recommended);
+            return {
+              key: d.key,
+              name: d.name,
+              title: d.title,
+              change: c.key,
+              recommended: rec ? { id: rec.id, text: rec.text } : undefined,
+              options: d.state.options.map((o) => o.id),
+              needs: d.needs,
+              stale: d.stale,
+              created: d.created,
+            };
+          })}
           lens={lens}
           showChange={false}
           opened={arrivals.opened}
@@ -208,7 +217,8 @@ function DockChange({
 
       <LiveLines session={session} arrival={arrivals.line} held={hold.held} moment={at} />
 
-      {ctx.summary && <Clamped label="Summary" text={ctx.summary} />}
+      {ctx.next && <Clamped label="Next" text={nextLine(ctx.next)!} />}
+      {ctx.sections.Intent && <Clamped label="Intent" text={ctx.sections.Intent} />}
 
       <nav aria-label="More of this change" className="flex flex-col border-t border-line">
         <TabRow tab="decisions" count={ctx.decisions.length}>

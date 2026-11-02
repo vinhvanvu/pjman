@@ -22,7 +22,7 @@ map it may alter, the milestones in flight, and the order's tail. The tool searc
 ### 0. Duplicates first
 
 If an open change already covers the request, file nothing. Link the new source to it (`pjman set change:<slug>
-links=…,<key>` or `binds=` for a ticket), note the second report in its `next`, and name that change in your reply.
+links=…,<key>` or `binds=` for a ticket), note the second report in its Notes (`pjman note <change> "…"`), and name that change in your reply.
 A second report of a bug is a signal of reach: reopen the severity question. If the match is done, the request is new
 work that links the old change (`--links` or `--depends-on` as fits); for a bug that is a regression.
 

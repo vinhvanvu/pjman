@@ -1,5 +1,7 @@
-// A change as the selected record: status and ticket, the next line first, summary and plan, decisions (waiting first),
-// the aspects it works under, sources, sessions, children. The record pane in every lens when the node is a leaf change.
+// A change as the selected record, read as the ladder (change:foundation-views): its name, its gist, what it still
+// needs, then the plan with the next step marked and the sections in order of depth; decisions (waiting first) by
+// their name and gist; the aspects it works under, sources, sessions, children. The record pane in every lens when the
+// node is a leaf change.
 import type { ChangeContext, Lens } from '@/data/contract';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
@@ -11,6 +13,7 @@ import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
 import { ChangeAspectsView } from '@/features/aspects';
+import { LEAD_SECTIONS, Plan, Readiness, Sections } from '@/components/record/Foundation';
 import { decisionTone, TONE } from '@/lib/tones';
 
 export function ChangeRecord({
@@ -68,7 +71,9 @@ export function ChangeRecord({
             </NodeLink>
           )}
         </div>
-        <h1 className="text-heading font-semibold tracking-tight">{c.title}</h1>
+        <h1 className="text-heading font-semibold tracking-tight">{c.name ?? c.title ?? short(c.key)}</h1>
+        {c.name && c.title && c.title !== c.name && <p className="text-[13px] leading-relaxed text-ink-muted">{c.title}</p>}
+        <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
         {ctx.branch && (
           <div
             className="flex flex-wrap items-center gap-1.5 text-meta text-ink-muted"
@@ -100,25 +105,20 @@ export function ChangeRecord({
         )}
       </header>
 
-      {typeof c.data.next === 'string' && c.data.next && (
+      {ctx.next && (
         <div className="flex items-start gap-3.5 rounded-card border border-line bg-surface px-4 py-3.5">
           <Label className="shrink-0 pt-[3px]">Next</Label>
-          <p className="min-w-0 flex-1">{c.data.next}</p>
+          <p className="min-w-0 flex-1">
+            <span className="mr-1.5 font-mono text-meta text-ink-faint">{ctx.next.n}.</span>
+            {ctx.next.step.text}
+            {ctx.next.step.note && <span className="text-ink-muted"> — {ctx.next.step.note}</span>}
+          </p>
         </div>
       )}
 
-      {ctx.summary && (
-        <section className="flex flex-col gap-1.5">
-          <Label>Summary</Label>
-          <p className="whitespace-pre-line text-[13px] leading-relaxed text-ink-muted">{ctx.summary}</p>
-        </section>
-      )}
-      {ctx.plan && (
-        <section className="flex flex-col gap-1.5">
-          <Label>Plan</Label>
-          <p className="whitespace-pre-line text-[13px] leading-relaxed text-ink-muted">{ctx.plan}</p>
-        </section>
-      )}
+      <Sections sections={ctx.sections} only={LEAD_SECTIONS} />
+      <Plan plan={ctx.plan} progress={ctx.planProgress} />
+      <Sections sections={ctx.sections} omit={LEAD_SECTIONS} />
 
       {ctx.decisions.length > 0 && (
         <section className="flex flex-col gap-2">
@@ -139,7 +139,7 @@ export function ChangeRecord({
                     aria-hidden="true"
                   />
                   <NodeLink to={d.key} lens={lens} className="min-w-0 flex-1 truncate font-medium hover:text-primary">
-                    {d.title ?? short(d.key)}
+                    {d.name ?? d.title ?? short(d.key)}
                   </NodeLink>
                   {d.status === 'proposed' && decide ? (
                     <DecideControl decision={d.key} onConfirm={() => decide(d.key)} />
@@ -148,7 +148,9 @@ export function ChangeRecord({
                   )}
                   <CopyKey refKey={d.key} bare />
                 </div>
-                {d.decision && <p className="line-clamp-2 text-xs text-ink-muted">{d.decision}</p>}
+                {d.name && d.title && <p className="line-clamp-2 text-xs text-ink-muted">{d.title}</p>}
+                <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />
+
               </li>
             ))}
           </ul>

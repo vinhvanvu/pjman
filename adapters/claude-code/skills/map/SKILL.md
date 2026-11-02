@@ -100,7 +100,7 @@ set change:tool "features=adds feature:store,adds feature:cli"
 Layers, then groups, then moves, then renames, then new nodes, then the naming from done changes. The tool runs them
 with every commit held and lands one commit and one `applied` event, or refuses the whole batch at the line that
 fails and writes nothing. `pjman undo` reverts it as one commit while nothing later touched its records. Then mark the
-change `review` with `next` naming what the person should read.
+change `review`, its plan's open step naming what the person should read.
 
 ## 6. Verify, thoroughly
 
@@ -116,4 +116,4 @@ Anything the dashboard reads wrong at the new depth is a bug to file, not a reas
 ## The reply
 
 The tree as the person will see it, then one line per write the batch made (the footer the receipt also shows), and
-what reads differently from before. Then `pjman set change:<slug> next=…`: what they should click through.
+what reads differently from before. Then `pjman step change:<slug> add "…"`: what they should click through.
