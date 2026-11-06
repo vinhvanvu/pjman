@@ -21,6 +21,7 @@ import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { DecisionRows } from '@/components/cards/DecisionRows';
 import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
+import { SourceChip } from '@/components/links/SourceChip';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords, newestLines } from '@/features/session-follow';
 import { AspectReading, AspectWholeBody } from '@/features/aspects';
@@ -242,11 +243,7 @@ function DockChange({
         <section className="flex flex-wrap items-center gap-2">
           <Label>Sources</Label>
           {ctx.sources.map((s) => (
-            <NodeLink key={s.key} to={s.key} lens={lens}>
-              <Chip tone="quiet" mono title={s.via}>
-                {short(s.key)}
-              </Chip>
-            </NodeLink>
+            <SourceChip key={s.key} source={s} lens={lens} title={s.via} />
           ))}
         </section>
       )}

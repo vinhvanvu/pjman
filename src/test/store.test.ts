@@ -302,6 +302,18 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   assert.equal(keyFromUrl('https://github.com/acme/app'), 'git-repo:acme/app');
   assert.equal(get(loaded, 'https://github.com/acme/app/pull/7').changes.length, 0);
 
+  // a source is listed once, bound before linked, with where it opens: the record's URL, else one built from the key
+  change(store, 'chips', { title: 'Chips', summary: 's', binds: ['github-issue:acme/app#8'], links: ['github-issue:acme/app#8', 'github-pr:acme/app#7', 'url:https://example.com/a', 'file:SCHEMA.md'] });
+  const chips = changeContext(store, 'change:project/chips').sources;
+  assert.deepEqual(chips.map((x) => [x.via, x.key, x.url]), [
+    ['binds', 'github-issue:acme/app#8', 'https://github.com/acme/app/issues/8'],
+    ['links', 'github-pr:acme/app#7', 'https://github.com/acme/app/pull/7'],
+    ['links', 'url:https://example.com/a', 'https://example.com/a'],
+    ['links', 'file:SCHEMA.md', undefined],
+  ]);
+  assert.equal(changeContext(store, 'change:project/abc').sources[0].url, undefined); // a Linear key builds none: its record carries the URL
+  rm(store, 'change:project/chips', {});
+
   // a bare id nothing references resolves only through the project's tracker
   assert.equal(get(loaded, 'XYZ-9', { project: 'project:project' }).resolution.status, 'none');
   assert.throws(() => set(store, 'project:project', ['tracker=nope'], {}), /not in source_kinds/);

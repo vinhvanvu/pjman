@@ -80,6 +80,7 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   const c1 = loaded.byKey.get('change:app/app-1')![0];
   assert.equal(c1.data.status, 'active');
   assert.deepEqual(c1.data.binds, ['linear:APP-1']);
+  assert.equal(c1.data.links, undefined);
   assert.equal(c1.data.project, 'project:app');
   assert.equal(c1.data.writer, 'agent:linear-sync');
   const c2 = loaded.byKey.get('change:app/app-2')![0];
