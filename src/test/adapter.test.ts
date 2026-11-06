@@ -211,6 +211,37 @@ test('binding observes the branch as a source of the change', () => {
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);
 });
 
+test('SessionStart names the worktrees whose change is done and whose branch is merged, from the store, ahead of the board', () => {
+  const trees = path.join(tmp, 'trees');
+  fs.mkdirSync(trees, { recursive: true });
+  const git = (args: string[], cwd = trees) => execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@e.com', ...args], { cwd, encoding: 'utf8' }).trim();
+  git(['init', '-q', '-b', 'main']);
+  git(['commit', '-q', '--allow-empty', '-m', 'root']);
+  init({ checkers: [], cwd: trees, name: 'trees' });
+  const g = findStore(trees)!;
+  // three worktrees named by the harness for three changes: one done and merged (stale), one done but ahead of main, one still open
+  for (const slug of ['old-thing', 'ahead-thing', 'live-thing']) {
+    change(g, slug, { title: slug, summary: 's', project: 'project:trees' });
+    git(['worktree', 'add', '-q', '-b', `worktree-${slug}`, path.join(trees, '.claude', 'worktrees', slug), 'main']);
+  }
+  set(g, 'change:trees/old-thing', ['status=done'], {});
+  set(g, 'change:trees/ahead-thing', ['status=done'], {});
+  git(['commit', '-q', '--allow-empty', '-m', 'ahead'], path.join(trees, '.claude', 'worktrees', 'ahead-thing'));
+  // the listing carries each change's branch and worktree name, which is what the hook matches against
+  const rows = JSON.parse(execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), 'ls', 'change', '--status', 'done', '--json'], { cwd: trees, env, encoding: 'utf8' })) as { key: string; branch?: { name: string; worktree: string; observed: boolean } }[];
+  assert.deepEqual(rows.find((r) => r.key === 'change:trees/old-thing')?.branch, { name: 'old-thing', worktree: 'old-thing', observed: false });
+  const ctx = context(hook('SessionStart', { cwd: trees, session_id: 'sess-trees', source: 'startup' }));
+  const at = ctx.indexOf('Worktrees whose change is done and whose branch is merged');
+  assert.ok(at >= 0, ctx);
+  assert.ok(at < ctx.indexOf('# project:trees'), 'the stale worktrees come ahead of the board');
+  const oldDir = fs.realpathSync(path.join(trees, '.claude', 'worktrees', 'old-thing')); // git prints the real path
+  assert.ok(ctx.includes(`- ${oldDir} (change:trees/old-thing, worktree-old-thing): git worktree remove ${oldDir} && git branch -d worktree-old-thing`), ctx.slice(at, at + 600));
+  assert.ok(!ctx.includes('ahead-thing, worktree-ahead-thing'), 'a done change whose branch is not merged is kept');
+  assert.ok(!ctx.includes('live-thing, worktree-live-thing'), 'an open change is kept');
+  // a subagent's start does not scan
+  assert.ok(!context(hook('SessionStart', { cwd: trees, session_id: 'sess-trees', agent_id: 'sub-trees', source: 'startup' })).includes('Worktrees whose change'));
+});
+
 test('SessionStart exports the session and the agent as writer to the agent\'s shell; a subagent\'s start does not', () => {
   const file = path.join(tmp, 'claude-env');
   const run = (input: Record<string, unknown>) =>

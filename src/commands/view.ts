@@ -23,6 +23,8 @@ export interface Row {
   writer?: string;
   session?: string;
   data: Record<string, unknown>;
+  /** A change's branch and worktree name, on a listing's rows (pjman ls --json): an adapter matches worktrees against them. */
+  branch?: ChangeBranch;
 }
 
 export function row(r: Rec): Row {
@@ -32,6 +34,41 @@ export function row(r: Rec): Row {
     title: lineOf(r.data), name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
     writer: s(r.data.writer), session: s(r.data.session), data: r.data,
   };
+}
+
+/** A change's branch and worktree, as views say them: the branch a session was last seen on (observed), else one the
+ *  change links, else the recommended name derived from the key (decision branch-names/derived-not-stored). */
+export interface ChangeBranch {
+  name: string;
+  worktree: string;
+  observed: boolean;
+}
+
+/** The latest branch a session was observed on, per change key, from every session's observed edges in one pass. */
+export function observedBranches(loaded: Loaded): Map<string, { to: string; at: string }> {
+  const latest = new Map<string, { to: string; at: string }>();
+  for (const s of loaded.records) {
+    if (s.type !== 'session' || !s.valid || !Array.isArray(s.data.observed)) continue;
+    for (const o of s.data.observed as unknown[]) {
+      if (!o || typeof o !== 'object') continue;
+      const e = o as Record<string, unknown>;
+      if (typeof e.from !== 'string' || typeof e.to !== 'string' || !e.to.startsWith('branch:')) continue;
+      const from = resolve(loaded, e.from);
+      if (!(from.status === 'ok' || from.status === 'alias')) continue;
+      const at = typeof e.at === 'string' ? e.at : '';
+      const prior = latest.get(from.rec.key);
+      if (!prior || prior.at.localeCompare(at) <= 0) latest.set(from.rec.key, { to: e.to, at });
+    }
+  }
+  return latest;
+}
+
+export function branchOf(rec: Rec, observed: Map<string, { to: string; at: string }>, prefix: string | undefined = readUserConfig().branch_prefix): ChangeBranch {
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  const seenOn = observed.get(rec.key)?.to ?? [...list(rec.data.binds), ...list(rec.data.links)].find((k) => k.startsWith('branch:'));
+  return seenOn
+    ? { name: seenOn.slice('branch:'.length), worktree: worktreeNameFor(rec.key), observed: true }
+    : { name: branchNameFor(rec.key, prefix), worktree: worktreeNameFor(rec.key), observed: false };
 }
 
 const TYPE_ALIASES: Record<string, RecordType> = {
@@ -57,15 +94,19 @@ export function ls(store: Store, opts: { type?: string; status?: string; project
   if (opts.status) recs = recs.filter((r) => r.data.status === opts.status);
   if (opts.project) recs = recs.filter((r) => r.type !== 'change' || r.data.project === opts.project);
   if (opts.kind) recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
+  // a change's row carries its branch and worktree name, computed once for the listing
+  const observed = recs.some((r) => r.type === 'change') ? observedBranches(loaded) : null;
+  const prefix = readUserConfig().branch_prefix;
+  const withBranch = (r: Rec): Row => (r.type === 'change' && r.valid && observed ? { ...row(r), branch: branchOf(r, observed, prefix) } : row(r));
   if (opts.kind === 'bug') {
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
-    return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(row);
+    return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(withBranch);
   }
   const typeOrder: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'source', 'session', 'actor'];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))
-    .map(row);
+    .map(withBranch);
 }
 
 export function formatLs(rows: Row[]): string {
@@ -243,11 +284,8 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   };
   const dependsOn = list(rec.data.depends_on).map((k) => liveKey(k)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => !!r).map(row);
   const neededBy = loaded.records.filter((r) => r.type === 'change' && r.valid && list(r.data.depends_on).some((k) => liveKey(k) === rec.key)).map(row);
-  // the branch: one linked from the change or seen by a session (the latest), else the recommended name
-  const seenOn = observed.filter((o) => o.to.startsWith('branch:')).sort((a, b) => (a.at ?? '').localeCompare(b.at ?? '')).pop()?.to ?? sources.find((s) => s.key.startsWith('branch:'))?.key;
-  const branch = seenOn
-    ? { name: seenOn.slice('branch:'.length), worktree: worktreeNameFor(rec.key), observed: true }
-    : { name: branchNameFor(rec.key, readUserConfig().branch_prefix), worktree: worktreeNameFor(rec.key), observed: false };
+  // the branch: one seen by a session (the latest) or linked from the change, else the recommended name
+  const branch = branchOf(rec, observedBranches(loaded));
   const features = effectsOf(rec).map((e) => liveKey(e.key)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => r?.type === 'feature');
   const aspects = aspectsOfChange(loaded, rec, features);
   return {
