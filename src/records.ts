@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { parseRecord, sections, type Parsed } from './frontmatter.js';
-import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecisionRest, parseKey, parseScopedRest, SCOPED_KINDS, type Key } from './keys.js';
+import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, releaseKey, SCOPED_KINDS, VERSION_RE, type Key } from './keys.js';
 import { CliError } from './util.js';
 
-export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'source' | 'session' | 'actor';
+export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'release' | 'source' | 'session' | 'actor';
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
@@ -18,6 +18,8 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   // mapped mechanically and not yet written through the tool (foundation.ts)
   change: ['name', 'gist', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'aspects', 'owners', 'target', 'plan', 'binds', 'links', 'aliases', 'rungs_from', 'migrated', 'writer', 'session', 'created', 'ext'],
   decision: ['name', 'gist', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'thread', 'rungs_from', 'migrated', 'writer', 'session', 'created', 'ext'],
+  // a release: the version a product shipped, when, from which commit, at what level, and the changes it ships in order
+  release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'ships', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
   actor: ['kind', 'name', 'url', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
@@ -31,6 +33,7 @@ export const LAYER_OF: Record<RecordType, string> = {
   project: 'core',
   change: 'work',
   decision: 'work',
+  release: 'work',
   source: 'sources',
   session: 'core',
   actor: 'core',
@@ -65,6 +68,8 @@ export interface Rec {
   aspectSlug?: string;
   aspectKey?: string;
   placeSlug?: string;
+  /** A release's version: the file name under releases/. */
+  releaseVersion?: string;
   decisionSlug?: string;
   fileDate?: string;
   fileSlug?: string;
@@ -233,6 +238,22 @@ export function loadStore(store: Store, src: Source = diskSource(store.root)): L
       }
       if (name === 'decisions' && isDir(path.join(root, sub))) {
         readDecisions(sub, slug, null);
+        continue;
+      }
+      // releases/<version>.md: the versions the product shipped
+      if (name === 'releases' && isDir(path.join(root, sub))) {
+        for (const f of listDir(path.join(root, sub))) {
+          const rel = path.join(sub, f);
+          if (!f.endsWith('.md') || !VERSION_RE.test(f.slice(0, -3))) {
+            problems.push({ level: 'error', path: rel, message: 'release file name must be <major>.<minor>.<patch>.md' });
+            continue;
+          }
+          const version = f.slice(0, -3);
+          const r = readRec(src, store, rel, 'release', releaseKey(slug, version));
+          r.productSlug = slug;
+          r.releaseVersion = version;
+          records.push(r);
+        }
         continue;
       }
       // aspects/<slug>/aspect.md, with places/<place>.md beneath: what applies across the product, and where
@@ -506,6 +527,21 @@ export function resolve(loaded: Loaded, raw: unknown, scope: string | null | und
       if (full) return full;
     }
     return bare(seg);
+  }
+  if (key.kind === 'release') {
+    const r = parseReleaseRest(key.rest);
+    if (!r) return { status: 'missing', key };
+    if (r.product) {
+      const p = product(r.product);
+      const rec = p ? loaded.byKey.get(releaseKey(p, r.version))?.[0] : undefined;
+      return rec ? found(rec) : { status: 'missing', key };
+    }
+    const inScope = scope ? loaded.byKey.get(releaseKey(scope, r.version))?.[0] : undefined;
+    if (inScope) return found(inScope);
+    const hits = loaded.records.filter((x) => x.type === 'release' && x.releaseVersion === r.version);
+    if (hits.length === 1) return found(hits[0]);
+    if (hits.length > 1) return { status: 'ambiguous', key, candidates: hits.map((x) => x.key) };
+    return { status: 'missing', key };
   }
   if (key.kind === 'product') return viaAlias(key.raw) ?? { status: 'missing', key };
   if (key.kind === 'session' || key.kind === 'project') return { status: 'missing', key };

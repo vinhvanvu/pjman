@@ -67,6 +67,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
       '                        [--scope <in, and out>] [--open-questions <items>] [--blocked-on <an outside blocker>] [--notes <free>] [--status open] [--project <key>] [--parent <change>]',
       '                        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...',
       '                        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date; the plan is written with pjman step)',
+      'pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]   (a version the product shipped; its creation is the event)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...   (a person\'s accounts)',
       'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
@@ -217,6 +218,10 @@ function parse(args: string[]) {
     sequence: { type: 'string', multiple: true },
     levels: { type: 'string', multiple: true },
     level: { type: 'string' },
+    tag: { type: 'string' },
+    at: { type: 'string' },
+    commit: { type: 'string' },
+    ships: { type: 'string', multiple: true },
     product: { type: 'string' },
     days: { type: 'string' },
     'decided-by': { type: 'string' },
@@ -327,7 +332,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'new': {
       const store = scoped(requireStore(cwd, v.store));
       const [, type, ident] = pos;
-      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|aspect|place|project|change|decision|source|actor|session> <ident> [flags]');
+      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|aspect|place|project|change|decision|release|source|actor|session> <ident> [flags]');
       if (type === 'change' && (v.plan !== undefined || v.next !== undefined)) throw new CliError(v.plan !== undefined ? 'the plan is written with pjman step <change> add "…"' : 'next is retired: the next step is the plan\'s first open step (pjman step), an outside blocker is --blocked-on');
       const flags: NewFlags = {
         title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary,
@@ -338,6 +343,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         product: v.product, owners: v.owners, features: v.features, level: v.level, levels: v.levels,
         dependsOn: v['depends-on'], kind: v.kind, severity: v.severity, target: v.target, sequence: v.sequence,
         aspects: v.aspects, feature: v.feature,
+        tag: v.tag, at: v.at, commit: v.commit, ships: v.ships,
         created: v.created, body: v.body === '-' ? fs.readFileSync(0, 'utf8') : v.body, writer: v.writer, session: v.session,
       };
       const r = newRecord(store, type, ident, flags);

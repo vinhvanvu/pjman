@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../config.js';
-import { aspectKey, changeKey, decisionKey, featureKey, parseAspectRest, parseDecisionRest, parseKey, parseScopedRest, RECORD_KINDS, SLUG_RE, sourceFileSlug } from '../keys.js';
+import { aspectKey, changeKey, decisionKey, featureKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, RECORD_KINDS, releaseKey, SLUG_RE, sourceFileSlug } from '../keys.js';
 import { loadStore, recordOf, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { rootProductOf } from '../tree.js';
-import { CliError, isDateString, localDate, today } from '../util.js';
+import { CliError, isDateString, isTimestamp, localDate, today } from '../util.js';
+import { RELEASE_LEVELS } from '../validate.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo, writeFile } from '../write.js';
 import { CHANGE_SECTIONS, foundationHash, foundationOf, gistProblem, nameProblem, type ChangeSection } from '../foundation.js';
 import { sections as parseSections } from '../frontmatter.js';
@@ -49,6 +50,11 @@ export interface NewFlags {
   sequence?: string[];
   level?: string;
   levels?: string[];
+  /** A release: its tag, the instant it was cut, the commit it was cut from, the changes it ships in order. */
+  tag?: string;
+  at?: string;
+  commit?: string;
+  ships?: string[];
   started?: string;
   created?: string;
   body?: string;
@@ -114,6 +120,8 @@ export function newRecord(store: Store, type: string, ident: string, flags: NewF
       return newChange(store, ident, flags);
     case 'decision':
       return newDecision(store, ident, flags);
+    case 'release':
+      return newRelease(store, ident, flags);
     case 'source':
       return newSource(store, ident, flags);
     case 'actor':
@@ -121,7 +129,7 @@ export function newRecord(store: Store, type: string, ident: string, flags: NewF
     case 'session':
       return newSession(store, ident, flags);
     default:
-      throw new CliError(`unknown record type '${type}' (product, feature, aspect, place, project, change, decision, source, actor, session)`);
+      throw new CliError(`unknown record type '${type}' (product, feature, aspect, place, project, change, decision, release, source, actor, session)`);
   }
 }
 
@@ -237,6 +245,30 @@ export function newPlace(store: Store, ident: string, flags: NewFlags): NewResul
   fullKeys(loaded, 'place', data, undefined, product);
   writeFile(store, rel, render('place', data, flags.body?.trim() ? flags.body.trim() + '\n' : ''));
   return finish(store, 'place', key, rel, [rel], flags);
+}
+
+/** A release: the version a product shipped (decision releases-homebrew/release-is-a-record). Keyed under the product
+ *  by version; its creation is the event a release is. What it ships is the changes in order; the body is the notes as
+ *  they were published. */
+export function newRelease(store: Store, ident: string, flags: NewFlags): NewResult {
+  const rest = ident.startsWith('release:') ? ident.slice(8) : ident;
+  const r = parseReleaseRest(rest);
+  if (!r) throw new CliError(`'${rest}' is not a version (<major>.<minor>.<patch>), or <product>/<version>`);
+  if (!flags.at) throw new CliError('--at is required: the instant the release was cut');
+  if (!isTimestamp(flags.at)) throw new CliError('--at must be a timestamp');
+  if (flags.level && !(RELEASE_LEVELS as readonly string[]).includes(flags.level)) throw new CliError(`--level must be one of ${RELEASE_LEVELS.join(', ')}`);
+  const loaded = loadStore(store);
+  const product = aspectProduct(loaded, r.product, 'release');
+  const key = releaseKey(product, r.version);
+  const rel = path.join('products', product, 'releases', `${r.version}.md`);
+  refuseExisting(store, rel);
+  const data: Record<string, unknown> = {
+    version: r.version, tag: flags.tag ?? `v${r.version}`, level: flags.level, at: flags.at, commit: flags.commit, url: flags.url,
+    ships: listOrNone(flags.ships), links: listOrNone(flags.links), ...stamp(flags),
+  };
+  fullKeys(loaded, 'release', data, undefined, product);
+  writeFile(store, rel, render('release', data, flags.body?.trim() ? flags.body.trim() + '\n' : ''));
+  return finish(store, 'release', key, rel, [rel], flags);
 }
 
 export function newProject(store: Store, ident: string, flags: NewFlags): NewResult {

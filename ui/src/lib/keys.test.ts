@@ -14,6 +14,10 @@ describe('keys', () => {
     expect(short('feature:pjman/activity', 'product:pjman')).toBe('activity');
     expect(productOf('feature:pjman/shell')).toBe('pjman');
     expect(productOf('decision:pjman/crud/x')).toBe('pjman');
+    // a release is keyed under its product by version; it opens through the getter
+    expect(productOf('release:pjman/0.2.0')).toBe('pjman');
+    expect(short('release:pjman/0.2.0')).toBe('0.2.0');
+    expect(targetOf('release:pjman/0.2.0', 'feature')).toEqual({ kind: 'get', key: 'release:pjman/0.2.0' });
     expect(productOf('aspect:pjman/text')).toBe('pjman');
     expect(productOf('aspect:pjman/text/dock')).toBe('pjman');
     expect(short('aspect:pjman/text/dock')).toBe('text/dock');

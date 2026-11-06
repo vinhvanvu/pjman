@@ -91,6 +91,11 @@ export function allEdges(loaded: Loaded): Edge[] {
         if (r.changeKey) edge('in', r.key, r.changeKey, r);
         else if (r.productSlug) edge('in', r.key, `product:${r.productSlug}`, r);
         break;
+      case 'release':
+        for (const k of list(d.ships)) edge('ships', r.key, live(k, s), r);
+        for (const k of list(d.links)) edge('links', r.key, k, r);
+        edge('in', r.key, `product:${r.productSlug}`, r);
+        break;
       case 'source':
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;

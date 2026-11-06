@@ -6,8 +6,8 @@ export const kindOf = (key: string): string => key.slice(0, key.indexOf(':'));
 export const restOf = (key: string): string => key.slice(key.indexOf(':') + 1);
 
 /** Kinds keyed beneath a product: `feature:<product>/<slug>`, `change:<product>/<slug>`, `decision:<product>/<change>/<slug>`,
- *  `aspect:<product>/<slug>` and its places `aspect:<product>/<aspect>/<place>`. */
-const SCOPED = new Set(['feature', 'change', 'decision', 'aspect']);
+ *  `aspect:<product>/<slug>` and its places `aspect:<product>/<aspect>/<place>`, `release:<product>/<version>`. */
+const SCOPED = new Set(['feature', 'change', 'decision', 'aspect', 'release']);
 
 /** The product segment of a scoped key, or undefined. */
 export function productOf(key: string): string | undefined {

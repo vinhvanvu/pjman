@@ -65,6 +65,7 @@ export function productOfRecord(loaded: Loaded, rec: Rec): Rec | undefined {
       return rootProductOf(loaded, rec);
     case 'aspect':
     case 'place':
+    case 'release':
       return live(loaded, `product:${rec.productSlug}`);
     case 'change':
       return productOf(loaded, rec);
