@@ -34,7 +34,7 @@ fs.rmSync(dest, { recursive: true, force: true });
 const installed = run('npm', ['root', '-g']) + '/pjman';
 const real = fs.realpathSync(installed);
 if (real === fs.realpathSync(root)) throw new Error(`the global install still links to this checkout (${real}); run: npm unlink -g pjman, then again`);
-say(`installed ${installed}`);
+say(`installed pjman ${packed[0].version} at ${installed}`);
 
 // the plugin: the marketplace is the installed copy, so hooks and skills come from the same package as the tool
 const claude = soft('claude', ['--version']);

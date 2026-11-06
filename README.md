@@ -5,8 +5,14 @@ A context graph for product development: typed records (changes, decisions, sour
 ## Install
 
 ```bash
-git clone <this repository> && cd pjman && npm install && npm run install:local   # until the package is published
+gh release download --repo vinhvanvu/pjman --pattern '*.tgz' --dir /tmp/pjman && npm install -g /tmp/pjman/pjman-*.tgz   # the latest release
 cd ~/Projects/<your-repo> && pjman init
+```
+
+A release is a tag `v<version>` with the built package attached (the tool, the app and the Claude Code plugin); `gh release download` takes `v0.2.0` before `--repo` for one release in particular, and `pjman --version` says which one runs. To update, download the newer release and install it the same way; `pjman init` repairs the plugin's marketplace path when it moved. A Homebrew tap will replace the download once the repository is public. From a checkout instead:
+
+```bash
+git clone <this repository> && cd pjman && npm install && npm run install:local
 ```
 
 `npm run install:local` installs the tool as a copy of a built package, never a link to the checkout: it builds, packs, installs globally, points the Claude Code marketplace at the installed copy and refreshes the plugin, and restarts the dashboard when one was running. Run it again after every merge to main; a session's half-built checkout is then never another session's tool. When the installed tool asks for a store migration, run `pjman migrate` once, after the install.
@@ -151,7 +157,12 @@ claude --plugin-dir /path/to/pjman/adapters/claude-code
 
 ```bash
 npm test
+npm run release -- --dry-run        # what the next release would be, and its changelog entry
+npm run release                     # the release, from main: patch, minor or major derived from the record
+npm run release -- minor            # a typed level overrides the derived one
 ```
+
+A release is derived from the record, never from commit prose (decisions releases-homebrew/one-release-command, bump-from-the-record). The script reads every first-parent commit on main since the last `v*` tag and resolves each to a change by the trailer a merge carries, `(change:<slug>)`, or by the merged branch's name (`worktree-<slug>`); what each change is comes from the store. A bug (`kind: bug`) is a patch; a change that names a feature it adds, changes or removes is a minor; a change naming no node is a patch; the highest level wins, and major is typed only. A commit resolving to no change is listed under Also and counts as a patch, so nothing is dropped silently. The script prints that derivation, then stamps the version into `package.json`, the lockfile and the plugin manifest, writes the entry into `CHANGELOG.md` (one line per change, its name and gist, grouped Added, Changed, Fixed, Removed, Also), commits, tags `v<version>` with the entry, builds, packs, pushes, and creates the GitHub release with the tarball attached and the entry as its notes. It refuses off main, on a dirty tree, on an existing tag, with nothing since the last tag, or with `gh` signed out.
 
 ## License
 
