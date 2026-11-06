@@ -73,7 +73,11 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
   let session = opts.session;
   if (!session && actor) {
     const id = `${owner}-sync-${nowIso().replace(/[:.]/g, '-')}`;
-    newSession(store, id, { agent: writer, onBehalfOf: actor, writer });
+    // run from a session (a hook reading a ticket the prompt named), the sync is that session's child: its writes are
+    // on that session's receipt
+    const within = process.env.PJMAN_SESSION;
+    const parent = within && loadStore(store).byKey.has(within) ? within : undefined;
+    newSession(store, id, { agent: writer, onBehalfOf: actor, writer, parent });
     session = `session:${id}`;
   }
   const stamp = { writer, session, created: localDate() };

@@ -166,11 +166,18 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.equal(atGh('then #1 of your list'), ''); // bare, even with a change of its own nearby
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234', 'change:work/app-12']);
   assert.match(context(atGh('fix acme/app#13 too')), /acme\/app#13 is github-issue:acme\/app#13; the store has no record/); // gh knows no 13
-  // the receipt at the end of the turn: what the store received, for the person
-  const stop = JSON.parse(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'done' }), encoding: 'utf8', env: withGh })) as { systemMessage?: string };
+  // the receipt at the end of the turn: what this session and the ones it spawned wrote, nothing from another session
+  hook('SubagentStart', { cwd: work, session_id: 'sess-t', agent_id: 'sess-t-child', agent_type: 'Explore' });
+  assert.equal(loadStore(g).byKey.get('session:sess-t-child')![0].data.parent, 'session:sess-t');
+  set(g, 'change:work/abc-1234', ['notes=from the child'], { session: 'session:sess-t-child' });
+  newRecord(g, 'session', 'sess-elsewhere', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  change(g, 'elsewhere', { title: 'Elsewhere', summary: 's', project: 'project:work', session: 'session:sess-elsewhere' });
+  const stop =JSON.parse(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'done' }), encoding: 'utf8', env: withGh })) as { systemMessage?: string };
   assert.match(stop.systemMessage ?? '', /pjman recorded:/);
   assert.match(stop.systemMessage ?? '', /created change:app-12 — Twelve/);
-  assert.ok(!/session:sess-t:/.test(stop.systemMessage ?? ''));
+  assert.match(stop.systemMessage ?? '', /set change:abc-1234 \(notes\)/);
+  assert.ok(!/session:sess-t[:-]/.test(stop.systemMessage ?? '')); // neither its own bookkeeping nor the spawn
+  assert.ok(!/elsewhere/.test(stop.systemMessage ?? ''));
   assert.equal(execFileSync(process.execPath, [HOOK, 'Stop'], { input: JSON.stringify({ cwd: work, session_id: 'sess-t', last_assistant_message: 'nothing' }), encoding: 'utf8', env: withGh }), '');
   assert.ok(!loadStore(g).byKey.has('change:work/app-13'));
   assert.deepEqual(validate(loadStore(g)).filter((p) => p.level === 'error'), []);

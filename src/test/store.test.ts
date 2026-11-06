@@ -556,6 +556,27 @@ test('the receipt: what the store received since a point, one line per record, d
   rm(store, 'change:project/receipt-b');
 });
 
+test("a session's receipt: its writes and its spawned sessions', nothing from another session, no line for a spawn", () => {
+  change(store, 'receipt-c', { title: 'Receipt C', summary: 's', project: 'project:renamed' });
+  const since = readEvents(store).at(-1)!.seq;
+  const who = { agent: 'agent:claude-code', onBehalfOf: 'person:tester' };
+  newRecord(store, 'session', 'rc-parent', who);
+  newRecord(store, 'session', 'rc-child', { ...who, parent: 'session:rc-parent', session: 'session:rc-child' });
+  newRecord(store, 'session', 'rc-grandchild', { ...who, parent: 'session:rc-child', session: 'session:rc-grandchild' });
+  newRecord(store, 'session', 'rc-other', who);
+  sessionLog(store, 'rc-child', 'spawned by session:rc-parent');
+  sessionBind(store, 'rc-parent', 'change:project/receipt-c');
+  set(store, 'change:project/receipt-c', ['status=active'], { session: 'session:rc-parent' });
+  set(store, 'change:project/receipt-c', ['notes=n'], { session: 'session:rc-child' });
+  next(store, 'change:project/receipt-c', 'deep', { session: 'session:rc-grandchild' });
+  set(store, 'change:project/receipt-c', ['scope=s'], { session: 'session:rc-other' });
+  change(store, 'receipt-d', { title: 'Receipt D', summary: 's', project: 'project:renamed', session: 'session:rc-other' });
+  assert.deepEqual(receipt(store, { since, session: 'session:rc-parent' }).lines, ['set change:project/receipt-c (status → active, notes, plan, step add)']);
+  assert.deepEqual(receipt(store, { since, session: 'session:rc-child' }).lines, ['set change:project/receipt-c (notes, plan, step add)']);
+  assert.deepEqual(receipt(store, { since, session: 'session:rc-other' }).lines, ['set change:project/receipt-c (scope)', 'created change:project/receipt-d — Receipt D']);
+  rm(store, 'change:project/receipt-d');
+});
+
 test('depends_on, kind, severity, target and the sequence: validated, refused when wrong, dropped by rm --detach', () => {
   const project = 'project:renamed'; // renamed above; its product is still product:project
   change(store, 'base', { title: 'Base', summary: 'b', project });
