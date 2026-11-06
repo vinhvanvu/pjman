@@ -109,10 +109,18 @@ export interface Lane {
 export const sessionOf = (e: TimelineEvent): string | undefined =>
   e.session ?? (e.type === 'session' ? e.key : undefined);
 
+export interface LaneRows {
+  /** The sessions working a change, each its row. */
+  lanes: Lane[];
+  /** The sessions on no change yet, folded into one line that opens their rows. */
+  unbound: Lane[];
+}
+
 /** The rows: the bridge's sessions in its order (most recent act first), those with something in the window. A
- *  session that ended without ever naming a change is left out, as the strip leaves it out: it has nothing to show
- *  and nowhere to open. */
-export function lanesOf(sessions: readonly BridgeSession[], events: readonly TimelineEvent[]): Lane[] {
+ *  session on no change has no row of its own: it is counted apart until it binds, and then its row stands under its
+ *  change with every beat it wrote before. One that ended without ever naming a change is left out, as the strip
+ *  leaves it out: it has nothing to show and nowhere to open. */
+export function lanesOf(sessions: readonly BridgeSession[], events: readonly TimelineEvent[]): LaneRows {
   const row = new Map<string, string>();
   for (const s of sessions) {
     row.set(s.key, s.key);
@@ -129,10 +137,12 @@ export function lanesOf(sessions: readonly BridgeSession[], events: readonly Tim
     if (e.op === 'log' && e.type === 'session') lane.beats.push(e);
     if (e.type === 'decision' && e.op === 'created') lane.flags.push(e);
   }
-  return sessions.flatMap((s) => {
+  const rows: LaneRows = { lanes: [], unbound: [] };
+  for (const s of sessions) {
     const lane = s.state === 'ended' && !s.change ? undefined : by.get(s.key);
-    return lane ? [{ session: s, ...lane }] : [];
-  });
+    if (lane) (s.change ? rows.lanes : rows.unbound).push({ session: s, ...lane });
+  }
+  return rows;
 }
 
 // The strip as one list (change:motion-design): every group's heading and its cards in a row, so a card that moves
