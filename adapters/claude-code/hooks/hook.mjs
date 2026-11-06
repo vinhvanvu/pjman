@@ -2,10 +2,13 @@
 // The Claude Code adapter for pjman: one script, one event per invocation, every write through `pjman`.
 // Never blocks, never fails the session: on any error it logs to the plugin data directory and exits 0.
 //
-//   SessionStart      register the repository if it is not a project yet (auto_register); create the session record; inject the brief,
-//                     `pjman context` (and the bound change's context on resume/compact); observe the branch and the open PR;
-//                     at startup and /clear, who the person is checked against the apps (`pjman whoami --verify`, cached a day
-//                     by the tool), injected only when something is off, the rename or claim offered and never run
+//   SessionStart      register the repository if it is not a project yet (auto_register); dock the view first; run the reads side by
+//                     side (the brief, `pjman context`, who the person is at startup and /clear (`pjman whoami --verify`, cached a day
+//                     by the tool; injected only when something is off, the rename or claim offered and never run), the receipt's
+//                     watermark, the done changes for the stale-worktree scan, the open PR off main); then the one write, `pjman
+//                     session start`: the session record unless it exists, the start line, the change the branch names bound and
+//                     observed, the brief (the bound change's context in full on resume/compact/clear); the stale worktrees named
+//                     ahead of the board
 //   UserPromptSubmit  a prompt naming one change, a ticket or a URL binds the change it leads to (pjman refs); one naming several binds none and
 //                     the agent is told the candidates; a ticket of the project's tracker with no record is read from the tracker and created
 //                     through the sync (gh for GitHub), or the agent is told to; then the brief (pjman brief --session): the bound change's
@@ -356,17 +359,6 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
     return false;
   }
 }
-async function ensureSessionAsync(store, sid, env, { parent, cwd } = {}) {
-  if (!store.actor) {
-    note('no actor in ~/.pjman/config.yaml; session record not created');
-    return false;
-  }
-  const [cmd, ...pre] = PJMAN;
-  const r = await runAsync(cmd, [...pre, ...sessionArgs(store, sid, parent)], { cwd, env });
-  if (r.ok || EXISTS.test(r.err)) return true;
-  note(`pjman new session failed: ${r.err}`);
-  return false;
-}
 
 /** What a prompt is about: the last reference in it that leads to a change and is not weak. The tool scans the text (`pjman refs`); the
  *  hook knows no shapes. A ticket of the project's tracker with no record is read from the tracker and applied through
@@ -405,9 +397,6 @@ function createFromTracker(r, { cwd, env }) {
 function briefFor(st, sid, cwd, env, full = false) {
   return briefText(st, tryPjman(['brief', '--session', sid, '--json', ...(full ? ['--full'] : [])], { cwd, env, json: true }));
 }
-async function briefForAsync(st, sid, cwd, env, full = false) {
-  return briefText(st, await pjmanAsync(['brief', '--session', sid, '--json', ...(full ? ['--full'] : [])], { cwd, env, json: true }));
-}
 function briefText(st, b) {
   if (!b || b.mode === 'none' || !b.text) return '';
   st.briefs = [...(st.briefs ?? []), { mode: b.mode, change: b.change, lines: b.size.lines, tokens: b.size.tokens, cut: b.text.length > CONTEXT_MAX }];
@@ -428,34 +417,37 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     context: pjmanAsync(['context'], { cwd }),
     receipt: st.seq === undefined ? pjmanAsync(['events', '--receipt', '--json'], { cwd, json: true }) : null,
     who: main && (source === 'startup' || source === 'clear') ? pjmanAsync(['whoami', '--verify', '--json'], { cwd, json: true }) : null,
-    // the ground the session stands on: a branch named for a change binds it before any prompt does
-    ofBranch: main && !st.bound && branch ? pjmanAsync(['refs', `branch:${branch}`, '--json'], { cwd, json: true }) : null,
     done: main ? pjmanAsync(['ls', 'change', '--status', 'done', '--json'], { cwd, json: true }) : null,
     pr: main && branch && store_sourceKinds().includes('github-pr') ? shAsync('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd) : null,
   });
-  if (!(await ensureSessionAsync(store, sid, env, { cwd }))) {
+  if (!store.actor) {
+    note('no actor in ~/.pjman/config.yaml; session record not created');
+    await docking;
+    return;
+  }
+  // the one write (decision session-start-fast/start-as-one-write): the record unless it exists, the start line, the
+  // change the branch names bound and its edge observed (the ground the session stands on binds it before any prompt
+  // does), and the brief: in full when the conversation lost what it had been told (resumed, compacted, cleared)
+  const started = { startup: 'session started', clear: 'session started after /clear', resume: 'session resumed; context rehydrated', compact: 'context compacted and rehydrated', fork: 'session forked; context rehydrated' };
+  const rehydrated = source === 'resume' || source === 'compact' || source === 'clear';
+  const start = await pjmanAsync(
+    ['session', 'start', sid, '--agent', AGENT, '--on-behalf-of', store.actor, '--writer', AGENT, '--log', started[source] ?? `session started (${source})`, ...(main && !st.bound && branch ? ['--branch', branch] : []), ...(rehydrated && st.bound ? ['--full'] : []), '--json'],
+    { cwd, env, json: true },
+  );
+  if (!start) {
     await docking;
     return;
   }
   if (main) exportToShell(env);
   if (st.seq === undefined) st.seq = read.receipt?.seq ?? 0; // receipts start from here
-  const started = { startup: 'session started', clear: 'session started after /clear', resume: 'session resumed; context rehydrated', compact: 'context compacted and rehydrated', fork: 'session forked; context rehydrated' };
-  await pjmanAsync(['session', 'log', sid, started[source] ?? `session started (${source})`], { cwd, env });
+  if (start.bound) st.bound = start.bound;
+  if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
   let text = (read.brief ?? '') + `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
   const stale = main ? staleWorktreesText(staleWorktrees(cwd, read.done ?? [])) : '';
   if (stale) text += `${stale}\n---\n`;
   text += read.context ?? '';
-  if ((source === 'resume' || source === 'compact') && st.bound) {
-    // the conversation lost what it had been told: the bound change's context in full again
-    const b = await briefForAsync(st, sid, cwd, env, true);
-    if (b) text += `\n---\n${b}`;
-  }
-  const key = read.ofBranch?.find((r) => r.change)?.change ?? null;
-  if (key && (await pjmanAsync(['session', 'bind', sid, key, '--reason', 'branch'], { cwd, env })) !== null) {
-    st.bound = key;
-    const b = await briefForAsync(st, sid, cwd, env);
-    if (b) text += `\n---\nBound from the branch.\n${b}`;
-  }
+  const b = briefText(st, start.brief);
+  if (b) text += `\n---\n${start.bound ? 'Bound from the branch.\n' : ''}${b}`;
   // who the person is, checked against the apps once a day (the tool caches): only what is off is said, with the
   // command that resolves it; a rename is the person's act, offered and never run unasked
   if (read.who?.notices?.length) text += `\n---\nIdentity (pjman whoami --verify):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person and never run a rename or a claim unasked.\n`;

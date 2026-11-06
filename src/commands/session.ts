@@ -1,10 +1,14 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type { Store } from '../config.js';
-import { findSession, fullKey, loadStore, resolve, unresolved } from '../records.js';
-import { CliError, nowIso } from '../util.js';
+import { parseRecord, sections } from '../frontmatter.js';
+import { findReferences } from '../graph.js';
+import { computeBrief, type Brief } from '../hydrate.js';
+import { findSession, fullKey, loadStore, resolve, unresolved, type Rec } from '../records.js';
+import { CliError, localDate, nowIso } from '../util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 import { EDGES } from '../validate.js';
-import { readEvents } from '../events.js';
+import { readEvents, type EventInput } from '../events.js';
 
 function load(store: Store, id: string) {
   const loaded = loadStore(store);
@@ -25,11 +29,124 @@ function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<st
   return finishWrite(store, message, rec.key, [{ op: evOp, key: rec.key, type: 'session', path: rec.path, fields, writer: envelope({}).writer }]);
 }
 
-const withLogLine = (rec: ReturnType<typeof load>['rec'], text: string): string => {
+const withLogLine = (rec: Pick<Rec, 'body' | 'sections'>, text: string): string => {
   let body = rec.body.replace(/\s+$/, '');
   if (!rec.sections.has('Log')) body += `${body ? '\n\n' : ''}## Log`;
   return `${body}\n- ${nowIso()} — ${text.trim()}\n`;
 };
+
+export interface StartFlags {
+  agent?: string;
+  onBehalfOf?: string;
+  parent?: string;
+  project?: string;
+  /** The start line for the log, in the adapter's words (session started, resumed, after /clear …). */
+  log?: string;
+  /** The branch the session stands on: when its name leads to a change, the session is bound to it and the edge observed. */
+  branch?: string;
+  /** The brief in full even when the binding did not move (the conversation lost what it had). */
+  full?: boolean;
+  writer?: string;
+  session?: string;
+}
+
+export interface StartResult {
+  key: string;
+  path: string;
+  created: boolean;
+  /** The change bound by this start, from the branch; absent when the session was already bound to it or none was found. */
+  bound?: string;
+  /** The branch edge observed by this start. */
+  observed?: string;
+  brief: Brief | null;
+  commit: string | null;
+}
+
+/** A session's start as one write (decision session-start-fast/start-as-one-write): the record created unless it exists,
+ *  the start line logged, the change the branch names bound and the branch edge observed, the brief computed and its
+ *  watermark set, as one load of the store, one validation and one commit. The events are the ones the separate
+ *  commands would have emitted. */
+export function sessionStart(store: Store, ident: string, flags: StartFlags): StartResult {
+  const id = ident.startsWith('session:') ? ident.slice(8) : ident;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new CliError(`'${id}' is not a usable session id`);
+  const key = `session:${id}`;
+  const loaded = loadStore(store);
+  const env = envelope(flags);
+  const events: EventInput[] = [];
+  const existing = findSession(loaded, id);
+  if (existing && !existing.valid) throw new CliError(`${existing.path} is invalid; fix it before appending`);
+  let rel: string;
+  let data: Record<string, unknown>;
+  let body: string;
+  if (existing) {
+    rel = existing.path;
+    data = { ...existing.data };
+    body = existing.body;
+  } else {
+    if (!flags.agent) throw new CliError('--agent is required (an agent key)');
+    if (!flags.onBehalfOf) throw new CliError('--on-behalf-of is required (a person key)');
+    const started = new Date().toISOString();
+    const date = localDate(new Date(started));
+    rel = path.join('sessions', `${date}-${id}.md`);
+    if (fs.existsSync(path.join(store.root, rel))) throw new CliError(`refused: ${rel} already exists`);
+    data = { agent: flags.agent, on_behalf_of: flags.onBehalfOf, started, parent: flags.parent, project: flags.project ?? store.project, writer: env.writer, created: date };
+    body = '## Log\n\n';
+    events.push({ op: 'created', key, type: 'session', path: rel, writer: env.writer });
+  }
+  const current = () => ({ body, sections: sections(body) });
+  if (flags.log?.trim()) {
+    body = withLogLine(current(), flags.log);
+    events.push({ op: 'log', key, type: 'session', path: rel, fields: ['log'], writer: env.writer });
+  }
+  let bound: string | undefined;
+  let observed: string | undefined;
+  if (flags.branch) {
+    const branchKey = `branch:${flags.branch}`;
+    const change = findReferences(loaded, branchKey, { projectDir: store.projectDir, project: store.project }).find((r) => r.change)?.change;
+    if (change) {
+      const changes = Array.isArray(data.changes) ? [...(data.changes as string[])] : [];
+      if (!changes.includes(change)) {
+        changes.push(change);
+        data.changes = changes;
+        body = withLogLine(current(), `bound ${change} (branch)`);
+        events.push({ op: 'bind', key, type: 'session', path: rel, fields: ['changes'], writer: env.writer });
+        bound = change;
+      }
+      if (store.config.source_kinds.includes('branch')) {
+        const edges = Array.isArray(data.observed) ? [...(data.observed as { edge?: string; from?: string; to?: string; at?: string }[])] : [];
+        if (!edges.some((o) => o.edge === 'links' && o.from === change && o.to === branchKey)) {
+          edges.push({ edge: 'links', from: change, to: branchKey, at: nowIso() });
+          data.observed = edges;
+          events.push({ op: 'observe', key, type: 'session', path: rel, fields: ['observed'], writer: env.writer });
+          observed = branchKey;
+        }
+      }
+    }
+  }
+  // the brief reads the session as it now stands: the loaded store carries the record as written
+  const abs = path.join(store.root, rel);
+  const prior = existing ? snapshot(store, [rel]) : new Map<string, string>();
+  const place = (text: string): Rec => {
+    const parsed = parseRecord(text);
+    const rec: Rec = { type: 'session', key, path: rel, abs, data: parsed.data, body: parsed.body, sections: sections(parsed.body), parsed, valid: parsed.hasFrontmatter && parsed.isMapping && parsed.errors.length === 0, sessionId: id, fileDate: existing?.fileDate ?? localDate() };
+    const at = loaded.records.findIndex((r) => r.key === key);
+    if (at >= 0) loaded.records[at] = rec;
+    else loaded.records.push(rec);
+    loaded.byKey.set(key, [rec]);
+    return rec;
+  };
+  place(render('session', data, body));
+  const b = computeBrief(store, id, { full: flags.full, loaded });
+  if (b.mode !== 'none') {
+    data.briefed = b.change ? { change: b.change, seq: b.seq, at: b.at } : { seq: b.seq, at: b.at };
+    events.push({ op: 'set', key, type: 'session', path: rel, fields: ['briefed'], writer: env.writer });
+  }
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, render('session', data, body));
+  validateOrUndo(store, [rel], existing ? [] : [rel], prior);
+  const commit = finishWrite(store, `pjman: session start ${key}${bound ? ` ${bound}` : ''}`, key, events);
+  return { key, path: rel, created: !existing, bound, observed, brief: b.mode === 'none' ? null : b, commit };
+}
 
 /** Append one line to `## Log`. */
 export function sessionLog(store: Store, id: string, text: string): { path: string; commit: string | null } {
