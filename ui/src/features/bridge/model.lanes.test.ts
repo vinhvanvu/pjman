@@ -18,10 +18,11 @@ const ev = (seq: number, over: Partial<TimelineEvent>): TimelineEvent => ({
   ...over,
 });
 
+const on = (s: BridgeSession): BridgeSession => ({ ...s, change: { key: 'change:pjman/x', path: [] } });
+
 describe('lanesOf', () => {
   const kid = session('session:kid');
   const idle = { ...session('session:idle'), state: 'ended' as const };
-  const on = (s: BridgeSession): BridgeSession => ({ ...s, change: { key: 'change:pjman/x', path: [] } });
   const fresh = session('session:fresh');
   const sessions = [
     on(session('session:a', [kid])),
