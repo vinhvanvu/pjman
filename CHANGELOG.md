@@ -2,6 +2,89 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.2.0 — 2026-11-06
+
+### Added
+
+- **Branch names**: Branch and worktree names: a change recommends one, derived from its key, and a session on a branch so named binds the change (change:branch-names)
+- **The dock**: The dock: the view beside the terminal, following the session that opened it, made for a third of a screen (change:docked-view)
+- **The bridge**: The bridge: the overview of every session running now, grouped by what each needs from the person (change:live-sessions)
+- **Read at a moment**: The store at a moment: every read can be asked as of a time or an event, so the app can pause, step and rewind (change:read-at-a-moment)
+
+### Changed
+
+- **Dashboard design**: The dashboard's design, decided in conversation one detail at a time and built small (change:dashboard-design)
+- **Install as copy**: The installed tool is a copy from a built package, installed after a merge to main, never a link to a development checkout (change:install-as-copy)
+- **Store lock**: A lock around every store write and its commit, so two sessions never sweep each other's files into one commit (change:store-lock)
+- **Server port**: The dashboard server honours PORT and registers its address only when it is the installed tool's (change:server-port)
+- **Handle from the forge**: A person's handle is checked against the forge: init suggests the login and warns when the configured handle is not one (change:handle-from-the-forge)
+- **Decided in chat**: A decision made in chat is recorded and acted on: the agent sets it decided by the person and carries out what the agreement implies, never asking for each step (change:decided-in-chat)
+- **Worktree URLs**: Each worktree's dev servers run under portless, at a stable name for the worktree's branch (change:worktree-urls)
+- **Motion design**: Motion and interaction design: how the dashboard moves and responds, so a live view says what changed, shifted, was added, removed or moved (change:motion-design)
+- **Dock waits expand**: The dock's waits-on-you decisions are cards collapsed by default that expand in place, instead of a click opening the change's decisions tab (change:dock-waits-expand-in-place)
+- **Copy decision keys**: Copy a decision's key wherever it is referenced: one shared control across the dashboard (change:copy-decision-keys)
+- **pjman open**: pjman open: the dashboard brought back for a session, the session's page docked beside it or in the browser (change:session-open)
+- **Hydration**: Hydration: the brief with a watermark, what the store has for a session since it was last briefed, carried in by the hooks (change:hydration)
+- **Visible dependency edges**: Dependencies in plain sight: the roadmap draws every edge, the dock reads a change stacked on unfinished work (change:dependency-edges-visible)
+- **Dock moves**: The dock moves with its session: when the change it shows changes, the old one leaves and the new one arrives (change:dock-moves)
+- **Messages**: Messages: a person moves work forward from pjman, and the harness carries it into the session (change:messages)
+- **Decide in place**: Decide in place: accept a proposed decision from the dashboard, and the session working its change is told (change:decide-in-place)
+- **Dock drops Next**: The dock leaves out Next: a live session is the next, and Waits on you covers what is left (change:dock-next-list)
+- **Aspects**: Aspects: what applies across the app, recorded once and linked to every place it applies (change:aspects)
+- **Aspects in the dashboard**: Aspects in the dashboard: where an aspect applies, seen from the aspect, from a feature and from a change (change:aspects-dashboard)
+- **Aspects on the roadmap**: The roadmap narrows by an aspect: the work on an aspect, in order and in time (change:aspects-roadmap)
+- **Order affordances**: Ordering from Later is obvious: a slot to order last, the landing line, the grip, and an Order button (change:roadmap-order-affordances)
+- **Aspect work on roadmap**: Aspect work is seen on the roadmap: a place counts as naming its feature, and a diamond marks the work (change:aspect-work-on-the-roadmap)
+- **Record foundation**: Changes and decisions read as a ladder: name, gist, then a foundation written in full; facts derived, the rest of the app to follow (change:record-foundation)
+- **Foundation migration**: The migration: every change and decision mapped into the new shape, nothing dropped; an ingested ticket creates a change in the new shape (change:foundation-migration)
+- **Foundation skill**: The skill, the brief, the schema and the README say how a record is written now (change:foundation-skill)
+- **pjman decision**: pjman decision: one command writes a decision at any size (change:decision-verb)
+- **Decision card**: A proposed decision reads as its options with one recommendation marked once and its case as points (change:decision-card)
+- **Status from the plan**: A change reads planning once it has a plan and active once a step starts or a session works it, without a hand-written status (change:status-from-the-plan)
+- **Lanes skip unbound sessions**: The bridge's recent-session lanes show only sessions working a change; unbound ones fold into one line (change:lanes-unbound-sessions)
+- **Releases and Homebrew**: pjman is versioned and released by tag, and installed and updated with Homebrew (change:releases-homebrew)
+
+### Fixed
+
+- **Session date at midnight**: A session that starts just before midnight is warned about by validate: its file name date differs from its started instant (change:session-date-midnight)
+- **Phone-width record pane**: At phone width the record pane is drawn over the product map instead of replacing it (change:phone-width-record-pane)
+- **Retire a decision**: A decision can be retired after the fact: supersedes is settable, so a decision made later can name the proposed one it replaces (change:retire-a-decision)
+- **Duplicate rows beneath**: A change naming several features filled the expanded feature with one copy per feature it names (change:beneath-duplicate-rows)
+- **Dock waits turn green**: The dock's waits-on-you items all turn green after opening a decision and coming back to the session page (change:dock-waits-turn-green)
+- **Dock moves, held moment**: Returning from a held moment to now plays the dock's move animation (change:dock-moves-held-moment)
+- **Order reads ahead**: The order reads what is ahead: done entries stay on the sequence and drop out of every reader (change:order-reads-ahead)
+- **Fresh dock slow load**: A fresh session's dock is slow to load or never loads (change:dock-fresh-slow-load)
+- **Accept is slow**: Accepting a decision from its card takes 10 to 15 seconds before the card clears (change:decide-is-slow)
+- **Transport stuck**: Once an event or time is chosen on the transport, further clicks, previous and next do nothing (change:transport-stuck-on-selection)
+- **Receipt is the session's**: The turn's receipt lists only what this session and the sessions it spawned wrote (change:receipt-session-scope)
+- **Done changes read live**: A feature named by a done change derives live, and the authored status stands when nothing decides it (change:derived-status-done-changes)
+- **Fast session start**: A session starts and docks in about a second, however many worktrees the repository has (change:session-start-fast)
+- **Clear keeps the dock**: Clearing a session keeps its docked pane and points it at the new session's page (change:clear-keeps-dock)
+- **Source chips open sources**: A source chip opens the source itself: its URL when the record has one, one built from the key otherwise (change:source-chips-open-source)
+
+### Store
+
+- The layout move: every record keyed under its product. Run `pjman migrate` once after installing.
+- The foundation move: every change and decision in its shape. Run `pjman migrate` once after installing.
+
+### Also
+
+- tool: the roadmap's model — depends_on on a change (what must land before it; cycles and self refused; an edge the getter and the context show both ways), kind=bug with a severity read from the tree (product, feature, capability, nuisance, cosmetic; severity is a bug's field; the listing orders bugs worst first then oldest; a sync sets the kind from the tracker's bug label and never the feature or severity), target on a change (a milestone's date, a person's), sequence on a product (the order, change keys, no repeats); set, rm --detach, mv and the index follow; schema and README (c6a71e2)
+- tool: the roadmap derived — pjman order moves a change in its product's sequence (before, after, first, last, later) and POST /order is the API's one write, the same function as the person signed in; the scope carries each change's position, dependencies, target, began and finished, a bug's home at its severity's level with counts rolled up and nothing repeated beneath, the bug queue worst first, and the roadmap: the sequence in scope, what comes later, and the four checks (order, target against dependency, target against order, overdue) that warn and never reorder (0112265)
+- tool, adapter: intake — pjman intake <text> answers with what already exists before a request is filed: open changes that share its words or are named in it (the duplicates, a referenced ticket scoring highest), done ones like it (a regression or the old change to link), the nodes of the map it may alter with their path and level, the milestones in flight nearest to done first, the order's tail; also /intake?text= on the API. The intake skill carries the procedure: duplicates first, then four questions with defaults (what on the map, one or several, where in the order, when) and the one-line answer; the pjman skill and the brief send every filing through it (245f2cf)
+- ui: the roadmap lens replaces the milestone lens — lanes on one horizontal axis: the features of the map as rows (nested, collapsible), the past by time as bars from began to done with in-flight work reaching the seam, the future by sequence as a column per entry of the product's order (a milestone holding its children, a loose change itself, later closing the list), dependencies drawn when an entry is focused, a warning where the order contradicts a dependency or a date with 'move it after' as the repair, drag to reorder as the app's first write through POST /order; a roadmap home in the record pane (the order as a list, later, warnings, the loudest bugs); a bugs view on any scope (worst first, grouped by what is lost, each listed once at its home) with the rail counting only product and feature severity; the node header's health line names the bugs beneath; change and milestone records show kind, severity, target, depends on and needed by; old /milestone links open the roadmap (00dc28b)
+- license: Apache License 2.0 — LICENSE verbatim, NOTICE with the copyright line, the license field on both packages, a License section in the README (5660046)
+- tool, adapter: the map — pjman apply lands many writes as one commit (the commands one per line, every commit and event held, one 'applied' event on the record --for names; a line that fails refuses the whole batch and nothing is written) and pjman undo reverts a batch as one commit, refused while a later write touched its records; pjman mv renames a feature with the old slug kept as an alias, every effect rewritten; pjman init asks once whether the first session should propose a product map (--map/--no-map; the project's map field) and pjman context opens with one line while the product has no map; the map skill: survey the person's words, the documentation, the code's split and the store, draft the top level as the layers of the stack titled as sentences, nest by the code's split two levels deep, propose the whole tree in a proposed decision, apply it on the go as one batch, verify; the pjman skill and the brief point at it; the receipt shows a batch as one line (50fd72d)
+- tool, adapter: a cold-started map reads as authored — a feature's derived state lets the authored status stand when no change names it, so a map proposed from the documentation shows live where the ladder says shipped until changes take over; the map skill checks every slug against the store (feature keys are global across products), gives cold-start nodes their status from the documentation, and names the map change for its product (a93bea7)
+- tool, ui: the product switcher — the rail's header is a menu when the store holds more than one product (each with its short name and one line of health: open changes, in flight, loud bugs; the current one checked; choosing one opens the same lens at that product's overview) and the product's name alone when there is one; the generated monogram is gone; a product carries a short name like a feature (name on new product and set; the crumbs, the rail and the scope node show it, the title stays the sentence); the store route lists products with their health. Bug: a refused write on an existing record put nothing back, so a bind to a missing change left the session file modified for the next write to commit; every path a write touches is snapshotted first and restored on refusal (session log, bind, observe; the decision a new one supersedes) (137389b)
+- ui: the product stays the root node and the rail mimics a frame over it — the top bar's crumb starts beneath the product (the rail already names it) and on the product's own page names the lens (Product map, Roadmap) with no kind tag; the root of the app opens the product last opened (remembered in preferences), else the first, and shows the store's root only when it holds no product (decision product-frame/product-stays-the-root) (dadf8f9)
+- ui: one source of truth for the page's product — the URL names it when its node is a product, else the page's own scope says which product it is beneath; a previous page's scope kept as placeholder and the store's product list are never consulted, so the rail no longer flashes another product before the scope arrives, and the top bar's crumb and current node wait for fresh data instead of showing the last page's (9ca0d1d)
+- ui: identity has one source — lib/identity.ts is the one place a page's product is read (the URL's node when it is a product, else the page's own scope once it has arrived, never the store's list or a previous page's placeholder), with its tests; the README states the rule beside the three kinds of state (fa47e63)
+- tool, ui, adapter: keys are paths under the product — a feature, a change and a decision are keyed feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug> (product level decision:<product>/<slug>; store level decision:/<slug>); position in the tree stays a field, never part of a key; the store's folders follow the key (products/<p>/{product.md, features/, changes/, decisions/}); a bare slug resolves through the scope at hand (the record's product, the current project's product, the page's node), store-wide when one product has it, refused as ambiguous otherwise; the store writes full keys (new, set, session bind and observe, order normalise what was typed), text output read inside a project drops the product segment and JSON keeps it; pjman migrate moves a flat store once as one commit with every record's old slug kept as an alias and the old flat key still resolving (the holder wins when two products share a slug); mv renames products (every key beneath follows, old segment aliased), moves a feature or change to another product (a change into that product's one project), and renames a person (old handle aliased, the user config follows); set refuses a project of another product and names the move; init creates the product with the project (--product joins an existing one), names the person by their forge login or git name and makes their record with their accounts (github-user, email) as links; identity source kinds in the grammar, personOf resolves an account to the person who claims it (one person per account), GitHub assignees become owners when claimed; the dashboard's key helpers know the product segment and route a decision to its change; the schema, the README, the brief and the skills state the rule (decisions keys-under-the-product/product-is-the-namespace, layout-follows-the-key, person-key-is-the-handle). Also carries the session-date fix from the parallel session: a session file is named by the local day it started. (d01a730)
+- tool: the install restarts the dashboard on the port it had (79e775c)
+- repo: worktrees branch from local main and share the checkout's node modules by symlink; the project instructions say to work on a change in a worktree named for it and to remove it once merged (09b70c8)
+- Merge branch 'main' into live-sessions (5b24fbd)
+
 ## 0.1.0 — 2026-10-26
 
 Everything before the record existed: the thesis, the schema, the tool, the adapter and the first dashboard, as 77 commits with no change behind them. Tagged after the fact, at the last commit before the first change-attributed one, so that 0.2.0 reads from here.
