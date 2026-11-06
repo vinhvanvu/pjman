@@ -1,0 +1,215 @@
+// The release: one command that reads what main has shipped since the last tag, derives the version from the record,
+// writes the changelog, stamps the version, commits, tags, builds, packs and attaches the package to a GitHub release
+// (decisions releases-homebrew/one-release-command, bump-from-the-record).
+//
+//   npm run release                    derive the level from the changes and release
+//   npm run release -- minor           a typed level overrides the derived one (patch | minor | major)
+//   npm run release -- --dry-run       print the derivation and the changelog entry; write nothing
+//
+// What a release ships is read from git, never from prose: every first-parent commit on main since the last v* tag,
+// resolved to a change by the trailer the merge convention writes, `(change:<slug>)`, or by the branch name of the
+// merge (`worktree-<slug>`). What each change is comes from the store: a bug is a patch, a change that names a feature
+// it adds, changes or removes is a minor, a change naming no node is a patch; the highest wins. A commit that resolves
+// to no change is listed under Also and counts as a patch, so nothing is dropped silently. Major is typed only.
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const say = (line) => process.stdout.write(`${line}\n`);
+const fail = (line) => {
+  process.stderr.write(`release: ${line}\n`);
+  process.exit(1);
+};
+const run = (cmd, args, opts = {}) =>
+  (execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024, ...opts }) ?? '').trim();
+const soft = (cmd, args) => {
+  try {
+    return run(cmd, args);
+  } catch {
+    return null;
+  }
+};
+const ok = (cmd, args) => soft(cmd, args) !== null;
+const git = (...args) => run('git', args);
+
+// ---- arguments ------------------------------------------------------------------------------------------------------
+
+const LEVELS = ['patch', 'minor', 'major'];
+const args = process.argv.slice(2);
+const dryRun = args.includes('--dry-run');
+const typed = args.find((a) => LEVELS.includes(a));
+const unknown = args.filter((a) => a !== '--dry-run' && !LEVELS.includes(a));
+if (unknown.length) fail(`unknown argument ${unknown.join(' ')}; usage: npm run release [-- patch|minor|major] [--dry-run]`);
+
+// ---- what main has shipped since the last tag -----------------------------------------------------------------------
+
+const pkgPath = path.join(root, 'package.json');
+const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+const current = pkg.version;
+if (!/^\d+\.\d+\.\d+$/.test(current)) fail(`package.json version ${current} is not a plain semver`);
+
+const lastTag = soft('git', ['describe', '--tags', '--abbrev=0', '--match', 'v*']);
+const since = lastTag ? `${lastTag}..HEAD` : 'HEAD';
+const commits = git('log', '--first-parent', '--reverse', '--format=%H%x1f%s', since)
+  .split('\n')
+  .filter(Boolean)
+  .map((line) => {
+    const [sha, subject] = line.split('\x1f');
+    return { sha, short: sha.slice(0, 7), subject };
+  });
+if (!commits.length) fail(`nothing to release: no commit on main since ${lastTag}`);
+if (lastTag && lastTag !== `v${current}`) say(`note: the last tag is ${lastTag} but package.json says ${current}; bumping from ${current}`);
+
+// ---- the changes those commits shipped, from the store --------------------------------------------------------------
+
+const changes = JSON.parse(run('pjman', ['ls', 'change', '--json']));
+const bySlug = new Map();
+for (const c of changes) {
+  const slug = c.key.replace(/^change:[^/]+\//, '');
+  bySlug.set(slug, c);
+  for (const alias of c.data?.aliases ?? []) bySlug.set(alias.replace(/^change:[^/]+\//, ''), c);
+}
+const resolve = (slug) => bySlug.get(slug) ?? bySlug.get(slug.replace(/^worktree-/, '')) ?? null;
+
+/** The change keys a commit names: the trailer `(change:a, change:b, …)` that ends the subject, else the merged branch. */
+function keysOf(subject) {
+  const trailer = /\((change:[^)]*)\)\s*$/.exec(subject);
+  if (trailer) return [...trailer[1].matchAll(/change:([A-Za-z0-9_./-]+)/g)].map((m) => m[1].replace(/^[^/]+\//, ''));
+  const merge = /^Merge branch '([^']+)'(?!\s+into\b)/.exec(subject);
+  return merge ? [merge[1]] : [];
+}
+
+const shipped = new Map(); // key -> { change, commits: [] }
+const also = []; // commits that resolve to no change
+for (const commit of commits) {
+  const found = keysOf(commit.subject).map(resolve).filter(Boolean);
+  if (!found.length) {
+    also.push(commit);
+    continue;
+  }
+  for (const change of found) {
+    const entry = shipped.get(change.key) ?? { change, commits: [] };
+    entry.commits.push(commit);
+    shipped.set(change.key, entry);
+  }
+}
+
+/** What a change says it is, and the level that implies. */
+function classify(change) {
+  const d = change.data ?? {};
+  const features = (d.features ?? []).map(String);
+  if (d.kind === 'bug') return { level: 'patch', group: 'Fixed', why: `bug${d.severity ? `, ${d.severity}` : ''}` };
+  if (features.some((f) => /^removes\s/.test(f))) return { level: 'minor', group: 'Removed', why: features.join('; ') };
+  if (features.some((f) => /^adds\s/.test(f))) return { level: 'minor', group: 'Added', why: features.join('; ') };
+  if (features.length) return { level: 'minor', group: 'Changed', why: features.join('; ') };
+  return { level: 'patch', group: 'Changed', why: 'names no node' };
+}
+
+const entries = [...shipped.values()].map((e) => ({ ...e, ...classify(e.change) }));
+const derived = entries.reduce((top, e) => (LEVELS.indexOf(e.level) > LEVELS.indexOf(top) ? e.level : top), 'patch');
+const level = typed ?? derived;
+const bump = (v, l) => {
+  const [a, b, c] = v.split('.').map(Number);
+  return l === 'major' ? `${a + 1}.0.0` : l === 'minor' ? `${a}.${b + 1}.0` : `${a}.${b}.${c + 1}`;
+};
+const next = bump(current, level);
+const tag = `v${next}`;
+const today = new Date().toISOString().slice(0, 10);
+
+// ---- the derivation, printed ----------------------------------------------------------------------------------------
+
+const shortKey = (key) => key.replace(/^change:[^/]+\//, 'change:');
+say(`${current} → ${next} (${level}${typed ? ', typed' : derived === 'patch' && !entries.length ? ', nothing names a change' : ''}): ${commits.length} commit${commits.length === 1 ? '' : 's'} on main since ${lastTag ?? 'the first commit'}`);
+for (const e of entries) say(`  ${e.level.padEnd(5)}  ${shortKey(e.change.key)} — ${e.change.name ?? e.change.title}: ${e.change.data?.gist ?? ''}  (${e.why})`);
+for (const c of also) say(`  also   ${c.short} ${c.subject}`);
+if (typed && typed !== derived) say(`  typed ${typed} over the derived ${derived}`);
+
+// ---- the changelog entry --------------------------------------------------------------------------------------------
+
+const GROUPS = ['Added', 'Changed', 'Fixed', 'Removed'];
+const lines = [`## ${next} — ${today}`, ''];
+for (const group of GROUPS) {
+  const inGroup = entries.filter((e) => e.group === group);
+  if (!inGroup.length) continue;
+  lines.push(`### ${group}`, '');
+  for (const e of inGroup) {
+    const name = e.change.name ?? e.change.title ?? shortKey(e.change.key);
+    const gist = e.change.data?.gist ? `: ${e.change.data.gist}` : '';
+    lines.push(`- **${name}**${gist} (${shortKey(e.change.key)})`);
+  }
+  lines.push('');
+}
+if (also.length) {
+  lines.push('### Also', '');
+  for (const c of also) lines.push(`- ${c.subject} (${c.short})`);
+  lines.push('');
+}
+const entry = lines.join('\n');
+
+if (dryRun) {
+  say('');
+  say(entry.trimEnd());
+  say('');
+  say('dry run: nothing written');
+  process.exit(0);
+}
+
+// ---- refusals -------------------------------------------------------------------------------------------------------
+
+const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
+if (branch !== 'main') fail(`on ${branch}, not main; a release is cut from main`);
+if (git('status', '--porcelain')) fail('the working tree is not clean; commit or set the work aside first');
+if (soft('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`])) fail(`tag ${tag} exists`);
+if (!ok('gh', ['auth', 'status'])) fail('gh is not signed in; the release is created with gh');
+
+// ---- the build, so the commit carries the built app -----------------------------------------------------------------
+
+say('building the tool and the app…');
+run('npm', ['run', 'build:ui'], { stdio: ['ignore', 'ignore', 'inherit'] });
+
+// ---- the version, in every file that carries one --------------------------------------------------------------------
+
+const stamp = (file, edit) => {
+  const text = fs.readFileSync(file, 'utf8');
+  const json = JSON.parse(text);
+  edit(json);
+  fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
+};
+stamp(pkgPath, (j) => (j.version = next));
+stamp(path.join(root, 'package-lock.json'), (j) => {
+  j.version = next;
+  if (j.packages?.['']) j.packages[''].version = next;
+});
+stamp(path.join(root, 'adapters', 'claude-code', '.claude-plugin', 'plugin.json'), (j) => (j.version = next));
+
+// ---- the changelog --------------------------------------------------------------------------------------------------
+
+const changelogPath = path.join(root, 'CHANGELOG.md');
+const head = '# Changelog\n\nEvery release, derived from the record: one line per change shipped, in the words the change was written in.\n\n';
+const existing = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf8') : '';
+const body = existing.startsWith(head) ? existing.slice(head.length) : existing.replace(/^# Changelog\s*\n/, '').replace(/^\s+/, '');
+fs.writeFileSync(changelogPath, head + entry + (body ? '\n' + body : ''));
+
+// ---- the commit and the tag -----------------------------------------------------------------------------------------
+
+git('add', '-A');
+git('commit', '-q', '-m', `release ${next}: ${entries.length} change${entries.length === 1 ? '' : 's'}${also.length ? ` and ${also.length} other commit${also.length === 1 ? '' : 's'}` : ''} since ${lastTag ?? 'the first commit'}`);
+git('tag', '-a', tag, '-m', entry);
+say(`committed and tagged ${tag}`);
+
+// ---- the package, attached to a GitHub release on the tag -----------------------------------------------------------
+
+const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-release-'));
+const packed = JSON.parse(run('npm', ['pack', '--json', '--pack-destination', dest]));
+const tarball = path.join(dest, packed[0].filename);
+say(`packed ${packed[0].filename} (${packed[0].entryCount} files)`);
+
+git('push', '-q', 'origin', 'main', tag);
+const notes = path.join(dest, 'notes.md');
+fs.writeFileSync(notes, entry);
+const url = run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag']);
+fs.rmSync(dest, { recursive: true, force: true });
+say(`released ${tag}: ${url}`);
