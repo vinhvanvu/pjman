@@ -13,6 +13,7 @@ import { DecideControl } from '@/components/decisions/DecideControl';
 import { acceptable } from '@/components/decisions/Options';
 import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
+import { SourceChip } from '@/components/links/SourceChip';
 import { Figures } from '@/components/stats/Figures';
 import { Ring } from '@/components/stats/Ring';
 import { nextLine, Readiness, Sections } from '@/components/record/Foundation';
@@ -64,7 +65,9 @@ export function MilestonePage({
             {typeof c.data.project === 'string' && <Chip tone="quiet">{short(c.data.project)}</Chip>}
             {typeof c.data.target === 'string' && <Chip tone="quiet">target {c.data.target}</Chip>}
           </div>
-          <h1 className="text-[22px] leading-tight font-semibold tracking-tight">{c.name ?? c.title ?? short(c.key)}</h1>
+          <h1 className="text-[22px] leading-tight font-semibold tracking-tight">
+            {c.name ?? c.title ?? short(c.key)}
+          </h1>
           {c.name && c.title && c.title !== c.name && <p className="max-w-[640px] text-ink-muted">{c.title}</p>}
           <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
           <Link
@@ -210,11 +213,7 @@ export function MilestonePage({
         <section className="flex flex-wrap items-center gap-2">
           <Label>Sources</Label>
           {ctx.sources.map((s) => (
-            <NodeLink key={s.key} to={s.key} lens={lens}>
-              <Chip tone="quiet" mono>
-                {short(s.key)}
-              </Chip>
-            </NodeLink>
+            <SourceChip key={s.key} source={s} lens={lens} />
           ))}
         </section>
       )}

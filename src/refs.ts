@@ -27,12 +27,18 @@ export interface Grammar {
   inScope?: (m: RegExpExecArray, scope: Scope) => boolean;
   /** The key rest a URL of this kind names. */
   url?: (u: URL) => string | undefined;
+  /** The URL a key rest of this kind opens, the reverse of `url`: for a source whose record carries none. */
+  href?: (rest: string) => string | undefined;
   /** The change slug a ticket of this kind implies. */
   slug?: (rest: string) => string;
 }
 
 const REPO = '[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+';
 const githubRepo = (u: URL): string[] | null => (u.hostname.toLowerCase() === 'github.com' ? u.pathname.split('/').filter(Boolean) : null);
+const githubHref = (rest: string, path: string): string | undefined => {
+  const m = new RegExp(`^(${REPO})#(\\d+)$`).exec(rest);
+  return m ? `https://github.com/${m[1]}/${path}/${m[2]}` : undefined;
+};
 const repoName = (repo: string): string => repo.slice(repo.indexOf('/') + 1).toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
 export const GRAMMARS: Grammar[] = [
@@ -59,6 +65,7 @@ export const GRAMMARS: Grammar[] = [
       const seg = githubRepo(u);
       return seg && seg[2] === 'issues' && /^\d+$/.test(seg[3] ?? '') ? `${seg[0]}/${seg[1]}#${seg[3]}` : undefined;
     },
+    href: (rest) => githubHref(rest, 'issues'),
     slug: (rest) => `${repoName(rest.slice(0, rest.indexOf('#')))}-${rest.slice(rest.indexOf('#') + 1)}`,
   },
   {
@@ -67,6 +74,7 @@ export const GRAMMARS: Grammar[] = [
       const seg = githubRepo(u);
       return seg && seg[2] === 'pull' && /^\d+$/.test(seg[3] ?? '') ? `${seg[0]}/${seg[1]}#${seg[3]}` : undefined;
     },
+    href: (rest) => githubHref(rest, 'pull'),
   },
   {
     // a branch, written as its key: `branch:<name>`. Its last segment, less the harness's `worktree-` prefix, is the
@@ -82,6 +90,7 @@ export const GRAMMARS: Grammar[] = [
       const seg = githubRepo(u);
       return seg && seg.length === 2 ? `${seg[0]}/${seg[1].replace(/\.git$/, '')}` : undefined;
     },
+    href: (rest) => (new RegExp(`^${REPO}$`).test(rest) ? `https://github.com/${rest}` : undefined),
   },
 ];
 
@@ -93,6 +102,17 @@ export function slugFor(kind: string, rest: string): string {
   if (g?.slug) return g.slug(rest);
   const s = rest.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   return SLUG_RE.test(s) ? s : `t-${s}`;
+}
+
+/** The URL a source opens: the one its record carries, else one its kind builds from the key, else the key's own
+ *  (`url:`); undefined for a kind with no place outside the store (a file, a branch). */
+export function urlOf(key: string, recordUrl?: unknown): string | undefined {
+  if (typeof recordUrl === 'string' && /^https?:\/\//.test(recordUrl)) return recordUrl;
+  const i = key.indexOf(':');
+  const kind = key.slice(0, i);
+  const rest = key.slice(i + 1);
+  if (kind === 'url') return /^https?:\/\//.test(rest) ? rest : undefined;
+  return grammarOf(kind)?.href?.(rest);
 }
 
 /** The source key a vendor URL names, when a grammar knows the shape. */

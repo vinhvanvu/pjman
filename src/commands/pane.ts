@@ -98,7 +98,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
   const facts: string[] = [`**${c.change.status ?? '?'}**`];
   if (typeof d.project === 'string') facts.push(d.project);
   if (c.parent) facts.push(`part of \`${c.parent.key}\``);
-  for (const s of c.sources.filter((s) => s.via === 'binds')) facts.push(`binds ${link(s.key, s.record?.data.url)}`);
+  for (const s of c.sources.filter((s) => s.via === 'binds')) facts.push(`binds ${link(s.key, s.url)}`);
   out.push(facts.join(' · '));
   for (const l of readinessLines(c, 'change')) out.push(`\n> ${esc(l)}`);
   if (c.next) out.push(`\n> **next:** ${esc(nextLine(c.next))}`);
@@ -121,7 +121,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
   const links = c.sources.filter((s) => s.via === 'links');
   if (links.length) {
     out.push('\n### Sources');
-    for (const s of links) out.push(`- ${link(s.key, s.record?.data.url, s.record?.title)}`);
+    for (const s of links) out.push(`- ${link(s.key, s.url, s.record?.title)}`);
   }
   if (c.observed.length) {
     out.push('\n### Files touched');

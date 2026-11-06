@@ -78,6 +78,7 @@ test('a sync applies the repository from the project link: sources, changes, par
   const loaded = loadStore(store);
   const c1 = loaded.byKey.get('change:app/app-1')![0];
   assert.deepEqual(c1.data.binds, ['github-issue:acme/app#1']);
+  assert.equal(c1.data.links, undefined); // the bind is the link: the ticket is never listed twice
   assert.equal(c1.data.status, 'open');
   assert.equal(loaded.byKey.get('change:app/app-2')![0].data.parent, 'change:app/app-1');
   assert.equal(loaded.byKey.get('change:app/app-2')![0].data.kind, 'bug');

@@ -6,6 +6,7 @@ import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType 
 import { supersedesOf } from '../supersede.js';
 import { effectsOf } from '../tree.js';
 import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
+import { urlOf } from '../refs.js';
 import { CliError } from '../util.js';
 import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from '../foundation.js';
 
@@ -155,7 +156,8 @@ export interface ChangeContext {
   /** Mapped mechanically from the old shape on this date and not written through the tool since. */
   migrated?: string;
   decisions: DecisionRow[];
-  sources: { key: string; record?: Row; via: 'binds' | 'links' }[];
+  /** Each source once: a key both bound and linked is listed as bound. `url` is where it opens outside the store. */
+  sources: { key: string; record?: Row; via: 'binds' | 'links'; url?: string }[];
   /** The change's branch: one a session was seen on (observed), else the recommended name derived from the key. */
   branch?: { name: string; worktree: string; observed: boolean };
   sessions: (Row & { last?: string })[];
@@ -245,8 +247,10 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
   for (const via of ['binds', 'links'] as const) {
     for (const k of list(rec.data[via])) {
+      if (sources.some((s) => s.key === k)) continue;
       const r = resolve(loaded, k);
-      sources.push({ key: k, via, record: r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? row(r.rec) : undefined });
+      const record = r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? row(r.rec) : undefined;
+      sources.push({ key: k, via, record, url: urlOf(k, record?.data.url) });
     }
   }
   const sessions = sessionsOf(loaded, rec.key).map((r) => {
@@ -361,7 +365,7 @@ export function formatChangeContext(c: ChangeContext): string {
     out.push('\n## Sources');
     for (const s of c.sources) {
       const t = s.record?.title ? ` — ${s.record.title}` : '';
-      const u = typeof s.record?.data.url === 'string' ? ` (${s.record.data.url})` : '';
+      const u = s.url && s.url !== s.key.slice('url:'.length) ? ` (${s.url})` : '';
       out.push(`- ${s.via} ${s.key}${t}${u}`);
     }
   }

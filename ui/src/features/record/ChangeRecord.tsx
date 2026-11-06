@@ -11,6 +11,7 @@ import { DecideControl } from '@/components/decisions/DecideControl';
 import { useDecideAction } from '@/data/queries';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
+import { SourceChip } from '@/components/links/SourceChip';
 import { Presence } from '@/components/presence/Presence';
 import { ChangeAspectsView } from '@/features/aspects';
 import { LEAD_SECTIONS, Plan, Readiness, Sections } from '@/components/record/Foundation';
@@ -53,13 +54,7 @@ export function ChangeRecord({
             </Chip>
           )}
           {typeof c.data.target === 'string' && <Chip tone="quiet">target {c.data.target}</Chip>}
-          {ticket && (
-            <NodeLink to={ticket} lens={lens}>
-              <Chip tone="quiet" mono>
-                {short(ticket)}
-              </Chip>
-            </NodeLink>
-          )}
+          {ticket && <SourceChip source={ctx.sources.find((s) => s.key === ticket) ?? { key: ticket }} lens={lens} />}
           {ctx.parent && (
             <NodeLink to={ctx.parent.key} lens={lens}>
               <Chip tone="quiet">↳ {short(ctx.parent.key)}</Chip>
@@ -72,7 +67,9 @@ export function ChangeRecord({
           )}
         </div>
         <h1 className="text-heading font-semibold tracking-tight">{c.name ?? c.title ?? short(c.key)}</h1>
-        {c.name && c.title && c.title !== c.name && <p className="text-[13px] leading-relaxed text-ink-muted">{c.title}</p>}
+        {c.name && c.title && c.title !== c.name && (
+          <p className="text-[13px] leading-relaxed text-ink-muted">{c.title}</p>
+        )}
         <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
         {ctx.branch && (
           <div
@@ -150,7 +147,6 @@ export function ChangeRecord({
                 </div>
                 {d.name && d.title && <p className="line-clamp-2 text-xs text-ink-muted">{d.title}</p>}
                 <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />
-
               </li>
             ))}
           </ul>
@@ -218,11 +214,7 @@ export function ChangeRecord({
         <section className="flex flex-wrap items-center gap-2">
           <Label>Sources</Label>
           {ctx.sources.map((s) => (
-            <NodeLink key={s.key} to={s.key} lens={lens}>
-              <Chip tone="quiet" mono title={s.via}>
-                {short(s.key)}
-              </Chip>
-            </NodeLink>
+            <SourceChip key={s.key} source={s} lens={lens} title={s.via} />
           ))}
         </section>
       )}

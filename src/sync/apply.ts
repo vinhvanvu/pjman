@@ -132,7 +132,7 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       // the gist is a draft from the ticket's title; the name, intent and done-when are written by whoever first works it
       const gist = t.title.replace(/\s+/g, ' ').trim();
       const body = `## Origin\n\n${originText(sourceKey, { session }, stamp.created)}\n`;
-      const data = { gist, status: t.status, kind: t.kind, project: project.key, owners: owners.length ? owners : undefined, binds: [sourceKey], links: [sourceKey], rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))), ...stamp };
+      const data = { gist, status: t.status, kind: t.kind, project: project.key, owners: owners.length ? owners : undefined, binds: [sourceKey], rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))), ...stamp };
       write(undefined, 'change', rel, changeKey, data, body, []);
     }
   }
