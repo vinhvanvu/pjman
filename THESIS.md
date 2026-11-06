@@ -1,6 +1,6 @@
 # pjman — thesis and roadmap
 
-*Working name. The pitch and the plan. The decisions are records in the store (`.pjman/`; `pjman ls decision`, `pjman show <key>`); the Phase 1 record contract is `SCHEMA.md`; the tool is documented in `README.md`; the layer catalog is `LAYERS.md`; the research is under `reports/`; adversarial reviews under `reviews/`. This document states what is true now; history lives in the decision records and in git.*
+*Working name. The pitch and the plan. The decisions are records in the store (`.pjman/`; `pjman ls decision`, `pjman show <key>`); the Phase 1 record contract is `SCHEMA.md`; the tool is documented in `docs/reference.md`; the layer catalog is `LAYERS.md`; the research is under `reports/`; adversarial reviews under `reviews/`. This document states what is true now; history lives in the decision records and in git.*
 
 ---
 

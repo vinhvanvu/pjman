@@ -2,7 +2,26 @@
   "name": "pjman",
   "version": "0.2.0",
   "description": "A context graph for product development: typed records in git under one schema, and the tool that is the schema.",
-  "private": true,
+  "keywords": [
+    "context-graph",
+    "product-development",
+    "decisions",
+    "changes",
+    "agents",
+    "claude-code",
+    "mcp",
+    "markdown",
+    "git"
+  ],
+  "homepage": "https://github.com/vinhvanvu/pjman#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinhvanvu/pjman.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vinhvanvu/pjman/issues"
+  },
+  "author": "Vinh Van Vu",
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
@@ -10,9 +29,15 @@
   },
   "files": [
     "bin",
-    "dist",
+    "dist/*.js",
+    "dist/*.d.ts",
+    "dist/commands",
+    "dist/sync",
+    "dist/ui",
     "adapters",
-    ".claude-plugin"
+    ".claude-plugin",
+    "NOTICE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=22.13"

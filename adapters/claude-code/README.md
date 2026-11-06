@@ -26,12 +26,19 @@ For a session:
 claude --plugin-dir /path/to/pjman/adapters/claude-code
 ```
 
-Permanently, add this repository as a local marketplace and install from it:
+Permanently, add this repository as a marketplace and install from it, from GitHub or from a checkout:
+
+```
+/plugin marketplace add vinhvanvu/pjman
+/plugin install pjman@pjman
+```
 
 ```
 /plugin marketplace add /path/to/pjman
 /plugin install pjman@pjman
 ```
+
+The plugin and the tool are one package: `pjman init` points the marketplace at the installed copy of pjman, so the hooks and the skills come from the same build as the command they call. A marketplace added from GitHub follows the repository's main branch instead.
 
 The user config `~/.pjman/config.yaml` names the person the sessions run for (`actor: person:<handle>`); `pjman init` sets it, from the forge login, else the committer name, else the machine's account name. At session start (startup and `/clear`, never on resume, compact or in a subagent) the hook runs `pjman whoami --verify` and injects one block only when something is off: a provisional handle (no account of a handle kind claimed), a sign-in another person claims, an account the app does not know. The block carries the command that resolves it; the agent offers it to the person and never runs a rename or a claim unasked. The tool caches the apps' answers for a day, so the check costs a session start nothing after the first.
 
