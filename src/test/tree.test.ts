@@ -98,7 +98,7 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   change(store, 'drop-scan', { title: 'Drop card scan', summary: 's', project: 'project:web', features: ['removes feature:shop/card-scan'], status: 'done' });
   loaded = loadStore(store);
   assert.equal(derivedStatus(loaded, 'feature:shop/card-scan').status, 'retired');
-  // nothing to derive from: the authored status stands (a cold-started map), and lifts its parent; a change that names it takes over
+  // nothing to derive from: the authored status stands (a cold-started map), and lifts its parent
   newRecord(store, 'feature', 'cold', { title: 'Cold', product: 'product:shop', status: 'live' });
   newRecord(store, 'feature', 'cold-kid', { title: 'Cold kid', parent: 'feature:shop/cold', status: 'live' });
   newRecord(store, 'feature', 'cold-plan', { title: 'Cold plan', parent: 'feature:shop/cold' });
@@ -106,11 +106,17 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   assert.deepEqual(derivedStatus(loaded, 'feature:shop/cold-kid'), { status: 'live', because: 'authored; no change affects it yet' });
   assert.equal(derivedStatus(loaded, 'feature:shop/cold').status, 'live');
   assert.equal(derivedStatus(loaded, 'feature:shop/cold-plan').status, 'planned');
+  // an open change decides nothing: the authored status still stands; one in flight reads building
   change(store, 'rework-kid', { title: 'Rework', summary: 's', project: 'project:web', features: ['feature:shop/cold-kid'], status: 'open' });
-  assert.equal(derivedStatus(loadStore(store), 'feature:shop/cold-kid').status, 'planned');
+  assert.deepEqual(derivedStatus(loadStore(store), 'feature:shop/cold-kid'), { status: 'live', because: 'authored; nothing affecting it is done or in flight' });
   set(store, 'change:shop/rework-kid', ['status=active'], {});
   assert.equal(derivedStatus(loadStore(store), 'feature:shop/cold-kid').status, 'building');
-  for (const k of ['change:shop/rework-kid', 'feature:shop/cold-plan', 'feature:shop/cold-kid', 'feature:shop/cold']) rm(store, k);
+  // a done change that changes a node derives live, whatever was authored
+  set(store, 'change:shop/rework-kid', ['status=done'], {});
+  assert.deepEqual(derivedStatus(loadStore(store), 'feature:shop/cold-kid'), { status: 'live', because: 'change:shop/rework-kid (changes) is done' });
+  change(store, 'touch-plan', { title: 'Touch plan', summary: 's', project: 'project:web', features: ['feature:shop/cold-plan'], status: 'done' });
+  assert.equal(derivedStatus(loadStore(store), 'feature:shop/cold-plan').status, 'live');
+  for (const k of ['change:shop/touch-plan', 'change:shop/rework-kid', 'feature:shop/cold-plan', 'feature:shop/cold-kid', 'feature:shop/cold']) rm(store, k);
   loaded = loadStore(store);
 
   // the tree with roll-ups

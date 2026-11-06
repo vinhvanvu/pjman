@@ -188,9 +188,9 @@ export interface DerivedStatus {
   because: string;
 }
 
-/** What the done changes say a feature's state is: removed once a removing change is done, live once an adding change is
- *  done, building while any change that affects it is in flight (active, review, blocked; planning and open are not), else planned. A child's state lifts a parent to at
- *  least building or live. */
+/** What the done changes say a feature's state is: removed once a removing change is done, live once an adding or changing
+ *  change is done, building while any change that affects it is in flight (active, review, blocked; planning and open are not). A child's state lifts a parent to at
+ *  least building or live. When nothing decides it, the authored status stands, else planned. */
 export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
   const affecting = loaded.records.filter((r) => r.type === 'change' && r.valid && effectsOf(r).some((e) => live(loaded, e.key)?.key === key));
   const done = (e: EffectName) => affecting.filter((r) => r.data.status === 'done' && effectsOf(r).some((x) => x.effect === e && live(loaded, x.key)?.key === key));
@@ -198,6 +198,9 @@ export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
   if (removed.length) return { status: 'retired', because: `${removed[removed.length - 1].key} (removes) is done` };
   const added = done('adds');
   if (added.length) return { status: 'live', because: `${added[0].key} (adds) is done` };
+  // a change to a node is a change to something that exists
+  const changed = done('changes');
+  if (changed.length) return { status: 'live', because: `${changed[changed.length - 1].key} (changes) is done` };
   // in flight means someone is building: active, review or blocked. planning is thinking; open is a backlog line.
   const inFlight = affecting.filter((r) => ['active', 'review', 'blocked'].includes(String(r.data.status)));
   if (inFlight.length) return { status: 'building', because: `${inFlight.map((r) => r.key).join(', ')} in flight` };
@@ -205,11 +208,10 @@ export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
   const childStates = children.map((c) => derivedStatus(loaded, c.key).status);
   if (childStates.includes('live')) return { status: 'live', because: 'a child is live' };
   if (childStates.includes('building')) return { status: 'building', because: 'a child is building' };
-  if (affecting.length) return { status: 'planned', because: 'nothing affecting it is done or in flight' };
-  // nothing to derive from: the authored status stands (a cold-started map is read from the documentation until changes name it)
+  // nothing to derive from: the authored status stands (a cold-started map is read from the documentation until a change decides it)
   const authored = loaded.byKey.get(key)?.[0]?.data.status;
-  if (typeof authored === 'string' && (FEATURE_STATUSES as readonly string[]).includes(authored)) return { status: authored as DerivedStatus['status'], because: 'authored; no change affects it yet' };
-  return { status: 'planned', because: 'no change affects it yet' };
+  if (typeof authored === 'string' && (FEATURE_STATUSES as readonly string[]).includes(authored)) return { status: authored as DerivedStatus['status'], because: affecting.length ? 'authored; nothing affecting it is done or in flight' : 'authored; no change affects it yet' };
+  return { status: 'planned', because: affecting.length ? 'nothing affecting it is done or in flight' : 'no change affects it yet' };
 }
 
 export interface TreeNode {
