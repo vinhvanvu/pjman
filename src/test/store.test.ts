@@ -665,15 +665,16 @@ test('a feature rename keeps the old slug as an alias; apply lands a batch as on
   ].join('\n');
   const a = apply(store, batch, run, { for: 'change:project/board-work' });
   assert.equal(a.lines, 3);
-  assert.equal(a.writes, 3);
+  // the step added lifts the change to planning, inside the batch: four writes, one commit
+  assert.equal(a.writes, 4);
   assert.ok(a.commit);
   assert.equal(git(store.root, 'rev-list', '--count', `${before}..HEAD`), '1');
-  assert.match(git(store.root, 'log', '-1', '--format=%s%n%(trailers:key=Pjman-For,valueonly)'), /^pjman: apply 3 writes for change:project\/board-work\nchange:project\/board-work/);
+  assert.match(git(store.root, 'log', '-1', '--format=%s%n%(trailers:key=Pjman-For,valueonly)'), /^pjman: apply 4 writes for change:project\/board-work\nchange:project\/board-work/);
   assert.equal(loadStore(store).byKey.get('feature:shop/lanes')![0].data.parent, 'feature:shop/io');
   const evs = readEvents(store, seqBefore);
-  assert.deepEqual(evs.map((e) => e.op), ['created', 'set', 'set', 'applied']);
+  assert.deepEqual(evs.map((e) => e.op), ['created', 'set', 'set', 'set', 'applied']);
   assert.ok(evs.every((e) => e.commit === a.commit));
-  assert.deepEqual(evs.at(-1)!.fields, ['3 writes']);
+  assert.deepEqual(evs.at(-1)!.fields, ['4 writes']);
   // a line that fails refuses the whole batch: nothing written, nothing committed
   assert.throws(() => apply(store, 'set feature:io title=Changed\nset feature:nope title=x', run), /refused at line 2 .*nothing was written/s);
   assert.equal(git(store.root, 'rev-parse', 'HEAD'), git(store.root, 'rev-parse', 'HEAD'));

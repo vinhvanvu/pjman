@@ -70,8 +70,9 @@ working it.
 3. **Keep the plan true.** The plan is steps written only through commands: `pjman step <change> add "…"`, `start
    <n>`, `done <n> [--note "…"]`, `drop <n>`, `note <n> "<where the work stands>"`, `move <n> --before <m>`. Before
    you stop on a change, leave the plan where the work stands: the step in progress noted, the next one first among
-   the open ones, an outside blocker in `blocked-on=…`, and the status if it moved (`open, planning, active, blocked,
-   review, done, dropped`). Whoever resumes reads the next step, not a handoff paragraph.
+   the open ones, an outside blocker in `blocked-on=…`, and the status if it moved to `blocked`, `review`, `done` or
+   `dropped`; `planning` and `active` follow the plan by themselves (a step added, a step started, a file written for
+   the change). Whoever resumes reads the next step, not a handoff paragraph.
 4. **A new unit of work is a change, filed through intake.** Follow the `intake` skill first: `pjman intake "<the
    request>"` shows what already exists (duplicates, the nodes it may alter, the milestones, the order's tail); then
    ```

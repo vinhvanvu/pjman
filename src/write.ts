@@ -7,6 +7,7 @@ import { commitAll } from './git.js';
 import { FIELD_ORDER, fullKey, loadStore, type Loaded, type Problem, type RecordType } from './records.js';
 import { CliError } from './util.js';
 import { formatProblems, validate } from './validate.js';
+import { liftAfter } from './lift.js';
 
 export interface Envelope {
   writer?: string;
@@ -88,14 +89,18 @@ export function commitIfStandalone(store: Store, message: string, session?: stri
   return commitAll(store.root, message, session);
 }
 
-/** The end of every write: commit (standalone), then one event per record written, carrying the commit. */
+/** The end of every write: commit (standalone), then one event per record written, carrying the commit, then the status
+ *  lift those events call for. */
 export function finishWrite(store: Store, message: string, session: string | undefined, events: EventInput[]): string | null {
   if (batch) {
     batch.push(...events.map((e) => ({ ...e, session: e.session ?? session })));
+    liftAfter(store, events, session);
     return null;
   }
   const commit = commitIfStandalone(store, message, session);
   emit(store, events.map((e) => ({ ...e, session: e.session ?? session })), commit);
+  // the status lift: a write that moves a change's plan or its work forward moves its status, as writes of its own
+  liftAfter(store, events, session);
   return commit;
 }
 
