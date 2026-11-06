@@ -194,6 +194,7 @@ if (branch !== 'main') fail(`on ${branch}, not main; a release is cut from main`
 if (git('status', '--porcelain')) fail('the working tree is not clean; commit or set the work aside first');
 if (soft('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`])) fail(`tag ${tag} exists; a release that stopped after its tag is finished by hand with the commands it printed`);
 if (!ok('gh', ['auth', 'status'])) fail('gh is not signed in; the release is created with gh');
+if (!ok('npm', ['whoami'])) fail('npm is not signed in (npm login); the release publishes the package to npm');
 
 // ---- the build, so the commit carries the built app -----------------------------------------------------------------
 
@@ -249,6 +250,7 @@ fs.writeFileSync(notes, entry);
 const recordArgs = ['new', 'release', `${product}/${next}`, '--at', new Date().toISOString(), '--level', level, '--commit', sha, ...ships.flatMap((k) => ['--ships', k]), '--body', '-'];
 const remaining = [
   `gh release create ${tag} ${tarball} --title ${tag} --notes-file ${notes} --verify-tag`,
+  `npm publish ${tarball} --access public`,
   `node bin/pjman.js ${recordArgs.join(' ')} --url <the release URL> < ${notes}`,
 ];
 const step = (what, fn) => {
@@ -264,7 +266,12 @@ step('the push', () => git('push', '-q', 'origin', 'main', tag));
 const url = step('the GitHub release', () => run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag']));
 say(`released ${tag}: ${url}`);
 remaining.shift();
-remaining[0] = remaining[0].replace('<the release URL>', url);
+remaining[1] = remaining[1].replace('<the release URL>', url);
+
+// the same bits on npm: npm install -g pjman is the install, and the Homebrew formula reads the registry's tarball
+step('the npm publish', () => run('npm', ['publish', tarball, '--access', 'public']));
+say(`published pjman@${next} to npm`);
+remaining.shift();
 
 // the release as a record: its creation is the event (decision releases-homebrew/release-is-a-record)
 const record = step('the release record', () => pjman([...recordArgs, '--url', url], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] }));
