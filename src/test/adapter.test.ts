@@ -240,3 +240,50 @@ test('SessionStart exports the session and the agent as writer to the agent\'s s
   run({ agent_id: 'sub-env' });
   assert.equal(fs.readFileSync(file, 'utf8'), text, 'a subagent shares its parent\'s');
 });
+
+test('in cmux the pane belongs to the terminal: a cleared session leaves it open and the next one navigates it; another terminal keeps its own', () => {
+  // a cmux that knows the surfaces it opened and records every call; a dashboard that is running
+  const cbin = path.join(tmp, 'cmux-bin');
+  const calls = path.join(tmp, 'cmux-calls');
+  const open = path.join(tmp, 'cmux-open');
+  fs.mkdirSync(cbin, { recursive: true });
+  fs.writeFileSync(open, '');
+  fs.writeFileSync(path.join(cbin, 'cmux'), `#!/bin/sh
+echo "$*" >> '${calls}'
+case "$1 $2" in
+  "browser open") n=$(($(wc -l < '${open}') + 1)); echo "surface:$n" >> '${open}'; echo "OK surface=surface:$n";;
+  "browser --surface") grep -qx "$3" '${open}' || { echo "Error: invalid_params" >&2; exit 1; };;
+  "close-surface --surface") grep -vx "$3" '${open}' > '${open}.n'; mv '${open}.n' '${open}';;
+esac
+`, { mode: 0o755 });
+  fs.writeFileSync(path.join(env.PJMAN_HOME, 'serve.json'), JSON.stringify({ pid: process.pid, url: 'http://dash.test' }));
+  const at = (terminal: string, event: string, input: Record<string, unknown>) =>
+    execFileSync(process.execPath, [HOOK, event], {
+      input: JSON.stringify({ cwd: project, ...input }),
+      encoding: 'utf8',
+      env: { ...env, PATH: `${cbin}:${(env as Record<string, string>).PATH}`, CMUX_BUNDLE_ID: 'com.cmuxterm.app', CMUX_SURFACE_ID: terminal },
+    });
+  const seen = () => fs.readFileSync(calls, 'utf8').split('\n').filter((l) => l.startsWith('browser') || l.startsWith('close-surface'));
+  try {
+    at('T1', 'SessionStart', { session_id: 'dock-1', source: 'startup' });
+    at('T1', 'SessionStart', { session_id: 'dock-1', source: 'compact' });
+    assert.deepEqual(seen(), ['browser open http://dash.test/session/dock-1'], 'a compacted session keeps its page as it is');
+    // /clear: the old session ends and keeps the pane; the new one points it at its own page
+    at('T1', 'SessionEnd', { session_id: 'dock-1', reason: 'clear' });
+    at('T1', 'SessionStart', { session_id: 'dock-2', source: 'clear' });
+    assert.deepEqual(seen().slice(1), ['browser --surface surface:1 navigate http://dash.test/session/dock-2']);
+    // a second terminal docks its own pane, and its end closes only that one
+    at('T2', 'SessionStart', { session_id: 'dock-3', source: 'startup' });
+    at('T2', 'SessionEnd', { session_id: 'dock-3', reason: 'prompt_input_exit' });
+    assert.deepEqual(seen().slice(2), ['browser open http://dash.test/session/dock-3', 'close-surface --surface surface:2']);
+    // a pane the person closed: the next session opens a new one
+    at('T1', 'SessionEnd', { session_id: 'dock-2', reason: 'clear' });
+    fs.writeFileSync(open, '');
+    at('T1', 'SessionStart', { session_id: 'dock-4', source: 'clear' });
+    assert.deepEqual(seen().slice(4), ['browser --surface surface:1 navigate http://dash.test/session/dock-4', 'browser open http://dash.test/session/dock-4']);
+    at('T1', 'SessionEnd', { session_id: 'dock-4', reason: 'logout' });
+    assert.deepEqual(seen().slice(6), ['close-surface --surface surface:1']);
+  } finally {
+    fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });
+  }
+});
