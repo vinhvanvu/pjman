@@ -1,6 +1,6 @@
 # pjman — schema v3 (Phase 1)
 
-*The record contract for Phase 1: layers 0–2, core, sources, work. Layer 3 (product, features) and layer 4 (authority) are Phase 2 and 3 and are not specified here. The tool (`README.md`) implements this contract; where the two disagree, the tool is wrong. Fields are marked **A** (authored by an actor on intent; may be hand-edited) or **M** (maintained by one named writer — an adapter or the tool; hand edits are reported, not forbidden). There is no "derived and checked" class: nothing in a record is verified against what a tool previously wrote.*
+*The record contract for Phase 1: layers 0–2, core, sources, work. Layer 3 (product, features) and layer 4 (authority) are Phase 2 and 3 and are not specified here. The tool (`docs/reference.md`) implements this contract; where the two disagree, the tool is wrong. Fields are marked **A** (authored by an actor on intent; may be hand-edited) or **M** (maintained by one named writer — an adapter or the tool; hand edits are reported, not forbidden). There is no "derived and checked" class: nothing in a record is verified against what a tool previously wrote.*
 
 ```
 2 · Work      change, decision, the status vocabulary
