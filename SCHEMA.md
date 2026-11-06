@@ -189,7 +189,7 @@ Set aside: `pjman init --in-project` makes a store at `<repo>/.pjman/`, tracked 
 
 **Git policy.** The tool shells out to git for four things and wraps nothing else: `init` (initialise the store; ignore `index.db`), `mv` (stage the rename so history follows), reading history for views and provenance, and committing — the tool commits after every write it makes to the global store, with a `Pjman-Session:` trailer when a session is known; an in-project store it never commits, the project's own workflow does. Branches, remotes, push and merge are the user's. Git on `PATH` is the only dependency.
 
-`pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`. `~/.pjman/config.yaml`: `actor`, and `stores[].projects[]` as `{path, project}`. Configuration is never in a record.
+`pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`, `version:` (the format the store is in: the pjman version that introduced its latest move, stamped by `pjman init` and by `pjman migrate`, never by an ordinary write; absent on a store from before the field, which reads as 0.1.0; a store stamped newer than the tool is refused for writing, naming the version to install, and one stamped older is told to migrate; decision releases-homebrew/store-names-its-version). `~/.pjman/config.yaml`: `actor`, and `stores[].projects[]` as `{path, project}`. Configuration is never in a record.
 
 ---
 
@@ -261,6 +261,23 @@ Opened `proposed` before the work it governs, with its options laid out and one 
 
 Body: `## Notes` only. The decision's text is its thread.
 
+### Release — `products/<product>/releases/<version>.md`
+
+A version the product shipped (decision releases-homebrew/release-is-a-record): keyed under the product by its version, `release:<product>/<version>` (`release:0.2.0` inside the product), written by `pjman new release` from the release command and never by hand. Its creation is the event a release is; what it shipped is read from it, so a change's shipped-in and the version a feature first went live in are derived through the graph.
+
+| Field | A/M | Notes |
+|---|---|---|
+| `version` | M | Plain semver, the file name: `0.2.0` |
+| `tag` | M | The git tag, `v<version>` |
+| `level` | M | `patch` · `minor` · `major`: how the version moved, derived from the changes shipped (a bug a patch, a change naming a feature a minor, a store move at least a minor) or typed |
+| `at` | M | The instant the release was cut |
+| `commit` | M | The commit the release was cut from, on main |
+| `url` | A | The published release (the tarball is attached to it) |
+| `ships` | M | The changes it shipped, in order, each of this product; a change is listed once |
+| `links` | A | Optional source keys |
+
+Body: the release notes as published, one line per change in the words the change was written in, grouped Added, Changed, Fixed, Removed, Store, Also.
+
 ### Status vocabulary
 
 | Status | Meaning |
@@ -292,6 +309,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `adds`, `changes`, `removes` | change → aspect, place | change (`aspects`) | what the change does to the aspect; its context carries it whole |
 | `parent` | aspect → aspect | aspect | same product; no cycles |
 | `feature` | place → feature | place | the feature must exist, in the aspect's product; one place per feature per aspect |
+| `ships` | release → change | release | every change must exist, in the release's product, listed once; the reverse (a change's release) is derived |
 | `links` | change · decision · source → source | the referrer | — |
 | `supersedes` | decision → decision (one or many) | decision | the target becomes `superseded`; a target already superseded by another decision is refused; no cycles |
 | `parent` | session → session | session | — |

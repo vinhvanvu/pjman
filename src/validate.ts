@@ -98,6 +98,7 @@ export function validate(loaded: Loaded): Problem[] {
     problems.push({ level: 'warning', path: typeof r === 'string' ? r : r.path, message });
   const info = (r: Rec | string, message: string) =>
     problems.push({ level: 'info', path: typeof r === 'string' ? r : r.path, message });
+  if (!store.config.version) info('pjman.yaml', 'the store names no format version (read as 0.1.0); pjman migrate stamps it');
 
   /** The scope a record's own references resolve in: its product, or none. Never the current project's. */
   const scopeOf = (r: Rec): string | null => r.productSlug ?? null;

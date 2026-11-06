@@ -32,7 +32,7 @@ A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): th
 `pjman init --in-project` makes a store at `<repo>/.pjman/` instead, tracked with the project and never committed by the tool. It is set aside: kept for a repository that must carry its own record.
 
 ```
-pjman.yaml                                             name, layers, vocabulary, source_kinds
+pjman.yaml                                             name, layers, vocabulary, source_kinds, version (the format the store is in)
 products/<p>/product.md                                product:<p>                 the root and the namespace
 products/<p>/features/<slug>/feature.md                feature:<p>/<slug>          nests by its parent field, never by folder
 products/<p>/changes/<slug>/change.md                  change:<p>/<slug>           carries its project (a project of <p>)
@@ -40,6 +40,7 @@ products/<p>/changes/<c>/decisions/<date>-<slug>.md    decision:<p>/<c>/<slug>
 products/<p>/decisions/<date>-<slug>.md                decision:<p>/<slug>         (product level)
 products/<p>/aspects/<slug>/aspect.md                  aspect:<p>/<slug>           what applies across the product; the body is the base
 products/<p>/aspects/<a>/places/<place>.md             aspect:<p>/<a>/<place>      where it applies (a feature); the body is the fork
+products/<p>/releases/<version>.md                     release:<p>/<version>       a version the product shipped, and the changes it ships
 decisions/<date>-<slug>.md                             decision:/<slug>            (store level)
 projects/<slug>.md                                     project:<slug>              a repository, naming its product
 sources/<kind>/<key-slug>.md                 <kind>:<key>                (optional; a source may exist as a key only)
@@ -52,7 +53,7 @@ Keys are a namespace and a slug: the product for features, changes and decisions
 the tree is a field, never part of a key. Inside a project the slug alone names a record (`change:schema`,
 `feature:store`, `decision:schema/keys`): the tool resolves the short form in the project's product, store-wide when
 one product has the slug, and refuses it as ambiguous otherwise. The store writes full keys; text output read inside a
-project drops the product segment, JSON keeps it. `pjman migrate` moves a store from the flat layout before this, once.
+project drops the product segment, JSON keeps it. `pjman migrate` makes the one move the store still waits for, in order: the layout (from the flat layout before this), the foundation (changes and decisions into their shape), then the stamp. The store names the format it is in (`version:` in `pjman.yaml`, the pjman version that introduced its latest move), stamped by `pjman init` and by `pjman migrate` and never by an ordinary write; a store with no stamp reads as 0.1.0. A pjman older than the store refuses to write it and names the version to install; one newer says to migrate. Each move names the version that introduced it, and the release that ships a new move is at least a minor.
 
 ## Commands
 
@@ -69,6 +70,7 @@ pjman new change <slug> --name … --gist … --origin … --intent … --done-w
 pjman decision <change>/<slug> --name … --gist … --question … [--criterion …]… --option <id>=<one line>… [--case <id>=<points, one per line>]… [--recommend <id>[=why]] [--supersedes <decision>] [--links <key>]…
 pjman decision <key> [--question …] [--option <id>=…]… [--comment … --by person:<handle>] [--reject <id>[=why]]… [--recommend <id>[=why]] [--accept <id>[=their words] --by person:<handle> [--revisit …]] [--reopen] [--from -]
 pjman step <change> add <text> [--before <n>|--after <n>|--first|--last] | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last
+pjman new release <version> --at <timestamp> [--level patch|minor|major] [--commit <sha>] [--url …] [--ships <change>]… [--body <notes>|-]   written by npm run release; its creation is the event
 pjman new source <kind>:<key> [--title …] [--url …]
 pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
 pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>]

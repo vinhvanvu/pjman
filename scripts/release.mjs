@@ -11,6 +11,8 @@
 // merge (`worktree-<slug>`). What each change is comes from the store: a bug is a patch, a change that names a feature
 // it adds, changes or removes is a minor, a change naming no node is a patch; the highest wins. A commit that resolves
 // to no change is listed under Also and counts as a patch, so nothing is dropped silently. Major is typed only.
+// A store migration the tool carries for a version past the current one makes the release at least a minor, and its
+// version must be the release's (decision releases-homebrew/store-names-its-version).
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -109,13 +111,30 @@ function classify(change) {
 }
 
 const entries = [...shipped.values()].map((e) => ({ ...e, ...classify(e.change) }));
-const derived = entries.reduce((top, e) => (LEVELS.indexOf(e.level) > LEVELS.indexOf(top) ? e.level : top), 'patch');
+const higher = (a, b) => (LEVELS.indexOf(b) > LEVELS.indexOf(a) ? b : a);
+let derived = entries.reduce(higher, 'patch');
+
+// the store's moves this release ships: the tool is built so its migrations are read from the same code that runs them
+say('building the tool…');
+run('npm', ['run', 'build'], { stdio: ['ignore', 'ignore', 'inherit'] });
+const { MIGRATIONS } = await import(path.join(root, 'dist', 'commands', 'migrate.js'));
+const cmp = (a, b) => {
+  const [x, y] = [a, b].map((v) => v.split('.').map(Number));
+  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  return 0;
+};
+const migrations = MIGRATIONS.filter((m) => cmp(m.since, current) > 0);
+if (migrations.length) derived = higher(derived, 'minor');
+
 const level = typed ?? derived;
 const bump = (v, l) => {
   const [a, b, c] = v.split('.').map(Number);
   return l === 'major' ? `${a + 1}.0.0` : l === 'minor' ? `${a}.${b + 1}.0` : `${a}.${b}.${c + 1}`;
 };
 const next = bump(current, level);
+for (const m of migrations) {
+  if (m.since !== next) fail(`the ${m.name} move says it is introduced in ${m.since}, but this release is ${next}; a store move ships in the release that introduces it (its since in src/commands/migrate.ts), at least a minor`);
+}
 const tag = `v${next}`;
 const today = new Date().toISOString().slice(0, 10);
 
@@ -124,6 +143,7 @@ const today = new Date().toISOString().slice(0, 10);
 const shortKey = (key) => key.replace(/^change:[^/]+\//, 'change:');
 say(`${current} → ${next} (${level}${typed ? ', typed' : derived === 'patch' && !entries.length ? ', nothing names a change' : ''}): ${commits.length} commit${commits.length === 1 ? '' : 's'} on main since ${lastTag ?? 'the first commit'}`);
 for (const e of entries) say(`  ${e.level.padEnd(5)}  ${shortKey(e.change.key)} — ${e.change.name ?? e.change.title}: ${e.change.data?.gist ?? ''}  (${e.why})`);
+for (const m of migrations) say(`  minor  the ${m.name} move of the store (${m.about}), introduced in ${m.since}`);
 for (const c of also) say(`  also   ${c.short} ${c.subject}`);
 if (typed && typed !== derived) say(`  typed ${typed} over the derived ${derived}`);
 
@@ -140,6 +160,11 @@ for (const group of GROUPS) {
     const gist = e.change.data?.gist ? `: ${e.change.data.gist}` : '';
     lines.push(`- **${name}**${gist} (${shortKey(e.change.key)})`);
   }
+  lines.push('');
+}
+if (migrations.length) {
+  lines.push('### Store', '');
+  for (const m of migrations) lines.push(`- The ${m.name} move: ${m.about}. Run \`pjman migrate\` once after installing.`);
   lines.push('');
 }
 if (also.length) {
@@ -167,7 +192,7 @@ if (!ok('gh', ['auth', 'status'])) fail('gh is not signed in; the release is cre
 
 // ---- the build, so the commit carries the built app -----------------------------------------------------------------
 
-say('building the tool and the app…');
+say('building the app…');
 run('npm', ['run', 'build:ui'], { stdio: ['ignore', 'ignore', 'inherit'] });
 
 // ---- the version, in every file that carries one --------------------------------------------------------------------
@@ -211,5 +236,15 @@ git('push', '-q', 'origin', 'main', tag);
 const notes = path.join(dest, 'notes.md');
 fs.writeFileSync(notes, entry);
 const url = run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag']);
-fs.rmSync(dest, { recursive: true, force: true });
 say(`released ${tag}: ${url}`);
+
+// ---- the release as a record: its creation is the event (decision releases-homebrew/release-is-a-record) -----------
+
+const sha = git('rev-parse', 'HEAD');
+const ships = entries.map((e) => e.change.key);
+const record = run('pjman', [
+  'new', 'release', next, '--at', new Date().toISOString(), '--level', level, '--commit', sha, '--url', url,
+  ...ships.flatMap((k) => ['--ships', k]), '--body', '-',
+], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] });
+fs.rmSync(dest, { recursive: true, force: true });
+say(record.split('\n')[0]);
