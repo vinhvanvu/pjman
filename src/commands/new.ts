@@ -208,7 +208,7 @@ export function newFeature(store: Store, ident: string, flags: NewFlags): NewRes
 function aspectProduct(loaded: Loaded, named: string | null, what: string): string {
   if (named) return productSlugOf(loaded, named, what);
   if (loaded.scope) return loaded.scope;
-  throw new CliError(`${what}: no product in scope; name it in the key (aspect:<product>/<slug>)`);
+  throw new CliError(`${what}: no product in scope; name it in the key (${what}:<product>/${what === 'release' ? '<version>' : '<slug>'})`);
 }
 
 export function newAspect(store: Store, ident: string, flags: NewFlags): NewResult {

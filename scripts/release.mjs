@@ -242,8 +242,11 @@ say(`released ${tag}: ${url}`);
 
 const sha = git('rev-parse', 'HEAD');
 const ships = entries.map((e) => e.change.key);
+// the product the release is of: the one the shipped changes are keyed under, else the project's
+const product = ships[0]?.replace(/^change:([^/]+)\/.*$/, '$1') ?? JSON.parse(run('pjman', ['where', '--json'])).product?.replace(/^product:/, '');
+if (!product) fail(`the release is of no product: nothing shipped names one and this directory maps to no project with a product`);
 const record = run('pjman', [
-  'new', 'release', next, '--at', new Date().toISOString(), '--level', level, '--commit', sha, '--url', url,
+  'new', 'release', `${product}/${next}`, '--at', new Date().toISOString(), '--level', level, '--commit', sha, '--url', url,
   ...ships.flatMap((k) => ['--ships', k]), '--body', '-',
 ], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] });
 fs.rmSync(dest, { recursive: true, force: true });
