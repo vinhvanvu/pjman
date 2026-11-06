@@ -10,6 +10,7 @@ import { CliError } from '../util.js';
 import { newActor, newProduct, newProject } from './new.js';
 import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
+import { FORMAT_VERSION } from './migrate.js';
 import { packageRoot, start } from './start.js';
 import { HANDLE_KINDS, checkersFor, formatIdentity, identity, machineName, type Checker } from '../identity.js';
 import { execFileSync } from 'node:child_process';
@@ -156,7 +157,7 @@ function originRepo(project: string): string | null {
 export function init(opts: InitOpts): string[] {
   const out: string[] = [];
   const project = toplevel(opts.cwd) ?? path.resolve(opts.cwd);
-  const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS], tree_levels: [...DEFAULT_TREE_LEVELS] });
+  const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS], tree_levels: [...DEFAULT_TREE_LEVELS], version: FORMAT_VERSION });
   // init is the person's own act, so the apps are asked afresh; the day's cache is refilled for the sessions that follow
   const checkers = checkersFor({ checkers: opts.checkers, fresh: true });
   const who = ensureActor(checkers);

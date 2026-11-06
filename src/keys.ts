@@ -5,16 +5,17 @@
 //   feature:<product>/<slug>            change:<product>/<slug>
 //   decision:<product>/<change>/<slug>  decision:<product>/<slug> (product level)  decision:/<slug> (store level)
 //   aspect:<product>/<slug>             aspect:<product>/<aspect>/<place> (a place the aspect applies)
+//   release:<product>/<version>         a version the product shipped (decision releases-homebrew/release-is-a-record)
 //
 // Inside a product the slug alone names a record (`feature:<slug>`, `change:<slug>`, `decision:<change>/<slug>`,
-// `aspect:<slug>`, `aspect:<aspect>/<place>`):
+// `aspect:<slug>`, `aspect:<aspect>/<place>`, `release:<version>`):
 // the bare form resolves through the scope at hand (records.ts). The full form is what the store writes.
 import { createHash } from 'node:crypto';
 
 /** Kinds whose keys name records inside the store. Every other kind is a source kind. */
-export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature', 'aspect']);
+export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature', 'aspect', 'release']);
 /** Kinds keyed beneath a product. */
-export const SCOPED_KINDS = new Set(['feature', 'change', 'decision', 'aspect']);
+export const SCOPED_KINDS = new Set(['feature', 'change', 'decision', 'aspect', 'release']);
 
 export interface Key {
   kind: string;
@@ -89,6 +90,18 @@ export const decisionKey = (product: string | null, change: string | null, slug:
 
 /** An aspect's full key, or a place's under it. */
 export const aspectKey = (product: string, slug: string, place?: string): string => `aspect:${product}/${slug}${place ? `/${place}` : ''}`;
+
+/** A version as a release names it: plain semver, `0.2.0`, with no `v`. */
+export const VERSION_RE = /^\d+\.\d+\.\d+$/;
+/** A release's full key. */
+export const releaseKey = (product: string, version: string): string => `release:${product}/${version}`;
+/** A release rest taken apart: `<product>/<version>` is full; `<version>` is bare (resolved through a scope). */
+export function parseReleaseRest(rest: string): { product: string | null; version: string } | null {
+  const parts = rest.split('/');
+  if (parts.length === 1) return VERSION_RE.test(parts[0]) ? { product: null, version: parts[0] } : null;
+  if (parts.length === 2 && SLUG_RE.test(parts[0]) && VERSION_RE.test(parts[1])) return { product: parts[0], version: parts[1] };
+  return null;
+}
 
 /** A feature or change rest taken apart: `<product>/<slug>` is full; `<slug>` is bare (resolved through a scope). */
 export interface ScopedRest {
@@ -176,5 +189,5 @@ export function shortKey(key: string, product: string | null | undefined): strin
 export function shortenText(text: string, product: string | null | undefined): string {
   if (!product) return text;
   const p = product.startsWith('product:') ? product.slice('product:'.length) : product;
-  return text.replace(new RegExp(`\\b(feature|change|decision|aspect):${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g'), '$1:');
+  return text.replace(new RegExp(`\\b(feature|change|decision|aspect|release):${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g'), '$1:');
 }

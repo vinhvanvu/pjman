@@ -32,6 +32,9 @@ export interface StoreConfig {
   vocabulary: Record<string, string>;
   source_kinds: string[];
   tree_levels: string[];
+  /** The format the store is in: the pjman version that last initialised or migrated it, stamped by init and by
+   *  `pjman migrate`, never by an ordinary write. Absent on a store from before the field (read as 0.1.0). */
+  version?: string;
 }
 
 export type StoreMode = 'in-project' | 'standalone';
@@ -110,7 +113,9 @@ export function loadStoreConfig(root: string): StoreConfig {
   }
   const source_kinds = Array.isArray(raw.source_kinds) ? raw.source_kinds.map(String) : [...DEFAULT_SOURCE_KINDS];
   const tree_levels = Array.isArray(raw.tree_levels) && raw.tree_levels.length ? raw.tree_levels.map(String) : [...DEFAULT_TREE_LEVELS];
-  return { name: typeof raw.name === 'string' ? raw.name : path.basename(root), layers, vocabulary, source_kinds, tree_levels };
+  // kept as written, even when YAML read it as a number: validate refuses a stamp that is not semver
+  const version = raw.version === undefined || raw.version === null ? undefined : String(raw.version);
+  return { name: typeof raw.name === 'string' ? raw.name : path.basename(root), layers, vocabulary, source_kinds, tree_levels, ...(version ? { version } : {}) };
 }
 
 export function writeStoreConfig(root: string, cfg: StoreConfig): void {

@@ -23,7 +23,8 @@
     "install:local": "node scripts/install-local.mjs",
     "test": "npm run build && node --test dist/test/*.test.js",
     "prepare": "npm run build",
-    "dev": "node scripts/dev.mjs"
+    "dev": "node scripts/dev.mjs",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "yaml": "^2.6.1"

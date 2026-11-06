@@ -160,6 +160,7 @@ export const typeOfPath = (p: string): RecordType | null => {
     if (p.includes('/decisions/')) return 'decision';
     if (p.endsWith('/aspect.md')) return 'aspect';
     if (p.includes('/aspects/') && p.includes('/places/')) return 'place';
+    if (p.includes('/releases/')) return 'release';
     return null;
   }
   if (p.startsWith('features/') && p.endsWith('/feature.md')) return 'feature';
@@ -190,6 +191,7 @@ export function keyOfPath(p: string, type: RecordType, root: string, sha: string
     }
     case 'aspect': return `aspect:${under}/${seg[3]}`;
     case 'place': return `aspect:${under}/${seg[3]}/${base}`;
+    case 'release': return `release:${under}/${base}`;
     case 'session': return `session:${dated?.[1] ?? base}`;
     case 'source':
     case 'actor': {

@@ -1,6 +1,6 @@
 import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, MAP_ANSWERS, SEVERITIES } from './config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
-import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug } from './keys.js';
+import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug, VERSION_RE } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
 import { supersedesOf } from './supersede.js';
 import { parseAspectEffect } from './aspects.js';
@@ -15,6 +15,7 @@ const REQUIRED: Record<RecordType, string[]> = {
   project: ['title'],
   change: ['status'],
   decision: ['status'],
+  release: ['version', 'tag', 'at'],
   source: ['kind', 'key'],
   session: ['agent', 'on_behalf_of', 'started'],
   actor: ['kind'],
@@ -28,6 +29,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   project: ['title', 'product', 'parent', 'tracker', 'map', 'writer', 'session', 'created'],
   change: ['name', 'gist', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'rungs_from', 'migrated', 'writer', 'session', 'created'],
   decision: ['name', 'gist', 'status', 'decided_by', 'decided_on', 'rungs_from', 'migrated', 'writer', 'session', 'created'], // supersedes: a key or a list, checked below
+  release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'writer', 'created'],
   actor: ['kind', 'name', 'url', 'writer', 'session', 'created'],
@@ -41,10 +43,14 @@ const LIST_FIELDS: Record<RecordType, string[]> = {
   project: ['owners', 'links'],
   change: ['depends_on', 'features', 'aspects', 'owners', 'binds', 'links', 'aliases'],
   decision: ['links'],
+  release: ['ships', 'links'],
   source: ['links'],
   session: ['changes'],
   actor: ['links', 'aliases'],
 };
+
+/** The levels a release bumps the version by (semver). */
+export const RELEASE_LEVELS = ['patch', 'minor', 'major'] as const;
 
 /** A change's Origin is the one section every path that creates a change writes; Intent and Done when are required of
  *  a filed change by the command, and an ingested or migrated one says it needs them until it is first worked. */
@@ -73,6 +79,7 @@ export const EDGES: Record<string, [string[], string[]]> = {
   aspects: [['change'], ['aspect']],
   adds: [['change'], ['feature']],
   removes: [['change'], ['feature']],
+  ships: [['release'], ['change']],
 };
 
 /** A slug alias, or `<product>/<slug>` for a key the record had in another product. */
@@ -91,6 +98,8 @@ export function validate(loaded: Loaded): Problem[] {
     problems.push({ level: 'warning', path: typeof r === 'string' ? r : r.path, message });
   const info = (r: Rec | string, message: string) =>
     problems.push({ level: 'info', path: typeof r === 'string' ? r : r.path, message });
+  if (!store.config.version) info('pjman.yaml', 'the store names no format version (read as 0.1.0); pjman migrate stamps it');
+  else if (!VERSION_RE.test(store.config.version)) err('pjman.yaml', `version '${store.config.version}' is not <major>.<minor>.<patch>; the stamp is written by pjman init and pjman migrate`);
 
   /** The scope a record's own references resolve in: its product, or none. Never the current project's. */
   const scopeOf = (r: Rec): string | null => r.productSlug ?? null;
@@ -266,6 +275,23 @@ export function validate(loaded: Loaded): Problem[] {
           checkRef(r, 'feature', d.feature, ['feature']);
           const f = liveKey(r, d.feature);
           if (f && productOfKey(f) !== r.productSlug) err(r, `feature: '${d.feature}' is in another product; an aspect applies inside its own product`);
+        }
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        break;
+      }
+      case 'release': {
+        if (typeof d.version === 'string' && !VERSION_RE.test(d.version)) err(r, `version '${d.version}' is not <major>.<minor>.<patch>`);
+        if (typeof d.version === 'string' && r.releaseVersion && d.version !== r.releaseVersion) err(r, `version '${d.version}' is not the file's (${r.releaseVersion})`);
+        if (typeof d.tag === 'string' && typeof d.version === 'string' && d.tag !== `v${d.version}`) err(r, `tag '${d.tag}' is not v${d.version}`);
+        if (typeof d.level === 'string' && !(RELEASE_LEVELS as readonly string[]).includes(d.level)) err(r, `level '${d.level}' is not one of ${RELEASE_LEVELS.join(', ')}`);
+        if (d.at !== undefined && !isTimestamp(d.at)) err(r, `'at' must be a timestamp`);
+        const seen = new Set<string>();
+        for (const k of listOf(d.ships)) {
+          checkRef(r, 'ships', k, ['change']);
+          const c = liveKey(r, k);
+          if (c && productOfKey(c) !== r.productSlug) err(r, `ships: '${k}' is in another product; a release ships its own product's changes`);
+          if (c && seen.has(c)) err(r, `ships: '${k}' is listed twice`);
+          if (c) seen.add(c);
         }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
         break;

@@ -1,11 +1,14 @@
-// pjman migrate: the one move from store-wide keys to keys under the product. Every product becomes a folder
+// pjman migrate: the one move the store still waits for, in order (decision releases-homebrew/store-names-its-version).
+// The layout: from store-wide keys to keys under the product. Every product becomes a folder
 // (products/<slug>/product.md) holding its features and changes; every feature, change and decision key gains its
 // product segment wherever it is written, in fields and in prose alike; each moved record keeps its old slug as an
-// alias so old links, old prose and old URLs still resolve. One commit, one event; `pjman undo <commit>` reverts it.
+// alias so old links, old prose and old URLs still resolve. The foundation: every change and decision mapped into its
+// shape. Then the stamp: pjman.yaml names the format the store is in. One commit, one event per move;
+// `pjman undo <commit>` reverts it.
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import { IDENTITY_KINDS, type Store } from '../config.js';
+import { IDENTITY_KINDS, writeStoreConfig, type Store } from '../config.js';
 import { emit } from '../events.js';
 import { commitAll, git, gitMv, isTracked, toplevel } from '../git.js';
 import { loadLegacy } from '../legacy.js';
@@ -15,31 +18,104 @@ import { envelope, render } from '../write.js';
 import { formatProblems, validate } from '../validate.js';
 import { CHANGE_SECTIONS, foundationHash, foundationOf, unmigrated } from '../foundation.js';
 import { sections as parseSections } from '../frontmatter.js';
+import { compareVersions, UNSTAMPED_VERSION } from '../version.js';
+
+/** A move the store's format has made, with the pjman version that introduced it. In order: the first whose check says
+ *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
+ *  since they predate the stamp and a store from then carries no version; a move from here on checks the stamp
+ *  (`compareVersions(storeVersion(store), since) < 0`). */
+export interface Migration {
+  name: 'layout' | 'foundation';
+  /** The pjman version that introduced the move; the release that ships a new one is at least a minor. */
+  since: string;
+  /** Whether the store still needs this move. */
+  pending: (store: Store) => boolean;
+  run: (store: Store, opts: { session?: string; writer?: string }) => MigrateResult;
+  about: string;
+}
+
+export const MIGRATIONS: readonly Migration[] = [
+  {
+    name: 'layout', since: '0.2.0',
+    pending: (store) => isLegacyLayout(store.root),
+    run: (store, opts) => migrateLayout(store, opts),
+    about: 'every record keyed under its product',
+  },
+  {
+    name: 'foundation', since: '0.2.0',
+    pending: (store) => loadStore(store).records.some((r) => (r.type === 'change' || r.type === 'decision') && r.valid && unmigrated(r)),
+    run: (store, opts) => migrateFoundation(store, opts),
+    about: 'every change and decision in its shape',
+  },
+];
+
+/** The format this pjman writes: the version of the latest move it knows. A store stamped higher was written by a newer
+ *  pjman; one stamped lower, or not at all, waits for `pjman migrate`. */
+export const FORMAT_VERSION: string = MIGRATIONS.reduce((top, m) => (compareVersions(m.since, top) > 0 ? m.since : top), UNSTAMPED_VERSION);
+
+/** The format a store is in: its stamp, or the version before the stamp existed. */
+export const storeVersion = (store: Store): string => store.config.version ?? UNSTAMPED_VERSION;
 
 export interface MigrateResult {
-  /** Which migration ran: the layout (keys under the product) or the foundation (changes and decisions into their shape). */
-  kind: 'layout' | 'foundation';
+  /** Which move ran: the layout, the foundation, or the stamp (pjman.yaml names the format). */
+  kind: 'layout' | 'foundation' | 'stamp';
+  /** The pjman version that introduced the move. */
+  since: string;
   products: number;
   moved: number;
   rewritten: number;
   /** The foundation migration: how many changes and decisions were mapped. */
   changes?: number;
   decisions?: number;
+  /** The stamp: the version written to pjman.yaml. */
+  version?: string;
   commit: string | null;
 }
 
-/** The one move that still waits, or null: the layout first, then the foundation. */
-export function pendingMigration(store: Store): 'layout' | 'foundation' | null {
-  if (isLegacyLayout(store.root)) return 'layout';
-  const loaded = loadStore(store);
-  return loaded.records.some((r) => (r.type === 'change' || r.type === 'decision') && r.valid && unmigrated(r)) ? 'foundation' : null;
+/** The one move that still waits, or null: each migration in order, then the stamp. */
+export function pendingMigration(store: Store): 'layout' | 'foundation' | 'stamp' | null {
+  for (const m of MIGRATIONS) if (m.pending(store)) return m.name;
+  return compareVersions(storeVersion(store), FORMAT_VERSION) < 0 ? 'stamp' : null;
+}
+
+/** The move a pending migration is, named for a reader: `the layout move (introduced in 0.2.0)`. */
+export function describeMigration(name: 'layout' | 'foundation' | 'stamp'): string {
+  if (name === 'stamp') return `the stamp (pjman.yaml names the format, ${FORMAT_VERSION})`;
+  const m = MIGRATIONS.find((x) => x.name === name)!;
+  return `the ${m.name} move (${m.about}, introduced in ${m.since})`;
 }
 
 export function migrate(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
   const pending = pendingMigration(store);
-  if (pending === 'layout') return migrateLayout(store, opts);
-  if (pending === 'foundation') return migrateFoundation(store, opts);
-  throw new CliError('nothing to migrate: every record is keyed under its product and every change and decision is in its shape');
+  if (!pending) {
+    throw new CliError(`nothing to migrate: every record is keyed under its product, every change and decision is in its shape, and the store is in format ${storeVersion(store)}`);
+  }
+  if (pending === 'stamp') return stamp(store, opts);
+  return MIGRATIONS.find((m) => m.name === pending)!.run(store, opts);
+}
+
+/** The stamp: pjman.yaml names the format this pjman writes. One commit, one event. */
+function stamp(store: Store, opts: { session?: string; writer?: string }): MigrateResult {
+  const root = store.root;
+  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  const from = storeVersion(store);
+  writeStoreConfig(root, { ...store.config, version: FORMAT_VERSION });
+  store.config.version = FORMAT_VERSION;
+  const env = envelope(opts);
+  const commit = store.mode === 'standalone' ? commitAll(root, `pjman: the store is in format ${FORMAT_VERSION}`, env.session) : null;
+  emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: ['version', `${from} → ${FORMAT_VERSION}`], writer: env.writer, session: env.session }], commit);
+  return { kind: 'stamp', since: FORMAT_VERSION, products: 0, moved: 0, rewritten: 0, version: FORMAT_VERSION, commit };
+}
+
+/** Why this pjman may not write the store, or null: the store's format is newer than the tool's (install the newer
+ *  pjman), or older (run `pjman migrate`). A store from before the stamp is read as 0.1.0 and never refused here: its
+ *  moves guard themselves, and the stamp follows them. */
+export function formatMismatch(store: Store, toolVersion: string): string | null {
+  const have = store.config.version;
+  if (!have) return null;
+  if (compareVersions(have, FORMAT_VERSION) > 0) return `the store is in format ${have}, newer than this pjman (${toolVersion}, format ${FORMAT_VERSION}): install pjman ${have} or newer before writing it`;
+  if (compareVersions(have, FORMAT_VERSION) < 0) return `the store is in format ${have}; this pjman (${toolVersion}) brings format ${FORMAT_VERSION}: run pjman migrate, which names each move it makes`;
+  return null;
 }
 
 const LIST_LINE = /^\s*(?:[-*]|\d+[.)])\s+(.*)$/;
@@ -153,7 +229,7 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
   const env = envelope(opts);
   const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate changes and decisions into the foundation', env.session) : null;
   emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${changes} changes`, `${decisions} decisions`], writer: env.writer, session: env.session }], commit);
-  return { kind: 'foundation', products: 0, moved: 0, rewritten: changes + decisions, changes, decisions, commit };
+  return { kind: 'foundation', since: '0.2.0', products: 0, moved: 0, rewritten: changes + decisions, changes, decisions, commit };
 }
 
 const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -308,5 +384,5 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
   const env = envelope(opts);
   const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate keys under the product', env.session) : null;
   emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${moves.length} moved`, `${rewritten} rewritten`], writer: env.writer, session: env.session }], commit);
-  return { kind: 'layout', products: records.filter((r) => r.type === 'product').length, moved: moves.length, rewritten, commit };
+  return { kind: 'layout', since: '0.2.0', products: records.filter((r) => r.type === 'product').length, moved: moves.length, rewritten, commit };
 }

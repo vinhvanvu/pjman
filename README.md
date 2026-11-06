@@ -5,8 +5,14 @@ A context graph for product development: typed records (changes, decisions, sour
 ## Install
 
 ```bash
-git clone <this repository> && cd pjman && npm install && npm run install:local   # until the package is published
+gh release download --repo vinhvanvu/pjman --pattern '*.tgz' --dir /tmp/pjman && npm install -g /tmp/pjman/pjman-*.tgz   # the latest release
 cd ~/Projects/<your-repo> && pjman init
+```
+
+A release is a tag `v<version>` with the built package attached (the tool, the app and the Claude Code plugin); `gh release download` takes `v0.2.0` before `--repo` for one release in particular, and `pjman --version` says which one runs. To update, download the newer release and install it the same way; `pjman init` repairs the plugin's marketplace path when it moved. A Homebrew tap will replace the download once the repository is public. From a checkout instead:
+
+```bash
+git clone <this repository> && cd pjman && npm install && npm run install:local
 ```
 
 `npm run install:local` installs the tool as a copy of a built package, never a link to the checkout: it builds, packs, installs globally, points the Claude Code marketplace at the installed copy and refreshes the plugin, and restarts the dashboard when one was running. Run it again after every merge to main; a session's half-built checkout is then never another session's tool. When the installed tool asks for a store migration, run `pjman migrate` once, after the install.
@@ -26,7 +32,7 @@ A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): th
 `pjman init --in-project` makes a store at `<repo>/.pjman/` instead, tracked with the project and never committed by the tool. It is set aside: kept for a repository that must carry its own record.
 
 ```
-pjman.yaml                                             name, layers, vocabulary, source_kinds
+pjman.yaml                                             name, layers, vocabulary, source_kinds, version (the format the store is in)
 products/<p>/product.md                                product:<p>                 the root and the namespace
 products/<p>/features/<slug>/feature.md                feature:<p>/<slug>          nests by its parent field, never by folder
 products/<p>/changes/<slug>/change.md                  change:<p>/<slug>           carries its project (a project of <p>)
@@ -34,6 +40,7 @@ products/<p>/changes/<c>/decisions/<date>-<slug>.md    decision:<p>/<c>/<slug>
 products/<p>/decisions/<date>-<slug>.md                decision:<p>/<slug>         (product level)
 products/<p>/aspects/<slug>/aspect.md                  aspect:<p>/<slug>           what applies across the product; the body is the base
 products/<p>/aspects/<a>/places/<place>.md             aspect:<p>/<a>/<place>      where it applies (a feature); the body is the fork
+products/<p>/releases/<version>.md                     release:<p>/<version>       a version the product shipped, and the changes it ships
 decisions/<date>-<slug>.md                             decision:/<slug>            (store level)
 projects/<slug>.md                                     project:<slug>              a repository, naming its product
 sources/<kind>/<key-slug>.md                 <kind>:<key>                (optional; a source may exist as a key only)
@@ -46,7 +53,7 @@ Keys are a namespace and a slug: the product for features, changes and decisions
 the tree is a field, never part of a key. Inside a project the slug alone names a record (`change:schema`,
 `feature:store`, `decision:schema/keys`): the tool resolves the short form in the project's product, store-wide when
 one product has the slug, and refuses it as ambiguous otherwise. The store writes full keys; text output read inside a
-project drops the product segment, JSON keeps it. `pjman migrate` moves a store from the flat layout before this, once.
+project drops the product segment, JSON keeps it. `pjman migrate` makes the one move the store still waits for, in order: the layout (from the flat layout before this), the foundation (changes and decisions into their shape), then the stamp. The store names the format it is in (`version:` in `pjman.yaml`, the pjman version that introduced its latest move), stamped by `pjman init` and by `pjman migrate` and never by an ordinary write; a store with no stamp reads as 0.1.0. A pjman older than the store refuses to write it and names the version to install; one newer says to migrate. Each move names the version that introduced it, and the release that ships a new move is at least a minor.
 
 ## Commands
 
@@ -63,6 +70,7 @@ pjman new change <slug> --name … --gist … --origin … --intent … --done-w
 pjman decision <change>/<slug> --name … --gist … --question … [--criterion …]… --option <id>=<one line>… [--case <id>=<points, one per line>]… [--recommend <id>[=why]] [--supersedes <decision>] [--links <key>]…
 pjman decision <key> [--question …] [--option <id>=…]… [--comment … --by person:<handle>] [--reject <id>[=why]]… [--recommend <id>[=why]] [--accept <id>[=their words] --by person:<handle> [--revisit …]] [--reopen] [--from -]
 pjman step <change> add <text> [--before <n>|--after <n>|--first|--last] | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last
+pjman new release <version> --at <timestamp> [--level patch|minor|major] [--commit <sha>] [--url …] [--ships <change>]… [--body <notes>|-]   written by npm run release; its creation is the event
 pjman new source <kind>:<key> [--title …] [--url …]
 pjman new actor person:<handle> | agent:<handle> [--name …] [--url …]
 pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>]
@@ -151,7 +159,12 @@ claude --plugin-dir /path/to/pjman/adapters/claude-code
 
 ```bash
 npm test
+npm run release -- --dry-run        # what the next release would be, and its changelog entry
+npm run release                     # the release, from main: patch, minor or major derived from the record
+npm run release -- minor            # a typed level overrides the derived one
 ```
+
+A release is derived from the record, never from commit prose (decisions releases-homebrew/one-release-command, bump-from-the-record). The script reads every first-parent commit on main since the last `v*` tag and resolves each to a change by the trailer a merge carries, `(change:<slug>)`, or by the merged branch's name (`worktree-<slug>`); what each change is comes from the store. A bug (`kind: bug`) is a patch; a change that names a feature it adds, changes or removes is a minor; a change naming no node is a patch; the highest level wins, and major is typed only. A commit resolving to no change is listed under Also and counts as a patch, so nothing is dropped silently. The script prints that derivation, then stamps the version into `package.json`, the lockfile and the plugin manifest, writes the entry into `CHANGELOG.md` (one line per change, its name and gist, grouped Added, Changed, Fixed, Removed, Also), commits, tags `v<version>` with the entry, builds, packs, pushes, and creates the GitHub release with the tarball attached and the entry as its notes. It refuses off main, on a dirty tree, on an existing tag, with nothing since the last tag, or with `gh` signed out.
 
 ## License
 

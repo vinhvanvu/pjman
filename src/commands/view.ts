@@ -75,6 +75,7 @@ export function branchOf(rec: Rec, observed: Map<string, { to: string; at: strin
 const TYPE_ALIASES: Record<string, RecordType> = {
   product: 'product', products: 'product', feature: 'feature', features: 'feature', aspect: 'aspect', aspects: 'aspect', place: 'place', places: 'place',
   project: 'project', projects: 'project', change: 'change', changes: 'change', decision: 'decision', decisions: 'decision',
+  release: 'release', releases: 'release',
   source: 'source', sources: 'source', session: 'session', sessions: 'session', actor: 'actor', actors: 'actor',
 };
 
@@ -103,7 +104,7 @@ export function ls(store: Store, opts: { type?: string; status?: string; project
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(withBranch);
   }
-  const typeOrder: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'source', 'session', 'actor'];
+  const typeOrder: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'actor'];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))

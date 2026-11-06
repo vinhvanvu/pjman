@@ -37,13 +37,11 @@ import { formatPlan, step } from './commands/step.js';
 import { order } from './commands/order.js';
 import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
-import { migrate } from './commands/migrate.js';
+import { describeMigration, formatMismatch, migrate, pendingMigration } from './commands/migrate.js';
+import { TOOL_VERSION } from './version.js';
 import { formatIdentity, identity } from './identity.js';
 import { shortenText } from './keys.js';
 
-import { createRequire } from 'node:module';
-
-const VERSION = (createRequire(import.meta.url)('../package.json') as { version: string }).version;
 
 /** One entry per command: the usage lines and a one-line purpose. `pjman <cmd> --help` prints one; `pjman --help` prints all. */
 const COMMANDS: { name: string; usage: string[]; about: string }[] = [
@@ -67,6 +65,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
       '                        [--scope <in, and out>] [--open-questions <items>] [--blocked-on <an outside blocker>] [--notes <free>] [--status open] [--project <key>] [--parent <change>]',
       '                        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...',
       '                        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date; the plan is written with pjman step)',
+      'pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]   (a version the product shipped; its creation is the event)',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...   (a person\'s accounts)',
       'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
@@ -118,7 +117,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman fmt [--check]'] },
   { name: 'mv', about: 'rename a change or a feature (the folder moves, the old slug stays as an alias; <product>/<slug> moves it to another product), a product (every key beneath it follows), a project (directories bound to it follow), a decision (within or across changes) or a person (the old handle stays as an alias; the user config follows); every reference is rewritten in the same commit',
     usage: ['pjman mv change:<old> change:<new>', 'pjman mv feature:<old> feature:<new>', 'pjman mv product:<old> product:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>', 'pjman mv person:<old> person:<new>'] },
-  { name: 'migrate', about: "the one move the store still waits for, one commit, one event, pjman undo <commit> reverts it. The layout: every product becomes a folder holding its features and changes, every key gains its product segment wherever it is written, each moved record keeps its old slug as an alias. The foundation: every change and decision mapped into its shape, nothing dropped (a title becomes a draft gist, a summary the Intent, next and a prose plan go to Notes, a list plan becomes steps, a decision's text one option accepted by whoever decided it), each marked migrated until it is next written",
+  { name: 'migrate', about: "the one move the store still waits for, one commit, one event, pjman undo <commit> reverts it. The layout: every product becomes a folder holding its features and changes, every key gains its product segment wherever it is written, each moved record keeps its old slug as an alias. The foundation: every change and decision mapped into its shape, nothing dropped (a title becomes a draft gist, a summary the Intent, next and a prose plan go to Notes, a list plan becomes steps, a decision's text one option accepted by whoever decided it), each marked migrated until it is next written. Then the stamp: pjman.yaml names the format the store is in (the pjman version that introduced its latest move), so a store from a newer pjman is refused by an older one, and an older store is told to migrate. Each move names the version that introduced it",
     usage: ['pjman migrate'] },
   { name: 'lift', about: "move every open or planning change up to what its plan says, as one batch (pjman undo reverts it): planning once it has a step, active once a step has started. The same rule runs after every write; this is the backfill for a store written before it (--check lists the lifts only)",
     usage: ['pjman lift [--check]'] },
@@ -217,6 +216,10 @@ function parse(args: string[]) {
     sequence: { type: 'string', multiple: true },
     levels: { type: 'string', multiple: true },
     level: { type: 'string' },
+    tag: { type: 'string' },
+    at: { type: 'string' },
+    commit: { type: 'string' },
+    ships: { type: 'string', multiple: true },
     product: { type: 'string' },
     days: { type: 'string' },
     'decided-by': { type: 'string' },
@@ -293,7 +296,7 @@ function main(argv: string[]): number {
   const { values: v, positionals: pos } = parse(argv);
   const cmd = pos[0];
   if (v.version) {
-    out(`pjman ${VERSION}`);
+    out(`pjman ${TOOL_VERSION}`);
     return 0;
   }
   if (v.help || cmd === 'help') {
@@ -309,11 +312,22 @@ function main(argv: string[]): number {
   const writes = WRITE_COMMANDS.has(cmd) || (cmd === 'brief' && !!v.session) || (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
   if (!writes) return dispatch(v, pos, cmd, cwd);
   // one writer at a time per store: the lock is held from before the first file is touched to after the commit
-  return withStoreLock(findStore(cwd, v.store)?.root ?? globalStorePath(), () => dispatch(v, pos, cmd, cwd));
+  return withStoreLock(findStore(cwd, v.store)?.root ?? globalStorePath(), () => {
+    // the store names its format: a store newer than this pjman is not written, an older one is migrated first; read
+    // under the lock, so a stamp landing from another writer is seen
+    if (!FORMAT_EXEMPT.has(cmd)) {
+      const store = findStore(cwd, v.store);
+      const mismatch = store ? formatMismatch(store, TOOL_VERSION) : null;
+      if (mismatch) throw new CliError(`refused: ${mismatch}`);
+    }
+    return dispatch(v, pos, cmd, cwd);
+  });
 }
 
 /** The commands that write the store. */
 const WRITE_COMMANDS = new Set(['init', 'new', 'set', 'decision', 'step', 'note', 'session', 'mv', 'rm', 'fmt', 'sync', 'order', 'apply', 'undo', 'migrate', 'lift']);
+/** The writes that move a store between formats, or make one: never refused for the store's format. */
+const FORMAT_EXEMPT = new Set(['init', 'migrate', 'undo']);
 
 type Parsed = ReturnType<typeof parse>;
 
@@ -327,7 +341,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'new': {
       const store = scoped(requireStore(cwd, v.store));
       const [, type, ident] = pos;
-      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|aspect|place|project|change|decision|source|actor|session> <ident> [flags]');
+      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|aspect|place|project|change|decision|release|source|actor|session> <ident> [flags]');
       if (type === 'change' && (v.plan !== undefined || v.next !== undefined)) throw new CliError(v.plan !== undefined ? 'the plan is written with pjman step <change> add "…"' : 'next is retired: the next step is the plan\'s first open step (pjman step), an outside blocker is --blocked-on');
       const flags: NewFlags = {
         title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary,
@@ -338,6 +352,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         product: v.product, owners: v.owners, features: v.features, level: v.level, levels: v.levels,
         dependsOn: v['depends-on'], kind: v.kind, severity: v.severity, target: v.target, sequence: v.sequence,
         aspects: v.aspects, feature: v.feature,
+        tag: v.tag, at: v.at, commit: v.commit, ships: v.ships,
         created: v.created, body: v.body === '-' ? fs.readFileSync(0, 'utf8') : v.body, writer: v.writer, session: v.session,
       };
       const r = newRecord(store, type, ident, flags);
@@ -648,8 +663,14 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       const r = migrate(store, { session: v.session, writer: v.writer });
       if (v.json) json(r);
-      else if (r.kind === 'foundation') out(`migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.decisions ?? 0, 'decision')} mapped into the foundation, each marked migrated until it is next written${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : ''}`);
-      else out(`migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : ''}`);
+      else {
+        const undo = r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : '';
+        if (r.kind === 'stamp') out(`stamped: the store is in format ${r.version}${undo}`);
+        else if (r.kind === 'foundation') out(`migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.decisions ?? 0, 'decision')} mapped into the foundation (introduced in ${r.since}), each marked migrated until it is next written${undo}`);
+        else out(`migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product (introduced in ${r.since})${undo}`);
+        const next = pendingMigration(store);
+        if (next) out(`the store still waits for ${describeMigration(next)}: run pjman migrate again`);
+      }
       return 0;
     }
     case 'undo': {
