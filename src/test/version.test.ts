@@ -88,7 +88,12 @@ test('a store stamped newer than the tool is refused for writing, naming the ver
   assert.match(formatMismatch(newer, TOOL_VERSION)!, /format 99\.0\.0, newer than this pjman .*install pjman 99\.0\.0 or newer/);
   const older: Store = { ...store, config: { ...store.config, version: '0.0.1' } };
   assert.match(formatMismatch(older, TOOL_VERSION)!, /format 0\.0\.1; this pjman .*brings format .*run pjman migrate/);
-  assert.match(formatMismatch(older, TOOL_VERSION)!, /the layout move/);
   // a store at the format, or below it with the sniffs saying nothing, has only the stamp to make
   assert.equal(pendingMigration(older), 'stamp');
+  // a stamp YAML reads as a number is kept as written, and validate refuses it rather than reading the store as unstamped
+  writeStoreConfig(store.root, { ...store.config, version: 2 as unknown as string });
+  const numeric = findStore(path.join(tmp, 'web'))!;
+  assert.equal(numeric.config.version, '2');
+  assert.ok(validate(loadStore(numeric)).some((p) => p.level === 'error' && /version '2' is not/.test(p.message)));
+  writeStoreConfig(store.root, store.config);
 });

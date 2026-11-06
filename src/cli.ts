@@ -311,14 +311,17 @@ function main(argv: string[]): number {
   // a session's brief records its watermark, and a session reading a change's context moves its focus: both write
   const writes = WRITE_COMMANDS.has(cmd) || (cmd === 'brief' && !!v.session) || (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
   if (!writes) return dispatch(v, pos, cmd, cwd);
-  // the store names its format: a store newer than this pjman is not written, an older one is migrated first
-  if (!FORMAT_EXEMPT.has(cmd)) {
-    const store = findStore(cwd, v.store);
-    const mismatch = store ? formatMismatch(store, TOOL_VERSION) : null;
-    if (mismatch) throw new CliError(`refused: ${mismatch}`);
-  }
   // one writer at a time per store: the lock is held from before the first file is touched to after the commit
-  return withStoreLock(findStore(cwd, v.store)?.root ?? globalStorePath(), () => dispatch(v, pos, cmd, cwd));
+  return withStoreLock(findStore(cwd, v.store)?.root ?? globalStorePath(), () => {
+    // the store names its format: a store newer than this pjman is not written, an older one is migrated first; read
+    // under the lock, so a stamp landing from another writer is seen
+    if (!FORMAT_EXEMPT.has(cmd)) {
+      const store = findStore(cwd, v.store);
+      const mismatch = store ? formatMismatch(store, TOOL_VERSION) : null;
+      if (mismatch) throw new CliError(`refused: ${mismatch}`);
+    }
+    return dispatch(v, pos, cmd, cwd);
+  });
 }
 
 /** The commands that write the store. */

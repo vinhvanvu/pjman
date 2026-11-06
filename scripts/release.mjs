@@ -37,9 +37,20 @@ const soft = (cmd, args) => {
 const ok = (cmd, args) => soft(cmd, args) !== null;
 const git = (...args) => run('git', args);
 
+// ---- the tool, built: the script reads versions, levels and the store's moves from the same code that runs them, and
+// every store write goes through this checkout's pjman, never the installed copy, which may be the release before ----
+
+say('building the tool…');
+run('npm', ['run', 'build'], { stdio: ['ignore', 'ignore', 'inherit'] });
+const { MIGRATIONS } = await import(path.join(root, 'dist', 'commands', 'migrate.js'));
+const { compareVersions } = await import(path.join(root, 'dist', 'version.js'));
+const { VERSION_RE } = await import(path.join(root, 'dist', 'keys.js'));
+const { RELEASE_LEVELS } = await import(path.join(root, 'dist', 'validate.js'));
+const pjman = (args, opts = {}) => run(process.execPath, [path.join(root, 'bin', 'pjman.js'), ...args], opts);
+
 // ---- arguments ------------------------------------------------------------------------------------------------------
 
-const LEVELS = ['patch', 'minor', 'major'];
+const LEVELS = [...RELEASE_LEVELS];
 const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const typed = args.find((a) => LEVELS.includes(a));
@@ -51,7 +62,7 @@ if (unknown.length) fail(`unknown argument ${unknown.join(' ')}; usage: npm run 
 const pkgPath = path.join(root, 'package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
 const current = pkg.version;
-if (!/^\d+\.\d+\.\d+$/.test(current)) fail(`package.json version ${current} is not a plain semver`);
+if (!VERSION_RE.test(current)) fail(`package.json version ${current} is not a plain semver`);
 
 const lastTag = soft('git', ['describe', '--tags', '--abbrev=0', '--match', 'v*']);
 const since = lastTag ? `${lastTag}..HEAD` : 'HEAD';
@@ -67,7 +78,7 @@ if (lastTag && lastTag !== `v${current}`) say(`note: the last tag is ${lastTag} 
 
 // ---- the changes those commits shipped, from the store --------------------------------------------------------------
 
-const changes = JSON.parse(run('pjman', ['ls', 'change', '--json']));
+const changes = JSON.parse(pjman(['ls', 'change', '--json']));
 const bySlug = new Map();
 for (const c of changes) {
   const slug = c.key.replace(/^change:[^/]+\//, '');
@@ -76,11 +87,13 @@ for (const c of changes) {
 }
 const resolve = (slug) => bySlug.get(slug) ?? bySlug.get(slug.replace(/^worktree-/, '')) ?? null;
 
-/** The change keys a commit names: the trailer `(change:a, change:b, …)` that ends the subject, else the merged branch. */
+/** The change keys a commit names: every `change:<slug>` in the parenthesised group that ends the subject (the trailer
+ *  the merge convention writes, `(change:a, change:b)`, or `(decision x/y; change:a)`), else the branch a merge into
+ *  main brought in. */
 function keysOf(subject) {
-  const trailer = /\((change:[^)]*)\)\s*$/.exec(subject);
+  const trailer = /\(([^()]*\bchange:[^()]*)\)\s*$/.exec(subject);
   if (trailer) return [...trailer[1].matchAll(/change:([A-Za-z0-9_./-]+)/g)].map((m) => m[1].replace(/^[^/]+\//, ''));
-  const merge = /^Merge branch '([^']+)'(?!\s+into\b)/.exec(subject);
+  const merge = /^Merge branch '([^']+)'(?:\s+into\s+main\b)?(?!\s+into\b)/.exec(subject);
   return merge ? [merge[1]] : [];
 }
 
@@ -112,18 +125,10 @@ function classify(change) {
 
 const entries = [...shipped.values()].map((e) => ({ ...e, ...classify(e.change) }));
 const higher = (a, b) => (LEVELS.indexOf(b) > LEVELS.indexOf(a) ? b : a);
-let derived = entries.reduce(higher, 'patch');
+let derived = entries.map((e) => e.level).reduce(higher, 'patch');
 
-// the store's moves this release ships: the tool is built so its migrations are read from the same code that runs them
-say('building the tool…');
-run('npm', ['run', 'build'], { stdio: ['ignore', 'ignore', 'inherit'] });
-const { MIGRATIONS } = await import(path.join(root, 'dist', 'commands', 'migrate.js'));
-const cmp = (a, b) => {
-  const [x, y] = [a, b].map((v) => v.split('.').map(Number));
-  for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
-  return 0;
-};
-const migrations = MIGRATIONS.filter((m) => cmp(m.since, current) > 0);
+// the store's moves this release ships: a move past the current version makes the release at least a minor
+const migrations = MIGRATIONS.filter((m) => compareVersions(m.since, current) > 0);
 if (migrations.length) derived = higher(derived, 'minor');
 
 const level = typed ?? derived;
@@ -187,7 +192,7 @@ if (dryRun) {
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
 if (branch !== 'main') fail(`on ${branch}, not main; a release is cut from main`);
 if (git('status', '--porcelain')) fail('the working tree is not clean; commit or set the work aside first');
-if (soft('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`])) fail(`tag ${tag} exists`);
+if (soft('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`])) fail(`tag ${tag} exists; a release that stopped after its tag is finished by hand with the commands it printed`);
 if (!ok('gh', ['auth', 'status'])) fail('gh is not signed in; the release is created with gh');
 
 // ---- the build, so the commit carries the built app -----------------------------------------------------------------
@@ -232,22 +237,36 @@ const packed = JSON.parse(run('npm', ['pack', '--json', '--pack-destination', de
 const tarball = path.join(dest, packed[0].filename);
 say(`packed ${packed[0].filename} (${packed[0].entryCount} files)`);
 
-git('push', '-q', 'origin', 'main', tag);
-const notes = path.join(dest, 'notes.md');
-fs.writeFileSync(notes, entry);
-const url = run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag']);
-say(`released ${tag}: ${url}`);
-
-// ---- the release as a record: its creation is the event (decision releases-homebrew/release-is-a-record) -----------
-
+// the product the release is of: the one the shipped changes are keyed under, else the project's
 const sha = git('rev-parse', 'HEAD');
 const ships = entries.map((e) => e.change.key);
-// the product the release is of: the one the shipped changes are keyed under, else the project's
-const product = ships[0]?.replace(/^change:([^/]+)\/.*$/, '$1') ?? JSON.parse(run('pjman', ['where', '--json'])).product?.replace(/^product:/, '');
+const product = ships[0]?.replace(/^change:([^/]+)\/.*$/, '$1') ?? JSON.parse(pjman(['where', '--json'])).product?.replace(/^product:/, '');
 if (!product) fail(`the release is of no product: nothing shipped names one and this directory maps to no project with a product`);
-const record = run('pjman', [
-  'new', 'release', `${product}/${next}`, '--at', new Date().toISOString(), '--level', level, '--commit', sha, '--url', url,
-  ...ships.flatMap((k) => ['--ships', k]), '--body', '-',
-], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] });
+
+// from the push on, every step is outward or irreversible: a failure says exactly what is left to do by hand
+const notes = path.join(dest, 'notes.md');
+fs.writeFileSync(notes, entry);
+const recordArgs = ['new', 'release', `${product}/${next}`, '--at', new Date().toISOString(), '--level', level, '--commit', sha, ...ships.flatMap((k) => ['--ships', k]), '--body', '-'];
+const remaining = [
+  `gh release create ${tag} ${tarball} --title ${tag} --notes-file ${notes} --verify-tag`,
+  `node bin/pjman.js ${recordArgs.join(' ')} --url <the release URL> < ${notes}`,
+];
+const step = (what, fn) => {
+  try {
+    return fn();
+  } catch (e) {
+    process.stderr.write(`release: ${what} failed: ${String(e.stderr || e.message).trim().split('\n')[0]}\n`);
+    process.stderr.write(`the commit and the tag ${tag} are pushed; what is left, in order:\n${remaining.map((r) => `  ${r}`).join('\n')}\n`);
+    process.exit(1);
+  }
+};
+step('the push', () => git('push', '-q', 'origin', 'main', tag));
+const url = step('the GitHub release', () => run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag']));
+say(`released ${tag}: ${url}`);
+remaining.shift();
+remaining[0] = remaining[0].replace('<the release URL>', url);
+
+// the release as a record: its creation is the event (decision releases-homebrew/release-is-a-record)
+const record = step('the release record', () => pjman([...recordArgs, '--url', url], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] }));
 fs.rmSync(dest, { recursive: true, force: true });
 say(record.split('\n')[0]);

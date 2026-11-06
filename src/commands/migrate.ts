@@ -114,10 +114,7 @@ export function formatMismatch(store: Store, toolVersion: string): string | null
   const have = store.config.version;
   if (!have) return null;
   if (compareVersions(have, FORMAT_VERSION) > 0) return `the store is in format ${have}, newer than this pjman (${toolVersion}, format ${FORMAT_VERSION}): install pjman ${have} or newer before writing it`;
-  if (compareVersions(have, FORMAT_VERSION) < 0) {
-    const next = MIGRATIONS.find((m) => compareVersions(m.since, have) > 0);
-    return `the store is in format ${have}; this pjman (${toolVersion}) brings format ${FORMAT_VERSION}${next ? ` with ${describeMigration(next.name)}` : ''}: run pjman migrate`;
-  }
+  if (compareVersions(have, FORMAT_VERSION) < 0) return `the store is in format ${have}; this pjman (${toolVersion}) brings format ${FORMAT_VERSION}: run pjman migrate, which names each move it makes`;
   return null;
 }
 

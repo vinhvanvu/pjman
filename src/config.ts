@@ -113,7 +113,8 @@ export function loadStoreConfig(root: string): StoreConfig {
   }
   const source_kinds = Array.isArray(raw.source_kinds) ? raw.source_kinds.map(String) : [...DEFAULT_SOURCE_KINDS];
   const tree_levels = Array.isArray(raw.tree_levels) && raw.tree_levels.length ? raw.tree_levels.map(String) : [...DEFAULT_TREE_LEVELS];
-  const version = typeof raw.version === 'string' ? raw.version : undefined;
+  // kept as written, even when YAML read it as a number: validate refuses a stamp that is not semver
+  const version = raw.version === undefined || raw.version === null ? undefined : String(raw.version);
   return { name: typeof raw.name === 'string' ? raw.name : path.basename(root), layers, vocabulary, source_kinds, tree_levels, ...(version ? { version } : {}) };
 }
 
