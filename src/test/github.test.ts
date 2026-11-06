@@ -98,7 +98,7 @@ test('a sync applies the repository from the project link: sources, changes, par
   const third = syncGithub(store, { from: closed });
   assert.deepEqual(third.updated, [], 'pjman owns the status: a closed ticket moves nothing on its change');
   const after = loadStore(store).byKey.get('change:app/app-1')![0];
-  assert.equal(after.data.status, 'open');
+  assert.equal(after.data.status, 'planning', 'the step lifts it; the ticket closing does not');
   assert.equal(stepsOf(after.data)[0]?.text, 'ship it');
   const other = syncGithub(store, { from: [{ number: 7, title: 'x', state: 'OPEN', url: 'https://github.com/other/repo/issues/7', labels: [] }] });
   assert.deepEqual(other.skipped, [{ id: 'other/repo#7', reason: 'repository other/repo is not acme/app' }]);

@@ -223,7 +223,7 @@ A change reads as a ladder (decision record-foundation/the-ladder): its `name`, 
 |---|---|---|
 | `name` | A | Which one in a crowd: one to four words. Chips, crumbs, the roadmap's bars. Absent on a change the tool ingested from a ticket or mapped from the old shape until someone writes it |
 | `gist` | A | What it is and why, in one line. Lists, cards, the lead line of the record |
-| `status` | A | One canonical word from the vocabulary |
+| `status` | A | One canonical word from the vocabulary. `planning` and `active` are lifted by the tool after a write (decision status-from-the-plan/derive-or-write): an open change becomes `planning` once its plan has a step, an open or planning one `active` once a step has started or a session writes a file for it, each lift its own `set` event; `blocked`, `review`, `done` and `dropped` are written by hand, and nothing automatic moves a status back. `pjman lift` is the backfill |
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
 | `aspects` | A | Optional. The aspects or places this change adds, changes or removes, in the same form as `features`: `adds aspect:<slug>`, `aspect:<aspect>/<place>` (changes). Its context then carries the aspect whole (the base and every place). |

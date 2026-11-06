@@ -49,7 +49,7 @@ export interface SetResult {
 }
 
 /** `field=value` pairs; a list field takes comma-separated keys; an empty value removes the field. */
-export function set(store: Store, keyRaw: string, pairs: string[], opts: { session?: string }): SetResult {
+export function set(store: Store, keyRaw: string, pairs: string[], opts: { session?: string; because?: string }): SetResult {
   const loaded = loadStore(store);
   const res = resolve(loaded, keyRaw);
   if (res.status !== 'ok' && res.status !== 'alias') {
@@ -149,7 +149,7 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     if (marked) unmark(store, marked);
     throw e;
   }
-  const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, writer: env.writer }, ...(marked?.also ?? [])]);
+  const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}${opts.because ? ` (${opts.because})` : ''}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, writer: env.writer }, ...(marked?.also ?? [])]);
   notes.push(...(marked?.notes ?? []));
   // a write to a base shows every place it reaches, so each fork is reconciled with it in the same pass
   if (rec.type === 'aspect' && changed.includes('body')) notes.push(...reachOfBase(loadStore(store), rec));

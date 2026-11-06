@@ -75,9 +75,9 @@ test('the delta: what others wrote on the change, its milestone, its decisions a
   const b = brief(store, 'me');
   assert.equal(b.mode, 'delta');
   assert.deepEqual(b.lines, [
-    'set change:web/auth (plan, step add, status → active) (3 writes)',
-    'set change:web/milestone (plan, step add)',
-    'set change:web/after-auth (plan, step add)',
+    'set change:web/auth (plan, step add, status → active) (4 writes)',
+    'set change:web/milestone (plan, step add, status → planning) (2 writes)',
+    'set change:web/after-auth (plan, step add, status → planning) (2 writes)',
     'created decision:web/auth/tokens — Tokens',
   ]);
   assert.ok(!b.text.includes('invoices'), 'a change outside the scope is not mentioned');
