@@ -18,10 +18,11 @@
 //                     receipt of what the store received since the last turn are shown to the person
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
-//   SessionEnd        a closing log line; the view's pane is closed
+//   SessionEnd        a closing log line; the view's pane is closed, unless the session was cleared
 //
 //   The view beside the session. In cmux: the dashboard's session page (pjman serve, started if none is running) is docked in a
-//   browser pane at session start and closed at session end. Elsewhere, and whenever the pane was closed, `pjman open --session`
+//   browser pane at session start and closed at session end. The pane belongs to the terminal, so a /clear keeps it and the
+//   next session there navigates it to its own page. Elsewhere, and whenever the pane was closed, `pjman open --session`
 //   brings the page back; the session's id is exported to the agent's shell as PJMAN_SESSION.
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -271,24 +272,58 @@ function cmux(args) {
     return null;
   }
 }
+// The pane is kept per terminal surface, not per session: /clear ends one session and starts the next in the same
+// terminal, so the pane stays and is pointed at the new session's page; a second terminal keeps its own.
+const terminal = () => process.env.CMUX_SURFACE_ID || process.env.CMUX_PANEL_ID || null;
+function dockFile() {
+  const t = terminal();
+  return t ? path.join(dataDir, 'dock', `${t.replace(/[^\w.-]/g, '_')}.json`) : null;
+}
+function loadDock() {
+  try {
+    return JSON.parse(fs.readFileSync(dockFile(), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+function saveDock(dock) {
+  const file = dockFile();
+  if (!file) return;
+  try {
+    if (!dock) return fs.rmSync(file, { force: true });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(dock));
+  } catch (e) {
+    note(`dock: ${e.message}`);
+  }
+}
 /** The view docked: first thing at start, since it needs only the session id and the server, never the store. */
-async function dockView(st, sid, cwd) {
-  if (st.pane || !inCmux()) return;
+async function dockView(sid, cwd) {
+  if (!inCmux()) return;
+  const dock = loadDock();
+  if (dock?.sid === sid) return; // resumed or compacted: the pane already shows this session
   const server = await ensureServer(cwd);
   if (!server) return; // no dashboard, no dock; `pjman open --session` brings it back once one runs
-  const r = await runAsync('cmux', ['browser', 'open', `${server.url}/session/${encodeURIComponent(sid)}`]);
+  const url = `${server.url}/session/${encodeURIComponent(sid)}`;
+  // the terminal's pane, pointed at the new session; a pane the person closed fails, and a new one is opened
+  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok) return saveDock({ pane: dock.pane, sid });
+  const r = await runAsync('cmux', ['browser', 'open', url]);
   if (!r.ok) {
     note(`cmux browser open failed: ${r.err}`);
     return;
   }
   const m = /surface[=:\s]+(surface:\d+|[0-9a-fA-F-]{36})/.exec(r.out);
-  if (m) st.pane = m[1];
+  if (m) saveDock({ pane: m[1], sid });
   else if (r.out) note(`dock: could not read the surface from: ${r.out.trim().split('\n')[0]}`);
 }
-function undockView(st) {
-  if (!st.pane) return;
-  cmux(['close-surface', '--surface', st.pane]);
+/** At session end the pane closes, unless the session was cleared: the next one in this terminal takes it over. */
+function undockView(st, sid, reason) {
+  const dock = loadDock();
+  const pane = dock?.sid === sid ? dock.pane : st.pane; // st.pane: a session docked by an earlier version of this adapter
   st.pane = null;
+  if (!pane || reason === 'clear') return;
+  cmux(['close-surface', '--surface', pane]);
+  if (dock?.pane === pane) saveDock(null);
 }
 function sidebarStatus(key) {
   if (key) cmux(['set-status', 'pjman', key, '--icon', 'point.3.connected.trianglepath.dotted']);
@@ -410,7 +445,7 @@ function briefText(st, b) {
 async function sessionStart(input, store, sid, env, st, cwd) {
   const main = !input.agent_id;
   const source = input.source || 'startup';
-  const docking = main ? dockView(st, sid, cwd) : Promise.resolve();
+  const docking = main ? dockView(sid, cwd) : Promise.resolve();
   const branch = main ? currentBranch(cwd) : null;
   const read = await promiseObject({
     brief: pjmanAsync(['brief'], { cwd }),
@@ -578,7 +613,7 @@ async function main() {
     case 'SessionEnd': {
       tryPjman(['session', 'log', sid, `session ended (${input.reason || 'other'})`], { cwd, env });
       stopLegacyWatcher(st);
-      undockView(st);
+      undockView(st, sid, input.reason);
       sidebarStatus(null);
       saveState(sid, st);
       return;
