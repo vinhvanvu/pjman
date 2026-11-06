@@ -226,7 +226,7 @@ export function Transport({ product }: { product: string }) {
           className="relative h-10 min-w-0 flex-1 overflow-hidden select-none"
           style={{ maskImage: 'linear-gradient(to right, transparent 0, black 6%)' }}
         >
-          <div key={span.to} aria-hidden="true" {...layer()}>
+          <div key={`marks ${span.to}`} aria-hidden="true" {...layer()}>
             {hourMarks(layerStart - WINDOW_MS, Date.parse(span.to)).map((t) => (
               <span
                 key={t}
@@ -295,9 +295,9 @@ export function Transport({ product }: { product: string }) {
             </span>
           )}
           {/* the head, a flag: held, it rides the layer at its instant and slides with the ticks; live or dragged, it
-              stands where it is */}
+              stands where it is; the layer spans the whole bar, so it lets the pointer through to the ticks */}
           {mode !== 'live' && drag === null ? (
-            <div key={span.to} aria-hidden="true" {...layer()}>
+            <div key={`head ${span.to}`} aria-hidden="true" {...layer('pointer-events-none')}>
               <Flag pct={along(heldAt, layerStart)} label={headLabel} side={headPct > 50 ? 'left' : 'right'} />
             </div>
           ) : (
