@@ -8,14 +8,18 @@
 // Alive (change:motion-design): a row that arrives opens its space and fades in, one that leaves fades and then
 // closes; under the pointer or focus the rows hold their order. The beat or flag a live event adds pops in and glows
 // in that event's colour, as the transport's now marker does at the same moment.
+// A session on no change has no row (change:lanes-unbound-sessions): they are counted in one folded line below the
+// rows, which opens to theirs; once one binds, its row stands with the others, its earlier beats on it.
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
+import { ChevronRight } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { BridgeSession, TimelineEvent } from '@/data/contract';
 import { clock } from '@/features/moment';
 import { EventTip, hourMarks, useEventTip, useRolling, WINDOW_MS } from '@/features/transport';
 import { restOf, short } from '@/lib/keys';
+import { plural } from '@/lib/format';
 import { Label } from '@/components/chips/Chip';
 import { useHeldList, useHold } from '@/lib/hold';
 import { Flash, MOVE } from '@/lib/motion';
@@ -44,10 +48,14 @@ export function Lanes({
   const tips = useEventTip(frame);
   const fresh = useFresh();
   const hold = useHold();
-  const { shown: lanes } = useHeldList(lanesOf(sessions, r.events), hold.held, laneKey);
+  const rows = lanesOf(sessions, r.events);
+  const { shown: lanes } = useHeldList(rows.lanes, hold.held, laneKey);
+  const { shown: unbound } = useHeldList(rows.unbound, hold.held, laneKey);
+  const [open, setOpen] = useState(false);
   const held = r.mode !== 'live';
   // what had not happened yet at the held moment
   const after = (e: TimelineEvent) => held && (r.cursor.event ? e.seq > r.cursor.event : Date.parse(e.at) > r.heldAt);
+  const ctx: RowContext = { r, held, after, tips, fresh };
 
   return (
     <section
@@ -81,114 +89,150 @@ export function Lanes({
           </div>
         </div>
       </div>
-      {lanes.length === 0 ? (
+      {lanes.length === 0 && unbound.length === 0 ? (
         <div className="py-2 text-xs text-ink-faint">No session wrote in the last 12 hours.</div>
       ) : (
-        <ol key={moment} className="flex flex-col" {...hold.props}>
-          <AnimatePresence initial={false}>
-            {lanes.map((lane) => {
-              const s = lane.session;
-              const title = s.change ? (s.change.title ?? short(s.change.key)) : 'No change yet';
-              return (
-                <m.li
-                  key={s.key}
-                  layout="position"
-                  initial={{ opacity: 0, y: -8 }}
-                  animate={{ opacity: 1, y: 0, transition: { ...MOVE, delay: MOVE.duration } }}
-                  exit={{ opacity: 0, transition: { duration: 0.2 } }}
-                  className="flex h-7 items-center gap-3"
-                >
-                  <Link
-                    to="/session/$id"
-                    params={{ id: restOf(s.key) }}
-                    search={{}}
-                    title={title}
-                    className={cn(WHO, 'flex min-w-0 items-center gap-2 text-xs font-medium hover:underline')}
-                  >
-                    <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', sessionDot(s.state))} />
-                    <span className={cn('truncate', !s.change && 'text-ink-muted')}>{title}</span>
-                  </Link>
-                  <div className="relative h-4 min-w-0 flex-1 overflow-hidden border-b border-line" style={FADE}>
-                    <div key={r.span.to} {...r.layer()}>
-                      <span
-                        aria-hidden="true"
-                        className={cn('absolute top-1.5 h-1 rounded-full', SESSION[s.state].bg, 'opacity-35')}
-                        style={{
-                          left: `${r.at(Date.parse(lane.first))}%`,
-                          width: `max(4px, ${r.at(Date.parse(lane.last)) - r.at(Date.parse(lane.first))}%)`,
-                        }}
-                      />
-                      {lane.beats.map((e) => (
-                        <Mark
-                          key={e.seq}
-                          e={e}
-                          pct={r.at(Date.parse(e.at))}
-                          dim={after(e)}
-                          onLock={() => r.go({ event: e.seq })}
-                          onTip={(el) => tips.show(e, el)}
-                          onUntip={tips.hide}
-                        >
-                          <m.span
-                            initial={fresh(e.seq) ? { scale: 2.2 } : false}
-                            animate={{ scale: 1 }}
-                            transition={{ duration: 0.6 }}
-                            className={cn(
-                              'absolute top-1/2 left-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full',
-                              e.seq === r.cursor.event ? 'size-2 bg-primary' : SESSION[s.state].bg,
-                            )}
-                          >
-                            <Flash arrival={fresh(e.seq) ? e.seq : undefined} className={eventTone(e).text} />
-                          </m.span>
-                        </Mark>
-                      ))}
-                      {lane.flags.map((e) => (
-                        <Mark
-                          key={e.seq}
-                          e={e}
-                          pct={r.at(Date.parse(e.at))}
-                          dim={after(e)}
-                          onLock={() => r.go({ event: e.seq })}
-                          onTip={(el) => tips.show(e, el)}
-                          onUntip={tips.hide}
-                          flag
-                        >
-                          <span
-                            className={cn(
-                              'absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2',
-                              e.seq === r.cursor.event ? 'bg-primary' : decisionTone(e.statusNow ?? e.status).bg,
-                            )}
-                          >
-                            <Flash arrival={fresh(e.seq) ? e.seq : undefined} className={eventTone(e).text} />
-                          </span>
-                          <span
-                            className={cn(
-                              'absolute top-0 left-1/2 ml-px h-[7px] w-2',
-                              e.seq === r.cursor.event ? 'bg-primary' : decisionTone(e.statusNow ?? e.status).bg,
-                            )}
-                            style={{ clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }}
-                          />
-                        </Mark>
-                      ))}
-                      {held && (
-                        <span
-                          aria-hidden="true"
-                          className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary"
-                          style={{ left: `${r.at(r.heldAt)}%` }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </m.li>
-              );
-            })}
-          </AnimatePresence>
-        </ol>
+        <div key={moment} className="flex flex-col" {...hold.props}>
+          <ol className="flex flex-col">
+            <AnimatePresence initial={false}>
+              {lanes.map((lane) => (
+                <Row key={lane.session.key} lane={lane} {...ctx} />
+              ))}
+            </AnimatePresence>
+          </ol>
+          {unbound.length > 0 && (
+            <>
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={() => setOpen((o) => !o)}
+                className="flex h-7 items-center gap-1.5 text-left text-xs text-ink-muted hover:text-ink"
+              >
+                <ChevronRight aria-hidden="true" className={cn('size-3.5 transition-transform', open && 'rotate-90')} />
+                {plural(unbound.length, 'session')} on no change yet
+              </button>
+              {open && (
+                <ol className="flex flex-col">
+                  <AnimatePresence initial={false}>
+                    {unbound.map((lane) => (
+                      <Row key={lane.session.key} lane={lane} {...ctx} />
+                    ))}
+                  </AnimatePresence>
+                </ol>
+              )}
+            </>
+          )}
+        </div>
       )}
     </section>
   );
 }
 
 const laneKey = (l: Lane) => l.session.key;
+
+interface RowContext {
+  r: ReturnType<typeof useRolling>;
+  held: boolean;
+  after: (e: TimelineEvent) => boolean;
+  tips: ReturnType<typeof useEventTip>;
+  fresh: ReturnType<typeof useFresh>;
+}
+
+/** One session's row: its name opening its dock, then its bar, beats and flags on the transport's layer. */
+function Row({ lane, r, held, after, tips, fresh }: RowContext & { lane: Lane }) {
+  const s = lane.session;
+  const title = s.change ? (s.change.title ?? short(s.change.key)) : 'No change yet';
+  return (
+    <m.li
+      layout="position"
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0, transition: { ...MOVE, delay: MOVE.duration } }}
+      exit={{ opacity: 0, transition: { duration: 0.2 } }}
+      className="flex h-7 items-center gap-3"
+    >
+      <Link
+        to="/session/$id"
+        params={{ id: restOf(s.key) }}
+        search={{}}
+        title={title}
+        className={cn(WHO, 'flex min-w-0 items-center gap-2 text-xs font-medium hover:underline')}
+      >
+        <span aria-hidden="true" className={cn('size-1.5 shrink-0 rounded-full', sessionDot(s.state))} />
+        <span className={cn('truncate', !s.change && 'text-ink-muted')}>{title}</span>
+      </Link>
+      <div className="relative h-4 min-w-0 flex-1 overflow-hidden border-b border-line" style={FADE}>
+        <div key={r.span.to} {...r.layer()}>
+          <span
+            aria-hidden="true"
+            className={cn('absolute top-1.5 h-1 rounded-full', SESSION[s.state].bg, 'opacity-35')}
+            style={{
+              left: `${r.at(Date.parse(lane.first))}%`,
+              width: `max(4px, ${r.at(Date.parse(lane.last)) - r.at(Date.parse(lane.first))}%)`,
+            }}
+          />
+          {lane.beats.map((e) => (
+            <Mark
+              key={e.seq}
+              e={e}
+              pct={r.at(Date.parse(e.at))}
+              dim={after(e)}
+              onLock={() => r.go({ event: e.seq })}
+              onTip={(el) => tips.show(e, el)}
+              onUntip={tips.hide}
+            >
+              <m.span
+                initial={fresh(e.seq) ? { scale: 2.2 } : false}
+                animate={{ scale: 1 }}
+                transition={{ duration: 0.6 }}
+                className={cn(
+                  'absolute top-1/2 left-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full',
+                  e.seq === r.cursor.event ? 'size-2 bg-primary' : SESSION[s.state].bg,
+                )}
+              >
+                <Flash arrival={fresh(e.seq) ? e.seq : undefined} className={eventTone(e).text} />
+              </m.span>
+            </Mark>
+          ))}
+          {lane.flags.map((e) => (
+            <Mark
+              key={e.seq}
+              e={e}
+              pct={r.at(Date.parse(e.at))}
+              dim={after(e)}
+              onLock={() => r.go({ event: e.seq })}
+              onTip={(el) => tips.show(e, el)}
+              onUntip={tips.hide}
+              flag
+            >
+              <span
+                className={cn(
+                  'absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2',
+                  e.seq === r.cursor.event ? 'bg-primary' : decisionTone(e.statusNow ?? e.status).bg,
+                )}
+              >
+                <Flash arrival={fresh(e.seq) ? e.seq : undefined} className={eventTone(e).text} />
+              </span>
+              <span
+                className={cn(
+                  'absolute top-0 left-1/2 ml-px h-[7px] w-2',
+                  e.seq === r.cursor.event ? 'bg-primary' : decisionTone(e.statusNow ?? e.status).bg,
+                )}
+                style={{ clipPath: 'polygon(0 0, 100% 50%, 0 100%)' }}
+              />
+            </Mark>
+          ))}
+          {held && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-primary"
+              style={{ left: `${r.at(r.heldAt)}%` }}
+            />
+          )}
+        </div>
+      </div>
+    </m.li>
+  );
+}
 
 /** A beat or a flag: placed at its instant; the pointer on it shows its tip, a click locks on its event. */
 function Mark({

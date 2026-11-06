@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BridgeSession, TimelineEvent } from '@/data/contract';
-import { lastArrival, strip, stripRows } from './model';
+import { lastArrival, strip, stripRows, unfolded } from './model';
 
 const session = (key: string, over: Partial<BridgeSession> = {}): BridgeSession => ({
   key,
@@ -19,12 +19,17 @@ const ev = (seq: number, over: Partial<TimelineEvent>): TimelineEvent => ({
   ...over,
 });
 
+const on = { key: 'change:pjman/x', path: [] };
+
 describe('stripRows', () => {
   it('lays every heading and card in one list in the order of need, each group headed even when empty', () => {
     const rows = stripRows(
       strip({
         waitingOn: [],
-        sessions: [session('session:a', { last: '2026-10-28T10:00:00Z' }), session('session:b', { state: 'stopped' })],
+        sessions: [
+          session('session:a', { last: '2026-10-28T10:00:00Z', change: on }),
+          session('session:b', { state: 'stopped', change: on }),
+        ],
       }),
     );
     expect(rows.map((r) => r.key)).toEqual([
@@ -36,6 +41,20 @@ describe('stripRows', () => {
       'h:ended',
     ]);
     expect(rows[0]).toMatchObject({ kind: 'head', words: 'none' });
+  });
+  it("folds a group's sessions on no change into one line after its cards, their cards beneath it when it is open", () => {
+    const data = strip({
+      waitingOn: [],
+      sessions: [session('session:a'), session('session:b', { state: 'stopped' }), session('session:c')],
+    });
+    const working = (open: Set<string>) =>
+      unfolded(stripRows(data), open)
+        .filter((r) => r.key.endsWith('working') || r.key.startsWith('s:session:a') || r.key.startsWith('s:session:c'))
+        .map((r) => r.key);
+    expect(working(new Set())).toEqual(['h:working', 'f:working']);
+    expect(working(new Set(['stopped']))).toEqual(['h:working', 'f:working']);
+    expect(stripRows(data).find((r) => r.key === 'f:working')).toMatchObject({ count: 2 });
+    expect(working(new Set(['working']))).toEqual(['h:working', 'f:working', 's:session:a', 's:session:c']);
   });
 });
 

@@ -9,10 +9,13 @@
 // event touched washes in that event's colour. Under the pointer or keyboard focus it holds still, every card in
 // place while what it says keeps updating; leaving it, the strip settles. A new moment (a scrub, a step, another
 // product) redraws it at once.
+// A group's sessions on no change are one folded line after its cards, as on the lanes (decision
+// lanes-unbound-sessions/strip-unbound-cards); it opens to their cards.
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
+import { ChevronRight } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { BridgeChange, BridgeSession, Lens, TimelineEvent, WaitingDecision } from '@/data/contract';
 import { plural } from '@/lib/format';
 import { useHeldList, useHold } from '@/lib/hold';
@@ -31,6 +34,7 @@ import {
   strip,
   stripRows,
   subagentWords,
+  unfolded,
   type StripRow,
   type WaitItem,
 } from './model';
@@ -70,6 +74,13 @@ export function Strip({
   moment?: string;
   className?: string;
 }) {
+  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (state: string) =>
+    setOpen((o) => {
+      const next = new Set(o);
+      if (!next.delete(state)) next.add(state);
+      return next;
+    });
   const live = stripRows(strip({ waitingOn, sessions }));
   const hold = useHold();
   // held, a card keeps its place but says what its session says now, wherever the session has moved to
@@ -94,7 +105,7 @@ export function Strip({
       )}
       <ol key={moment} aria-label="Sessions by need" className="flex flex-col" {...hold.props}>
         <AnimatePresence initial={false}>
-          {shown.map((r) => (
+          {unfolded(shown, open).map((r) => (
             <m.li
               key={r.key}
               {...liveItem}
@@ -102,6 +113,19 @@ export function Strip({
             >
               {r.kind === 'head' ? (
                 <Heading row={r} />
+              ) : r.kind === 'fold' ? (
+                <button
+                  type="button"
+                  aria-expanded={open.has(r.state)}
+                  onClick={() => toggle(r.state)}
+                  className="flex items-center gap-1.5 text-left text-xs text-ink-muted hover:text-ink"
+                >
+                  <ChevronRight
+                    aria-hidden="true"
+                    className={cn('size-3.5 transition-transform', open.has(r.state) && 'rotate-90')}
+                  />
+                  {plural(r.count, 'session')} on no change yet
+                </button>
               ) : r.kind === 'wait' ? (
                 <WaitCard
                   item={r.item}

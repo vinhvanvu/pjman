@@ -18,10 +18,19 @@ const ev = (seq: number, over: Partial<TimelineEvent>): TimelineEvent => ({
   ...over,
 });
 
+const on = (s: BridgeSession): BridgeSession => ({ ...s, change: { key: 'change:pjman/x', path: [] } });
+
 describe('lanesOf', () => {
   const kid = session('session:kid');
   const idle = { ...session('session:idle'), state: 'ended' as const };
-  const sessions = [session('session:a', [kid]), session('session:b'), session('session:quiet'), idle];
+  const fresh = session('session:fresh');
+  const sessions = [
+    on(session('session:a', [kid])),
+    on(session('session:b')),
+    fresh,
+    on(session('session:quiet')),
+    idle,
+  ];
   const events = [
     ev(1, { op: 'log', type: 'session', key: 'session:a' }),
     ev(2, { session: 'session:a' }),
@@ -31,10 +40,17 @@ describe('lanesOf', () => {
     ev(6, { op: 'log', type: 'session', key: 'session:stranger' }),
     ev(7, { writer: 'person:vinh' }),
     ev(8, { op: 'log', type: 'session', key: 'session:idle' }),
+    ev(9, { op: 'log', type: 'session', key: 'session:fresh' }),
   ];
-  const lanes = lanesOf(sessions, events);
+  const { lanes, unbound } = lanesOf(sessions, events);
   it("keeps the bridge's order, leaving out a session with nothing in the window, one that ended on no change and events of no row", () => {
     expect(lanes.map((l) => l.session.key)).toEqual(['session:a', 'session:b']);
+  });
+  it('folds a session on no change apart, and gives it its row with its earlier beats once it binds', () => {
+    expect(unbound.map((l) => l.session.key)).toEqual(['session:fresh']);
+    const bound = lanesOf([on(fresh)], events);
+    expect(bound.unbound).toEqual([]);
+    expect(bound.lanes.map((l) => l.beats.map((e) => e.seq))).toEqual([[9]]);
   });
   it("draws its lines as beats and the decisions it opened as flags, its subagent's lines on its row", () => {
     const a = lanes[0]!;
