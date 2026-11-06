@@ -442,14 +442,14 @@ function main() {
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });
         st.acted = 0;
       }
-      // the receipt: what the store received since the last turn, composed by the tool, shown to the person
+      // the receipt: what this session and the sessions it spawned wrote since the last turn, composed by the tool, shown to the person
       if (EVENT === 'Stop') {
-        const r = tryPjman(['events', '--receipt', '--since', String(st.seq ?? 0), '--json'], { cwd, json: true });
+        const r = tryPjman(['events', '--receipt', '--since', String(st.seq ?? 0), '--session', `session:${sid}`, '--json'], { cwd, json: true });
         if (r) {
           // the receipt is read by the person inside the project: the product segment of the project's product is dropped
           const product = store.product ? String(store.product).replace(/^product:/, '') : null;
           const trim = (l) => (product ? l.replace(new RegExp(`\\b(feature|change|decision):${product}/`, 'g'), '$1:') : l);
-          const lines = r.lines.filter((l) => !l.startsWith(`session:${sid}:`)).map(trim);
+          const lines = r.lines.map(trim);
           // what the agent was handed this turn, by size (the brief has no ceiling; the person sees what it cost)
           const briefed = (st.briefs ?? []).map((b) => trim(`${b.mode === 'full' ? 'full context' : 'what changed'} on ${b.change}: ${b.lines} line${b.lines === 1 ? '' : 's'}, ~${b.tokens} tokens${b.cut ? ' (cut by the harness at 10,000 characters)' : ''}`));
           const blocks = [];

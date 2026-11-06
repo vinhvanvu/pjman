@@ -12,12 +12,29 @@ export interface Receipt {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
-/** Events after `since`, by the given session when one is named, folded to one line per record. */
+/** Events after `since`, folded to one line per record. With a session named, only what that session and the
+ *  sessions it spawned (by `parent`, at any depth) wrote, and not their own session records: the person reads what
+ *  their conversation landed, and a child's creation and log are bookkeeping, not a write to report. */
 export function receipt(store: Store, opts: { since?: number; session?: string; loaded?: Loaded } = {}): Receipt {
   const all = readEvents(store, opts.since ?? 0);
   const last = readEvents(store).at(-1)?.seq ?? 0;
-  const mine = opts.session ? all.filter((e) => e.session === opts.session) : all;
-  return { seq: last, lines: receiptLines(mine, opts.loaded ?? loadStore(store)) };
+  const loaded = opts.loaded ?? loadStore(store);
+  if (!opts.session) return { seq: last, lines: receiptLines(all, loaded) };
+  const family = sessionFamily(loaded, opts.session);
+  const mine = all.filter((e) => !!e.session && family.has(e.session) && !(e.type === 'session' && family.has(e.key)));
+  return { seq: last, lines: receiptLines(mine, loaded) };
+}
+
+/** A session and every session descended from it through `parent`. */
+export function sessionFamily(loaded: Loaded, session: string): Set<string> {
+  const children = new Map<string, string[]>();
+  for (const r of loaded.records) {
+    const parent = r.type === 'session' ? str(r.data.parent) : undefined;
+    if (parent) children.set(parent, [...(children.get(parent) ?? []), r.key]);
+  }
+  const family = new Set([session]);
+  for (const key of family) for (const c of children.get(key) ?? []) family.add(c);
+  return family;
 }
 
 /** One line per record, in order of first appearance: the strongest verb wins (removed > created > moved > set),
