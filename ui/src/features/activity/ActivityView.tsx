@@ -1,25 +1,28 @@
-// Activity: the motion beneath the node, as a view. Live sessions first, then the stream newest first.
-import type { Lens, LiveSession, StoreEvent } from '@/data/contract';
+// Activity: the motion beneath the node, as a view. Live sessions first, then the rail (change:activity-timeline):
+// on a change its decisions are the lanes, on a milestone its children, on a feature or the product every change
+// beneath it, folding beyond a handful and bucketing the days before the window into the band with the health each
+// day moved. The flat list is the rail's other rendering, behind its toggle.
+import type { Lens, LiveSession } from '@/data/contract';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
-import { EmptyState } from '@/components/EmptyState';
 import { Label } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
+import { ActivityRail } from '@/features/rail/ActivityRail';
+import { windowFor } from '@/features/rail/model';
 
 export function ActivityView({
-  recent,
+  node,
   sessions,
   lens,
-  days,
 }: {
-  recent: StoreEvent[];
+  /** The node the activity is beneath: a change, a milestone, a feature, the product. */
+  node: string;
   sessions: LiveSession[];
   lens: Lens;
-  days: number;
 }) {
-  // bounded: the last 30 beneath the entity, newest first; the window is the scope's
-  const events = recent.slice(-30).toReversed();
+  // the window follows the scope: a change two weeks, a feature days, the product a day; the band holds the rest
+  const days = windowFor(node);
   return (
     <div className="flex flex-col gap-6 p-5 md:p-6">
       <section className="flex flex-col gap-2">
@@ -53,36 +56,7 @@ export function ActivityView({
           </ul>
         )}
       </section>
-      <section className="flex flex-col gap-2">
-        <div className="flex items-baseline gap-2">
-          <Label>Stream</Label>
-          <span className="text-meta text-ink-faint">
-            last {events.length} events beneath it · window {days} days
-          </span>
-        </div>
-        {events.length === 0 ? (
-          <EmptyState title="Nothing has happened here yet." />
-        ) : (
-          <ol className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
-            {events.map((e) => (
-              <li
-                key={e.seq}
-                className="grid grid-cols-[52px_72px_minmax(0,1fr)_auto] items-baseline gap-3 px-3.5 py-2 text-xs"
-              >
-                <span className="text-ink-faint">{ago(e.at)}</span>
-                <span className="font-mono text-meta text-ink-muted">{e.op}</span>
-                <span className="min-w-0 truncate">
-                  <NodeLink to={e.key} lens={lens} className="text-ink hover:text-primary">
-                    {e.key}
-                  </NodeLink>
-                  {e.fields?.length ? <span className="text-ink-faint"> · {e.fields.join(', ')}</span> : null}
-                </span>
-                <span className="text-ink-faint">{e.writer ? short(e.writer) : ''}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+      <ActivityRail scope={node} lens={lens} days={days} />
     </div>
   );
 }

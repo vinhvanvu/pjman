@@ -37,5 +37,10 @@
   --status-done: #2b8a3e;
   --status-dropped: #9a9ea6;
   --live: #1f9d55;
+  --lane-1: #0f8aa5;
+  --lane-2: #b02fa8;
+  --lane-3: #7a4a2a;
+  --lane-4: #a66a9a;
+  --lane-5: #2a8fcf;
   --radius: 0.5rem;
 }

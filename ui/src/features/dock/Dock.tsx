@@ -1,6 +1,7 @@
 // The dock: the session's page at docked width, one column beside the terminal (change:docked-view; decision
-// dock-column). What the session is on first; what waits on the person next; this session's own lines, newest first;
-// the next step and the Intent clamped; then rows that drill into the record in place. A session with no change yet
+// dock-column). What the session is on first; what waits on the person next; the session's rail, its own lines the
+// trunk and the changes it touched the lanes, lit to the change shown (change:activity-timeline); the next step and
+// the Intent clamped; then rows that drill into the record in place. A session with no change yet
 // shows a pickup list, the product's open changes by feature with the nearest to fully decided first, until the first
 // bind moves the dock to the change. The next step is the plan's, derived (change:foundation-views), so it never
 // restates a handoff the way the retired next field did (decision next-leaves-the-dock).
@@ -13,7 +14,7 @@ import type { ChangeAspects, ChangeContext, Lens, Scope, SessionFacts, StoreEven
 import { ago, plural } from '@/lib/format';
 import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
-import { liveItem, swapView, Wash } from '@/lib/motion';
+import { swapView, Wash } from '@/lib/motion';
 import { statusTone, TONE } from '@/lib/tones';
 import { useFreshEvents } from '@/state/arrivals';
 import { useAt } from '@/state/moment';
@@ -23,15 +24,14 @@ import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
 import { SourceChip } from '@/components/links/SourceChip';
 import { Pulse } from '@/components/presence/Presence';
-import { livenessWords, newestLines } from '@/features/session-follow';
+import { livenessWords } from '@/features/session-follow';
 import { AspectReading, AspectWholeBody } from '@/features/aspects';
+import { ActivityRail } from '@/features/rail/ActivityRail';
 import { nextLine, Readiness } from '@/components/record/Foundation';
 import { dockArrivals, pickups, readiness, type Pickup } from './model';
 
-const LIVE_LINES = 5;
 const NO_EVENTS: readonly StoreEvent[] = [];
 const keyOf = (d: { key: string }) => d.key;
-const lineKey = (l: { at: string }) => l.at;
 
 export function Dock({
   scope,
@@ -222,7 +222,16 @@ function DockChange({
         />
       </section>
 
-      <LiveLines session={session} arrival={arrivals.line} held={hold.held} moment={at} />
+      {/* the session's rail (change:activity-timeline): its lines the trunk, the changes it touched the lanes, lit to the
+          change the dock draws so the rest dim; held still with the dock */}
+      <ActivityRail
+        scope={session.key}
+        lens={lens}
+        lit={c.key}
+        label="Live"
+        note={<Liveness session={session} />}
+        held={hold.held}
+      />
 
       {ctx.next && <Clamped label="Next" text={nextLine(ctx.next)!} />}
       {ctx.sections.Intent && <Clamped label="Intent" text={ctx.sections.Intent} />}
@@ -316,7 +325,7 @@ function DockFresh({
         )}
       </section>
 
-      {session && <LiveLines session={session} />}
+      {session && <ActivityRail scope={session.key} lens={lens} label="Live" note={<Liveness session={session} />} />}
     </article>
   );
 }
@@ -361,62 +370,13 @@ function PickupRow({ pickup: { row, proposed, stackedOn }, lens }: { pickup: Pic
 }
 
 /** This session's own lines, newest first: what it last said at every stop. */
-function LiveLines({
-  session,
-  arrival,
-  held,
-  moment,
-}: {
-  session: SessionFacts;
-  /** The line the stream just brought, which washes the newest line. */
-  arrival?: StoreEvent;
-  held?: boolean;
-  moment?: string;
-}) {
-  const [all, setAll] = useState(false);
-  const { shown: lines } = useHeldList(
-    all ? session.log.toReversed() : newestLines(session.log, LIVE_LINES),
-    held ?? false,
-    lineKey,
-  );
+/** Beside the rail's head: the session's pulse while it is live, and its liveness in words. */
+function Liveness({ session }: { session: SessionFacts }) {
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Label>Live</Label>
-        {session.state === 'live' && <Pulse />}
-        <span className="text-meta text-ink-faint">this session · {livenessWords(session)}</span>
-      </div>
-      {lines.length === 0 ? (
-        <div className="text-xs text-ink-faint">Nothing written yet.</div>
-      ) : (
-        // a new line opens its space at the top and fades in; the oldest is pushed out at the bottom as it fades;
-        // showing all or fewer, or another moment, redraws at once
-        <ol key={`${moment ?? 'now'}|${all}`} className="flex flex-col">
-          <AnimatePresence initial={false}>
-            {lines.map((l, i) => (
-              <m.li
-                key={l.at}
-                {...liveItem}
-                className="relative flex items-start gap-2.5 overflow-hidden rounded-row pb-1.5 text-xs"
-              >
-                {i === 0 && <Wash arrival={arrival?.seq} className={TONE.live.wash} />}
-                <span className="w-8 shrink-0 pt-px text-right font-mono text-meta text-ink-faint">{ago(l.at)}</span>
-                <span className={cn('min-w-0 leading-relaxed', all ? '' : 'line-clamp-2')}>{l.text}</span>
-              </m.li>
-            ))}
-          </AnimatePresence>
-        </ol>
-      )}
-      {session.log.length > LIVE_LINES && (
-        <button
-          type="button"
-          onClick={() => setAll((v) => !v)}
-          className="self-start text-xs text-primary hover:underline"
-        >
-          {all ? 'fewer' : `all ${session.log.length}`}
-        </button>
-      )}
-    </section>
+    <>
+      {session.state === 'live' && <Pulse />}
+      <span className="text-meta text-ink-faint">this session · {livenessWords(session)}</span>
+    </>
   );
 }
 

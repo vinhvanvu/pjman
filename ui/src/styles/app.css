@@ -70,6 +70,12 @@
   --color-state-planned: var(--faint);
   --color-state-retired: var(--status-dropped);
   --color-live: var(--live);
+  /* the rail's lanes: categorical, never a state (decision activity-timeline/lanes-have-their-own-hues) */
+  --color-lane-1: var(--lane-1);
+  --color-lane-2: var(--lane-2);
+  --color-lane-3: var(--lane-3);
+  --color-lane-4: var(--lane-4);
+  --color-lane-5: var(--lane-5);
 
   --radius-chip: 5px;
   --radius-row: 6px;

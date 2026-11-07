@@ -68,7 +68,7 @@ export function markSuperseded(targets: Rec[], writer: string | undefined): Mark
     const updated = render('decision', { ...rec.data, status: 'superseded' }, rec.body);
     if (updated !== text) fs.writeFileSync(rec.abs, updated);
     m.touched.push(rec.path);
-    m.also.push({ op: 'set', key: rec.key, type: 'decision', path: rec.path, fields: ['status'], writer });
+    m.also.push({ op: 'set', key: rec.key, type: 'decision', path: rec.path, fields: ['status'], value: 'superseded', writer });
     m.notes.push(`${rec.key} is now superseded`);
   }
   return m;

@@ -20,13 +20,14 @@ function load(store: Store, id: string) {
 
 type SaveOp = 'log' | 'bind' | 'observe' | 'unbind' | 'focus' | 'briefed';
 
-function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: SaveOp): string | null {
+/** `value`: on a bind or a focus, the key of the change, so the event says where the session went. */
+function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: SaveOp, value?: string): string | null {
   const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render('session', data, body));
   validateOrUndo(store, [rec.path], [], prior);
   const fields = { log: ['log'], bind: ['changes'], observe: ['observed'], unbind: ['changes', 'observed', 'log'], focus: ['focus'], briefed: ['briefed'] }[op];
   const evOp = op === 'unbind' || op === 'focus' || op === 'briefed' ? 'set' : op;
-  return finishWrite(store, message, rec.key, [{ op: evOp, key: rec.key, type: 'session', path: rec.path, fields, writer: envelope({}).writer }]);
+  return finishWrite(store, message, rec.key, [{ op: evOp, key: rec.key, type: 'session', path: rec.path, fields, value, writer: envelope({}).writer }]);
 }
 
 const withLogLine = (rec: Pick<Rec, 'body' | 'sections'>, text: string): string => {
@@ -169,7 +170,7 @@ export function sessionBind(store: Store, id: string, changeKey: string, reason:
   const changes = Array.isArray(rec.data.changes) ? [...(rec.data.changes as string[])] : [];
   if (changes.includes(key)) return { path: rec.path, commit: null, added: false };
   changes.push(key);
-  const commit = save(store, rec, { ...rec.data, changes }, withLogLine(rec, `bound ${key} (${reason})`), `pjman: session bind ${rec.key} ${key}`, 'bind');
+  const commit = save(store, rec, { ...rec.data, changes }, withLogLine(rec, `bound ${key} (${reason})`), `pjman: session bind ${rec.key} ${key}`, 'bind', key);
   return { path: rec.path, commit, added: true };
 }
 
@@ -184,7 +185,7 @@ export function sessionFocus(store: Store, id: string, changeKey: string): { pat
   const prior = rec.data.focus as { change?: string; at?: string } | undefined;
   const moved = readEvents(store).some((e) => e.session === rec.key && e.op !== 'log' && !(e.key === rec.key && e.op === 'set') && (!prior?.at || e.at > prior.at));
   if (prior?.change === key && !moved) return { path: rec.path, commit: null, moved: false };
-  const commit = save(store, rec, { ...rec.data, focus: { change: key, at: nowIso() } }, rec.body, `pjman: session focus ${rec.key} ${key}`, 'focus');
+  const commit = save(store, rec, { ...rec.data, focus: { change: key, at: nowIso() } }, rec.body, `pjman: session focus ${rec.key} ${key}`, 'focus', key);
   return { path: rec.path, commit, moved: true };
 }
 
