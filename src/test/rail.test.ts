@@ -1,6 +1,7 @@
 // The rail at every scope (change:activity-timeline): on a tree node the lanes are the units beneath it and a row
 // drills to its session; on a session the lanes are the changes it touched, its lines the trunk, a focus move a
-// switch; lanes beyond a handful fold into one; events older than the window bucket by day with their health.
+// switch; lanes beyond a handful fold into one; a page is the last n rows that pass the filter, and every older row
+// buckets by day with its health.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -110,7 +111,7 @@ test('a file a session touched is a file row in the lane of the change it was on
 });
 
 test('the product: every change beneath it is a lane, and beyond the handful the rest fold into one', () => {
-  const r = rail(store, loadStore(store), 'product:web', { lanes: 3 });
+  const r = rail(store, loadStore(store), 'product:web', { fold: 3 });
   assert.equal(r.lanes.length, 4);
   const more = r.lanes.at(-1)!;
   assert.equal(more.id, 'more');
@@ -118,21 +119,69 @@ test('the product: every change beneath it is a lane, and beyond the handful the
   assert.ok(more.folded! >= 3);
   assert.equal(r.rows.filter((row) => row.lane === 'more').length, more.count);
   assert.ok(r.rows.every((row) => row.lane === null || row.lane === 'more' || r.lanes.some((l) => l.id === row.lane)));
-  const wide = rail(store, loadStore(store), 'product:web', { lanes: 50 });
+  const wide = rail(store, loadStore(store), 'product:web', { fold: 50 });
   assert.ok(!wide.lanes.some((l) => l.id === 'more'));
 });
 
-test('events older than the window bucket by day, carrying the health the day moved', () => {
-  const r = rail(store, loadStore(store), 'change:auth', { now: Date.now() + 30 * DAY, days: 14 });
-  assert.deepEqual(r.rows, []);
-  assert.equal(r.buckets.length, 1);
-  const b = r.buckets[0]!;
+test('a page: the last n passing rows, paged back by sequence; every older row buckets by day with the health it moved', () => {
+  const whole = rail(store, loadStore(store), 'change:auth');
+  assert.equal(whole.total, whole.rows.length);
+  assert.equal(whole.earlier, 0);
+  assert.deepEqual(whole.buckets, []);
+  assert.equal(whole.from, whole.rows[0]!.at);
+
+  const page = rail(store, loadStore(store), 'change:auth', { limit: 1 });
+  assert.deepEqual(page.rows, whole.rows.slice(-1));
+  assert.equal(page.total, whole.total);
+  assert.equal(page.earlier, whole.total - 1);
+  assert.equal(page.from, page.rows[0]!.at);
+  assert.equal(page.buckets.length, 1);
+  const b = page.buckets[0]!;
   assert.match(b.day, /^\d{4}-\d\d-\d\d$/);
-  assert.equal(b.count, r.total);
+  assert.equal(b.count, whole.total - 1);
   assert.equal(b.health.created, 1);
-  assert.ok(b.health.moved >= 1);
   assert.equal(b.health.waiting, 2);
   assert.equal(b.health.done, 0);
+  assert.ok(b.health.moved >= 1);
   assert.ok(b.lanes['trunk']! >= 2);
-  assert.ok(b.lanes['decision:web/auth/tokens']! >= 2);
+
+  const next = rail(store, loadStore(store), 'change:auth', { limit: 2, before: page.rows[0]!.seq });
+  assert.deepEqual(next.rows, whole.rows.slice(-3, -1));
+  assert.equal(next.earlier, whole.total - 3);
+  assert.equal(next.buckets.reduce((n, d) => n + d.count, 0), next.earlier);
+  const first = whole.rows[0]!.seq;
+  const end = rail(store, loadStore(store), 'change:auth', { limit: 2, before: first + 1 });
+  assert.deepEqual(end.rows, [whole.rows[0]]);
+  assert.equal(end.earlier, 0);
+});
+
+test('the pages down to a day: from the day on, before the page already shown, without a limit', () => {
+  const whole = rail(store, loadStore(store), 'change:auth');
+  const day = whole.rows[0]!.at.slice(0, 10);
+  const down = rail(store, loadStore(store), 'change:auth', { from: `${day}T00:00:00.000Z`, before: whole.rows.at(-1)!.seq });
+  assert.deepEqual(down.rows, whole.rows.slice(0, -1));
+  assert.equal(down.from, `${day}T00:00:00.000Z`);
+  assert.equal(down.earlier, 0);
+});
+
+test('the filter: only these kinds, only these lanes; the lanes stay listed and the total counts what passes', () => {
+  const all = rail(store, loadStore(store), 'change:auth');
+  const decisions = rail(store, loadStore(store), 'change:auth', { kinds: ['decision'] });
+  assert.ok(decisions.rows.length > 0);
+  assert.ok(decisions.rows.every((row) => row.kind === 'decision'));
+  assert.equal(decisions.total, all.rows.filter((row) => row.kind === 'decision').length);
+  assert.equal(decisions.lanes.length, 2);
+  const trunk = rail(store, loadStore(store), 'change:auth', { lanes: ['trunk'] });
+  assert.ok(trunk.rows.length > 0);
+  assert.ok(trunk.rows.every((row) => row.lane === null));
+  assert.equal(trunk.lanes.length, 2);
+  const tokens = rail(store, loadStore(store), 'change:auth', { lanes: ['decision:web/auth/tokens'], limit: 1 });
+  assert.equal(tokens.rows.length, 1);
+  assert.equal(tokens.rows[0]!.lane, 'decision:web/auth/tokens');
+  assert.equal(tokens.earlier, all.rows.filter((row) => row.lane === 'decision:web/auth/tokens').length - 1);
+  assert.ok(tokens.buckets.every((d) => Object.keys(d.lanes).every((l) => l === 'decision:web/auth/tokens')));
+  const none = rail(store, loadStore(store), 'change:auth', { kinds: ['file'] });
+  assert.deepEqual(none.rows, []);
+  assert.equal(none.total, 0);
+  assert.equal(none.earlier, 0);
 });

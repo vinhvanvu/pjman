@@ -2,9 +2,11 @@
 // decides the lanes and what a dot drills to. On a tree node (a change, a milestone, a feature, the product) the lanes
 // are the units beneath it, a decision or a change, and each row carries the session that wrote it. On a session the
 // lanes are the changes it touched, each row carries its change, the session's own lines are the trunk and a focus
-// move is a switch. As the scope grows the model folds: lanes beyond a handful collapse into one, and events older
-// than the window bucket by day with the health the scope already derives. The rail and the flat list (activity.ts)
-// are two renderings of the same events; this is the model both the server and the dashboard read.
+// move is a switch. The model folds: lanes beyond a handful collapse into one. What is shown at once is a page
+// (decision rail-pages/pages-not-windows): the last `limit` rows that pass the filter, or the page before a row, and
+// every older row buckets by day with the health the scope already derives, so a rollup page opens short and the
+// shape of the past stays in one strip. The rail and the flat list (activity.ts) are two renderings of the same
+// events; this is the model both the server and the dashboard read.
 import type { Store } from './config.js';
 import { readEvents, type StoreEvent } from './events.js';
 import { labelOf } from './foundation.js';
@@ -20,9 +22,9 @@ export interface Lane {
   title?: string;
   /** The unit's status as it stands now. */
   status?: string;
-  /** When the lane was last touched inside the window. */
+  /** When the lane was last touched, over the scope's life. */
   last?: string;
-  /** Rows in the lane inside the window. */
+  /** Rows in the lane over the scope's life. */
   count: number;
   /** On the folded lane: how many lanes it holds. */
   folded?: number;
@@ -66,31 +68,40 @@ export interface Bucket {
 export interface Rail {
   key: string;
   axis: RailAxis;
-  /** The window: `from` inclusive, `to` exclusive. Rows fall inside it, buckets before it. */
+  /** The rows' span: `from` the bound asked for, else the oldest row's moment; `to` exclusive. Buckets lie before it. */
   from: string;
   to: string;
+  /** Every lane the scope has, over its life; the filter never hides one. */
   lanes: Lane[];
+  /** The page: the rows that pass the filter, oldest first. */
   rows: Row[];
+  /** The passing rows older than the page, a bucket a day. */
   buckets: Bucket[];
-  /** Events in the scope over its whole life, up to `to`. */
+  /** Rows that pass the filter over the scope's whole life, up to `to`. */
   total: number;
+  /** Passing rows older than the page: what the buckets hold. */
+  earlier: number;
   /** The scope's last event, whenever it was. */
   last?: { seq: number; at: string };
 }
 
 export interface RailOpts {
-  /** The window's length when `from` is not given; 14 days. */
-  days?: number;
+  /** The page: the last `limit` passing rows (every one when unset), before the row `before` when paging back. */
+  limit?: number;
+  before?: number;
+  /** Bounds: rows at or after `from` (loading the pages down to a day), before `to`. */
   from?: string;
   to?: string;
   now?: number;
   /** Read as of this event: nothing after it. */
   until?: number;
   /** Lanes kept apart before the rest fold into one; 5. */
-  lanes?: number;
+  fold?: number;
+  /** The filter: only rows in these lanes (`trunk` the scope's own, `more` the folded), only rows of these kinds. */
+  lanes?: string[];
+  kinds?: RowKind[];
 }
 
-const DAY = 86_400_000;
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
 export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpts = {}): Rail {
@@ -100,8 +111,8 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const axis: RailAxis = scope.type === 'session' ? 'session' : 'tree';
   const now = opts.now ?? Date.now();
   const to = opts.to ? new Date(Date.parse(opts.to)).toISOString() : new Date(now).toISOString();
-  const from = opts.from ? new Date(Date.parse(opts.from)).toISOString() : new Date(Date.parse(to) - (opts.days ?? 14) * DAY).toISOString();
-  const lanesMax = opts.lanes ?? 5;
+  const from = opts.from ? new Date(Date.parse(opts.from)).toISOString() : undefined;
+  const lanesMax = opts.fold ?? 5;
 
   const all = readEvents(store).filter((e) => (opts.until === undefined || e.seq <= opts.until) && e.at < to);
   const events = axis === 'tree' ? treeEvents(loaded, scope, all) : all.filter((e) => e.session === scope.key || e.key === scope.key);
@@ -129,9 +140,9 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   // on a session, a bind or a focus names its change outright
   const laneOfEvent = (e: StoreEvent): string | null => (axis === 'session' && e.key === scope.key && e.value?.startsWith('change:') ? (live(loaded, e.value)?.key ?? e.value) : laneFor(e));
 
-  const inWindow = events.filter((e) => e.at >= from);
+  // the lanes over the scope's life, so the filter and the page never hide one
   const touched = new Map<string, { last: string; count: number }>();
-  for (const e of inWindow) {
+  for (const e of events) {
     const lane = laneOfEvent(e);
     if (!lane) continue;
     const t = touched.get(lane) ?? { last: e.at, count: 0 };
@@ -154,7 +165,7 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const observed = axis === 'session' && Array.isArray(scope.data.observed) ? (scope.data.observed as { from?: string; to?: string; at?: string }[]) : [];
   const lines = axis === 'session' ? logLines(scope.body) : [];
   const claimed = new Set<{ at: string; text: string }>();
-  const rows: Row[] = inWindow.map((e) => {
+  const toRow = (e: StoreEvent): Row => {
     const lane = laneOfEvent(e);
     const rec = live(loaded, e.key);
     const kind = kindOf(axis, scope, e);
@@ -188,29 +199,37 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
       }
     }
     return row;
-  });
+  };
 
-  // older than the window: one bucket a day, carrying what the day moved
+  // the filter, by the row's lane as placed and its kind
+  const onlyLanes = opts.lanes && new Set(opts.lanes);
+  const onlyKinds = opts.kinds && new Set(opts.kinds);
+  const passing = events.map(toRow).filter((r) => (!onlyLanes || onlyLanes.has(r.lane ?? 'trunk')) && (!onlyKinds || onlyKinds.has(r.kind)));
+
+  // the page: the last `limit` passing rows inside the bounds; every passing row before the page buckets by day
+  const bounded = passing.filter((r) => (from === undefined || r.at >= from) && (opts.before === undefined || r.seq < opts.before));
+  const rows = opts.limit ? bounded.slice(-opts.limit) : bounded;
+  const edge = rows[0]?.seq ?? opts.before;
+  const older = edge === undefined ? (rows.length ? [] : passing) : passing.filter((r) => r.seq < edge);
   const byDay = new Map<string, Bucket>();
-  for (const e of events) {
-    if (e.at >= from) break;
-    const day = e.at.slice(0, 10);
+  for (const r of older) {
+    const day = r.at.slice(0, 10);
     const b = byDay.get(day) ?? { day, count: 0, lanes: {}, health: { moved: 0, done: 0, created: 0, blocked: 0, waiting: 0 } };
     b.count += 1;
-    const lane = placed(laneOfEvent(e)) ?? 'trunk';
+    const lane = r.lane ?? 'trunk';
     b.lanes[lane] = (b.lanes[lane] ?? 0) + 1;
-    if (e.op === 'created' && e.type === 'change') b.health.created += 1;
-    if (e.type === 'decision' && (e.op === 'created' || e.value === 'proposed')) b.health.waiting += 1;
-    if (e.op === 'set' && e.value && e.fields?.includes('status')) {
+    if (r.op === 'created' && r.type === 'change') b.health.created += 1;
+    if (r.type === 'decision' && (r.op === 'created' || r.value === 'proposed')) b.health.waiting += 1;
+    if (r.op === 'set' && r.value && r.fields?.includes('status')) {
       b.health.moved += 1;
-      if (e.value === 'done') b.health.done += 1;
-      if (e.value === 'blocked') b.health.blocked += 1;
+      if (r.value === 'done') b.health.done += 1;
+      if (r.value === 'blocked') b.health.blocked += 1;
     }
     byDay.set(day, b);
   }
 
   const last = events.at(-1);
-  return { key: scope.key, axis, from, to, lanes, rows, buckets: [...byDay.values()], total: events.length, last: last && { seq: last.seq, at: last.at } };
+  return { key: scope.key, axis, from: from ?? rows[0]?.at ?? to, to, lanes, rows, buckets: [...byDay.values()], total: passing.length, earlier: older.length, last: last && { seq: last.seq, at: last.at } };
 }
 
 /** The events of a tree node: everything beneath it, under every key each record ever had. */

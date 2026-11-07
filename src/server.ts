@@ -10,7 +10,7 @@ import { timeline } from './timeline.js';
 import { findReferences, get } from './graph.js';
 import { rootProductOf, tree } from './tree.js';
 import { activity } from './activity.js';
-import { rail } from './rail.js';
+import { rail, type RowKind } from './rail.js';
 import { bridge } from './bridge.js';
 import { scope } from './scope.js';
 import { loadStore, resolve } from './records.js';
@@ -21,6 +21,9 @@ import { decide, reopen } from './commands/decide.js';
 import { withStoreLock } from './lock.js';
 import { intake } from './intake.js';
 import { CliError } from './util.js';
+
+/** The kinds a `kinds=` filter may name; anything else is ignored. */
+const ROW_KINDS: ReadonlySet<RowKind> = new Set<RowKind>(['write', 'decision', 'line', 'file', 'switch', 'bind']);
 
 export interface ServeOpts {
   /** The port to listen on; else PORT from the environment (how a local proxy such as portless hands one down); else a free one. */
@@ -225,9 +228,10 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const r = resolve(loaded, key);
       if (r.status !== 'ok' && r.status !== 'alias') throw new HttpError(404, 'not-found', `${key} has no record`);
       const q = url.searchParams;
-      const days = q.get('days');
-      const lanes = q.get('lanes');
-      return send(res, 200, { data: rail(store, loaded, r.rec.key, { days: days ? Number(days) : undefined, from: q.get('from') ?? undefined, to: q.get('to') ?? undefined, lanes: lanes ? Number(lanes) : undefined, ...asOf }) });
+      const num = (name: string) => (q.get(name) ? Number(q.get(name)) : undefined);
+      const list = (name: string) => (q.get(name) === null ? undefined : q.get(name)!.split(',').filter(Boolean));
+      const kinds = list('kinds')?.filter((k): k is RowKind => ROW_KINDS.has(k as RowKind));
+      return send(res, 200, { data: rail(store, loaded, r.rec.key, { limit: num('limit'), before: num('before'), from: q.get('from') ?? undefined, to: q.get('to') ?? undefined, fold: num('fold'), lanes: list('lanes'), kinds, ...asOf }) });
     }
     if (route === '/scope') {
       const q = url.searchParams;
@@ -312,7 +316,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/rail?key=&days=&from=&to=&lanes=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/products/{slug}/timeline?from=&to=', '/bridge?product=&days=', '/events?since=&until=', 'POST /order {change, before|after|first|last|later}', 'POST /decide {decision}', 'POST /reopen {decision}'], asOf: 'every read takes at=<event seq|instant> and answers as of that moment, stamped with the moment it resolved to' } });
+        if (route === '/') return send(res, 200, { data: { version: 1, routes: ['/store', '/records', '/records/{kind}/{rest}', '/records/{kind}/{rest}/neighbourhood', '/resolve?ref=', '/refs?text=', '/intake?text=', '/tree?root=', '/activity?key=&days=', '/rail?key=&limit=&before=&from=&to=&lanes=&kinds=&fold=', '/scope?lens=&node=&days=&done=&retired=', '/sessions/{id}/view', '/projects/{slug}/board', '/products/{slug}/bridge', '/products/{slug}/timeline?from=&to=', '/bridge?product=&days=', '/events?since=&until=', 'POST /order {change, before|after|first|last|later}', 'POST /decide {decision}', 'POST /reopen {decision}'], asOf: 'every read takes at=<event seq|instant> and answers as of that moment, stamped with the moment it resolved to' } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);
