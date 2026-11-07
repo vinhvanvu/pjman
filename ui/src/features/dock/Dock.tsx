@@ -227,6 +227,7 @@ function DockChange({
       <ActivityRail
         scope={session.key}
         lens={lens}
+        limit={8}
         lit={c.key}
         label="Live"
         note={<Liveness session={session} />}
@@ -325,7 +326,9 @@ function DockFresh({
         )}
       </section>
 
-      {session && <ActivityRail scope={session.key} lens={lens} label="Live" note={<Liveness session={session} />} />}
+      {session && (
+        <ActivityRail scope={session.key} lens={lens} limit={8} label="Live" note={<Liveness session={session} />} />
+      )}
     </article>
   );
 }

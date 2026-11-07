@@ -1,7 +1,8 @@
 // Activity: the motion beneath the node, as a view. Live sessions first, then the rail (change:activity-timeline):
 // on a change its decisions are the lanes, on a milestone its children, on a feature or the product every change
-// beneath it, folding beyond a handful and bucketing the days before the window into the band with the health each
-// day moved. The flat list is the rail's other rendering, behind its toggle.
+// beneath it, folding beyond a handful; it opens on the last twenty rows and pages back (change:rail-pages), the
+// days before the pages one strip with the health each day moved. The flat list is the rail's other rendering,
+// behind its toggle.
 import type { Lens, LiveSession } from '@/data/contract';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
@@ -9,7 +10,6 @@ import { Label } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Presence } from '@/components/presence/Presence';
 import { ActivityRail } from '@/features/rail/ActivityRail';
-import { windowFor } from '@/features/rail/model';
 
 export function ActivityView({
   node,
@@ -21,8 +21,6 @@ export function ActivityView({
   sessions: LiveSession[];
   lens: Lens;
 }) {
-  // the window follows the scope: a change two weeks, a feature days, the product a day; the band holds the rest
-  const days = windowFor(node);
   return (
     <div className="flex flex-col gap-6 p-5 md:p-6">
       <section className="flex flex-col gap-2">
@@ -56,7 +54,7 @@ export function ActivityView({
           </ul>
         )}
       </section>
-      <ActivityRail scope={node} lens={lens} days={days} />
+      <ActivityRail scope={node} lens={lens} limit={20} />
     </div>
   );
 }
