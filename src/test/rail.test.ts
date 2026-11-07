@@ -93,6 +93,7 @@ test("a session: the changes it touched are the lanes, its lines the trunk, a bi
   assert.equal(sw.lane, 'change:web/billing');
   const line = r.rows.find((row) => row.kind === 'line')!;
   assert.equal(line.lane, null);
+  assert.equal(line.text, 'looked at billing');
   const write = r.rows.find((row) => row.key === 'change:web/auth' && row.op === 'set')!;
   assert.equal(write.drill, 'change:web/auth');
   const decided = r.rows.find((row) => row.key === 'decision:web/auth/tokens' && row.kind === 'decision')!;

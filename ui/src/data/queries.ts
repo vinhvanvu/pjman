@@ -4,7 +4,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect } from 'react';
 import { useAt } from '@/state/moment';
 import { api } from './client';
-import type { OrderBody, ScopeQuery } from './contract';
+import type { OrderBody, RailQuery, ScopeQuery } from './contract';
 
 /** Every key ends with the moment it reads as of ('now' when none), so a page at a moment never shares a cache
  *  entry with the live page, and the stream's invalidation by prefix reaches both. */
@@ -22,6 +22,7 @@ export const queryKeys = {
   /** The one key with no moment: the timeline is the axis a moment is placed on, always read now. */
   timeline: (product: string, from: string, to: string, after?: number) =>
     ['pjman', 'timeline', product, from, to, after ?? null] as const,
+  rail: (key: string, q: RailQuery, at?: string) => ['pjman', 'rail', key, q, at ?? 'now'] as const,
 };
 
 export function useStore() {
@@ -139,6 +140,19 @@ export function useBridge(product: string | undefined, days?: number) {
     queryKey: queryKeys.bridge(product ?? '', days, at),
     queryFn: () => api.bridge(product!, days, at),
     enabled: !!product,
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}
+
+/** The rail at a key (change:activity-timeline): lanes, rows and day buckets over a window, as of the page's moment.
+ *  The stream invalidates it like everything else. */
+export function useRail(key: string | undefined, q: RailQuery = {}) {
+  const at = useAt();
+  return useQuery({
+    queryKey: queryKeys.rail(key ?? '', q, at),
+    queryFn: () => api.rail(key!, q, at),
+    enabled: !!key,
     placeholderData: keepPreviousData,
     staleTime: 15_000,
   });

@@ -98,3 +98,11 @@ export interface ScopeQuery {
   done?: boolean;
   retired?: boolean;
 }
+
+/** The rail's window and fold, as /rail takes them: `days` back from now, or `from` to `to`; `lanes` kept apart. */
+export interface RailQuery {
+  days?: number;
+  from?: string;
+  to?: string;
+  lanes?: number;
+}

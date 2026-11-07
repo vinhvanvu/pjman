@@ -6,6 +6,8 @@ import type {
   Moment,
   OrderBody,
   OrderResult,
+  Rail,
+  RailQuery,
   Resolution,
   Row,
   Scope,
@@ -104,6 +106,15 @@ export const api = {
     call<Timeline>(
       `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${after ? `&after=${after}` : ''}`,
     ),
+  /** The rail at any key: its lanes, rows and day buckets over a window, as of the page's moment. */
+  rail: (key: string, q: RailQuery = {}, at?: string) => {
+    const p = new URLSearchParams({ key });
+    if (q.days) p.set('days', String(q.days));
+    if (q.from) p.set('from', q.from);
+    if (q.to) p.set('to', q.to);
+    if (q.lanes) p.set('lanes', String(q.lanes));
+    return call<Rail>(`/rail?${p}`, at);
+  },
   scope: (q: ScopeQuery, at?: string) => {
     const p = new URLSearchParams({ lens: q.lens });
     if (q.node) p.set('node', q.node);

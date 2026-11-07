@@ -50,6 +50,8 @@ export interface Row {
   drill?: string;
   /** On a file row: the paths the session touched. */
   files?: string[];
+  /** On a session's line: its words, from the session's log. */
+  text?: string;
 }
 
 export interface Bucket {
@@ -150,6 +152,8 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const placed = (lane: string | null): string | null => (lane && foldedIds.has(lane) ? 'more' : lane);
 
   const observed = axis === 'session' && Array.isArray(scope.data.observed) ? (scope.data.observed as { from?: string; to?: string; at?: string }[]) : [];
+  const lines = axis === 'session' ? logLines(scope.body) : [];
+  const claimed = new Set<{ at: string; text: string }>();
   const rows: Row[] = inWindow.map((e) => {
     const lane = laneOfEvent(e);
     const rec = live(loaded, e.key);
@@ -157,6 +161,20 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
     const row: Row = { seq: e.seq, at: e.at, lane: placed(lane), kind, op: e.op, key: e.key, type: e.type, title: rec ? labelOf(rec.data, rec.key) : undefined, fields: e.fields, value: e.value, writer: e.writer, session: e.session };
     const drill = axis === 'tree' ? e.session : lane;
     if (drill) row.drill = drill;
+    if (kind === 'line' && e.key === scope.key) {
+      // the line's words, from the session's log: the entry nearest the event's moment, each entry read once
+      const t = Date.parse(e.at);
+      let near: { at: string; text: string } | undefined;
+      let gap = 2000;
+      for (const l of lines) {
+        const d = Math.abs(Date.parse(l.at) - t);
+        if (!claimed.has(l) && d < gap) [near, gap] = [l, d];
+      }
+      if (near) {
+        claimed.add(near);
+        row.text = near.text;
+      }
+    }
     if (kind === 'file') {
       // the edge the write observed, from the record: the files it names, and the change it was on as the row's lane
       const near = observed.filter((o) => o.at && Math.abs(Date.parse(o.at) - Date.parse(e.at)) < 2000);
@@ -215,6 +233,13 @@ function treeLanes(loaded: Loaded, scope: Rec): Map<string, Rec> {
     if (r.type === 'decision' && r.changeKey && live(loaded, r.changeKey)?.key === scope.key) out.set(r.key, r);
     else if (r.type === 'change' && (scope.type !== 'change' || live(loaded, r.data.parent)?.key === scope.key)) out.set(r.key, r);
   }
+  return out;
+}
+
+/** A session's log as it is written: one line an entry, `- <when> — <text>`. */
+function logLines(body: string): { at: string; text: string }[] {
+  const out: { at: string; text: string }[] = [];
+  for (const m of body.matchAll(/^- (\d{4}-\d\d-\d\dT[^ ]+) — (.*)$/gm)) out.push({ at: m[1]!, text: m[2]!.trim() });
   return out;
 }
 
