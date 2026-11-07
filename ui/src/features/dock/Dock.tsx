@@ -1,37 +1,25 @@
 // The dock: the session's page at docked width, one column beside the terminal (change:docked-view; decision
-// dock-column). What the session is on first; what waits on the person next; the session's rail, its own lines the
-// trunk and the changes it touched the lanes, lit to the change shown (change:activity-timeline); the next step and
-// the Intent clamped; then rows that drill into the record in place. A session with no change yet
-// shows a pickup list, the product's open changes by feature with the nearest to fully decided first, until the first
-// bind moves the dock to the change. The next step is the plan's, derived (change:foundation-views), so it never
-// restates a handoff the way the retired next field did (decision next-leaves-the-dock).
-import { Link } from '@tanstack/react-router';
+// session-leads-the-dock supersedes dock-column). It is the session tree folded to docked width
+// (features/session, decision one-tree-two-variables): the session bar, the focus card on the change the session is
+// on with the chips when several were touched, and the session's rail beneath. A session with no change yet shows a
+// pickup list, the product's open changes by feature with the nearest to fully decided first, until the first bind
+// moves the dock to the change.
 import { cn } from 'cn';
-import { ChevronRight, Diamond } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import { useRef, useState } from 'react';
-import type { ChangeAspects, ChangeContext, Lens, Scope, SessionFacts, StoreEvent } from '@/data/contract';
+import type { Lens, Scope, SessionFacts } from '@/data/contract';
 import { ago, plural } from '@/lib/format';
-import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
 import { swapView, Wash } from '@/lib/motion';
-import { statusTone, TONE } from '@/lib/tones';
-import { useFreshEvents } from '@/state/arrivals';
+import { TONE } from '@/lib/tones';
 import { useAt } from '@/state/moment';
-import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
-import { DecisionRows } from '@/components/cards/DecisionRows';
-import { useDecideAction } from '@/data/queries';
+import { Label } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
-import { SourceChip } from '@/components/links/SourceChip';
 import { Pulse } from '@/components/presence/Presence';
 import { livenessWords } from '@/features/session-follow';
-import { AspectReading, AspectWholeBody } from '@/features/aspects';
 import { ActivityRail } from '@/features/rail/ActivityRail';
-import { nextLine, Readiness } from '@/components/record/Foundation';
-import { dockArrivals, pickups, readiness, type Pickup } from './model';
-
-const NO_EVENTS: readonly StoreEvent[] = [];
-const keyOf = (d: { key: string }) => d.key;
+import { SessionTree, useSessionSearch } from '@/features/session';
+import { pickups, readiness, type Pickup } from './model';
 
 export function Dock({
   scope,
@@ -45,18 +33,15 @@ export function Dock({
   /** The scope is the one asked for, not the last one held while it loads. */
   settled?: boolean;
 }) {
-  const ctx = session?.on ? scope.change : undefined;
-  // the dock moves with its session (change:dock-moves; decision dock-swap): keyed on the change it draws, not the one
-  // the session is on, so the swap waits for the new change's scope. A live move fades the old view, returns the
-  // column to the top and brings the new one in with its header washed. A swap is live only when the view before and
-  // the view after both belong to now: into or out of a held moment it is the person's act, and swaps at once
-  // (change:dock-moves-held-moment)
-  const subject = ctx?.change.key ?? 'fresh';
+  const { pick } = useSessionSearch();
+  // the dock moves from the pickup list to the session tree with its session's first bind (change:dock-moves;
+  // decision dock-swap): a live move fades the old view, returns the column to the top and brings the new one in. A
+  // swap is live only when the view before and the view after both belong to now (change:dock-moves-held-moment)
+  const subject = session && (session.on || pick) ? 'tree' : 'fresh';
   const at = useAt();
   const [shown, setShown] = useState({ subject, from: at });
   const [live, setLive] = useState(false);
   const [moves, setMoves] = useState(0);
-  // the moment the drawn scope belongs to: while the asked-for one loads, the held one is still the last moment's
   const from = settled ? at : shown.from;
   if (shown.subject !== subject || shown.from !== from) {
     setShown({ subject, from });
@@ -77,8 +62,8 @@ export function Dock({
         onExitComplete={() => scrollParent(ref.current)?.scrollTo({ top: 0 })}
       >
         <m.div key={subject} {...swapView} custom={live} initial={live ? 'enter' : false}>
-          {ctx && session ? (
-            <DockChange scope={scope} ctx={ctx} session={session} lens={lens} moved={moved} />
+          {subject === 'tree' && session ? (
+            <SessionTree session={session} lens={lens} wide={false} />
           ) : (
             <DockFresh scope={scope} session={session} lens={lens} moved={moved} />
           )}
@@ -102,163 +87,6 @@ function Moved({ arrival }: { arrival?: number }) {
     <span aria-hidden="true" className="pointer-events-none absolute -inset-x-2 -inset-y-1.5 rounded-card">
       <Wash arrival={arrival} className={TONE.active.wash} />
     </span>
-  );
-}
-
-/** The dock on a change: the session is on it. */
-function DockChange({
-  scope,
-  ctx,
-  session,
-  lens,
-  moved,
-}: {
-  scope: Scope;
-  ctx: ChangeContext;
-  session: SessionFacts;
-  lens: Lens;
-  /** The dock just moved here with its session: the header washes. */
-  moved?: number;
-}) {
-  const c = ctx.change;
-  const waiting = ctx.decisions.filter((d) => d.status === 'proposed');
-  const features = Array.isArray(c.data.features) ? (c.data.features as string[]) : [];
-  // the feature path the change sits under, nearest first, the product left out: the rail names it
-  const under = scope.crumbs.filter((k) => !k.key.startsWith('product:')).toReversed();
-  // alive (change:motion-design): what the stream just changed washes in place, and the dock holds still under the
-  // pointer or focus; at a held moment nothing on it is arriving
-  const at = useAt();
-  const decide = useDecideAction('decide');
-  const fresh = useFreshEvents();
-  const arrivals = dockArrivals(at ? NO_EVENTS : fresh, session.key, c.key);
-  const hold = useHold();
-  const { shown: waits, letGo } = useHeldList(waiting, hold.held, keyOf);
-  // the decision the person just decided leaves at once, held or not (decision decide-is-slow/acted-card-leaves-the-hold)
-  const onDecide =
-    decide &&
-    ((k: string) =>
-      decide(k).then(() => {
-        letGo(k);
-        hold.settle();
-      }));
-  return (
-    <article className="flex flex-col gap-5 p-4" {...hold.props}>
-      <header className="relative flex flex-col gap-1.5">
-        <Moved arrival={moved} />
-        <div className="flex flex-wrap items-center gap-2">
-          <Label>{c.data.kind === 'bug' ? 'bug' : 'change'}</Label>
-          <span className="text-ink-faint">·</span>
-          <span className="relative overflow-hidden rounded-chip">
-            <StatusChip status={c.status} />
-            <Wash arrival={arrivals.status?.seq} className={statusTone(c.status).wash} />
-          </span>
-          {ctx.parent && (
-            <NodeLink to={ctx.parent.key} lens={lens}>
-              <Chip tone="quiet">↳ {short(ctx.parent.key)}</Chip>
-            </NodeLink>
-          )}
-        </div>
-        <h1 className="text-section font-semibold tracking-tight">{c.name ?? c.title ?? short(c.key)}</h1>
-        {c.name && c.title && c.title !== c.name && <p className="text-xs leading-relaxed text-ink-muted">{c.title}</p>}
-        <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
-        {(features.length > 0 || under.length > 0) && (
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-ink-muted">
-            {features.map((f) => {
-              const [effect, key] = f.includes(' ') ? f.split(' ', 2) : ['changes', f];
-              return (
-                <span key={f}>
-                  {effect}{' '}
-                  <NodeLink to={key!} lens={lens} className="text-ink hover:text-primary">
-                    {short(key!)}
-                  </NodeLink>
-                </span>
-              );
-            })}
-            {under.length > 0 && (
-              <span>
-                {features.length > 0 && <span className="text-ink-faint">· </span>}in{' '}
-                {under.map((k, i) => (
-                  <span key={k.key}>
-                    {i > 0 && <span className="text-ink-faint"> › </span>}
-                    <NodeLink to={k.key} lens={lens} className="text-ink hover:text-primary">
-                      {k.name ?? k.title ?? short(k.key)}
-                    </NodeLink>
-                  </span>
-                ))}
-              </span>
-            )}
-          </div>
-        )}
-        {ctx.aspects && <DockAspects aspects={ctx.aspects} lens={lens} />}
-      </header>
-
-      <section className="flex flex-col gap-2">
-        <div className="flex items-center gap-2">
-          <Label className={waits.length ? 'text-primary' : undefined}>Waits on you</Label>
-          <span className="text-meta text-ink-faint">
-            {waits.length > 0
-              ? plural(waits.length, 'decision')
-              : `nothing${ctx.decisions.length > 0 ? ` · ${plural(ctx.decisions.length, 'decision')} decided` : ''}`}
-          </span>
-        </div>
-        <DecisionRows
-          items={waits.map((d) => {
-            return {
-              key: d.key,
-              name: d.name,
-              title: d.title,
-              change: c.key,
-              state: d.state,
-              needs: d.needs,
-              stale: d.stale,
-              created: d.created,
-            };
-          })}
-          lens={lens}
-          showChange={false}
-          opened={arrivals.opened}
-          moment={at}
-          onDecide={onDecide}
-        />
-      </section>
-
-      {/* the session's rail (change:activity-timeline): its lines the trunk, the changes it touched the lanes, lit to the
-          change the dock draws so the rest dim; held still with the dock */}
-      <ActivityRail
-        scope={session.key}
-        lens={lens}
-        limit={8}
-        lit={c.key}
-        label="Live"
-        note={<Liveness session={session} />}
-        held={hold.held}
-      />
-
-      {ctx.next && <Clamped label="Next" text={nextLine(ctx.next)!} />}
-      {ctx.sections.Intent && <Clamped label="Intent" text={ctx.sections.Intent} />}
-
-      <nav aria-label="More of this change" className="flex flex-col border-t border-line">
-        <TabRow tab="decisions" count={ctx.decisions.length}>
-          Decisions
-        </TabRow>
-        <TabRow tab="activity" count={scope.recent.length}>
-          Activity
-        </TabRow>
-      </nav>
-
-      <Rows label="Beneath" lens={lens} items={ctx.children} progress={ctx.progress} />
-      <Rows label="Depends on" lens={lens} items={ctx.dependsOn} />
-      <Rows label="Needed by" lens={lens} items={ctx.neededBy} />
-      {ctx.sources.length > 0 && (
-        <section className="flex flex-wrap items-center gap-2">
-          <Label>Sources</Label>
-          {ctx.sources.map((s) => (
-            <SourceChip key={s.key} source={s} lens={lens} title={s.via} />
-          ))}
-        </section>
-      )}
-      <KeyText>{c.key}</KeyText>
-    </article>
   );
 }
 
@@ -333,6 +161,16 @@ function DockFresh({
   );
 }
 
+/** Beside the rail's head: the session's pulse while it is live, and its liveness in words. */
+function Liveness({ session }: { session: SessionFacts }) {
+  return (
+    <>
+      {session.state === 'live' && <Pulse />}
+      <span className="text-meta text-ink-faint">this session · {livenessWords(session)}</span>
+    </>
+  );
+}
+
 /** One change to pick up: its title, and how decided it is, the proposed decisions named; or what it is stacked on. */
 function PickupRow({ pickup: { row, proposed, stackedOn }, lens }: { pickup: Pickup; lens: Lens }) {
   const r = readiness(row, stackedOn.length > 0);
@@ -369,139 +207,5 @@ function PickupRow({ pickup: { row, proposed, stackedOn }, lens }: { pickup: Pic
         )}
       </span>
     </li>
-  );
-}
-
-/** This session's own lines, newest first: what it last said at every stop. */
-/** Beside the rail's head: the session's pulse while it is live, and its liveness in words. */
-function Liveness({ session }: { session: SessionFacts }) {
-  return (
-    <>
-      {session.state === 'live' && <Pulse />}
-      <span className="text-meta text-ink-faint">this session · {livenessWords(session)}</span>
-    </>
-  );
-}
-
-/** A section of text clamped to three lines, with a way to read it whole. */
-function Clamped({ label, text }: { label: string; text: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <section className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
-      <p className={cn('whitespace-pre-line text-[13px] leading-relaxed text-ink-muted', !open && 'line-clamp-3')}>
-        {text}
-      </p>
-      {text.length > 160 && (
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="self-start text-xs text-primary hover:underline"
-        >
-          {open ? 'less' : 'more'}
-        </button>
-      )}
-    </section>
-  );
-}
-
-/** The aspects the change works under, as chips under its title (aspect:aspects/dock): no section of their own. A chip
- *  opens as a drill-in beneath the header: an aspect the change names lists every place it is linked to, each forked
- *  or the base as it is; any other reads as it applies here. */
-function DockAspects({ aspects, lens }: { aspects: ChangeAspects; lens: Lens }) {
-  const [open, setOpen] = useState<string | undefined>();
-  const chips = [
-    ...aspects.named.map((n) => ({ key: n.aspect, named: true, forked: false })),
-    ...aspects.at.map((x) => ({ key: x.aspect, named: false, forked: x.layers.some((l) => l.from === x.place) })),
-  ];
-  if (!chips.length) return null;
-  const named = aspects.named.find((n) => n.aspect === open);
-  const at = aspects.at.find((x) => x.aspect === open);
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {chips.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            aria-expanded={open === c.key}
-            onClick={() => setOpen(open === c.key ? undefined : c.key)}
-            className={cn(
-              'inline-flex h-6 items-center gap-1 rounded-chip border px-1.5 text-meta',
-              open === c.key
-                ? 'border-primary/50 bg-selection text-ink'
-                : 'border-line-strong text-ink-muted hover:bg-raised hover:text-ink',
-            )}
-            title={c.named ? 'This change works on the aspect' : 'The change works under this aspect'}
-          >
-            <Diamond className="size-3" aria-hidden="true" />
-            {c.key.split('/').pop()}
-            {c.named && <span className="text-ink-faint">· working on it</span>}
-            {c.forked && <span className="text-ink-faint">· forked</span>}
-          </button>
-        ))}
-      </div>
-      {(named || at) && (
-        <div className="flex flex-col gap-3 rounded-card border border-line bg-surface px-3.5 py-3">
-          {named ? <AspectWholeBody whole={named} lens={lens} /> : at && <AspectReading at={at} lens={lens} />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** A row that opens one of the record's tabs in place; the tab's overview brings the dock back. */
-function TabRow({ tab, count, children }: { tab: 'decisions' | 'activity'; count?: number; children: string }) {
-  return (
-    <Link
-      to="."
-      search={(prev: Record<string, unknown>) => ({ ...prev, tab })}
-      className="flex h-10 items-center gap-2 border-b border-line text-[13px] font-medium hover:text-primary"
-    >
-      {children}
-      <span className="ml-auto text-meta text-ink-faint">{count || 'none'}</span>
-      <ChevronRight className="size-4 text-ink-faint" aria-hidden="true" />
-    </Link>
-  );
-}
-
-/** Related changes as rows; a tap opens one in place. Nothing when there are none. */
-function Rows({
-  label,
-  lens,
-  items,
-  progress,
-}: {
-  label: string;
-  lens: Lens;
-  items: { key: string; title?: string; status?: string }[];
-  progress?: { done: number; total: number };
-}) {
-  if (items.length === 0) return null;
-  return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <Label>{label}</Label>
-        {progress && (
-          <Chip tone="quiet">
-            {progress.done} / {progress.total}
-          </Chip>
-        )}
-      </div>
-      <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
-        {items.map((k) => (
-          <li key={k.key} className="flex items-center gap-2 px-3.5 py-2">
-            <NodeLink
-              to={k.key}
-              lens={lens}
-              className="line-clamp-2 min-w-0 flex-1 text-xs font-medium hover:text-primary"
-            >
-              {k.title ?? short(k.key)}
-            </NodeLink>
-            <StatusChip status={k.status} />
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }

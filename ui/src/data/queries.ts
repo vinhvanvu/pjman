@@ -4,7 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { useEffect } from 'react';
 import { useAt } from '@/state/moment';
 import { api } from './client';
-import type { OrderBody, Rail, RailQuery, ScopeQuery } from './contract';
+import type { DecideAction, DecideBody, OrderBody, Rail, RailQuery, ScopeQuery } from './contract';
 
 /** Every key ends with the moment it reads as of ('now' when none), so a page at a moment never shares a cache
  *  entry with the live page, and the stream's invalidation by prefix reaches both. */
@@ -85,17 +85,19 @@ export function useOrder() {
 export function useDecide(kind: 'decide' | 'reopen') {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (decision: string) => (kind === 'decide' ? api.decide({ decision }) : api.reopen({ decision })),
+    mutationFn: (body: DecideBody) => (kind === 'decide' ? api.decide(body) : api.reopen({ decision: body.decision })),
     onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
   });
 }
 
+export type { DecideAction, DecideOpts } from './contract';
+
 /** The write a decision's Accept or Reopen calls, or nothing on a page held at a past moment: the past is read, never
  *  written (decision decide-in-place/accept-holds-then-writes). */
-export function useDecideAction(kind: 'decide' | 'reopen'): ((decision: string) => Promise<unknown>) | undefined {
+export function useDecideAction(kind: 'decide' | 'reopen'): DecideAction | undefined {
   const at = useAt();
   const mutation = useDecide(kind);
-  return at ? undefined : (decision) => mutation.mutateAsync(decision);
+  return at ? undefined : (decision, opts) => mutation.mutateAsync({ decision, ...opts });
 }
 
 export function useSessionView(id: string | undefined) {

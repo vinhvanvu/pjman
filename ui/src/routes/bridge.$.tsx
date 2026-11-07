@@ -15,7 +15,7 @@ import { Bridge } from '@/features/bridge';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { MomentChip } from '@/features/moment';
 import { touchedBy, Transport, useLockedEvent } from '@/features/transport';
-import { FollowPill } from '@/features/session-follow';
+import { FollowPill, ThisSession } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
 import { short } from '@/lib/keys';
@@ -71,6 +71,7 @@ function BridgePage() {
       lens="feature"
       node={productKey}
       waiting={bridge.data?.waiting}
+      sessionSlot={<ThisSession />}
       themeSlot={<ThemePicker />}
       personSlot={
         store?.actor ? (

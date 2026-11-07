@@ -6,16 +6,20 @@ import type { ChangeContext, Lens } from '@/data/contract';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { GitBranch } from 'lucide-react';
-import { CopyKey, CopyRef } from '@/components/links/CopyKey';
-import { DecideControl } from '@/components/decisions/DecideControl';
+import { useNavigate, useSearch } from '@tanstack/react-router';
+import { CopyRef } from '@/components/links/CopyKey';
+import { DecisionGroup } from '@/components/decisions/DecisionGroup';
+import { fromRow, groupHead } from '@/components/decisions/model';
 import { useDecideAction } from '@/data/queries';
+import { useWide } from '@/hooks/useMediaQuery';
+import type { PageSearch } from '@/routes/-search';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { SourceChip } from '@/components/links/SourceChip';
 import { Presence } from '@/components/presence/Presence';
 import { ChangeAspectsView } from '@/features/aspects';
 import { LEAD_SECTIONS, Plan, Readiness, Sections } from '@/components/record/Foundation';
-import { decisionTone, TONE } from '@/lib/tones';
+import { TONE } from '@/lib/tones';
 
 export function ChangeRecord({
   ctx,
@@ -33,6 +37,12 @@ export function ChangeRecord({
       : undefined;
   const features = Array.isArray(c.data.features) ? (c.data.features as string[]) : [];
   const decide = useDecideAction('decide');
+  const reopen = useDecideAction('reopen');
+  const wide = useWide();
+  const search = useSearch({ strict: false }) as PageSearch;
+  const navigate = useNavigate();
+  const link = (decision: string | undefined) =>
+    void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, decision }), replace: true });
   const waiting = ctx.decisions.filter((d) => d.status === 'proposed');
   const decided = ctx.decisions.filter((d) => d.status !== 'proposed');
   return (
@@ -121,35 +131,18 @@ export function ChangeRecord({
         <section className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             <Label>Decisions</Label>
-            {waiting.length > 0 && (
-              <Chip tone="quiet" className={TONE.waits.text}>
-                {waiting.length} waiting
-              </Chip>
-            )}
+            <span className="text-meta text-ink-faint">{groupHead(waiting.length, decided.length, 'change')}</span>
           </div>
-          <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
-            {[...waiting, ...decided].map((d) => (
-              <li key={d.key} className="flex flex-col gap-1 px-3.5 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`size-[7px] shrink-0 rounded-full ${decisionTone(d.status).bg}`}
-                    aria-hidden="true"
-                  />
-                  <NodeLink to={d.key} lens={lens} className="min-w-0 flex-1 truncate font-medium hover:text-primary">
-                    {d.name ?? d.title ?? short(d.key)}
-                  </NodeLink>
-                  {d.status === 'proposed' && decide ? (
-                    <DecideControl decision={d.key} onConfirm={() => decide(d.key)} />
-                  ) : (
-                    <span className="text-meta text-ink-faint">{d.status}</span>
-                  )}
-                  <CopyKey refKey={d.key} bare />
-                </div>
-                {d.name && d.title && <p className="line-clamp-2 text-xs text-ink-muted">{d.title}</p>}
-                <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />
-              </li>
-            ))}
-          </ul>
+          <DecisionGroup
+            decisions={ctx.decisions.map((d) => fromRow(d, c.key))}
+            lens={lens}
+            where="change"
+            wide={wide}
+            linked={search.decision}
+            onLink={link}
+            onDecide={decide}
+            onReopen={reopen}
+          />
         </section>
       )}
 

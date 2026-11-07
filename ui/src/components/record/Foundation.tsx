@@ -38,7 +38,10 @@ export function Readiness({
         </Chip>
       )}
       {stale && (
-        <Chip className={TONE.waits.text} title="the name and gist were written from an earlier foundation; the next write rewrites them">
+        <Chip
+          className={TONE.waits.text}
+          title="the name and gist were written from an earlier foundation; the next write rewrites them"
+        >
           name and gist stale
         </Chip>
       )}
@@ -59,7 +62,15 @@ const MARK: Record<Step['state'], { icon: typeof Check; cls: string; label: stri
 };
 
 /** The plan: each step with its state and the note of where the work stands on it. */
-export function Plan({ plan, progress, className }: { plan: Step[]; progress?: { done: number; total: number }; className?: string }) {
+export function Plan({
+  plan,
+  progress,
+  className,
+}: {
+  plan: Step[];
+  progress?: { done: number; total: number };
+  className?: string;
+}) {
   if (!plan.length) return null;
   return (
     <section className={cn('flex flex-col gap-2', className)}>
@@ -87,7 +98,13 @@ export function Plan({ plan, progress, className }: { plan: Step[]; progress?: {
                 <Icon className="size-2.5" strokeWidth={3} aria-hidden="true" />
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className={cn('text-[13px] leading-relaxed', s.state === 'dropped' && 'text-ink-faint line-through', s.state === 'done' && 'text-ink-muted')}>
+                <span
+                  className={cn(
+                    'text-[13px] leading-relaxed',
+                    s.state === 'dropped' && 'text-ink-faint line-through',
+                    s.state === 'done' && 'text-ink-muted',
+                  )}
+                >
                   {s.text}
                 </span>
                 {s.note && <span className="text-xs leading-relaxed text-ink-muted">{s.note}</span>}

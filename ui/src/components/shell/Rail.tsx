@@ -1,6 +1,7 @@
 // The rail: the product, then three destinations with no headings (decision rail-destinations/three-destinations),
 // the bridge first as where a person lands, the product map and the roadmap as the structures everything derives from;
-// at the bottom the theme and the person. Links to the lenses carry the node across. Slots take what a feature owns.
+// at the bottom the session this tab follows (change:session-detail), the theme and the person. Links to the lenses
+// carry the node across. Slots take what a feature owns.
 import { Link, useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Check, ChevronDown, Layers, Radar, Route, type LucideIcon } from 'lucide-react';
@@ -50,6 +51,8 @@ export interface RailProps {
   lens: Lens;
   /** The bridge's badge: the decisions waiting on the person across the product. */
   waiting?: number;
+  /** The session this tab follows, as a destination at the foot (features/session-follow). */
+  sessionSlot?: ReactNode;
   themeSlot?: ReactNode;
   personSlot?: ReactNode;
   className?: string;
@@ -60,7 +63,18 @@ const LENS_ITEMS: { lens: Lens; label: string; icon: LucideIcon }[] = [
   { lens: 'roadmap', label: 'Roadmap', icon: Route },
 ];
 
-export function Rail({ product, products, current, node, lens, waiting, themeSlot, personSlot, className }: RailProps) {
+export function Rail({
+  product,
+  products,
+  current,
+  node,
+  lens,
+  waiting,
+  sessionSlot,
+  themeSlot,
+  personSlot,
+  className,
+}: RailProps) {
   const navigate = useNavigate();
   const several = (products?.length ?? 0) > 1;
   const headerClass =
@@ -149,6 +163,7 @@ export function Rail({ product, products, current, node, lens, waiting, themeSlo
       </div>
 
       <div className="flex-1" />
+      {sessionSlot}
       {themeSlot}
       {personSlot}
     </nav>

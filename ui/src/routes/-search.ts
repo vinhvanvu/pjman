@@ -32,6 +32,11 @@ export const pageSearch = z.object({
   aspect: z.string().optional().catch(undefined),
   /** Bugs only: the map keeps the nodes a bug is listed at, with the path to each. */
   bugs: z.boolean().optional().catch(undefined),
+  /** On a session's page: the change the person holds shown (decision session-detail/one-shown-change), absent when
+   *  the page follows the session's focus. */
+  show: z.string().optional().catch(undefined),
+  /** The decision open to its thread (decision detail-pages/decision-card): a link to a decision lands on it open. */
+  decision: z.string().optional().catch(undefined),
   /** The moment the page reads as of, and the event selected; every query carries them, so the whole page holds
    *  still at that moment. */
   at: atSearch,
