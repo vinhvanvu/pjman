@@ -125,6 +125,8 @@ test("a session's view and a project's board", async () => {
   const bound = after.body.data as SessionView;
   assert.equal(bound.showing.key, 'change:app/login');
   assert.equal(bound.session.on, 'change:app/login');
+  // on a change the session keeps its product: the change's key sits under it (change:bridge-lost-on-session-page)
+  assert.equal(bound.session.product, 'product:app');
   assert.equal(bound.session.state, 'ended');
   assert.deepEqual(bound.session.log.map((l) => l.text), ['session started', 'bound change:app/login (by hand)', 'session ended (other)']);
   const board = await getJson('/api/v1/projects/app/board');
