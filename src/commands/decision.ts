@@ -250,7 +250,7 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   validateOrUndo(store, [rel, ...touched], existing ? [] : [rel], prior);
   const subject = existing ? `pjman: decision ${key} ${[...new Set(appended)].join(' ') || changed.join(' ')}` : `pjman: new ${key}`;
   const event: EventInput = existing
-    ? { op: 'set', key, type: 'decision', path: rel, fields: [...new Set(changed)], writer: env.writer }
+    ? { op: 'set', key, type: 'decision', path: rel, fields: [...new Set(changed)], value: changed.includes('status') ? String(data.status) : undefined, writer: env.writer }
     : { op: 'created', key, type: 'decision', path: rel, writer: env.writer };
   const commit = finishWrite(store, subject, env.session, [event, ...also]);
   return { key, path: rel, created: !existing, appended, status: String(data.status), state, commit, notes };

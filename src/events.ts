@@ -18,6 +18,10 @@ export interface StoreEvent {
   path: string;
   /** Names of the fields or sections that changed; absent on `created`. */
   fields?: string[];
+  /** On a set that moved a change's or a decision's `status` (or, that aside, its `decided_by`): the new value. On a
+   *  session's `bind` or a set of its `focus`: the key of the change. Absent otherwise, so a reader can say what a
+   *  move was, not only that a field moved. */
+  value?: string;
   writer?: string;
   session?: string;
   /** The commit the write made, when the tool commits. */
@@ -210,6 +214,20 @@ export function keyOfPath(p: string, type: RecordType, root: string, sha: string
   }
 }
 
+/** A record's text at a commit, empty when it was not there. */
+function textAt(root: string, rev: string, p: string): string {
+  try {
+    return git(root, ['show', `${rev}:${p}`]);
+  } catch {
+    return '';
+  }
+}
+
+/** A scalar field of a record's frontmatter, unquoted. */
+function fieldOf(text: string, name: string): string | undefined {
+  return new RegExp(`^${name}:\\s*(.+)$`, 'm').exec(text)?.[1]?.trim().replace(/^"(.*)"$/, '$1');
+}
+
 /** Rewrite the stream from the store's git history: one event per record per commit. The stream is derived and disposable. */
 export function rebuildEvents(store: Store): { events: number; commits: number } {
   const root = store.root;
@@ -273,14 +291,22 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       else if (verb === 'apply' || verb === 'undo') op = status.startsWith('A') ? 'created' : 'set';
       else if (status.startsWith('A')) op = 'created';
       let writer: string | undefined;
+      let value: string | undefined;
       if (op === 'created' || op === 'set') {
-        try {
-          writer = /^writer:\s*(.+)$/m.exec(git(root, ['show', `${sha}:${p}`]))?.[1]?.trim();
-        } catch {
-          // no writer recorded
+        const text = textAt(root, sha, p);
+        writer = fieldOf(text, 'writer');
+        if (op === 'set' && (type === 'change' || type === 'decision')) {
+          // the value a set left: status when it moved, else decided_by; the field is named among the changed ones
+          const prior = textAt(root, `${sha}^`, p);
+          const moved = (['status', 'decided_by'] as const).find((f) => fieldOf(text, f) !== undefined && fieldOf(text, f) !== fieldOf(prior, f));
+          if (moved) {
+            value = fieldOf(text, moved);
+            if (fields && !fields.includes(moved)) fields = [...fields, moved];
+          }
         }
       }
-      events.push({ seq: ++seq, at, op, key, type, path: p, fields, writer, session, commit: short });
+      if (type === 'session' && (op === 'bind' || (op === 'set' && fields?.includes('focus')))) value = rest.split(' ')[2] || undefined;
+      events.push({ seq: ++seq, at, op, key, type, path: p, fields, value, writer, session, commit: short });
     }
     // a batch or its undo closes with the event that names what it was for
     if (verb === 'apply' || verb === 'undo') {

@@ -151,7 +151,10 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     if (marked) unmark(store, marked);
     throw e;
   }
-  const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}${opts.because ? ` (${opts.because})` : ''}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, writer: env.writer }, ...(marked?.also ?? [])]);
+  // the value a set leaves in status, or that aside decided_by, rides on the event so a reader can say what the move was
+  const moved = changed.find((f) => f === 'status' || f === 'decided_by');
+  const value = moved && typeof data[moved] === 'string' ? (data[moved] as string) : undefined;
+  const commit = finishWrite(store, `pjman: set ${rec.key} ${changed.join(' ')}${opts.because ? ` (${opts.because})` : ''}`, env.session, [{ op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, value, writer: env.writer }, ...(marked?.also ?? [])]);
   notes.push(...(marked?.notes ?? []));
   // a write to a base shows every place it reaches, so each fork is reconciled with it in the same pass
   if (rec.type === 'aspect' && changed.includes('body')) notes.push(...reachOfBase(loadStore(store), rec));
