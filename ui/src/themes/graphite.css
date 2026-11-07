@@ -39,10 +39,10 @@
   --status-dropped: #5a5f68;
   --live: #2fd27a;
   /* the rail's lanes: five hues of their own, none a state colour (decision activity-timeline/lanes-have-their-own-hues) */
-  --lane-1: #3f7fe0;
-  --lane-2: #cf6f2a;
-  --lane-3: #22a4c0;
-  --lane-4: #d4588f;
-  --lane-5: #8a9d33;
+  --lane-1: #22a4c0;
+  --lane-2: #c44fc0;
+  --lane-3: #1c8f7a;
+  --lane-4: #a0704a;
+  --lane-5: #d6a3c6;
   --radius: 0.5rem;
 }

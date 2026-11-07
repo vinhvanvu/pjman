@@ -1,4 +1,4 @@
-// The rail (change:activity-timeline, decision one-timeline-every-scope): one vertical timeline at any scope and at
+// The activity rail (change:activity-timeline, decision one-timeline-every-scope): one vertical timeline at any scope and at
 // every width. Lanes are told apart by colour (model.ts), every dot drills to the unit on the other axis (a session
 // from a tree node, a change from a session), and a row's words name its lane so colour is never alone. The dot says
 // what the row is: a filled circle a write, a diamond a decision filled with its state (amber waiting, green decided)
@@ -35,7 +35,7 @@ export type RailRendering = 'rail' | 'list';
 /** The lane's colour, as the custom property the dots and words read. */
 const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
 
-export function Rail({
+export function ActivityRail({
   scope,
   lens,
   days = 14,

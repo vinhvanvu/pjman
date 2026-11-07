@@ -22,6 +22,7 @@ import { StructureTree } from '@/components/tree/StructureTree';
 import type { ChangeContext, Lens, ProductRow, Scope, SessionView, Tab } from '@/data/contract';
 import { useBridge, useDecideAction, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
+import { ActivityRail } from '@/features/rail/ActivityRail';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
 import { AspectPane } from '@/features/aspects';
@@ -283,7 +284,13 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     const live = new Set(shown.sessions.map((s) => s.key));
     let body: React.ReactNode;
     if (tab === 'activity') {
-      body = <ActivityView recent={shown.recent} sessions={shown.sessions} lens={lens} days={shown.days} />;
+      // a change or a milestone: the rail (change:activity-timeline); the rest keep the list until the rollup lands
+      body =
+        shown.node?.type === 'change' ? (
+          <ActivityRail scope={shown.node.key} lens={lens} days={shown.days} className="p-5 md:p-6" />
+        ) : (
+          <ActivityView recent={shown.recent} sessions={shown.sessions} lens={lens} days={shown.days} />
+        );
     } else if (tab === 'decisions' && shown.change) {
       body = <DecisionsTab ctx={shown.change} lens={lens} />;
     } else if (shown.node?.type === 'change' && shown.change) {

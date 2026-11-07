@@ -55,7 +55,7 @@ export interface RowView {
   dot: RailRow['kind'];
   /** On a decision: the state its dot is filled with. */
   state?: Tone;
-  /** The lane's name on a lane row, the scope's own on a trunk row of a tree scope. */
+  /** The lane's name on a lane row; a trunk row names nobody, the scope being the page itself. */
   who?: string;
   /** What happened, as a verb phrase. */
   what: string;
@@ -95,8 +95,8 @@ export function rowViews(
         drill: r.drill,
         dim: lit !== undefined && r.lane !== null && r.lane !== lit,
       };
-      // on a session the lane is the change; on a tree node a trunk row is the scope's own
-      const who = laneTitle ?? (rail.axis === 'tree' ? r.title : undefined);
+      // the lane's name; a trunk row names nobody, since the scope is the page itself
+      const who = laneTitle;
       switch (r.kind) {
         case 'line':
           return { ...base, who: laneTitle, what: r.text ?? 'line', detail: undefined };

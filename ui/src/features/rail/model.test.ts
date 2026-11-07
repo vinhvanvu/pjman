@@ -80,7 +80,7 @@ describe('rowViews', () => {
     lane('change:p/billing', { title: 'Billing' }),
   ];
 
-  it('reads newest first, a trunk row in the ink naming the scope, a lane row in its lane colour naming the lane', () => {
+  it('reads newest first, a trunk row in the ink naming nobody, a lane row in its lane colour naming the lane', () => {
     const r = rail({
       lanes,
       rows: [
@@ -97,7 +97,7 @@ describe('rowViews', () => {
     });
     const views = rowViews(r, undefined, NOW);
     expect(views.map((v) => v.seq)).toEqual([2, 1]);
-    expect(views[1]).toMatchObject({ colour: TRUNK, who: 'Auth', what: 'created', dim: false });
+    expect(views[1]).toMatchObject({ colour: TRUNK, who: undefined, what: 'created', dim: false });
     expect(views[0]).toMatchObject({
       colour: LANE_HUES[1],
       who: 'Tokens',
