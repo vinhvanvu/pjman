@@ -6,14 +6,15 @@
 // session's focus, and while they hold a pick away from the focus a banner names where the session is with the way
 // back. The card body reads the shown change: the identity row with the link to its page, its name and gist, the
 // path line, the plan with its bar, the decisions (only what waits is a card; the decided are on the rail), the
-// sources. The rail is the session's own, lit to the shown change so the rest dim.
+// sources. The rail is the session's own, held to the shown change (change:session-timeline-focus): the row of chips
+// is the one filter, so the rail holds the shown change's lane alone and draws no filter of its own.
 // Width forks two things only: how far the plan and the sources open (docked the plan shows its active row and the
 // sources one line, each opening in place; wide the plan is out and the sources sit in the panel above the rail), and
-// where the rail sits (beneath the body docked, in the panel wide). Cardinality forks two: the chip row exists only
-// with several changes, and the rail dims the other lanes. Everything else is one component.
-// Motion (decision one-shown-change): the chosen chip's fill slides to the picked chip, the body rises in, the
-// dimming eases; when the focus moves and nothing is held, the ring moves to the new chip and the chips reorder in
-// place; held, only the ring moves. Reduced motion keeps the fades and drops the rise and the slide.
+// where the rail sits (beneath the body docked, in the panel wide). Cardinality forks one: the chip row exists only
+// with several changes. Everything else is one component.
+// Motion (decision one-shown-change): the chosen chip's fill slides to the picked chip, the body rises in and the
+// rail's rows with it; when the focus moves and nothing is held, the ring moves to the new chip and the chips reorder
+// in place; held, only the ring moves. Reduced motion keeps the fades and drops the rise and the slide.
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Check, ChevronRight, Diamond } from 'lucide-react';
@@ -31,6 +32,7 @@ import { Readiness } from '@/components/record/Foundation';
 import { AspectReading, AspectWholeBody } from '@/features/aspects';
 import { dockArrivals } from '@/features/dock/model';
 import { ActivityRail } from '@/features/rail/ActivityRail';
+import { UNFOLDED } from '@/features/rail/model';
 import { agoWords } from '@/lib/format';
 import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
@@ -55,7 +57,7 @@ import {
 
 const NO_EVENTS: readonly StoreEvent[] = [];
 /** The lanes over the session's life, every one of them: the rail's page is read by the rail itself. */
-const LANES_QUERY = { limit: 1, fold: 40 } as const;
+const LANES_QUERY = { limit: 1, fold: UNFOLDED } as const;
 const chipKey = (c: ChipView) => c.key;
 /** The lane's colour, as the custom property the chips, the bars and the dots read. */
 const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
@@ -175,9 +177,9 @@ export function SessionTree({
       scope={session.key}
       lens={lens}
       limit={wide ? 20 : 8}
-      lit={shown}
+      only={shown}
       label="Timeline"
-      note={<span className="text-meta text-ink-faint">newest first · the shown change lit, the rest dimmed</span>}
+      note={<span className="text-meta text-ink-faint">newest first · the shown change only</span>}
       held={hold.held}
     />
   );
@@ -204,7 +206,7 @@ export function SessionTree({
           {!wide && rail}
         </section>
         {wide && (
-          <aside className="flex w-[420px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6">
+          <aside className="flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6">
             {rail}
           </aside>
         )}
@@ -250,7 +252,7 @@ export function SessionTree({
         </section>
         <aside
           aria-label="The session's sources and timeline"
-          className="flex w-[420px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6"
+          className="flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6"
         >
           {sources}
           {sources && <div className="my-1.5 h-px bg-line" aria-hidden="true" />}

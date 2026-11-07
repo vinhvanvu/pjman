@@ -6,7 +6,7 @@
 // the ink. Every row carries its lane's name in words, so a hue is never the only thing telling two lanes apart.
 // The rail is read in pages (change:rail-pages): the last few rows, the next page before them, the days before the
 // pages a strip; the filter narrows to lanes and kinds and the model answers pages that pass it.
-import type { Rail, RailBucket, RailLane, RailRow, RailRowKind } from '@/data/contract';
+import type { Rail, RailBucket, RailLane, RailQuery, RailRow, RailRowKind } from '@/data/contract';
 import type { RailPage } from '@/data/queries';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
@@ -255,6 +255,27 @@ export const KIND_GROUPS: { id: string; label: string; kinds: RailRowKind[]; axi
   { id: 'files', label: 'files', kinds: ['file'], axis: 'session' },
   { id: 'moves', label: 'moves', kinds: ['switch', 'bind'], axis: 'session' },
 ];
+
+/** Lanes kept apart when one lane is fixed: enough that the fixed one is never folded into more. */
+export const UNFOLDED = 40;
+
+/** The query a mount sends (change:rail-pages): the page's size and what the filter narrows to. A fixed lane (`only`:
+ *  the session page's shown change, change:session-timeline-focus) stands in for the filter: the page holds that lane
+ *  alone, every kind, and the lanes stay apart so the fixed one is never the folded lane. */
+export function railQuery(o: {
+  limit: number;
+  axis: Rail['axis'];
+  only?: string;
+  lanesOn: readonly string[];
+  kindsOff: readonly string[];
+}): Pick<RailQuery, 'limit' | 'lanes' | 'kinds' | 'fold'> {
+  if (o.only) return { limit: o.limit, lanes: [o.only], fold: UNFOLDED };
+  return {
+    limit: o.limit,
+    lanes: o.lanesOn.length ? [...o.lanesOn] : undefined,
+    kinds: kindsOn(o.kindsOff, o.axis),
+  };
+}
 
 /** The kinds a page is narrowed to when these groups are off: nothing to send while every group is on. */
 export function kindsOn(off: readonly string[], axis: Rail['axis']): RailRowKind[] | undefined {

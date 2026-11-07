@@ -8,8 +8,10 @@
 // saying how many, and Older appends the next page; the days before the pages are one strip the height of a row, a
 // bar a day with its count and what it moved under the pointer, and a day opens by loading the pages down to it.
 // The filter (decision filter-by-lane-and-kind) is the lane chips, each a toggle, and a row of kinds; the model
-// answers pages that pass it, so a page is always as long as it says. The hold keeps the live page still; a page the
-// person asked for arrives at once.
+// answers pages that pass it, so a page is always as long as it says. A mount with a filter of its own (the session
+// page, whose row of chips picks the change) fixes the one lane instead (change:session-timeline-focus): the rail
+// holds that lane alone, draws no filter and dims nothing. The hold keeps the live page still; a page the person
+// asked for arrives at once.
 // Alive (change:motion-design): a row that arrives opens its space and fades in, washed in its lane's colour; the
 // dim is a short fade; under reduced motion the fades stay and nothing slides.
 // The flat list is the other rendering of the same rows: the same words in a plain list, without the rail.
@@ -29,10 +31,10 @@ import {
   bucketViews,
   dayStart,
   KIND_GROUPS,
-  kindsOn,
   laneViews,
   nextPage,
   pageRows,
+  railQuery,
   rowViews,
   shownLine,
   type BucketView,
@@ -53,6 +55,7 @@ export function ActivityRail({
   lens,
   limit = 20,
   lit,
+  only,
   label = 'Timeline',
   note,
   held = false,
@@ -63,8 +66,11 @@ export function ActivityRail({
   lens: Lens;
   /** The rows a page holds: what the rail opens on, and what Older adds. */
   limit?: number;
-  /** The lane kept whole while the rest dim: the change a session page shows. */
+  /** The lane kept whole while the rest dim. */
   lit?: string;
+  /** The one lane the rail holds (change:session-timeline-focus): the change the session page shows. The mount's
+   *  own filter stands in for the rail's, so the lane chips and the kind row are not drawn and nothing dims. */
+  only?: string;
   /** The head's label, and what stands beside it (a session's liveness). */
   label?: string;
   note?: ReactNode;
@@ -79,11 +85,7 @@ export function ActivityRail({
   const axis = scope.startsWith('session:') ? 'session' : 'tree';
   // the days opened in the strip: read by the pager, so a refetch places the same pages again
   const reaches = useRef<string[]>([]);
-  const query: RailQuery = {
-    limit,
-    lanes: lanesOn.length ? lanesOn : undefined,
-    kinds: kindsOn(kindsOff, axis),
-  };
+  const query: RailQuery = railQuery({ limit, axis, only, lanesOn, kindsOff });
   const q = useRailPages(scope, query, (last, pages, param) => nextPage(last, pages, param, limit, reaches.current));
   const pages = q.data?.pages ?? [];
   const first = pages[0];
@@ -92,14 +94,15 @@ export function ActivityRail({
   const last = pages.at(-1)!;
   const lanes = laneViews(first);
   const merged = pageRows(pages);
-  const live = rowViews({ axis: first.axis, lanes: first.lanes, rows: first.rows }, lit);
+  const dimTo = only ? undefined : lit;
+  const live = rowViews({ axis: first.axis, lanes: first.lanes, rows: first.rows }, dimTo);
   const older = rowViews(
     { axis: first.axis, lanes: first.lanes, rows: merged.filter((r) => r.seq < (first.rows[0]?.seq ?? 0)) },
-    lit,
+    dimTo,
   );
   const buckets = bucketViews(last.buckets);
-  const filtered = lanesOn.length > 0 || kindsOff.length > 0;
-  const groups = KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
+  const filtered = !only && (lanesOn.length > 0 || kindsOff.length > 0);
+  const groups = only ? [] : KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
   const open = (day: string) => {
     const start = dayStart(day);
     if (!reaches.current.includes(start)) reaches.current = [...reaches.current, start];
@@ -114,7 +117,7 @@ export function ActivityRail({
           <span className="text-meta text-ink-faint">{shownLine(merged.length, first.total)}</span>
           <Toggle rendering={rendering} onChange={setRendering} />
         </div>
-        {lanes.length > 0 && (
+        {!only && lanes.length > 0 && (
           <LaneChips lanes={lanes} lit={lit} on={lanesOn} onToggle={(id) => setLanesOn(toggled(lanesOn, id))} />
         )}
         {groups.length > 1 && (
@@ -122,10 +125,20 @@ export function ActivityRail({
         )}
       </div>
       {merged.length === 0 && buckets.length === 0 ? (
-        <EmptyState title={filtered ? 'Nothing passes the filter.' : 'Nothing has happened here yet.'} />
+        <EmptyState
+          title={
+            only
+              ? 'Nothing on this change from this session yet.'
+              : filtered
+                ? 'Nothing passes the filter.'
+                : 'Nothing has happened here yet.'
+          }
+        />
       ) : rendering === 'rail' ? (
         <>
-          <Rows rows={live} lens={lens} held={held} />
+          {/* keyed on the fixed lane: a new lane is a new list, so the hold takes it as it stands and no row of the last
+              lane stays on */}
+          <Rows key={only ?? 'all'} rows={live} lens={lens} held={held} />
           {older.length > 0 && <Rows rows={older} lens={lens} />}
         </>
       ) : (
