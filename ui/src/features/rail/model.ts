@@ -66,6 +66,9 @@ export interface RowView {
   /** The key on the other axis. */
   drill?: string;
   key: string;
+  /** On a file row: the paths, and how many rows folded into it. */
+  files?: string[];
+  folded?: number;
   /** Dimmed: a lane row that is not the lit lane. */
   dim: boolean;
 }
@@ -101,11 +104,15 @@ export function rowViews(
         case 'line':
           return { ...base, who: laneTitle, what: r.text ?? 'line', detail: undefined };
         case 'file':
-          return { ...base, who, what: 'touched', detail: r.files?.join(', ') };
-        case 'switch':
-          return { ...base, what: `focus moved to ${laneTitle ?? short(r.value ?? '')}` };
-        case 'bind':
-          return { ...base, what: `bound to ${laneTitle ?? short(r.value ?? '')}` };
+          return { ...base, who, what: 'touched', detail: r.files?.join(', '), files: r.files };
+        case 'switch': {
+          const to = laneTitle ?? (r.value ? short(r.value) : undefined);
+          return { ...base, what: to ? `focus moved to ${to}` : 'focus moved' };
+        }
+        case 'bind': {
+          const to = laneTitle ?? (r.value ? short(r.value) : undefined);
+          return { ...base, what: to ? `bound to ${to}` : 'bound a change' };
+        }
         case 'decision': {
           const value = r.op === 'created' ? 'proposed' : r.value;
           const what =
@@ -132,7 +139,26 @@ export function rowViews(
         }
       }
     })
-    .toReversed();
+    .toReversed()
+    .reduce(foldFiles, []);
+}
+
+/** A run of file rows in one lane within a few minutes reads as one row naming every file, at the newest's time. */
+const FOLD_MS = 10 * 60_000;
+function foldFiles(out: RowView[], row: RowView): RowView[] {
+  const prev = out.at(-1);
+  if (
+    row.dot === 'file' &&
+    prev?.dot === 'file' &&
+    prev.lane === row.lane &&
+    Date.parse(prev.at) - Date.parse(row.at) < FOLD_MS
+  ) {
+    const files = [...new Set([...(prev.files ?? []), ...(row.files ?? [])])];
+    out[out.length - 1] = { ...prev, files, detail: files.join(', ') || undefined, folded: (prev.folded ?? 1) + 1 };
+    return out;
+  }
+  out.push(row);
+  return out;
 }
 
 export interface BucketView {
@@ -178,6 +204,13 @@ export function dayWindow(day: string): { from: string; to: string } {
   const from = new Date(`${day}T00:00:00Z`);
   const to = new Date(from.getTime() + 86_400_000);
   return { from: from.toISOString(), to: to.toISOString() };
+}
+
+/** The window's length by scope (decision activity-timeline/window-follows-the-scope, proposed): a change or a session
+ *  reads two weeks, a feature three days, the product one day, the rest in the band. */
+export function windowFor(key: string): number {
+  const kind = key.slice(0, key.indexOf(':'));
+  return kind === 'product' ? 1 : kind === 'feature' ? 3 : 14;
 }
 
 /** The line under the rail's head: what the window holds and what lies before it. */

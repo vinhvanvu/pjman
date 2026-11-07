@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import type { Rail, RailBucket, RailLane, RailRow } from '@/data/contract';
 import { TONE } from '@/lib/tones';
-import { bucketViews, dayWindow, laneColours, laneViews, LANE_HUES, MORE, rowViews, TRUNK, windowLine } from './model';
+import {
+  bucketViews,
+  dayWindow,
+  laneColours,
+  laneViews,
+  LANE_HUES,
+  MORE,
+  rowViews,
+  TRUNK,
+  windowFor,
+  windowLine,
+} from './model';
 
 const lane = (id: string, o: Partial<RailLane> = {}): RailLane => ({
   id,
@@ -226,9 +237,53 @@ describe('bucketViews', () => {
   });
 });
 
+const session = (rows: RailRow[]): Rail =>
+  rail({ key: 'session:me', axis: 'session', lanes: [lane('change:p/auth', { title: 'Auth' })], rows });
+const file = (seq: number, files: string[], at = `2026-11-06T10:0${seq}:00.000Z`): RailRow =>
+  row(seq, { kind: 'file', op: 'observe', key: 'session:me', type: 'session', lane: 'change:p/auth', files, at });
+
+describe('rowViews folding', () => {
+  it('folds a run of file rows in one lane within a few minutes into one row naming every file once', () => {
+    const views = rowViews(session([file(1, ['a.ts']), file(2, ['b.ts']), file(3, ['a.ts', 'c.ts'])]), undefined, NOW);
+    expect(views).toHaveLength(1);
+    expect(views[0]).toMatchObject({ seq: 3, files: ['a.ts', 'c.ts', 'b.ts'], detail: 'a.ts, c.ts, b.ts', folded: 3 });
+  });
+
+  it('keeps file rows apart across a gap, another lane, or another kind between them', () => {
+    const later = file(4, ['d.ts'], '2026-11-06T11:00:00.000Z');
+    const views = rowViews(
+      session([file(1, ['a.ts']), row(2, { lane: 'change:p/auth' }), file(3, ['b.ts']), later]),
+      undefined,
+      NOW,
+    );
+    expect(views.map((v) => v.seq)).toEqual([4, 3, 2, 1]);
+  });
+
+  it('a switch or a bind with no change named reads without a dangling preposition', () => {
+    const views = rowViews(
+      session([
+        row(1, { kind: 'switch', op: 'set', key: 'session:me', type: 'session', fields: ['focus'] }),
+        row(2, { kind: 'bind', op: 'bind', key: 'session:me', type: 'session' }),
+      ]),
+      undefined,
+      NOW,
+    );
+    expect(views.map((v) => v.what)).toEqual(['bound a change', 'focus moved']);
+  });
+});
+
 describe('windowLine', () => {
   it('counts the window and what lies before it', () => {
     expect(windowLine(rail({ rows: [row(1)], total: 1 }), 14)).toBe('1 event in 14 days');
     expect(windowLine(rail({ rows: [row(1), row(2)], total: 9 }), 7)).toBe('2 events in 7 days · 7 earlier');
+  });
+});
+
+describe('windowFor', () => {
+  it('follows the scope: two weeks on a change or a session, days on a feature, a day on the product', () => {
+    expect(windowFor('change:p/auth')).toBe(14);
+    expect(windowFor('session:me')).toBe(14);
+    expect(windowFor('feature:p/dashboard')).toBe(3);
+    expect(windowFor('product:p')).toBe(1);
   });
 });
