@@ -83,10 +83,18 @@ export interface Resolution {
   changes: { change: Row }[];
 }
 
-/** Deciding a proposed decision, or reopening a decided one (decision decide-in-place/decide-route-and-reopen). */
+/** Deciding a proposed decision, or reopening a decided one (decision decide-in-place/decide-route-and-reopen). Deciding
+ *  names the option the person chose and carries their words, else the recommendation is accepted (decision
+ *  detail-pages/decision-card). */
 export interface DecideBody {
   decision: string;
+  option?: string;
+  words?: string;
 }
+/** What a card passes when it decides: the option the person picked and their words, both optional. */
+export type DecideOpts = Pick<DecideBody, 'option' | 'words'>;
+/** The write a decision's Accept or Reopen calls, as a surface receives it: nothing on a page held at a moment. */
+export type DecideAction = (decision: string, opts?: DecideOpts) => Promise<unknown>;
 
 /** A write: where a change goes in its product's sequence. */
 export interface OrderBody {

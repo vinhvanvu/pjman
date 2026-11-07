@@ -32,6 +32,7 @@ export function DecideControl({
   decision,
   onConfirm,
   reopen = false,
+  size = 'inline',
   className,
 }: {
   decision: string;
@@ -39,6 +40,9 @@ export function DecideControl({
   onConfirm: () => Promise<unknown>;
   /** Reopen a decided decision instead of accepting a proposed one. */
   reopen?: boolean;
+  /** Inline beside a row's meta, or the one button a decision card's action row leads with (decision
+   *  detail-pages/decision-card). */
+  size?: 'inline' | 'button';
   className?: string;
 }) {
   const [state, setState] = useState<'idle' | 'armed' | 'pending'>('idle');
@@ -91,9 +95,22 @@ export function DecideControl({
     if (e.key === 'Escape' && state === 'armed') disarm();
   };
 
-  const tone = reopen ? 'text-ink-muted hover:text-ink' : cn(TONE.done.text, 'hover:brightness-110');
+  const button = size === 'button';
+  const tone = button
+    ? reopen
+      ? 'h-[30px] rounded-row border border-line-strong bg-surface px-3 text-xs text-ink hover:bg-raised'
+      : 'h-[30px] rounded-row bg-primary px-3 text-xs text-primary-foreground hover:opacity-90'
+    : reopen
+      ? 'text-ink-muted hover:text-ink'
+      : cn(TONE.done.text, 'hover:brightness-110');
   return (
-    <span className={cn('inline-flex shrink-0 items-center gap-1.5 text-meta whitespace-nowrap', className)}>
+    <span
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap',
+        button ? 'text-xs' : 'text-meta',
+        className,
+      )}
+    >
       {state === 'armed' ? (
         <m.span key="armed" {...SWAP} className="inline-flex items-center gap-1">
           <button
@@ -103,8 +120,14 @@ export function DecideControl({
             onPointerLeave={leave}
             onPointerEnter={enter}
             onKeyDown={escape}
-            className={cn('inline-flex items-center gap-1 rounded-row px-2 py-0.5 font-medium ring-1 ring-current', tone)}
-            title={reopen ? `Set ${decision} back to proposed` : `Decide ${decision}; the sessions on its change are woken`}
+            className={cn(
+              'inline-flex items-center gap-1 rounded-row px-2 py-0.5 font-medium',
+              button ? '' : 'ring-1 ring-current',
+              tone,
+            )}
+            title={
+              reopen ? `Set ${decision} back to proposed` : `Decide ${decision}; the sessions on its change are woken`
+            }
           >
             <Check className="size-3" aria-hidden="true" />
             {reopen ? 'Confirm reopen' : 'Confirm accept'}
@@ -122,7 +145,11 @@ export function DecideControl({
           </button>
         </m.span>
       ) : state === 'pending' ? (
-        <m.span key="pending" {...SWAP} className="px-2 py-0.5 text-ink-faint">
+        <m.span
+          key="pending"
+          {...SWAP}
+          className={cn('px-2 py-0.5 text-ink-faint', button && 'h-[30px] leading-[30px]')}
+        >
           {reopen ? 'Reopening…' : 'Accepting…'}
         </m.span>
       ) : (

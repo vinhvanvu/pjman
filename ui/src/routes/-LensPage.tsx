@@ -8,10 +8,8 @@ import { Diamond, Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
-import { Chip } from '@/components/chips/Chip';
-import { CopyKey } from '@/components/links/CopyKey';
-import { DecideControl } from '@/components/decisions/DecideControl';
-import { acceptable, Options } from '@/components/decisions/Options';
+import { DecisionGroup } from '@/components/decisions/DecisionGroup';
+import { fromRow, groupHead } from '@/components/decisions/model';
 import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
 import { AppShell } from '@/components/shell/AppShell';
@@ -31,15 +29,13 @@ import { RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
 import { narrowToAspect, narrowToMilestone } from '@/lib/narrow';
 import { ChangeRecord } from '@/features/record';
 import { MomentChip } from '@/features/moment';
-import { FollowPill } from '@/features/session-follow';
+import { FollowPill, ThisSession } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
 import { short } from '@/lib/keys';
 import { usePreferences } from '@/state/preferences';
 import { freshScope, pageProduct } from '@/lib/identity';
 import type { PageSearch } from './-search';
-import { decisionTone } from '@/lib/tones';
-import { Readiness } from '@/components/record/Foundation';
 
 export interface LensPageProps {
   lens: Lens;
@@ -216,6 +212,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       lens={lens}
       node={node}
       waiting={bridge.data?.waiting}
+      sessionSlot={<ThisSession />}
       themeSlot={<ThemePicker />}
       personSlot={
         store?.actor ? (
@@ -466,51 +463,42 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   );
 }
 
-/** The decisions tab: proposed first, each by its name and gist, then its options with the recommended or accepted one
- *  marked and its case as points (change:decision-card), what it still needs, Accept on a proposed one that
- *  recommends an option and Reopen on a decided one (change:decide-in-place). */
+/** The decisions tab (decision detail-pages/decision-card): the decision card at three depths, the proposed first and
+ *  oldest first, the decided as rows whose thread opens read-only with Reopen, the superseded under history; the
+ *  decision in the URL open. */
 function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
   const decide = useDecideAction('decide');
   const reopen = useDecideAction('reopen');
-  const items = [
-    ...ctx.decisions.filter((d) => d.status === 'proposed'),
-    ...ctx.decisions.filter((d) => d.status !== 'proposed'),
-  ];
-  if (items.length === 0) return <EmptyState title="No decisions on this change yet." className="m-5" />;
+  const search = useSearch({ strict: false }) as PageSearch;
+  const navigate = useNavigate();
+  const wide = useWide();
+  const link = (decision: string | undefined) =>
+    void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, decision }), replace: true });
+  if (ctx.decisions.length === 0) return <EmptyState title="No decisions on this change yet." className="m-5" />;
+  const decisions = ctx.decisions.map((d) => fromRow(d, ctx.change.key));
+  const waiting = decisions.filter((d) => d.status === 'proposed').length;
   return (
-    <ol className="flex flex-col gap-3 p-5 md:px-6">
-      {items.map((d) => (
-        <li key={d.key} className="flex flex-col gap-2 rounded-card border border-line bg-surface px-4 py-3.5">
-          <div className="flex items-center gap-2">
-            <Chip className={decisionTone(d.status).text}>
-              <span aria-hidden="true" className="size-[7px] rounded-full bg-current" />
-              {d.status}
-            </Chip>
-            <span className="min-w-0 flex-1 font-medium">{d.name ?? d.title ?? short(d.key)}</span>
-            {typeof d.data.decided_on === 'string' && (
-              <span className="text-meta text-ink-faint">{d.data.decided_on}</span>
-            )}
-          </div>
-          {d.name && d.title && <p className="text-[13px] leading-relaxed text-ink-muted">{d.title}</p>}
-          <Options state={d.state} />
-          <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />
-          <div className="flex items-center gap-2 text-meta text-ink-faint">
-            <CopyKey refKey={d.key} />
-            {d.status === 'proposed' && decide && acceptable(d.state) && (
-              <DecideControl decision={d.key} onConfirm={() => decide(d.key)} className="ml-auto" />
-            )}
-            {d.status === 'decided' && reopen && (
-              <DecideControl decision={d.key} onConfirm={() => reopen(d.key)} reopen className="ml-auto" />
-            )}
-          </div>
-        </li>
-      ))}
-      <li className="text-xs text-ink-faint">
+    <div className="flex flex-col gap-3 p-5 md:px-6">
+      <div className="flex items-center gap-2">
+        <span className="text-[13.5px] font-semibold">Decisions</span>
+        <span className="text-xs text-ink-faint">{groupHead(waiting, decisions.length - waiting, 'change')}</span>
+      </div>
+      <DecisionGroup
+        decisions={decisions}
+        lens={lens}
+        where="change"
+        wide={wide}
+        linked={search.decision}
+        onLink={link}
+        onDecide={decide}
+        onReopen={reopen}
+      />
+      <p className="text-xs text-ink-faint">
         Accepting decides it as you and wakes the sessions working this change; the bridge lists what waits on you.{' '}
         <NodeLink to={ctx.change.key} lens={lens} className="hover:text-primary">
           Back to the change
         </NodeLink>
-      </li>
-    </ol>
+      </p>
+    </div>
   );
 }

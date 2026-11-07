@@ -19,6 +19,7 @@ import {
 const lane = (id: string, o: Partial<RailLane> = {}): RailLane => ({
   id,
   kind: 'change',
+  writes: 0,
   title: id.split('/').at(-1),
   count: 1,
   ...o,

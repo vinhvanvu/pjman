@@ -15,6 +15,8 @@ export interface Crumb {
 
 export interface TopBarProps {
   lens: Lens;
+  /** A word before the crumbs that is no node: Sessions, on a session's page. */
+  lead?: string;
   crumbs: Crumb[];
   current?: { key: string; title?: string };
   /** A word for the current node's kind, shown faint after it (project, capability). */
@@ -29,6 +31,7 @@ export interface TopBarProps {
 
 export function TopBar({
   lens,
+  lead,
   crumbs,
   current,
   kind,
@@ -51,6 +54,12 @@ export function TopBar({
         </button>
       )}
       <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-2 overflow-hidden">
+        {lead && (
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="text-ink-muted">{lead}</span>
+            <span className="text-ink-faint">›</span>
+          </span>
+        )}
         {crumbs.map((c) => (
           <span key={c.key} className="flex min-w-0 items-center gap-2">
             <NodeLink
@@ -73,7 +82,7 @@ export function TopBar({
           </span>
         )}
       </nav>
-      {(crumbs.length > 0 || current) && <div className="flex-1" />}
+      {(crumbs.length > 0 || current || lead) && <div className="flex-1" />}
       {trailing}
       {liveSessions > 0 && (
         <Presence className="hidden sm:inline-flex">

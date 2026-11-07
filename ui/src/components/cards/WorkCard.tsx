@@ -13,7 +13,8 @@ import { Chip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
 import { ChangeMeta, type ChangeMetaProps } from './ChangeCard';
 import { CopyKey } from '@/components/links/CopyKey';
-import { DecisionRows } from './DecisionRows';
+import { DecisionGroup } from '@/components/decisions/DecisionGroup';
+import { fromWaiting } from '@/components/decisions/model';
 import { TONE } from '@/lib/tones';
 
 export interface WorkCardProps extends Omit<ChangeMetaProps, 'className' | 'allFeatures'> {
@@ -83,7 +84,13 @@ export function WorkCard({ row, lens, mode, decisions = [], onDecide, selected, 
           </div>
         </NodeLink>
         {decisions.length > 0 && (
-          <DecisionRows items={decisions} lens={lens} showChange={false} onDecide={onDecide} className="px-3.5 pb-3" />
+          <DecisionGroup
+            decisions={decisions.map(fromWaiting)}
+            lens={lens}
+            where="session"
+            onDecide={onDecide}
+            className="px-3.5 pb-3"
+          />
         )}
       </div>
     );
@@ -107,7 +114,9 @@ export function WorkCard({ row, lens, mode, decisions = [], onDecide, selected, 
               {row.next}
             </p>
           )}
-          {decisions.length > 0 && <DecisionRows items={decisions} lens={lens} showChange={false} onDecide={onDecide} />}
+          {decisions.length > 0 && (
+            <DecisionGroup decisions={decisions.map(fromWaiting)} lens={lens} where="session" onDecide={onDecide} />
+          )}
           {row.status === 'review' && (
             <p className="text-xs text-ink-muted">In review: the next line says what to look at.</p>
           )}

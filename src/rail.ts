@@ -26,11 +26,15 @@ export interface Lane {
   last?: string;
   /** Rows in the lane over the scope's life. */
   count: number;
+  /** Of those, the writes: a record written, a decision moved, a file touched; a lane only read or bound has none. */
+  writes: number;
   /** On the folded lane: how many lanes it holds. */
   folded?: number;
 }
 
 export type RowKind = 'write' | 'decision' | 'line' | 'file' | 'switch' | 'bind';
+/** The kinds that are writes: what a lane's write count counts. */
+const WRITE_KINDS: ReadonlySet<RowKind> = new Set(['write', 'decision', 'file']);
 
 export interface Row {
   seq: number;
@@ -141,12 +145,13 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const laneOfEvent = (e: StoreEvent): string | null => (axis === 'session' && e.key === scope.key && e.value?.startsWith('change:') ? (live(loaded, e.value)?.key ?? e.value) : laneFor(e));
 
   // the lanes over the scope's life, so the filter and the page never hide one
-  const touched = new Map<string, { last: string; count: number }>();
+  const touched = new Map<string, { last: string; count: number; writes: number }>();
   for (const e of events) {
     const lane = laneOfEvent(e);
     if (!lane) continue;
-    const t = touched.get(lane) ?? { last: e.at, count: 0 };
+    const t = touched.get(lane) ?? { last: e.at, count: 0, writes: 0 };
     t.count += 1;
+    if (WRITE_KINDS.has(kindOf(axis, scope, e))) t.writes += 1;
     if (e.at > t.last) t.last = e.at;
     touched.set(lane, t);
   }
@@ -157,9 +162,9 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const foldedIds = new Set(folded.map(([id]) => id));
   const lanes: Lane[] = kept.map(([id, t]) => {
     const rec = live(loaded, id);
-    return { id, kind: rec?.type === 'decision' ? 'decision' : 'change', title: rec ? labelOf(rec.data, rec.key) : undefined, status: rec ? str(rec.data.status) : undefined, last: t.last, count: t.count };
+    return { id, kind: rec?.type === 'decision' ? 'decision' : 'change', title: rec ? labelOf(rec.data, rec.key) : undefined, status: rec ? str(rec.data.status) : undefined, last: t.last, count: t.count, writes: t.writes };
   });
-  if (folded.length) lanes.push({ id: 'more', kind: 'more', last: folded[0][1].last, count: folded.reduce((n, [, t]) => n + t.count, 0), folded: folded.length });
+  if (folded.length) lanes.push({ id: 'more', kind: 'more', last: folded[0][1].last, count: folded.reduce((n, [, t]) => n + t.count, 0), writes: folded.reduce((n, [, t]) => n + t.writes, 0), folded: folded.length });
   const placed = (lane: string | null): string | null => (lane && foldedIds.has(lane) ? 'more' : lane);
 
   const observed = axis === 'session' && Array.isArray(scope.data.observed) ? (scope.data.observed as { from?: string; to?: string; at?: string }[]) : [];

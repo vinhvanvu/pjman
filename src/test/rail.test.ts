@@ -86,6 +86,9 @@ test("a session: the changes it touched are the lanes, its lines the trunk, a bi
   assert.equal(r.axis, 'session');
   // last touch first: the focus on billing, the step on child-a, the writes on auth
   assert.deepEqual(r.lanes.map((l) => l.id), ['change:web/billing', 'change:web/child-a', 'change:web/auth']);
+  // the writes a lane counts: billing was only read (a focus is no write), the other two were written to
+  assert.equal(r.lanes[0].writes, 0);
+  assert.ok(r.lanes[1].writes > 0 && r.lanes[2].writes > 0);
   const bind = r.rows.find((row) => row.kind === 'bind')!;
   assert.equal(bind.value, 'change:web/auth');
   assert.equal(bind.lane, 'change:web/auth');

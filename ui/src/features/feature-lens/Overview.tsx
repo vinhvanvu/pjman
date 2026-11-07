@@ -10,7 +10,8 @@ import { ago, pct, plural, sinceDays } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { byIntent, decisionsByChange, strayDecisions } from '@/lib/work';
 import { Chip, Label, StateDot, StatusChip } from '@/components/chips/Chip';
-import { DecisionRows } from '@/components/cards/DecisionRows';
+import { DecisionGroup } from '@/components/decisions/DecisionGroup';
+import { fromWaiting } from '@/components/decisions/model';
 import { useDecideAction } from '@/data/queries';
 import { WorkCard } from '@/components/cards/WorkCard';
 import { EmptyState } from '@/components/EmptyState';
@@ -303,7 +304,14 @@ function Work({
       </div>
       {stray.length > 0 && !groups.some((g) => g.intent === 'waiting') && (
         <Section label="Waiting on you" aside={String(stray.length)}>
-          <DecisionRows items={stray} lens={lens} onDecide={decide} />
+          <DecisionGroup
+            decisions={stray.map(fromWaiting)}
+            lens={lens}
+            where="session"
+            wide
+            onDecide={decide}
+            showChange
+          />
         </Section>
       )}
       {groups.map((g) => (
@@ -324,7 +332,16 @@ function Work({
               showProject={showProject}
             />
           ))}
-          {g.intent === 'waiting' && stray.length > 0 && <DecisionRows items={stray} lens={lens} onDecide={decide} />}
+          {g.intent === 'waiting' && stray.length > 0 && (
+            <DecisionGroup
+              decisions={stray.map(fromWaiting)}
+              lens={lens}
+              where="session"
+              wide
+              onDecide={decide}
+              showChange
+            />
+          )}
           {cap && g.rows.length > cap && (
             <span className="text-xs text-ink-faint">and {g.rows.length - cap} more beneath</span>
           )}
@@ -340,7 +357,7 @@ function WaitingList({ items, lens, product }: { items: WaitingDecision[]; lens:
   const shown = items.slice(0, 3);
   return (
     <Section label="Waiting on you" aside={String(items.length)}>
-      <DecisionRows items={shown} lens={lens} onDecide={decide} />
+      <DecisionGroup decisions={shown.map(fromWaiting)} lens={lens} where="session" wide onDecide={decide} showChange />
       {items.length > shown.length &&
         (product ? (
           <Link

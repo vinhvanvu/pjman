@@ -16,6 +16,30 @@ export function ago(iso: string | undefined, now = Date.now()): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+/** "just now", "6 min ago", "3 h ago", "2 d ago", else the date: the words a bar or a card's meta line uses. */
+export function agoWords(iso: string | undefined, now = Date.now()): string {
+  if (!iso) return '';
+  const d = now - Date.parse(iso);
+  if (!Number.isFinite(d) || d < MINUTE) return 'just now';
+  if (d < HOUR) return `${Math.floor(d / MINUTE)} min ago`;
+  if (d < DAY) return `${Math.floor(d / HOUR)} h ago`;
+  if (d < 7 * DAY) return `${Math.floor(d / DAY)} d ago`;
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+/** "3h 12m", "38m", "2d 3h": how long something has run. Empty without a start. */
+export function durationWords(from: string | undefined, to = Date.now()): string {
+  if (!from) return '';
+  const d = to - Date.parse(from);
+  if (!Number.isFinite(d) || d < MINUTE) return 'under a minute';
+  const days = Math.floor(d / DAY);
+  const hours = Math.floor((d % DAY) / HOUR);
+  const minutes = Math.floor((d % HOUR) / MINUTE);
+  if (days) return hours ? `${days}d ${hours}h` : `${days}d`;
+  if (hours) return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  return `${minutes}m`;
+}
+
 /** "today", "yesterday", "3 days ago", "never": the long form a panel uses. */
 export function sinceDays(days: number | null | undefined): string {
   if (days === null || days === undefined) return 'never';

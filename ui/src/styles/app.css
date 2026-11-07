@@ -141,3 +141,22 @@
   text-transform: uppercase;
   color: var(--faint);
 }
+
+/* the session's focus chip wears a breathing live ring (change:session-detail, decision one-shown-change); still under
+   reduced motion */
+@utility breathe {
+  box-shadow: 0 0 0 1.5px var(--live);
+  animation: breathe 2.4s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1.5px var(--live);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 45%, transparent);
+  }
+}
