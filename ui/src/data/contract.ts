@@ -21,6 +21,7 @@ export type { SessionFacts } from '@contract/commands/pane';
 export type { StoreEvent } from '@contract/events';
 export type { Moment } from '@contract/moment';
 export type { Timeline, TimelineEvent } from '@contract/timeline';
+export type { Rail, Lane as RailLane, Row as RailRow, Bucket as RailBucket } from '@contract/rail';
 export type { RecordType } from '@contract/records';
 export type { DecisionState, OptionState } from '@contract/foundation';
 
