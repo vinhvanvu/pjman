@@ -11,12 +11,13 @@
 import { cn } from 'cn';
 import { ChevronUp, Link2, List, Rows3 } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Lens, RailQuery } from '@/data/contract';
 import { useRail } from '@/data/queries';
 import { EmptyState } from '@/components/EmptyState';
 import { Label } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
+import { useHeldList } from '@/lib/hold';
 import { liveItem, Wash } from '@/lib/motion';
 import { useFresh } from '@/state/arrivals';
 import {
@@ -34,12 +35,16 @@ export type RailRendering = 'rail' | 'list';
 
 /** The lane's colour, as the custom property the dots and words read. */
 const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
+const rowKey = (r: RowView) => String(r.seq);
 
 export function ActivityRail({
   scope,
   lens,
   days = 14,
   lit,
+  label = 'Timeline',
+  note,
+  held = false,
   className,
 }: {
   /** The key the rail is drawn at: a change, a milestone, a feature, the product, a session. */
@@ -48,6 +53,11 @@ export function ActivityRail({
   days?: number;
   /** The lane kept whole while the rest dim: the change a session page shows. */
   lit?: string;
+  /** The head's label, and what stands beside it (a session's liveness). */
+  label?: string;
+  note?: ReactNode;
+  /** Held still (lib/hold): rows keep their places and new ones wait until the release. */
+  held?: boolean;
   className?: string;
 }) {
   const q = useRail(scope, { days });
@@ -62,7 +72,8 @@ export function ActivityRail({
     <div className={cn('flex flex-col gap-4', className)}>
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline gap-2">
-          <Label>Timeline</Label>
+          <Label>{label}</Label>
+          {note}
           <span className="text-meta text-ink-faint">{windowLine(rail, days)}</span>
           <Toggle rendering={rendering} onChange={setRendering} />
         </div>
@@ -71,7 +82,7 @@ export function ActivityRail({
       {rows.length === 0 && buckets.length === 0 ? (
         <EmptyState title="Nothing has happened here yet." />
       ) : rendering === 'rail' ? (
-        <Rows rows={rows} lens={lens} />
+        <Rows rows={rows} lens={lens} held={held} />
       ) : (
         <FlatList rows={rows} lens={lens} />
       )}
@@ -206,8 +217,10 @@ function Words({ row, lens }: { row: RowView; lens: Lens }) {
 }
 
 /** The rows on the rail, newest first, inside a live list. */
-function Rows({ rows, lens }: { rows: RowView[]; lens: Lens }) {
+function Rows({ rows: live, lens, held = false }: { rows: RowView[]; lens: Lens; held?: boolean }) {
   const fresh = useFresh();
+  // held still under the pointer or focus: the rows keep their places, a new one waits until the release
+  const { shown: rows } = useHeldList(live, held, rowKey);
   return (
     <ol className="flex flex-col">
       <AnimatePresence initial={false}>
