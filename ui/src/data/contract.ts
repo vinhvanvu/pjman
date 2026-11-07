@@ -21,13 +21,20 @@ export type { SessionFacts } from '@contract/commands/pane';
 export type { StoreEvent } from '@contract/events';
 export type { Moment } from '@contract/moment';
 export type { Timeline, TimelineEvent } from '@contract/timeline';
-export type { Rail, Lane as RailLane, Row as RailRow, Bucket as RailBucket } from '@contract/rail';
+export type {
+  Rail,
+  Lane as RailLane,
+  Row as RailRow,
+  Bucket as RailBucket,
+  RowKind as RailRowKind,
+} from '@contract/rail';
 export type { RecordType } from '@contract/records';
 export type { DecisionState, OptionState } from '@contract/foundation';
 
 import type { SessionFacts } from '@contract/commands/pane';
 import type { Row } from '@contract/commands/view';
 import type { Lens } from '@contract/scope';
+import type { RowKind as RailRowKind } from '@contract/rail';
 
 /** The lenses the dashboard shows: what the product is (the map), and in what order it comes (the roadmap). The
  *  server also answers `project` and `milestone`; the dashboard treats a project as a chip on cards and a record on
@@ -99,10 +106,15 @@ export interface ScopeQuery {
   retired?: boolean;
 }
 
-/** The rail's window and fold, as /rail takes them: `days` back from now, or `from` to `to`; `lanes` kept apart. */
+/** The rail's page and filter, as /rail takes them (change:rail-pages): the last `limit` passing rows, `before` a
+ *  row when paging back, `from` a day when loading the pages down to it; only these `lanes` and `kinds`; `fold`
+ *  lanes kept apart. */
 export interface RailQuery {
-  days?: number;
+  limit?: number;
+  before?: number;
   from?: string;
   to?: string;
-  lanes?: number;
+  lanes?: string[];
+  kinds?: RailRowKind[];
+  fold?: number;
 }

@@ -4,7 +4,10 @@
 // (decision lanes-have-their-own-hues). A lane's hue follows the lane, not its rank: the lanes take hues in the order
 // of their ids, so a refetch that reorders them by last touch repaints nothing. The folded lane and the trunk take
 // the ink. Every row carries its lane's name in words, so a hue is never the only thing telling two lanes apart.
-import type { Rail, RailBucket, RailLane, RailRow } from '@/data/contract';
+// The rail is read in pages (change:rail-pages): the last few rows, the next page before them, the days before the
+// pages a strip; the filter narrows to lanes and kinds and the model answers pages that pass it.
+import type { Rail, RailBucket, RailLane, RailRow, RailRowKind } from '@/data/contract';
+import type { RailPage } from '@/data/queries';
 import { ago } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { decisionTone, statusTone, TONE, type Tone } from '@/lib/tones';
@@ -165,7 +168,7 @@ export interface BucketView {
   day: string;
   label: string;
   count: number;
-  /** The day's share of the busiest day, 0 to 1: the band's width. */
+  /** The day's share of the busiest day, 0 to 1: the bar's height. */
   share: number;
   /** The health that moved, in words, only what is not zero. */
   health: { text: string; tone: Tone }[];
@@ -182,7 +185,7 @@ const HEALTH: { key: keyof RailBucket['health']; word: string; tone: Tone }[] = 
 const dayLabel = (day: string): string =>
   new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-/** The days before the window newest first, each a band proportional to its count. */
+/** The days before the page oldest first, each a bar proportional to its count. */
 export function bucketViews(buckets: readonly RailBucket[]): BucketView[] {
   const max = Math.max(1, ...buckets.map((b) => b.count));
   return buckets
@@ -196,27 +199,66 @@ export function bucketViews(buckets: readonly RailBucket[]): BucketView[] {
         tone: h.tone,
       })),
     }))
-    .toReversed();
+    .toSorted((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
 }
 
-/** The day's window, for opening a bucket into its rows: `from` its start, `to` the next day's. */
-export function dayWindow(day: string): { from: string; to: string } {
-  const from = new Date(`${day}T00:00:00Z`);
-  const to = new Date(from.getTime() + 86_400_000);
-  return { from: from.toISOString(), to: to.toISOString() };
+/** The rows of every page as one list, oldest first, each row once. */
+export function pageRows(pages: readonly Pick<Rail, 'rows'>[]): RailRow[] {
+  const seen = new Set<number>();
+  const out: RailRow[] = [];
+  for (const page of pages.toReversed())
+    for (const r of page.rows) {
+      if (seen.has(r.seq)) continue;
+      seen.add(r.seq);
+      out.push(r);
+    }
+  return out;
 }
 
-/** The window's length by scope (decision activity-timeline/window-follows-the-scope, proposed): a change or a session
- *  reads two weeks, a feature three days, the product one day, the rest in the band. */
-export function windowFor(key: string): number {
-  const kind = key.slice(0, key.indexOf(':'));
-  return kind === 'product' ? 1 : kind === 'feature' ? 3 : 14;
+/** The day's start, as the bound a page reaches down to. */
+export const dayStart = (day: string): string => `${day}T00:00:00.000Z`;
+
+/** Where the next page lies (decision rail-pages/pages-not-windows): before the last page's oldest row; the pages
+ *  down to a day the person opened in the strip (`reaches`, each a day's start) come first and take no limit, then
+ *  the next `limit` rows; nothing when no older row passes. */
+export function nextPage(
+  last: Pick<Rail, 'rows' | 'earlier' | 'from'>,
+  pages: readonly Pick<Rail, 'from'>[],
+  param: RailPage,
+  limit: number | undefined,
+  reaches: readonly string[],
+): RailPage | undefined {
+  if (last.earlier === 0) return undefined;
+  const before = last.rows[0]?.seq ?? param.before;
+  if (before === undefined) return undefined;
+  // the oldest moment any page reaches; a day before it is still to load
+  const reached = pages.map((p) => p.from).toSorted()[0] ?? last.from;
+  const reach = reaches
+    .filter((d) => d < reached)
+    .toSorted()
+    .at(-1);
+  return reach ? { before, from: reach } : { before, limit };
 }
 
-/** The line under the rail's head: what the window holds and what lies before it. */
-export function windowLine(rail: Pick<Rail, 'rows' | 'total'>, days: number): string {
-  const n = rail.rows.length;
-  const earlier = rail.total - n;
-  const inside = `${n} ${n === 1 ? 'event' : 'events'} in ${days} days`;
-  return earlier > 0 ? `${inside} · ${earlier} earlier` : inside;
+/** The line beside the rail's head: how much of the rail is shown. */
+export function shownLine(shown: number, total: number): string {
+  const events = `${total} ${total === 1 ? 'event' : 'events'}`;
+  return shown < total ? `${shown} of ${events}` : events;
+}
+
+/** The kinds as the filter offers them (decision rail-pages/filter-by-lane-and-kind): a focus move and a bind are
+ *  one toggle, since both are the session moving. */
+export const KIND_GROUPS: { id: string; label: string; kinds: RailRowKind[]; axis?: Rail['axis'] }[] = [
+  { id: 'writes', label: 'writes', kinds: ['write'] },
+  { id: 'decisions', label: 'decisions', kinds: ['decision'] },
+  { id: 'lines', label: 'lines', kinds: ['line'], axis: 'session' },
+  { id: 'files', label: 'files', kinds: ['file'], axis: 'session' },
+  { id: 'moves', label: 'moves', kinds: ['switch', 'bind'], axis: 'session' },
+];
+
+/** The kinds a page is narrowed to when these groups are off: nothing to send while every group is on. */
+export function kindsOn(off: readonly string[], axis: Rail['axis']): RailRowKind[] | undefined {
+  const groups = KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
+  if (!off.some((id) => groups.some((g) => g.id === id))) return undefined;
+  return groups.filter((g) => !off.includes(g.id)).flatMap((g) => g.kinds);
 }

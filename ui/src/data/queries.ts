@@ -1,10 +1,10 @@
 // Server state: every piece of data a component shows comes through one of these hooks. Keys are structured so the
 // event stream can invalidate by prefix (see live.ts); nothing is ever copied out of the cache into other state.
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAt } from '@/state/moment';
 import { api } from './client';
-import type { OrderBody, RailQuery, ScopeQuery } from './contract';
+import type { OrderBody, Rail, RailQuery, ScopeQuery } from './contract';
 
 /** Every key ends with the moment it reads as of ('now' when none), so a page at a moment never shares a cache
  *  entry with the live page, and the stream's invalidation by prefix reaches both. */
@@ -23,6 +23,7 @@ export const queryKeys = {
   timeline: (product: string, from: string, to: string, after?: number) =>
     ['pjman', 'timeline', product, from, to, after ?? null] as const,
   rail: (key: string, q: RailQuery, at?: string) => ['pjman', 'rail', key, q, at ?? 'now'] as const,
+  railPages: (key: string, q: RailQuery, at?: string) => ['pjman', 'rail-pages', key, q, at ?? 'now'] as const,
 };
 
 export function useStore() {
@@ -145,13 +146,37 @@ export function useBridge(product: string | undefined, days?: number) {
   });
 }
 
-/** The rail at a key (change:activity-timeline): lanes, rows and day buckets over a window, as of the page's moment.
- *  The stream invalidates it like everything else. */
+/** The rail at a key (change:activity-timeline): lanes, a page of rows and the day buckets before it, as of the
+ *  page's moment. The stream invalidates it like everything else. */
 export function useRail(key: string | undefined, q: RailQuery = {}) {
   const at = useAt();
   return useQuery({
     queryKey: queryKeys.rail(key ?? '', q, at),
     queryFn: () => api.rail(key!, q, at),
+    enabled: !!key,
+    placeholderData: keepPreviousData,
+    staleTime: 15_000,
+  });
+}
+
+/** One page's place on the rail: before a row, from a day, how many; the first page is the last `q.limit`. */
+export type RailPage = Pick<RailQuery, 'before' | 'from' | 'limit'>;
+const FIRST_PAGE: RailPage = {};
+
+/** The rail read in pages (change:rail-pages): the first the last few rows, each next one placed by `next` from the
+ *  page before it. When the stream invalidates the rail the pages are read again in order, each placed anew from the
+ *  fresh page before it, so a row that arrives shifts the page edges and opens no gap. */
+export function useRailPages(
+  key: string | undefined,
+  q: RailQuery,
+  next: (last: Rail, pages: Rail[], param: RailPage) => RailPage | undefined,
+) {
+  const at = useAt();
+  return useInfiniteQuery({
+    queryKey: queryKeys.railPages(key ?? '', q, at),
+    queryFn: ({ pageParam }) => api.rail(key!, { ...q, ...pageParam }, at),
+    initialPageParam: FIRST_PAGE,
+    getNextPageParam: (last, pages, param) => next(last, pages, param),
     enabled: !!key,
     placeholderData: keepPreviousData,
     staleTime: 15_000,

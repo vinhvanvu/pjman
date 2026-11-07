@@ -3,17 +3,22 @@
 // from a tree node, a change from a session), and a row's words name its lane so colour is never alone. The dot says
 // what the row is: a filled circle a write, a diamond a decision filled with its state (amber waiting, green decided)
 // and ringed with its lane, a hollow circle a line, a square a file, a chevron a focus switch. The lane the mount
-// lights stays whole and the other lanes dim to half; nothing is filtered out. Days before the window are a density
-// band beneath the rows, each a bar for its count carrying what the day moved, and a day opens into its rows.
+// lights stays whole and the other lanes dim to half.
+// The rail is read in pages (change:rail-pages, decision pages-not-windows): it opens on the last few rows, the mount
+// saying how many, and Older appends the next page; the days before the pages are one strip the height of a row, a
+// bar a day with its count and what it moved under the pointer, and a day opens by loading the pages down to it.
+// The filter (decision filter-by-lane-and-kind) is the lane chips, each a toggle, and a row of kinds; the model
+// answers pages that pass it, so a page is always as long as it says. The hold keeps the live page still; a page the
+// person asked for arrives at once.
 // Alive (change:motion-design): a row that arrives opens its space and fades in, washed in its lane's colour; the
 // dim is a short fade; under reduced motion the fades stay and nothing slides.
 // The flat list is the other rendering of the same rows: the same words in a plain list, without the rail.
 import { cn } from 'cn';
 import { ChevronUp, Link2, List, Rows3 } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import type { Lens, RailQuery } from '@/data/contract';
-import { useRail } from '@/data/queries';
+import { useRailPages } from '@/data/queries';
 import { EmptyState } from '@/components/EmptyState';
 import { Label } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
@@ -22,10 +27,14 @@ import { liveItem, Wash } from '@/lib/motion';
 import { useFresh } from '@/state/arrivals';
 import {
   bucketViews,
-  dayWindow,
+  dayStart,
+  KIND_GROUPS,
+  kindsOn,
   laneViews,
+  nextPage,
+  pageRows,
   rowViews,
-  windowLine,
+  shownLine,
   type BucketView,
   type LaneView,
   type RowView,
@@ -36,11 +45,13 @@ export type RailRendering = 'rail' | 'list';
 /** The lane's colour, as the custom property the dots and words read. */
 const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
 const rowKey = (r: RowView) => String(r.seq);
+const toggled = (list: readonly string[], id: string) =>
+  list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 
 export function ActivityRail({
   scope,
   lens,
-  days = 14,
+  limit = 20,
   lit,
   label = 'Timeline',
   note,
@@ -50,43 +61,87 @@ export function ActivityRail({
   /** The key the rail is drawn at: a change, a milestone, a feature, the product, a session. */
   scope: string;
   lens: Lens;
-  days?: number;
+  /** The rows a page holds: what the rail opens on, and what Older adds. */
+  limit?: number;
   /** The lane kept whole while the rest dim: the change a session page shows. */
   lit?: string;
   /** The head's label, and what stands beside it (a session's liveness). */
   label?: string;
   note?: ReactNode;
-  /** Held still (lib/hold): rows keep their places and new ones wait until the release. */
+  /** Held still (lib/hold): the live page keeps its places and new rows wait until the release. */
   held?: boolean;
   className?: string;
 }) {
-  const q = useRail(scope, { days });
   const [rendering, setRendering] = useState<RailRendering>('rail');
-  const rail = q.data;
-  if (!rail)
+  // the filter: lanes on (none means all), kind groups off (none means all); the axis follows the scope's kind
+  const [lanesOn, setLanesOn] = useState<string[]>([]);
+  const [kindsOff, setKindsOff] = useState<string[]>([]);
+  const axis = scope.startsWith('session:') ? 'session' : 'tree';
+  // the days opened in the strip: read by the pager, so a refetch places the same pages again
+  const reaches = useRef<string[]>([]);
+  const query: RailQuery = {
+    limit,
+    lanes: lanesOn.length ? lanesOn : undefined,
+    kinds: kindsOn(kindsOff, axis),
+  };
+  const q = useRailPages(scope, query, (last, pages, param) => nextPage(last, pages, param, limit, reaches.current));
+  const pages = q.data?.pages ?? [];
+  const first = pages[0];
+  if (!first)
     return <EmptyState title={q.isError ? 'The rail could not be read.' : 'Reading the rail…'} className={className} />;
-  const lanes = laneViews(rail);
-  const rows = rowViews(rail, lit);
-  const buckets = bucketViews(rail.buckets);
+  const last = pages.at(-1)!;
+  const lanes = laneViews(first);
+  const merged = pageRows(pages);
+  const live = rowViews({ axis: first.axis, lanes: first.lanes, rows: first.rows }, lit);
+  const older = rowViews(
+    { axis: first.axis, lanes: first.lanes, rows: merged.filter((r) => r.seq < (first.rows[0]?.seq ?? 0)) },
+    lit,
+  );
+  const buckets = bucketViews(last.buckets);
+  const filtered = lanesOn.length > 0 || kindsOff.length > 0;
+  const groups = KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
+  const open = (day: string) => {
+    const start = dayStart(day);
+    if (!reaches.current.includes(start)) reaches.current = [...reaches.current, start];
+    void q.fetchNextPage();
+  };
   return (
     <div className={cn('flex flex-col gap-4', className)}>
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline gap-2">
           <Label>{label}</Label>
           {note}
-          <span className="text-meta text-ink-faint">{windowLine(rail, days)}</span>
+          <span className="text-meta text-ink-faint">{shownLine(merged.length, first.total)}</span>
           <Toggle rendering={rendering} onChange={setRendering} />
         </div>
-        {lanes.length > 0 && <LaneChips lanes={lanes} lit={lit} />}
+        {lanes.length > 0 && (
+          <LaneChips lanes={lanes} lit={lit} on={lanesOn} onToggle={(id) => setLanesOn(toggled(lanesOn, id))} />
+        )}
+        {groups.length > 1 && (
+          <KindRow groups={groups} off={kindsOff} onToggle={(id) => setKindsOff(toggled(kindsOff, id))} />
+        )}
       </div>
-      {rows.length === 0 && buckets.length === 0 ? (
-        <EmptyState title="Nothing has happened here yet." />
+      {merged.length === 0 && buckets.length === 0 ? (
+        <EmptyState title={filtered ? 'Nothing passes the filter.' : 'Nothing has happened here yet.'} />
       ) : rendering === 'rail' ? (
-        <Rows rows={rows} lens={lens} held={held} />
+        <>
+          <Rows rows={live} lens={lens} held={held} />
+          {older.length > 0 && <Rows rows={older} lens={lens} />}
+        </>
       ) : (
-        <FlatList rows={rows} lens={lens} />
+        <FlatList rows={[...live, ...older]} lens={lens} />
       )}
-      {buckets.length > 0 && <Band scope={scope} lens={lens} buckets={buckets} lit={lit} rendering={rendering} />}
+      {q.hasNextPage && (
+        <button
+          type="button"
+          disabled={q.isFetchingNextPage}
+          onClick={() => void q.fetchNextPage()}
+          className="self-start rounded-chip px-2 py-0.5 text-meta text-ink-muted hover:bg-raised hover:text-ink disabled:text-ink-faint"
+        >
+          {q.isFetchingNextPage ? 'Reading…' : `Older · ${last.earlier} more`}
+        </button>
+      )}
+      {buckets.length > 0 && <Strip buckets={buckets} earlier={last.earlier} onOpen={open} />}
     </div>
   );
 }
@@ -112,24 +167,78 @@ function Toggle({ rendering, onChange }: { rendering: RailRendering; onChange: (
   );
 }
 
-/** The lanes as chips: a dot in the lane's colour and its name; the lit lane stands out, the rest are quiet. */
-function LaneChips({ lanes, lit }: { lanes: LaneView[]; lit?: string }) {
+/** The lanes as chips, each a toggle: a dot in the lane's colour and its name; with none on every lane shows, with
+ *  some on the rest step back; the lit lane stands out and the rest are quiet. */
+function LaneChips({
+  lanes,
+  lit,
+  on,
+  onToggle,
+}: {
+  lanes: LaneView[];
+  lit?: string;
+  on: readonly string[];
+  onToggle: (id: string) => void;
+}) {
   return (
-    <ul className="flex flex-wrap gap-x-3 gap-y-1">
-      {lanes.map((l) => (
-        <li
-          key={l.id}
-          className={cn(
-            'flex items-center gap-1.5 text-meta transition-opacity duration-200',
-            lit !== undefined && l.id !== lit ? 'text-ink-faint' : 'text-ink-muted',
-          )}
-          style={laneStyle(l.colour)}
-        >
-          <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-[var(--lane)]" />
-          <span className="truncate">{l.title}</span>
-          <span className="text-ink-faint">{l.count}</span>
-        </li>
-      ))}
+    <ul className="flex flex-wrap gap-x-1 gap-y-1">
+      {lanes.map((l) => {
+        const pressed = on.includes(l.id);
+        const quiet = (on.length > 0 && !pressed) || (lit !== undefined && l.id !== lit);
+        return (
+          <li key={l.id} style={laneStyle(l.colour)}>
+            <button
+              type="button"
+              aria-pressed={pressed}
+              title={pressed ? `Only ${l.title}: on` : `Only ${l.title}`}
+              onClick={() => onToggle(l.id)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-chip px-1.5 py-0.5 text-meta transition-opacity duration-200 hover:bg-raised',
+                quiet ? 'text-ink-faint' : 'text-ink-muted',
+                pressed && 'bg-raised text-ink',
+              )}
+            >
+              <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-[var(--lane)]" />
+              <span className="truncate">{l.title}</span>
+              <span className="text-ink-faint">{l.count}</span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/** The kinds as toggles, every one on until turned off. */
+function KindRow({
+  groups,
+  off,
+  onToggle,
+}: {
+  groups: typeof KIND_GROUPS;
+  off: readonly string[];
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <ul className="flex flex-wrap gap-x-1 gap-y-1">
+      {groups.map((g) => {
+        const on = !off.includes(g.id);
+        return (
+          <li key={g.id}>
+            <button
+              type="button"
+              aria-pressed={on}
+              onClick={() => onToggle(g.id)}
+              className={cn(
+                'rounded-chip px-1.5 py-0.5 text-meta transition-opacity duration-200 hover:bg-raised',
+                on ? 'text-ink-muted' : 'text-ink-faint line-through decoration-line-strong',
+              )}
+            >
+              {g.label}
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -272,75 +381,46 @@ function FlatList({ rows, lens }: { rows: RowView[]; lens: Lens }) {
   );
 }
 
-/** The days before the window: a bar a day, newest first, carrying what the day moved; one opens into its rows. */
-function Band({
-  scope,
-  lens,
+/** The days before the pages, one strip the height of a row: a bar a day, oldest left, as tall as its share of the
+ *  busiest day; the day's count and what it moved under the pointer; a day opens by loading the pages down to it. */
+function Strip({
   buckets,
-  lit,
-  rendering,
+  earlier,
+  onOpen,
 }: {
-  scope: string;
-  lens: Lens;
   buckets: BucketView[];
-  lit?: string;
-  rendering: RailRendering;
+  earlier: number;
+  onOpen: (day: string) => void;
 }) {
-  const [open, setOpen] = useState<string>();
+  const span = `${earlier} ${earlier === 1 ? 'event' : 'events'} in ${buckets.length} ${buckets.length === 1 ? 'day' : 'days'}`;
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label>Earlier</Label>
-      <ul className="flex flex-col gap-1">
-        {buckets.map((b) => (
-          <li key={b.day} className="flex flex-col gap-1">
-            <button
-              type="button"
-              aria-expanded={open === b.day}
-              onClick={() => setOpen(open === b.day ? undefined : b.day)}
-              className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-x-2 rounded-row py-0.5 text-left hover:bg-raised"
-            >
-              <span className="text-right text-meta text-ink-faint">{b.label}</span>
-              <span className="flex min-w-0 items-center gap-2">
+    <div className="grid grid-cols-[52px_minmax(0,1fr)] items-center gap-x-2">
+      <Label className="text-right">Earlier</Label>
+      <div className="flex min-w-0 items-end gap-2">
+        <ul className="flex h-4 flex-wrap items-end gap-px" aria-label={span}>
+          {buckets.map((b) => (
+            <li key={b.day} className="flex h-4 items-end">
+              <button
+                type="button"
+                title={[
+                  `${b.label} · ${b.count} ${b.count === 1 ? 'event' : 'events'}`,
+                  ...b.health.map((h) => h.text),
+                ].join(' · ')}
+                aria-label={`${b.label}: ${b.count} ${b.count === 1 ? 'event' : 'events'}; load down to it`}
+                onClick={() => onOpen(b.day)}
+                className="flex h-4 w-1.5 items-end rounded-sm hover:bg-raised"
+              >
                 <span
                   aria-hidden="true"
-                  className="h-2 shrink-0 rounded-sm bg-ink-faint/40"
-                  style={{ width: `${Math.max(4, Math.round(b.share * 120))}px` }}
+                  className="block w-full rounded-[1px] bg-ink-faint/50 transition-colors hover:bg-ink-muted"
+                  style={{ height: `${Math.max(2, Math.round(b.share * 16))}px` }}
                 />
-                <span className="truncate text-meta text-ink-muted">
-                  {b.count} {b.count === 1 ? 'event' : 'events'}
-                  {b.health.map((h) => (
-                    <span key={h.text}>
-                      {' · '}
-                      <span className={h.tone.text}>{h.text}</span>
-                    </span>
-                  ))}
-                </span>
-              </span>
-            </button>
-            {open === b.day && <Day scope={scope} lens={lens} day={b.day} lit={lit} rendering={rendering} />}
-          </li>
-        ))}
-      </ul>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <span className="truncate text-meta text-ink-faint">{span}</span>
+      </div>
     </div>
   );
-}
-
-/** A day opened: its rows, read for that window alone. */
-function Day({
-  scope,
-  lens,
-  day,
-  lit,
-  rendering,
-}: {
-  scope: string;
-  lens: Lens;
-  day: string;
-  lit?: string;
-  rendering: RailRendering;
-}) {
-  const q = useRail(scope, dayWindow(day) satisfies RailQuery);
-  if (!q.data) return <div className="pl-[60px] text-meta text-ink-faint">Reading the day…</div>;
-  const rows = rowViews(q.data, lit);
-  return rendering === 'rail' ? <Rows rows={rows} lens={lens} /> : <FlatList rows={rows} lens={lens} />;
 }

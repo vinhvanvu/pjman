@@ -3,15 +3,17 @@ import type { Rail, RailBucket, RailLane, RailRow } from '@/data/contract';
 import { TONE } from '@/lib/tones';
 import {
   bucketViews,
-  dayWindow,
+  dayStart,
+  kindsOn,
   laneColours,
   laneViews,
   LANE_HUES,
   MORE,
+  nextPage,
+  pageRows,
   rowViews,
+  shownLine,
   TRUNK,
-  windowFor,
-  windowLine,
 } from './model';
 
 const lane = (id: string, o: Partial<RailLane> = {}): RailLane => ({
@@ -41,6 +43,7 @@ const rail = (o: Partial<Rail> = {}): Rail => ({
   rows: [],
   buckets: [],
   total: 0,
+  earlier: 0,
   ...o,
 });
 const NOW = Date.parse('2026-11-06T10:10:00.000Z');
@@ -218,22 +221,22 @@ describe('rowViews', () => {
 });
 
 describe('bucketViews', () => {
-  it('bands the days newest first, each by its share of the busiest day, carrying only the health that moved', () => {
+  it('lays the days oldest first, each by its share of the busiest day, carrying only the health that moved', () => {
     const views = bucketViews([
-      bucket('2026-10-20', 2, { created: 1 }),
       bucket('2026-10-21', 8, { moved: 3, done: 1, waiting: 2 }),
+      bucket('2026-10-20', 2, { created: 1 }),
     ]);
-    expect(views.map((v) => v.day)).toEqual(['2026-10-21', '2026-10-20']);
-    expect(views[0]!.share).toBe(1);
-    expect(views[1]!.share).toBe(0.25);
-    expect(views[0]!.health.map((h) => h.text)).toEqual(['3 moved', '1 done', '2 opened']);
-    expect(views[0]!.health[1]!.tone).toBe(TONE.done);
-    expect(views[0]!.health[2]!.tone).toBe(TONE.waits);
-    expect(views[1]!.health.map((h) => h.text)).toEqual(['1 created']);
+    expect(views.map((v) => v.day)).toEqual(['2026-10-20', '2026-10-21']);
+    expect(views[1]!.share).toBe(1);
+    expect(views[0]!.share).toBe(0.25);
+    expect(views[1]!.health.map((h) => h.text)).toEqual(['3 moved', '1 done', '2 opened']);
+    expect(views[1]!.health[1]!.tone).toBe(TONE.done);
+    expect(views[1]!.health[2]!.tone).toBe(TONE.waits);
+    expect(views[0]!.health.map((h) => h.text)).toEqual(['1 created']);
   });
 
-  it('opens a day into the window from its start to the next day', () => {
-    expect(dayWindow('2026-10-21')).toEqual({ from: '2026-10-21T00:00:00.000Z', to: '2026-10-22T00:00:00.000Z' });
+  it('a day starts at midnight, as the bound a page reaches down to', () => {
+    expect(dayStart('2026-10-21')).toBe('2026-10-21T00:00:00.000Z');
   });
 });
 
@@ -272,18 +275,68 @@ describe('rowViews folding', () => {
   });
 });
 
-describe('windowLine', () => {
-  it('counts the window and what lies before it', () => {
-    expect(windowLine(rail({ rows: [row(1)], total: 1 }), 14)).toBe('1 event in 14 days');
-    expect(windowLine(rail({ rows: [row(1), row(2)], total: 9 }), 7)).toBe('2 events in 7 days · 7 earlier');
+describe('shownLine', () => {
+  it('counts what is shown of the whole, or the whole when nothing is left', () => {
+    expect(shownLine(1, 1)).toBe('1 event');
+    expect(shownLine(20, 1770)).toBe('20 of 1770 events');
+    expect(shownLine(0, 0)).toBe('0 events');
   });
 });
 
-describe('windowFor', () => {
-  it('follows the scope: two weeks on a change or a session, days on a feature, a day on the product', () => {
-    expect(windowFor('change:p/auth')).toBe(14);
-    expect(windowFor('session:me')).toBe(14);
-    expect(windowFor('feature:p/dashboard')).toBe(3);
-    expect(windowFor('product:p')).toBe(1);
+describe('pageRows', () => {
+  it('joins the pages oldest first, each row once', () => {
+    const first = rail({ rows: [row(5), row(6)] });
+    const next = rail({ rows: [row(3), row(4), row(5)] });
+    expect(pageRows([first, next]).map((r) => r.seq)).toEqual([3, 4, 5, 6]);
+  });
+});
+
+describe('nextPage', () => {
+  const at = (seq: number) => `2026-11-0${seq}T10:00:00.000Z`;
+  const page = (seqs: number[], earlier: number) =>
+    rail({ rows: seqs.map((s) => row(s, { at: at(s) })), earlier, from: at(seqs[0] ?? 9) });
+
+  it("lies before the last page's oldest row, the next n rows", () => {
+    const last = page([5, 6], 4);
+    expect(nextPage(last, [last], {}, 20, [])).toEqual({ before: 5, limit: 20 });
+  });
+
+  it('is nothing when no older row passes', () => {
+    const last = page([5, 6], 0);
+    expect(nextPage(last, [last], {}, 20, [])).toBeUndefined();
+  });
+
+  it('goes on from the page before when a page came back empty', () => {
+    const last = page([], 3);
+    expect(nextPage(last, [last], { before: 4 }, 20, [])).toEqual({ before: 4, limit: 20 });
+    expect(nextPage(last, [last], {}, 20, [])).toBeUndefined();
+  });
+
+  it('reaches down to a day the person opened first, without a limit, then pages on', () => {
+    const first = page([5, 6], 4);
+    const day = dayStart('2026-11-02');
+    expect(nextPage(first, [first], {}, 20, [day])).toEqual({ before: 5, from: day });
+    const down = rail({
+      rows: [row(2, { at: at(2) }), row(3, { at: at(3) }), row(4, { at: at(4) })],
+      earlier: 1,
+      from: day,
+    });
+    expect(nextPage(down, [first, down], { before: 5, from: day }, 20, [day])).toEqual({ before: 2, limit: 20 });
+  });
+
+  it('takes the newest day not yet reached when several are open', () => {
+    const first = page([6], 5);
+    const days = [dayStart('2026-11-01'), dayStart('2026-11-03')];
+    expect(nextPage(first, [first], {}, 20, days)).toEqual({ before: 6, from: days[1] });
+  });
+});
+
+describe('kindsOn', () => {
+  it('sends nothing while every group is on, else the kinds of the groups still on, by the axis', () => {
+    expect(kindsOn([], 'tree')).toBeUndefined();
+    expect(kindsOn(['lines'], 'tree')).toBeUndefined();
+    expect(kindsOn(['decisions'], 'tree')).toEqual(['write']);
+    expect(kindsOn(['moves', 'files'], 'session')).toEqual(['write', 'decision', 'line']);
+    expect(kindsOn(['writes', 'decisions', 'lines', 'files', 'moves'], 'session')).toEqual([]);
   });
 });

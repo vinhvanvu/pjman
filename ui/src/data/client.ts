@@ -106,13 +106,16 @@ export const api = {
     call<Timeline>(
       `/products/${encodeURIComponent(product.replace(/^product:/, ''))}/timeline?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${after ? `&after=${after}` : ''}`,
     ),
-  /** The rail at any key: its lanes, rows and day buckets over a window, as of the page's moment. */
+  /** The rail at any key: its lanes, a page of rows and the day buckets before it, as of the page's moment. */
   rail: (key: string, q: RailQuery = {}, at?: string) => {
     const p = new URLSearchParams({ key });
-    if (q.days) p.set('days', String(q.days));
+    if (q.limit) p.set('limit', String(q.limit));
+    if (q.before !== undefined) p.set('before', String(q.before));
     if (q.from) p.set('from', q.from);
     if (q.to) p.set('to', q.to);
-    if (q.lanes) p.set('lanes', String(q.lanes));
+    if (q.lanes) p.set('lanes', q.lanes.join(','));
+    if (q.kinds) p.set('kinds', q.kinds.join(','));
+    if (q.fold) p.set('fold', String(q.fold));
     return call<Rail>(`/rail?${p}`, at);
   },
   scope: (q: ScopeQuery, at?: string) => {
