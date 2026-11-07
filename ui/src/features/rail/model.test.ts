@@ -11,9 +11,11 @@ import {
   MORE,
   nextPage,
   pageRows,
+  railQuery,
   rowViews,
   shownLine,
   TRUNK,
+  UNFOLDED,
 } from './model';
 
 const lane = (id: string, o: Partial<RailLane> = {}): RailLane => ({
@@ -339,5 +341,22 @@ describe('kindsOn', () => {
     expect(kindsOn(['decisions'], 'tree')).toEqual(['write']);
     expect(kindsOn(['moves', 'files'], 'session')).toEqual(['write', 'decision', 'line']);
     expect(kindsOn(['writes', 'decisions', 'lines', 'files', 'moves'], 'session')).toEqual([]);
+  });
+});
+
+describe('railQuery', () => {
+  it('sends the filter as lanes and kinds, nothing while nothing is narrowed', () => {
+    expect(railQuery({ limit: 20, axis: 'tree', lanesOn: [], kindsOff: [] })).toEqual({ limit: 20 });
+    expect(railQuery({ limit: 8, axis: 'session', lanesOn: ['change:a'], kindsOff: ['files'] })).toEqual({
+      limit: 8,
+      lanes: ['change:a'],
+      kinds: ['write', 'decision', 'line', 'switch', 'bind'],
+    });
+  });
+  it('a fixed lane stands in for the filter: that lane alone, every kind, the lanes kept apart', () => {
+    expect(
+      railQuery({ limit: 8, axis: 'session', only: 'change:b', lanesOn: ['change:a'], kindsOff: ['files'] }),
+    ).toEqual({ limit: 8, lanes: ['change:b'], fold: UNFOLDED });
+    expect(UNFOLDED).toBeGreaterThan(5);
   });
 });
