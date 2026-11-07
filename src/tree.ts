@@ -46,14 +46,20 @@ export function structuralParent(loaded: Loaded, rec: Rec): Rec | undefined {
   return undefined;
 }
 
-/** The product at the root above a feature or project, walking parents. */
+/** The product at the root above a record: a feature or a project walking its parents; a change or a decision by the
+ *  product its key sits under, else through the change's project (change:bridge-lost-on-session-page: a session on a
+ *  change lost its product, and with it the rail's Bridge). */
 export function rootProductOf(loaded: Loaded, rec: Rec): Rec | undefined {
   const seen = new Set<string>();
   let cur: Rec | undefined = rec;
   while (cur && !seen.has(cur.key)) {
     if (cur.type === 'product') return cur;
     seen.add(cur.key);
-    cur = structuralParent(loaded, cur);
+    if (cur.type === 'change' || cur.type === 'decision') {
+      const keyed = cur.productSlug ? live(loaded, `product:${cur.productSlug}`) : undefined;
+      if (keyed) return keyed;
+      cur = cur.type === 'change' ? live(loaded, cur.data.project) : live(loaded, cur.changeKey);
+    } else cur = structuralParent(loaded, cur);
   }
   return undefined;
 }
