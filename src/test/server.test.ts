@@ -273,3 +273,10 @@ test('POST /decide decides a proposed decision as the person signed in, and POST
   r = await post('/decide', {});
   assert.equal(r.status, 400);
 });
+
+test('a session the store does not hold is a 404 with its own code, so the page can wait for it', async () => {
+  const r = await getJson('/api/v1/sessions/not-yet/view');
+  assert.equal(r.status, 404);
+  assert.equal(r.body.error?.code, 'no-session');
+  assert.equal(r.body.error?.message, 'session:not-yet has no record');
+});

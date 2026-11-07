@@ -250,7 +250,12 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       return send(res, 200, { data: findReferences(loaded, text, getOpts) });
     }
     if ((m = /^\/sessions\/([^/]+)\/view$/.exec(route))) {
-      return send(res, 200, { data: viewData(store, { session: decodeURIComponent(m[1]), ...getOpts }, loaded) });
+      const id = decodeURIComponent(m[1]);
+      const key = id.startsWith('session:') ? id : `session:${id}`;
+      // its own code, since a session the store does not hold yet is one the page waits for: the pane is pointed at
+      // the page before the record is written (change:session-page-before-record)
+      if (resolve(loaded, key).status !== 'ok') throw new HttpError(404, 'no-session', `${key} has no record`);
+      return send(res, 200, { data: viewData(store, { session: id, ...getOpts }, loaded) });
     }
     if ((m = /^\/projects\/([a-z0-9][a-z0-9-]*)\/board$/.exec(route))) {
       return send(res, 200, { data: storeContext(store, { project: `project:${m[1]}` }) });
