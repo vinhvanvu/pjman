@@ -28,6 +28,7 @@ import { mv } from './commands/mv.js';
 import { rm } from './commands/rm.js';
 import { apply, undo } from './commands/apply.js';
 import { liftsOfStore } from './lift.js';
+import { formatRest, restOf } from './rest.js';
 import { formatTree, tree } from './tree.js';
 import { formatReceipt, receipt } from './receipt.js';
 import { activity, formatActivity } from './activity.js';
@@ -111,6 +112,8 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'view', about: "one reference as a Markdown document, or the project's board without one; --out writes a file, --watch re-renders whenever the store changes. A session's view is the dashboard's: pjman open --session",
     usage: ['pjman view [<ref>] [--out <file>] [--watch]'] },
   { name: 'show', about: 'print one record by key', usage: ['pjman show <key> [--json]'] },
+  { name: 'rest', about: "where a change may rest: whether a stop on it is one the record allows, and why. It rests when a decision on it is proposed, a blocker is recorded (blocked-on, a dependency not done), a person set it blocked, review, done or dropped, or its plan has run to its end; with steps still open and none of those it does not rest, and the open steps are listed (exit 1). The adapter's stop hook reads this; never writes",
+    usage: ['pjman rest <change> [--json]'] },
   { name: 'validate', about: 'check every record and every reference; errors are reported, never dropped (exit 1 on errors)',
     usage: ['pjman validate [--json]'] },
   { name: 'fmt', about: 'rewrite records in canonical form: field order, the YAML rule, repaired quoting (--check reports only)',
@@ -119,7 +122,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
     usage: ['pjman mv change:<old> change:<new>', 'pjman mv feature:<old> feature:<new>', 'pjman mv product:<old> product:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>', 'pjman mv person:<old> person:<new>'] },
   { name: 'migrate', about: "the one move the store still waits for, one commit, one event, pjman undo <commit> reverts it. The layout: every product becomes a folder holding its features and changes, every key gains its product segment wherever it is written, each moved record keeps its old slug as an alias. The foundation: every change and decision mapped into its shape, nothing dropped (a title becomes a draft gist, a summary the Intent, next and a prose plan go to Notes, a list plan becomes steps, a decision's text one option accepted by whoever decided it), each marked migrated until it is next written. Then the stamp: pjman.yaml names the format the store is in (the pjman version that introduced its latest move), so a store from a newer pjman is refused by an older one, and an older store is told to migrate. Each move names the version that introduced it",
     usage: ['pjman migrate'] },
-  { name: 'lift', about: "move every open or planning change up to what its plan says, as one batch (pjman undo reverts it): planning once it has a step, active once a step has started. The same rule runs after every write; this is the backfill for a store written before it (--check lists the lifts only)",
+  { name: 'lift', about: "move every open, planning or active change up to what its plan says, as one batch (pjman undo reverts it): planning once it has a step, active once a step has started, review once every step is done. The same rule runs after every write; this is the backfill for a store written before it (--check lists the lifts only)",
     usage: ['pjman lift [--check]'] },
   { name: 'apply', about: "many writes as one commit: the commands one per line (new, set, decision, step, mv, rm, order, session, note; as typed after pjman), run in order with every commit held, then one commit and the events with it, closed by one 'applied' event on the record --for names (a decision that proposed a map, a change). A line that fails refuses the whole batch and nothing is written",
     usage: ['pjman apply [<file>|-] [--for <key>]'] },
@@ -646,6 +649,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (v.json) json(r);
       else out(r.writes ? `applied ${plural(r.writes, 'write')} from ${plural(r.lines, 'line')} as one commit${r.for ? ` for ${r.for}` : ''}${r.commit ? ` (committed ${r.commit}; pjman undo reverts it)` : ''}` : `nothing to write in ${plural(r.lines, 'line')}`);
       return 0;
+    }
+    case 'rest': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw new CliError('usage: pjman rest <change> [--json]');
+      const r = restOf(loadStore(store), pos[1]);
+      v.json ? json(r) : out(formatRest(r));
+      return r.rests ? 0 : 1;
     }
     case 'lift': {
       const store = scoped(requireStore(cwd, v.store));
