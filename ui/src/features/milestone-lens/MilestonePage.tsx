@@ -2,15 +2,15 @@
 // leads to completion from three sides (changes beneath, features touched, projects involved), the decisions by name,
 // and what blocks it.
 import { cn } from 'cn';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate, useSearch } from '@tanstack/react-router';
 import { Check, Map } from 'lucide-react';
 import type { ChangeContext, Lens, Scope, ScopeNode } from '@/data/contract';
 import { plural, sinceDays } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Chip, KeyText, Label, StatusChip } from '@/components/chips/Chip';
-import { CopyKey } from '@/components/links/CopyKey';
-import { DecideControl } from '@/components/decisions/DecideControl';
-import { acceptable } from '@/components/decisions/Options';
+import { DecisionGroup } from '@/components/decisions/DecisionGroup';
+import { fromRow } from '@/components/decisions/model';
+import type { PageSearch } from '@/routes/-search';
 import { useDecideAction } from '@/data/queries';
 import { NodeLink } from '@/components/links/NodeLink';
 import { SourceChip } from '@/components/links/SourceChip';
@@ -39,6 +39,11 @@ export function MilestonePage({
   const yes = decided(ctx);
   const open = proposed(ctx);
   const decide = useDecideAction('decide');
+  const reopen = useDecideAction('reopen');
+  const search = useSearch({ strict: false }) as PageSearch;
+  const navigate = useNavigate();
+  const link = (decision: string | undefined) =>
+    void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, decision }), replace: true });
   const c = ctx.change;
   return (
     <article className="flex flex-col gap-6 p-5 md:px-8 md:py-6">
@@ -104,7 +109,7 @@ export function MilestonePage({
         ]}
       />
 
-      <div className="grid gap-7 md:grid-cols-2">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-7">
         <section className="flex flex-col gap-1.5">
           <Label className="px-3 pb-1.5">Beneath</Label>
           {groups.length === 0 && (
@@ -143,30 +148,21 @@ export function MilestonePage({
 
         <section className="flex flex-col gap-1.5">
           <Label className="px-3 pb-1.5">{open.length ? 'Decisions' : 'Decided'}</Label>
-          {ctx.decisions.length === 0 && <p className="px-3 text-xs text-ink-faint">No decisions recorded yet.</p>}
-          {[...open, ...yes].map((d) => (
-            <NodeLink
-              key={d.key}
-              to={d.key}
+          {ctx.decisions.length === 0 ? (
+            <p className="px-3 text-xs text-ink-faint">No decisions recorded yet.</p>
+          ) : (
+            // the decision card, as on every surface (decision change-detail/bridge-card-stays)
+            <DecisionGroup
+              decisions={[...open, ...yes].map((d) => fromRow(d, c.key))}
               lens={lens}
-              className="flex h-8 items-center gap-3 rounded-lg px-3 hover:bg-raised"
-            >
-              <span
-                className={
-                  d.status === 'decided'
-                    ? cn('grid size-4 place-items-center rounded-full', TONE.done.bg)
-                    : cn('size-4 rounded-full border-[1.5px]', TONE.waits.line)
-                }
-              >
-                {d.status === 'decided' && <Check className="size-2.5 text-primary-foreground" strokeWidth={3} />}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{d.name ?? d.title ?? short(d.key)}</span>
-              {d.status === 'proposed' && decide && acceptable(d.state) && (
-                <DecideControl decision={d.key} onConfirm={() => decide(d.key)} />
-              )}
-              <CopyKey refKey={d.key} bare />
-            </NodeLink>
-          ))}
+              where="change"
+              linked={search.decision}
+              onLink={link}
+              onDecide={decide}
+              onReopen={reopen}
+              className="px-3"
+            />
+          )}
         </section>
       </div>
 

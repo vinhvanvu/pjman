@@ -16,20 +16,18 @@ import { cn } from 'cn';
 import { ChevronRight } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import { useState, type ReactNode } from 'react';
-import type { BridgeChange, BridgeSession, Lens, TimelineEvent, WaitingDecision } from '@/data/contract';
+import type { BridgeChange, BridgeSession, Lens, TimelineEvent } from '@/data/contract';
 import { plural } from '@/lib/format';
 import { useHeldList, useHold } from '@/lib/hold';
 import { restOf, short } from '@/lib/keys';
 import { liveItem, Wash } from '@/lib/motion';
 import { Label, StatusChip } from '@/components/chips/Chip';
-import { CopyKey } from '@/components/links/CopyKey';
-import { DecideControl } from '@/components/decisions/DecideControl';
-import { acceptable, Options } from '@/components/decisions/Options';
+import { DecisionGroup } from '@/components/decisions/DecisionGroup';
+import { fromWaiting } from '@/components/decisions/model';
 import { useDecideAction } from '@/data/queries';
 import {
   cardWhen,
   lastArrival,
-  proposedWhen,
   sessionRow,
   strip,
   stripRows,
@@ -167,13 +165,16 @@ function Heading({ row }: { row: Extract<StripRow, { kind: 'head' }> }) {
 
 /** The frame every card shares: a link to the session's page when there is a session, else to the change's own page,
  *  where its decisions are read in place (decision change-detail/own-route). The bridge has no record pane, so a
- *  change always opens on its page, never as a selection on the bridge. The last live event that touched the card washes over it. */
+ *  change always opens on its page, never as a selection on the bridge. The last live event that touched the card
+ *  washes over it. What acts in place (the decisions, decision change-detail/bridge-card-stays) sits after the link,
+ *  inside the card, so no control is nested in a link. */
 function CardFrame({
   session,
   change,
   arrival,
   className,
   children,
+  after,
 }: {
   session?: BridgeSession;
   change?: BridgeChange;
@@ -181,7 +182,17 @@ function CardFrame({
   arrival?: TimelineEvent;
   className?: string;
   children: ReactNode;
+  after?: ReactNode;
 }) {
+  if (after)
+    return (
+      <div className={cn('relative flex flex-col overflow-hidden rounded-card border bg-surface', className)}>
+        <CardFrame session={session} change={change} lens="feature" arrival={arrival} className="border-0">
+          {children}
+        </CardFrame>
+        <div className="px-3.5 pb-3">{after}</div>
+      </div>
+    );
   const frame = cn(
     'relative flex flex-col gap-1.5 overflow-hidden rounded-card border bg-surface px-3.5 py-3 hover:bg-raised',
     className,
@@ -242,30 +253,6 @@ function Meta({ change, session }: { change?: BridgeChange; session?: BridgeSess
   );
 }
 
-/** One proposed decision on a card: its name, its gist clamped, the options with the recommended one marked and its
- *  points (change:decision-card), when it was proposed, Accept (when the thread recommends an option, or holds only
- *  one, so accepting from the card chooses nothing the person did not read). */
-function DecideBlock({ decision: d, onDecided }: { decision: WaitingDecision; onDecided?: () => void }) {
-  const decide = useDecideAction('decide');
-  return (
-    <span className={cn('flex flex-col gap-1 rounded-row px-2.5 py-2 text-xs', TONE.waits.soft)}>
-      <span className="flex items-start gap-2">
-        <Label className={cn('mt-px shrink-0', TONE.waits.text)}>decide</Label>
-        <span className="line-clamp-2 min-w-0 font-medium text-ink">{d.name ?? d.title ?? short(d.key)}</span>
-      </span>
-      {d.name && d.title && <span className="line-clamp-2 text-ink-muted">{d.title}</span>}
-      <Options state={d.state} className="mt-1" />
-      <span className="flex items-center gap-2 text-meta text-ink-faint">
-        <span className="shrink-0">{proposedWhen(d.created)}</span>
-        {decide && acceptable(d.state) && (
-          <DecideControl decision={d.key} onConfirm={() => decide(d.key).then(onDecided)} className="ml-auto" />
-        )}
-        <CopyKey refKey={d.key} />
-      </span>
-    </span>
-  );
-}
-
 /** A change with decisions proposed on it, doubling as the card of the session on it when one is in the window. */
 export function WaitCard({
   item,
@@ -283,6 +270,7 @@ export function WaitCard({
   onDecided?: () => void;
 }) {
   const { change, proposed, session } = item;
+  const decide = useDecideAction('decide');
   return (
     <CardFrame
       session={session}
@@ -290,6 +278,15 @@ export function WaitCard({
       lens={lens}
       arrival={lastArrival(arrivals, session, change)}
       className={cn(TONE.waits.line, isTouched(touched, session, change) && OUTLINE)}
+      after={
+        <DecisionGroup
+          decisions={proposed.map(fromWaiting)}
+          lens={lens}
+          where="session"
+          onDecide={decide}
+          onDecided={onDecided}
+        />
+      }
     >
       <span className="flex items-center gap-2">
         <span
@@ -300,9 +297,6 @@ export function WaitCard({
         {!session && change.status && <StatusChip status={change.status} />}
       </span>
       <Meta change={change} session={session} />
-      {proposed.map((d) => (
-        <DecideBlock key={d.key} decision={d} onDecided={onDecided} />
-      ))}
       {session?.line && <span className="line-clamp-2 text-xs text-ink-muted">{session.line.text}</span>}
     </CardFrame>
   );
