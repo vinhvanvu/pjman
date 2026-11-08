@@ -4,7 +4,8 @@ import { readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
 import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
-import { effectsOf } from '../tree.js';
+import { effectsOf, structuralParent } from '../tree.js';
+import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
 import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
 import { urlOf } from '../refs.js';
 import { CliError } from '../util.js';
@@ -188,6 +189,8 @@ export interface StoreContext {
   counts: Record<string, number>;
   /** One line when the project's product has no map yet and the project did not decline one. */
   mapPrompt?: string;
+  /** One line when the product's map has grown past the shape a proposal would have: a regrouping to offer, never to run unasked. */
+  regroupPrompt?: string;
 }
 
 /** A decision as a change's context carries it: its rungs on the row, the thread read as its current state, and what it
@@ -423,17 +426,51 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
     .filter((r) => r.type === 'decision' && r.data.status === 'proposed')
     .filter((r) => !project || !r.changeKey || loaded.byKey.get(r.changeKey)?.[0]?.data.project === project.key)
     .map(row);
-  return { store: { name: store.config.name, mode: store.mode, root: store.root }, project, projects, changes, proposed, counts, mapPrompt: project ? mapPrompt(loaded, project) : undefined };
+  const map = project ? mapState(loaded, project, store.project === project.key ? store.projectDir : undefined) : undefined;
+  return { store: { name: store.config.name, mode: store.mode, root: store.root }, project, projects, changes, proposed, counts, mapPrompt: map?.prompt, regroupPrompt: project ? regroupPrompt(loaded, project) : undefined };
 }
 
-/** The project has no product, or its product has no feature: the map skill proposes one, unless the project said skip. */
-export function mapPrompt(loaded: Loaded, project: Row): string | undefined {
+/** The top-level features of a product: its layers, the roadmap's lanes. */
+const topFeatures = (loaded: Loaded, product: string): Rec[] => loaded.records.filter((r) => r.type === 'feature' && r.valid && structuralParent(loaded, r)?.key === product);
+
+export interface MapState {
+  /** The product with no map, or null when the project has no product. */
+  product: string | null;
+  /** What the repository holds: read live when the repository is at hand, else as init recorded it, else unknown. */
+  inventory: Inventory | null;
+  /** The line the context opens with. */
+  prompt: string;
+}
+
+/** The project has no product, or its product has no feature: how the map comes, by what the repository holds, unless
+ *  the project said skip. Live from the repository when its directory is known; else from the `holds` init recorded. */
+export function mapState(loaded: Loaded, project: Pick<Row, 'key' | 'data'>, projectDir?: string): MapState | undefined {
   if (project.data.map === 'skip') return undefined;
   const product = typeof project.data.product === 'string' ? project.data.product : undefined;
   if (product && loaded.records.some((r) => r.type === 'feature' && `product:${r.productSlug}` === product)) return undefined;
+  const inv: Inventory | null = projectDir && fs.existsSync(projectDir) ? inventory(projectDir) : isHolds(project.data.holds) ? { holds: project.data.holds, docs: [], code: [] } : null;
   const what = product ? `${product} has no map yet` : `${project.key} has no product yet`;
-  return `${what}: survey the repository (what the person said, the documentation, the code's split, the store) and propose a product map, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure. \`pjman set ${project.key} map=skip\` stops this line.`;
+  const holds = inv ? `; the repository holds ${describeInventory(inv)}` : '';
+  const how = inv
+    ? inv.holds === 'bare'
+      ? 'Nothing to survey: the map grows from the work. When a change is filed, name the capability it needs under the feature it best correlates to, creating both when none exists (the intake skill); a bug that breaks a behaviour no node has creates the live node. Never a proposal of a tree that has nothing to read.'
+      : `${mapGuidance(inv.holds)}. The first change filed goes through intake, which says the map is missing: file it with no feature and propose the map in the same breath, the whole tree in a proposed decision that names the change as the first it houses; apply only on the go, as one batch (pjman apply).`
+    : 'Survey the repository (what the person said, the documentation, the code\'s split, the store) and propose a product map, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure.';
+  return { product: product ?? null, inventory: inv, prompt: `${what}${holds}. ${how} \`pjman set ${project.key} map=skip\` stops this line.` };
 }
+
+/** The map skill's shape for a proposed tree is four to seven layers at the top; a map grown one change at a time
+ *  (a bare repository, or capabilities filed before a proposal) can pass it. Then a regrouping is offered in the
+ *  context: the person asks for it, the skill never runs it unasked. `map=skip` ends this line as it ends the other. */
+export function regroupPrompt(loaded: Loaded, project: Pick<Row, 'key' | 'data'>): string | undefined {
+  if (project.data.map === 'skip') return undefined;
+  const product = typeof project.data.product === 'string' ? project.data.product : undefined;
+  if (!product) return undefined;
+  const top = topFeatures(loaded, product);
+  if (top.length <= 7) return undefined;
+  return `${product} has ${top.length} top-level features, more than a proposed map would have (four to seven layers): if the person asks, the map skill regroups them into layers as one proposed decision; say what you see, never regroup unasked.`;
+}
+
 
 export function formatStoreContext(c: StoreContext): string {
   const head = c.project
@@ -441,6 +478,7 @@ export function formatStoreContext(c: StoreContext): string {
     : `# ${c.store.name} (${c.store.mode} store)${c.projects.length ? `\nprojects: ${c.projects.map((p) => p.key).join(', ')}` : ''}`;
   const out: string[] = [head];
   if (c.mapPrompt) out.push(`no product map: ${c.mapPrompt}`);
+  if (c.regroupPrompt) out.push(`map outgrown: ${c.regroupPrompt}`);
   const tag = (r: Row) => (!c.project && r.data.project ? ` [${String(r.data.project)}]` : '');
   const order = ['active', 'blocked', 'review', 'planning', 'open'];
   const onBoard = new Set(c.changes.map((r) => r.key));

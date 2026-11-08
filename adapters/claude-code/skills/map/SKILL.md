@@ -1,8 +1,9 @@
 ---
 name: map
 description: >-
-  Giving a product its map: when `pjman context` opens with "no product map" (a product with no feature yet), and when
-  the person asks for the map to be regrouped because it has outgrown its shape. Surveys the person's words, the
+  Giving a product its map: when `pjman intake` or `pjman context` says the product has no map and the repository holds
+  docs or code (the first change filed brings the map with it, in the same breath), and when the person asks for the
+  map to be regrouped because it has outgrown its shape. Surveys the person's words, the
   documentation, the code's split and the store; drafts the top level as the layers of the stack, each titled as a
   sentence a person would recognise; proposes the whole tree in a proposed decision; applies it only on the go, as one
   batch; verifies. Prescribes the map, never the work.
@@ -12,11 +13,18 @@ description: >-
 
 Twice in a product's life, and only then:
 
-- **No map.** `pjman context` opens with `no product map: … has no map yet`. Survey and propose in that session. Never
-  create the tree without the go; never create a feature at a time to fill the gap.
-- **A regrouping, asked for.** The person says the map should be reorganised. You may say what you see beforehand (many
-  flat top-level features; one node holding most of the work; open changes that name no feature, the count `pjman tree`
-  prints) and recommend this skill. You never run it unasked.
+- **No map, and something to read.** `pjman context` opens with `no product map: … has no map yet; the repository
+  holds docs / code / docs and code`, and `pjman intake` opens with **No map yet** the first time a change is filed.
+  That filing is the trigger: file the change with no feature, then survey and propose in the same breath, the change
+  named in the decision as the first it houses, so the person who came to work a ticket leaves with the ticket filed
+  and the map waiting in the inbox. Never create the tree without the go.
+- **A regrouping, asked for.** The person says the map should be reorganised, or `pjman context` says `map outgrown`
+  (more than seven top-level features: a map grown one change at a time has passed the shape a proposal keeps). You
+  may say what you see (many flat top-level features; one node holding most of the work; open changes that name no
+  feature, the count `pjman tree` prints) and recommend this skill. You never run it unasked.
+
+A **bare** repository (the context says it holds nothing yet) is not yours: there is nothing to survey, so no tree is
+proposed. The map grows through intake, a capability under a feature per change, until a regrouping is asked for.
 
 Intake answers one request; this skill answers the whole product. One request that needs a capability is intake's,
 not yours.
@@ -29,14 +37,17 @@ the work lives as files a person can read` is a store. The layer is the grouping
 
 ## 1. Survey, in this order
 
+The context's line says what the repository holds, so you know before reading which of these exist:
+
 1. **What the person said** about the product: at init, in the prompt, in `project:<slug>`'s title and the product's.
 2. **The documentation**: README, docs, specs, decision records, a changelog. This is where the product is already
    described in a person's sentences, which is what a title must be. Documentation alone is enough for a repository
-   with no code yet.
+   with no code yet; each page says what shipped and what is drafted, which gives the status.
 3. **The code's own split**: top-level packages and directories, routes, commands, build targets, test folders. This
-   says how the product is cut, not what it is for.
+   says how the product is cut, not what it is for; code alone makes `live` the default status. With both, the
+   documentation names the sentences and the code names the split: the better proposal.
 4. **The store**: `pjman ls change`, done and open; `pjman tree`. Work already filed names what people care about, and
-   must find a node in the map you propose.
+   must find a node in the map you propose: the change that triggered this, first of all.
 
 Read; write nothing yet.
 
@@ -51,7 +62,8 @@ model; the app apart from both. The usual shape is four, and the repository's ow
 - **app** — what a person sees: shell, lenses, views, the record pane
 
 A library has two or three; a service may have a pipeline where an app would be. Four to seven at the top; never a
-layer with one child, never one holding most of the work.
+layer with one child, never one holding most of the work. These sizes are for a tree proposed or regrouped whole; a
+map growing one change at a time through intake is not held to them until it is regrouped.
 
 ## 3. Nest by the code's split, two levels only
 
@@ -77,9 +89,10 @@ Never replace a node by hand: a rename keeps the past true.
 
 ## 4. Propose, and wait
 
-Open a change for the map (`change:map` for a bare product, keyed under it as `change:<product>/map`; `change:map-by-layer` or the person's name for a regrouping)
+Open a change for the map (`change:map` for a product with none, keyed under it as `change:<product>/map`; `change:map-by-layer` or the person's name for a regrouping)
 and one decision `proposed` on it whose text is the whole tree: every node with its sentence, the moves, the renames,
-the new nodes and what names them. Put the tree in your reply as an indented list. Say what the dashboard will read
+the new nodes and what names them, and, when intake triggered this, the change just filed with the node it would name
+(the first the map houses). Put the tree in your reply as an indented list. Say what the dashboard will read
 differently (the roadmap's lanes are the top-level nodes; a bug's home is the top-level node above the one it names).
 Then stop. Nothing is written to the tree until the person says go.
 
@@ -97,7 +110,8 @@ new feature cli --name CLI --parent feature:io --title "…"
 set change:tool "features=adds feature:store,adds feature:cli"
 ```
 
-Layers, then groups, then moves, then renames, then new nodes, then the naming from done changes. The tool runs them
+Layers, then groups, then moves, then renames, then new nodes, then the naming from done changes and from the change
+that triggered the map (`set change:<slug> "features=feature:<node>"`). The tool runs them
 with every commit held and lands one commit and one `applied` event, or refuses the whole batch at the line that
 fails and writes nothing. `pjman undo` reverts it as one commit while nothing later touched its records. Then mark the
 change `review`, its plan's open step naming what the person should read.

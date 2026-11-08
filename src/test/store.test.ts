@@ -723,19 +723,48 @@ test('init asks about the map once and records the answer; the context says when
   git(other, 'init', '-q');
   const lines = init({ checkers: [], cwd: other, adapter: false, start: false, map: false });
   assert.ok(lines.some((l) => /no product map will be proposed \(project:other map=skip\)/.test(l)));
+  // init inventories the repository and records what it holds (decision cold-start-gaps/init-inventories-the-repository)
+  assert.ok(lines.some((l) => l === 'the repository holds nothing yet'), lines.join('\n'));
   assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'skip');
+  assert.equal(loadStore(store).byKey.get('project:other')![0].data.holds, 'bare');
   // no line while the project declined
   assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
-  // yes on a later init flips it; the project has no product, so the context says so
-  init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
+  // yes on a later init flips it; a bare repository is said to grow its map from the work, never to get a proposal
+  const again = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
+  assert.ok(again.some((l) => /^no map is proposed yet \(project:other map=propose; .*\): there is nothing to survey, so the map grows from the work/.test(l)), again.join('\n'));
   assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'propose');
-  // init made the product with the project; with no feature yet the context says the product has no map, and a feature ends the line
+  // init made the product with the project; with no feature yet the context says the product has no map, by what the repository holds
   const c = storeContext(store, { project: 'project:other' });
-  assert.match(c.mapPrompt ?? '', /product:other has no map yet/);
+  assert.match(c.mapPrompt ?? '', /^product:other has no map yet; the repository holds nothing yet\. Nothing to survey: the map grows from the work/);
   assert.match(formatStoreContext(c), /^# project:other.*\nno product map: product:other has no map yet/);
+  // the repository grows docs and code: read live from the repository when it is the store's own project, else as recorded
+  fs.writeFileSync(path.join(other, 'README.md'), '# other\n\n' + 'The other product does a thing for a person, described here.\n'.repeat(8));
+  fs.mkdirSync(path.join(other, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(other, 'src', 'main.py'), 'print(1)\n');
+  assert.match(storeContext(store, { project: 'project:other' }).mapPrompt ?? '', /holds nothing yet/, 'another project\'s store reads the recorded state');
+  const own = findStore(other)!;
+  assert.equal(own.project, 'project:other');
+  const live = storeContext(own, { project: 'project:other' }).mapPrompt ?? '';
+  assert.match(live, /the repository holds docs and code \(README\.md; src\/\)\. the map is proposed from both/);
+  assert.match(live, /file it with no feature and propose the map in the same breath/);
+  const third = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
+  assert.ok(third.some((l) => /^the first change through intake proposes a product map \(project:other map=propose/.test(l)), third.join('\n'));
+  assert.equal(loadStore(store).byKey.get('project:other')![0].data.holds, 'docs+code', 'a re-run refreshes the record');
+  // a feature ends the line
   newRecord(store, 'feature', 'cart', { title: 'The cart', product: 'product:other' });
   assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
+  assert.equal(storeContext(store, { project: 'project:other' }).regroupPrompt, undefined);
+  // a map grown past seven layers is offered a regrouping, in the context, never run
+  for (const n of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) newRecord(store, 'feature', `top-${n}`, { title: `Top ${n}`, product: 'product:other' });
+  const grown = storeContext(store, { project: 'project:other' });
+  assert.match(grown.regroupPrompt ?? '', /^product:other has 8 top-level features, more than a proposed map would have/);
+  assert.match(formatStoreContext(grown), /\nmap outgrown: product:other has 8 top-level features/);
+  set(store, 'project:other', ['map=skip'], {});
+  assert.equal(storeContext(store, { project: 'project:other' }).regroupPrompt, undefined, 'skip ends this line too');
+  set(store, 'project:other', ['map=propose'], {});
   assert.throws(() => set(store, 'project:other', ['map=maybe'], {}), /not one of propose, skip/);
+  assert.throws(() => set(store, 'project:other', ['holds=maybe'], {}), /not one of bare, docs, code, docs\+code/);
+  assert.deepEqual(validate(loadStore(store)).filter((p) => p.path === 'projects/other.md'), [], 'holds is a known field: no warning');
   assert.deepEqual(errors(store), []);
 });
 

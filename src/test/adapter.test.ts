@@ -200,9 +200,36 @@ test('a session in an unregistered git repository registers it and gets the brie
   assert.equal(hook('SessionStart', { cwd: quiet, session_id: 'sess-quiet', source: 'startup' }), '');
   assert.ok(!loadStore(findStore(auto)!).byKey.has('project:quiet'));
   fs.writeFileSync(cfg, before);
+  // a start outside any repository, with a global store: the session is recorded there with no project and told so
   const plain = path.join(tmp, 'plain');
   fs.mkdirSync(plain, { recursive: true });
-  assert.equal(hook('SessionStart', { cwd: plain, session_id: 'sess-plain', source: 'startup' }), '');
+  const loose = context(hook('SessionStart', { cwd: plain, session_id: 'sess-plain', source: 'startup' }));
+  assert.match(loose, /project \(none\)\. This run is session:sess-plain/);
+  assert.match(loose, /This session started outside any registered repository \(.*plain\)\. It is recorded with no project until a tool call lands in one/);
+  const global = findStore(auto)!;
+  const rec = () => loadStore(global).records.find((r) => r.type === 'session' && r.sessionId === 'sess-plain')!;
+  assert.ok(rec(), 'the session record exists in the global store');
+  assert.equal(rec().data.project, undefined);
+  // a tool call that lands in a registered repository resolves the session to that project, once
+  hook('PostToolUse', { cwd: plain, session_id: 'sess-plain', tool_name: 'Bash', tool_input: { command: 'ls -la' } });
+  assert.equal(rec().data.project, undefined, 'a command that names no repository resolves nothing');
+  hook('PostToolUse', { cwd: plain, session_id: 'sess-plain', tool_name: 'Bash', tool_input: { command: `cd ${auto} && pjman context` } });
+  assert.equal(rec().data.project, 'project:auto');
+  assert.match(rec().sections.get('Log') ?? '', /resolved to project:auto from the repository it works in/);
+  // from here the session runs from that repository: a prompt naming nothing still gets the project's brief, and the next start is a resume there
+  const back = context(hook('SessionStart', { cwd: plain, session_id: 'sess-plain', source: 'resume' }));
+  assert.match(back, /project project:auto\. This run is session:sess-plain/);
+  assert.doesNotMatch(back, /started outside any registered repository/);
+  // a relative cd is read against the session's directory; a folder that is nobody's is asked about once
+  const rel = context(hook('SessionStart', { cwd: tmp, session_id: 'sess-rel', source: 'startup' }));
+  assert.match(rel, /started outside any registered repository/);
+  hook('PostToolUse', { cwd: tmp, session_id: 'sess-rel', tool_name: 'Write', tool_input: { file_path: 'plain/notes.md' } });
+  const relRec = () => loadStore(global).records.find((r) => r.type === 'session' && r.sessionId === 'sess-rel')!;
+  assert.equal(relRec().data.project, undefined);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-rel.json'), 'utf8')).tried, [plain]);
+  hook('PostToolUse', { cwd: tmp, session_id: 'sess-rel', tool_name: 'Bash', tool_input: { command: 'cd auto && npm test' } });
+  assert.equal(relRec().data.project, 'project:auto');
+  assert.deepEqual(validate(loadStore(global)).filter((p) => p.level === 'error'), []);
 });
 
 test('binding observes the branch as a source of the change', () => {

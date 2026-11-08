@@ -124,7 +124,8 @@ A repository, registered in the store by `pjman init`. The unit a change belongs
 | `parent` | A | Optional. The project above (a platform over web and api); unbounded depth, cycles refused. |
 | `owners` | A | Optional list of actor keys; inherited downward. |
 | `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). A bare ticket id with no references resolves through it; an adapter creates a change for a ticket only in a project that names one. The tracker's own binding sits under `ext.<tracker>` (`ext.linear.team: ABC` names the Linear team the sync pulls) |
-| `map` | A | Optional. `propose` (the default `pjman init` records after asking): while the project's product has no feature, `pjman context` opens with one line saying the product has no map and the map skill proposes one. `skip` ends the line. |
+| `map` | A | Optional. `propose` (the default `pjman init` records after asking): while the project's product has no feature, `pjman context` opens with one line saying the product has no map and how it comes with the first change filed, and `pjman intake` opens with the same. `skip` ends the line. |
+| `holds` | A | Optional. What the repository held when `pjman init` inventoried it: `bare`, `docs`, `code` or `docs+code` (a README that says more than a title, a docs folder or a spec; a manifest or a directory of source). The context and intake read the repository live when it is at hand and fall back to this; a re-run of init refreshes it. Docs give the map its sentences, code its split, both the better proposal; bare grows its map from the work. |
 | `links` | A | Optional. Source keys: the repository (`git-repo:owner/name`), its tracker, its docs |
 
 The path of the repository on a machine is not in the record; it is in the user config's map (below).

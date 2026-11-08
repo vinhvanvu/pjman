@@ -12,7 +12,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   aspect: ['title', 'name', 'parent', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   place: ['feature', 'links', 'writer', 'session', 'created', 'ext'],
-  project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
+  project: ['title', 'product', 'parent', 'tracker', 'map', 'holds', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   // a change and a decision carry the rungs (name, gist) over their foundation: a change's plan of steps and its
   // sections, a decision's thread; rungs_from is the foundation the rungs were written from; migrated marks a record
   // mapped mechanically and not yet written through the tool (foundation.ts)

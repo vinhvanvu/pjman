@@ -69,3 +69,29 @@ test('intake: duplicates by words and by reference, done ones apart, nodes with 
   assert.deepEqual(none.duplicates, []);
   assert.match(formatIntake(none), /\(none: nothing open shares its words\)/);
 });
+
+test('intake on a product with no map says so, by what the repository holds, and the format opens with it', () => {
+  const bare = path.join(tmp, 'bare');
+  fs.mkdirSync(bare, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: bare });
+  init({ checkers: [], cwd: bare, name: 'bare', adapter: false, start: false, map: true });
+  const own = findStore(bare)!;
+  const i = intake(own, loadStore(own), 'the dome does not close at dawn');
+  assert.equal(i.map?.product, 'product:bare');
+  assert.equal(i.map?.inventory?.holds, 'bare');
+  assert.match(i.map?.prompt ?? '', /the map grows from the work/);
+  assert.deepEqual(i.nodes, []);
+  const text = formatIntake(i);
+  assert.match(text, /^# intake — the dome does not close at dawn\n\n## No map yet \(the map comes with this change, in the same breath\)\nproduct:bare has no map yet; the repository holds nothing yet/);
+  assert.match(text, /## Nodes[^\n]*\n\(none: the product has no map; see above\)/);
+  // code lands: the same intake now says the map is proposed from the code's split with this change
+  fs.mkdirSync(path.join(bare, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(bare, 'src', 'dome.rs'), 'fn main() {}\n');
+  const coded = intake(own, loadStore(own), 'the dome does not close at dawn');
+  assert.equal(coded.map?.inventory?.holds, 'code');
+  assert.match(coded.map?.prompt ?? '', /proposed from the code's split.*file it with no feature and propose the map in the same breath/);
+  // the shop has a map: nothing about it, and an unmatched request is told to look for the feature it correlates to first
+  const mapped = intake(store, loadStore(store), 'export the invoices as a spreadsheet');
+  assert.equal(mapped.map, undefined);
+  assert.match(formatIntake(mapped), /\(none: no feature shares its words; look at the tree for the feature it correlates to before creating a capability beneath it.*a bug that breaks a behaviour no node has creates the live node/);
+});

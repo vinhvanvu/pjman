@@ -14,7 +14,7 @@ const SETTABLE: Record<RecordType, string[]> = {
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'summary'],
   aspect: ['title', 'name', 'parent', 'owners', 'links', 'body'],
   place: ['feature', 'links', 'body'],
-  project: ['title', 'product', 'parent', 'tracker', 'map', 'owners', 'links'],
+  project: ['title', 'product', 'parent', 'tracker', 'map', 'holds', 'owners', 'links'],
   // a change's rungs, its fields and its sections; the plan is written with pjman step
   change: ['name', 'gist', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'aspects', 'owners', 'target', 'binds', 'links', ...Object.keys(SECTION_FIELDS)],
   // a decision's rungs and links; its thread, status and decider are written with pjman decision

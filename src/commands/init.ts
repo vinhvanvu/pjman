@@ -13,6 +13,7 @@ import { installBrief, type BriefTarget } from './brief.js';
 import { FORMAT_VERSION } from './migrate.js';
 import { packageRoot, start } from './start.js';
 import { HANDLE_KINDS, checkersFor, formatIdentity, identity, machineName, type Checker } from '../identity.js';
+import { describeInventory, inventory, mapGuidance } from '../inventory.js';
 import { execFileSync } from 'node:child_process';
 
 export interface InitOpts {
@@ -173,8 +174,11 @@ export function init(opts: InitOpts): string[] {
     if (slug) {
       const own = openStore(root);
       newProduct(own, slug, { title, name: title.length <= 24 ? title : undefined, writer: actor });
-      newProject(own, slug, { title, product: `product:${slug}`, writer: actor, map: opts.map === false ? 'skip' : 'propose' });
+      const inv = inventory(project);
+      newProject(own, slug, { title, product: `product:${slug}`, writer: actor, map: opts.map === false ? 'skip' : 'propose', holds: inv.holds });
       out.push(`registered project:${slug} under product:${slug}`);
+      out.push(`the repository holds ${describeInventory(inv)}`);
+      if (opts.map !== false) out.push(mapGuidance(inv.holds));
     }
     if (!toplevel(project)) out.push(`note: ${project} is not a git repository; the store will have no history until it is`);
     out.push('the tool never commits here; commit the store with the project');
@@ -218,6 +222,9 @@ export function init(opts: InitOpts): string[] {
       }
     }
     const known = loaded.byKey.get(key)?.[0];
+    // what the repository holds, read now and recorded on the project: the brief's line and intake's offer read by it
+    const inv = inventory(project);
+    out.push(`the repository holds ${describeInventory(inv)}`);
     const wantsMap = opts.map ?? (known && typeof known.data.map === 'string' ? undefined : askYesNo('Should the first session propose a product map from this repository?', true));
     if (!known) {
       const repo = originRepo(project);
@@ -229,14 +236,15 @@ export function init(opts: InitOpts): string[] {
         product = `product:${slug}`;
         out.push(`created ${product}`);
       } else if (!product.startsWith('product:')) product = `product:${product}`;
-      newProject(store, slug, { title, product, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor, map: wantsMap === false ? 'skip' : 'propose' });
+      newProject(store, slug, { title, product, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor, map: wantsMap === false ? 'skip' : 'propose', holds: inv.holds });
       out.push(`registered ${key} under ${product}${repo ? ` (git-repo:${repo})` : ''}`);
     } else {
       out.push(`${key} is already registered`);
-      if (wantsMap !== undefined && known.data.map !== (wantsMap ? 'propose' : 'skip')) set(store, key, [`map=${wantsMap ? 'propose' : 'skip'}`], {});
+      const pairs = [wantsMap !== undefined && known.data.map !== (wantsMap ? 'propose' : 'skip') ? `map=${wantsMap ? 'propose' : 'skip'}` : null, known.data.holds !== inv.holds ? `holds=${inv.holds}` : null].filter((p): p is string => !!p);
+      if (pairs.length) set(store, key, pairs, {});
     }
     const answer = wantsMap ?? (known?.data.map !== 'skip');
-    out.push(answer ? `the first session proposes a product map (${key} map=propose; pjman set ${key} map=skip to stop)` : `no product map will be proposed (${key} map=skip)`);
+    out.push(answer ? `${inv.holds === 'bare' ? 'no map is proposed yet' : 'the first change through intake proposes a product map'} (${key} map=propose; pjman set ${key} map=skip to stop): ${mapGuidance(inv.holds)}` : `no product map will be proposed (${key} map=skip)`);
     const binding = entry.projects.find((b) => path.resolve(b.path) === project);
     if (binding) binding.project = key;
     else entry.projects.push({ path: project, project: key });
