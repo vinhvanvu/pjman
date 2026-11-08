@@ -363,16 +363,25 @@ test('in cmux the pane belongs to the terminal: a start opens it on the bridge a
   const cbin = path.join(tmp, 'cmux-bin');
   const calls = path.join(tmp, 'cmux-calls');
   const open = path.join(tmp, 'cmux-open');
+  const urls = path.join(tmp, 'cmux-urls'); // the page each surface shows: set by open and navigate, read by get url
   fs.mkdirSync(cbin, { recursive: true });
   fs.writeFileSync(open, '');
+  fs.writeFileSync(urls, '');
   fs.writeFileSync(path.join(cbin, 'cmux'), `#!/bin/sh
 echo "$*" >> '${calls}'
 case "$1 $2" in
-  "browser open") n=$(($(wc -l < '${open}') + 1)); echo "surface:$n" >> '${open}'; echo "OK surface=surface:$n";;
-  "browser --surface") grep -qx "$3" '${open}' || { echo "Error: invalid_params" >&2; exit 1; };;
+  "browser open") n=$(($(wc -l < '${open}') + 1)); echo "surface:$n" >> '${open}'; echo "surface:$n $3" >> '${urls}'; echo "OK surface=surface:$n";;
+  "browser --surface") grep -qx "$3" '${open}' || { echo "Error: invalid_params" >&2; exit 1; }
+    case "$4 $5" in
+      "navigate "*) grep -v "^$3 " '${urls}' > '${urls}.n'; echo "$3 $5" >> '${urls}.n'; mv '${urls}.n' '${urls}';;
+      "get url") grep "^$3 " '${urls}' | cut -d' ' -f2-;;
+    esac;;
   "close-surface --surface") grep -vx "$3" '${open}' > '${open}.n'; mv '${open}.n' '${open}';;
 esac
 `, { mode: 0o755 });
+  // the person browsing the pane to a page, as the dashboard's links do: no hook call, no cmux call recorded
+  const browsed = (surface: string, url: string) =>
+    fs.writeFileSync(urls, [...fs.readFileSync(urls, 'utf8').split('\n').filter((l) => l && !l.startsWith(`${surface} `)), `${surface} ${url}`].join('\n') + '\n');
   fs.writeFileSync(path.join(env.PJMAN_HOME, 'serve.json'), JSON.stringify({ pid: process.pid, url: 'http://dash.test' }));
   const at = (terminal: string, event: string, input: Record<string, unknown>) =>
     execFileSync(process.execPath, [HOOK, event], {
@@ -380,7 +389,8 @@ esac
       encoding: 'utf8',
       env: { ...env, PATH: `${cbin}:${(env as Record<string, string>).PATH}`, CMUX_BUNDLE_ID: 'com.cmuxterm.app', CMUX_SURFACE_ID: terminal },
     });
-  const seen = () => fs.readFileSync(calls, 'utf8').split('\n').filter((l) => l.startsWith('browser') || l.startsWith('close-surface'));
+  // the moves: every open, navigate and close; the reads of a pane's url (before a clear's move) are not moves
+  const seen = () => fs.readFileSync(calls, 'utf8').split('\n').filter((l) => (l.startsWith('browser') && !l.endsWith(' get url')) || l.startsWith('close-surface'));
   // the product's bridge, where the pane opens at a start and is parked by a clear (change:start-on-the-bridge, change:clear-moves-the-dock)
   const scope = loadStore(store).scope;
   const bridge = scope ? `http://dash.test/bridge/product:${scope}` : 'http://dash.test/bridge';
@@ -439,6 +449,22 @@ esac
     shell('pjman session log dock-8 "again"');
     assert.equal(seen().length, 18, 'a binding taken up once is not taken up again');
     at('T1', 'SessionEnd', { session_id: 'dock-8', reason: 'logout' });
+    // a parked pane the person browsed to another page: the clear sends it back to the bridge, since the dock records the
+    // session followed and never the page shown; one already on the bridge, its pins in the url, is left as it is
+    // (change:clear-returns-to-the-bridge)
+    at('T1', 'SessionStart', { session_id: 'dock-9', source: 'startup' });
+    const surface = fs.readFileSync(open, 'utf8').trim().split('\n').pop() as string;
+    assert.deepEqual(seen().slice(19), [`browser open ${bridge}`]);
+    browsed(surface, 'http://dash.test/session/dock-9?decision=decision:eight-week-test/x');
+    at('T1', 'SessionEnd', { session_id: 'dock-9', reason: 'clear' });
+    assert.deepEqual(seen().slice(20), [`browser --surface ${surface} navigate ${bridge}`], 'a parked pane browsed away goes back to the bridge on a clear');
+    at('T1', 'SessionStart', { session_id: 'dock-10', source: 'clear' });
+    browsed(surface, `${bridge}?hold=change:eight-week-test`);
+    at('T1', 'SessionEnd', { session_id: 'dock-10', reason: 'clear' });
+    at('T1', 'SessionStart', { session_id: 'dock-11', source: 'clear' });
+    assert.equal(seen().length, 21, 'a pane already on the bridge keeps its page and its pins through a clear');
+    at('T1', 'SessionEnd', { session_id: 'dock-11', reason: 'logout' });
+    assert.deepEqual(seen().slice(21), [`close-surface --surface ${surface}`], 'a parked pane closes with the session that ends without binding');
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });
