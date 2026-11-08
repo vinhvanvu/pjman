@@ -761,6 +761,7 @@ test('init asks about the map once and records the answer; the context says when
   assert.match(formatStoreContext(grown), /\nmap outgrown: product:other has 8 top-level features/);
   assert.throws(() => set(store, 'project:other', ['map=maybe'], {}), /not one of propose, skip/);
   assert.throws(() => set(store, 'project:other', ['holds=maybe'], {}), /not one of bare, docs, code, docs\+code/);
+  assert.deepEqual(validate(loadStore(store)).filter((p) => p.path === 'projects/other.md'), [], 'holds is a known field: no warning');
   assert.deepEqual(errors(store), []);
 });
 
