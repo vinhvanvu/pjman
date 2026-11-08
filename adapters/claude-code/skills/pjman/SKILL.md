@@ -149,8 +149,10 @@ A parent change is a milestone: its progress is its children done; goals such as
 milestones, not features. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
 beneath any node. Create a feature only when the person names a capability; a ticket label is not a feature. Give it `--name`, one to
 three words: the label trees and chips show (the title stays the sentence). When `pjman context` opens with "no product
-map", or the person asks for the map to be regrouped, follow the `map` skill: it surveys, proposes the whole tree in a
-proposed decision, and applies it only on the go, as one batch. Never grow a map one guess at a time.
+map", the map comes with the first change filed, through intake and by what the repository holds: docs or code, and the
+`map` skill surveys, proposes the whole tree in a proposed decision and applies it only on the go, as one batch, the
+change named as the first it houses; a bare repository grows its map from the work instead, a capability under the
+feature it correlates to per change, until "map outgrown" offers a regrouping, which only the person asks for.
 
 ## Commands you will use
 
