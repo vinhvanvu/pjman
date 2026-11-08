@@ -42,7 +42,7 @@ export function WorkCard({ row, lens, mode, decisions = [], onDecide, selected, 
           />
         )}
         <span className={cn('min-w-0 flex-1 font-medium leading-[1.35]', !open && 'line-clamp-2')}>
-          {row.title ?? short(row.key)}
+          {row.gist ?? short(row.key)}
         </span>
         {asks.length > 0 && (
           <span className="flex shrink-0 gap-1">

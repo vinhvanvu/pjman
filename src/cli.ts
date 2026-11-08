@@ -288,7 +288,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (!id || !rest[0]) throw usageError('usage: pjman session project <id> <project>');
         const r = sessionProject(store, id, rest[0]);
         out(r.moved ? `resolved ${r.path} to ${r.project}${r.commit ? ` (committed ${r.commit})` : ''}` : `${r.path} is already ${r.project}'s`);
-      } else throw usageError('usage: pjman session <log|bind|unbind|observe|focus|project> …');
+      } else throw usageError('usage: pjman session start|log|bind|unbind|observe|focus|project <id> … (pjman help session)');
       return 0;
     }
     case 'note': {

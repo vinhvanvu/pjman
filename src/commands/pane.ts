@@ -6,7 +6,7 @@ import { LIVE_MINUTES } from '../scope.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
 import { CliError, notFound } from '../util.js';
-import { decisionLine, nextLine, readinessLines, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
+import { decisionLine, lineOfRow, nextLine, readinessLines, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
 import { formatStep, nextStep, stepsOf } from '../foundation.js';
 
 export interface ViewOpts extends GetOpts {
@@ -94,7 +94,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
   const d = c.change.data;
   out.push(`# ${c.change.key}`);
   out.push(`## ${esc(c.change.name ?? c.change.key)}`);
-  if (c.change.title) out.push(esc(c.change.title));
+  if (lineOfRow(c.change)) out.push(esc(lineOfRow(c.change)));
   const facts: string[] = [`**${c.change.status ?? '?'}**`];
   if (typeof d.project === 'string') facts.push(d.project);
   if (c.parent) facts.push(`part of \`${c.parent.key}\``);
@@ -111,12 +111,12 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
     out.push('\n### Decisions');
     for (const dec of c.decisions) {
       const slug = dec.key.slice(dec.key.indexOf('/') + 1);
-      out.push(`- ${MARK[dec.status ?? ''] ?? '•'} **${esc(dec.name ?? slug)}** \`${slug}\` — ${esc(dec.title)} — ${decisionLine(dec)}`);
+      out.push(`- ${MARK[dec.status ?? ''] ?? '•'} **${esc(dec.name ?? slug)}** \`${slug}\` — ${esc(lineOfRow(dec))} — ${decisionLine(dec)}`);
     }
   }
   if (c.children.length) {
     out.push('\n### Children');
-    for (const ch of c.children) out.push(`- \`${ch.key}\` **${ch.status ?? '?'}** — ${esc(ch.title)}`);
+    for (const ch of c.children) out.push(`- \`${ch.key}\` **${ch.status ?? '?'}** — ${esc(lineOfRow(ch))}`);
   }
   const links = c.sources.filter((s) => s.via === 'links');
   if (links.length) {
@@ -151,12 +151,12 @@ function boardDoc(store: Store, project: string | null): string[] {
     out.push(`\n### ${s}`);
     for (const r of rows) {
       const next = nextLine(nextStep(stepsOf(r.data)));
-      out.push(`- \`${r.key}\` — ${r.name ? `**${esc(r.name)}** ` : ''}${esc(r.title)}${!c.project && r.data.project ? ` · ${String(r.data.project)}` : ''}${next ? `\n  - next: ${esc(next)}` : ''}`);
+      out.push(`- \`${r.key}\` — ${r.name ? `**${esc(r.name)}** ` : ''}${esc(lineOfRow(r))}${!c.project && r.data.project ? ` · ${String(r.data.project)}` : ''}${next ? `\n  - next: ${esc(next)}` : ''}`);
     }
   }
   if (c.proposed.length) {
     out.push('\n### Proposed decisions');
-    for (const r of c.proposed) out.push(`- ○ \`${r.key}\` — ${esc(r.title)}`);
+    for (const r of c.proposed) out.push(`- ○ \`${r.key}\` — ${esc(lineOfRow(r))}`);
   }
   return out;
 }
@@ -170,13 +170,13 @@ function neighbourhoodDoc(n: Neighbourhood, loaded: Loaded): string[] {
     if (c) out.push(...changeDoc(c, loaded));
   } else {
     out.push(`# ${r.key}`);
-    if (n.record) out.push(`## ${esc(n.record.title ?? n.record.type)}${n.record.status ? ` · ${n.record.status}` : ''}`);
+    if (n.record) out.push(`## ${esc(lineOfRow(n.record) ?? n.record.type)}${n.record.status ? ` · ${n.record.status}` : ''}`);
     else out.push(`_${r.status === 'key' ? 'a source key with no record' : r.status}_`);
     const cite = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
     const refs = n.out.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
     if (cite.length) out.push(`\n### Referenced by\n${cite.map((e) => `- ${e.edge} \`${e.from}\`${e.observed ? ' _(observed)_' : ''}`).join('\n')}`);
     if (refs.length) out.push(`\n### Refers to\n${refs.map((e) => `- ${e.edge} \`${e.to}\`${e.observed ? ' _(observed)_' : ''}`).join('\n')}`);
-    if (n.members.length) out.push(`\n### Members\n${n.members.map((m) => `- \`${m.key}\`${m.status ? ` **${m.status}**` : ''} — ${esc(m.title)}`).join('\n')}`);
+    if (n.members.length) out.push(`\n### Members\n${n.members.map((m) => `- \`${m.key}\`${m.status ? ` **${m.status}**` : ''} — ${esc(lineOfRow(m))}`).join('\n')}`);
   }
   for (const c of n.changes) {
     if (c.change.key === n.record?.key) continue;

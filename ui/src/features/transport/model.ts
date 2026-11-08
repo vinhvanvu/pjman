@@ -108,7 +108,7 @@ const VERB: Partial<Record<TimelineEvent['op'], string>> = {
 /** One event in words: what was done to which record, `set status, next on The store at a moment`. */
 export function eventWords(e: TimelineEvent): string {
   const verb = e.op === 'set' ? `set ${e.fields?.join(', ') || 'fields'} on` : (VERB[e.op] ?? e.op);
-  const what = e.title ?? short(e.key);
+  const what = e.label ?? short(e.key);
   const kind = e.type === 'session' ? 'the session on' : e.type;
   return `${verb} ${kind === 'store' ? 'the store' : `${kind} ${what}`}`;
 }

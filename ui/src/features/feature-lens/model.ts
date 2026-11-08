@@ -132,7 +132,7 @@ export function matches(n: ScopeNode, f: MapFilter, places?: Places): boolean {
   if (n.type !== 'feature' && n.type !== 'product') return false;
   if (f.aspect && !places?.has(n.key)) return false;
   const q = f.q?.trim().toLowerCase();
-  if (q && ![n.name, n.title, n.key].some((s) => s?.toLowerCase().includes(q))) return false;
+  if (q && ![n.name, n.title, n.gist, n.key].some((s) => s?.toLowerCase().includes(q))) return false;
   if (f.states?.length && !f.states.includes(n.derived ?? n.status ?? 'planned')) return false;
   if (f.bugs && !(n.bugs?.here ?? 0)) return false;
   return true;
@@ -235,7 +235,7 @@ export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
   const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
   return changes
     .filter((r) => r.progress && r.status !== 'done' && r.status !== 'dropped')
-    .toSorted((a, b) => share(b) - share(a) || (a.title ?? '').localeCompare(b.title ?? ''));
+    .toSorted((a, b) => share(b) - share(a) || (a.gist ?? '').localeCompare(b.gist ?? ''));
 };
 
 /** What a change does to this node, when it names it. */

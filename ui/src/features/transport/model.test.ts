@@ -107,13 +107,13 @@ describe('arrivedSince', () => {
 
 describe('words', () => {
   it('names what was done to which record', () => {
-    expect(eventWords(ev(1, 'x', { title: 'The roadmap', fields: ['status', 'next'] }))).toBe(
+    expect(eventWords(ev(1, 'x', { label: 'The roadmap', fields: ['status', 'next'] }))).toBe(
       'set status, next on change The roadmap',
     );
     expect(eventWords(ev(1, 'x', { op: 'created', type: 'decision', key: 'decision:pjman/roadmap/two-views' }))).toBe(
       'opened decision roadmap/two-views',
     );
-    expect(eventWords(ev(1, 'x', { op: 'log', type: 'session', key: 'session:abc', title: 'The roadmap' }))).toBe(
+    expect(eventWords(ev(1, 'x', { op: 'log', type: 'session', key: 'session:abc', label: 'The roadmap' }))).toBe(
       'wrote a line on the session on The roadmap',
     );
   });

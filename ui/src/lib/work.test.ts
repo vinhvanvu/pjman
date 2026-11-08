@@ -4,7 +4,7 @@ import { asksOf, byIntent, byMoved, decisionsByChange, intentOf, strayDecisions 
 
 const row = (key: string, status: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   key: `change:${key}`,
-  title: key,
+  gist: key,
   status,
   features: [],
   waiting: 0,

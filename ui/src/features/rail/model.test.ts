@@ -24,7 +24,7 @@ const lane = (id: string, o: Partial<RailLane> = {}): RailLane => ({
   id,
   kind: 'change',
   writes: 0,
-  title: id.split('/').at(-1),
+  label: id.split('/').at(-1),
   count: 1,
   ...o,
 });
@@ -36,7 +36,7 @@ const row = (seq: number, o: Partial<RailRow> = {}): RailRow => ({
   op: 'set',
   key: 'change:p/auth',
   type: 'change',
-  title: 'Auth',
+  label: 'Auth',
   ...o,
 });
 const rail = (o: Partial<Rail> = {}): Rail => ({
@@ -80,8 +80,8 @@ describe('laneViews', () => {
     const views = laneViews(
       rail({
         lanes: [
-          lane('decision:p/auth/tokens', { kind: 'decision', title: 'Tokens', status: 'proposed' }),
-          lane('change:p/child', { status: 'done', title: 'Child' }),
+          lane('decision:p/auth/tokens', { kind: 'decision', label: 'Tokens', status: 'proposed' }),
+          lane('change:p/child', { status: 'done', label: 'Child' }),
           lane('more', { kind: 'more', folded: 4, count: 9 }),
         ],
       }),
@@ -95,8 +95,8 @@ describe('laneViews', () => {
 
 describe('rowViews', () => {
   const lanes = [
-    lane('decision:p/auth/tokens', { kind: 'decision', title: 'Tokens' }),
-    lane('change:p/billing', { title: 'Billing' }),
+    lane('decision:p/auth/tokens', { kind: 'decision', label: 'Tokens' }),
+    lane('change:p/billing', { label: 'Billing' }),
   ];
 
   it('reads newest first, a trunk row in the ink naming nobody, a lane row in its lane colour naming the lane', () => {
@@ -110,7 +110,7 @@ describe('rowViews', () => {
           op: 'created',
           key: 'decision:p/auth/tokens',
           type: 'decision',
-          title: 'Tokens',
+          label: 'Tokens',
         }),
       ],
     });
@@ -169,7 +169,7 @@ describe('rowViews', () => {
     const r = rail({
       key: 'session:me',
       axis: 'session',
-      lanes: [lane('change:p/billing', { title: 'Billing' }), lane('change:p/auth', { title: 'Auth' })],
+      lanes: [lane('change:p/billing', { label: 'Billing' }), lane('change:p/auth', { label: 'Auth' })],
       rows: [
         row(1, {
           kind: 'bind',
@@ -246,7 +246,7 @@ describe('bucketViews', () => {
 });
 
 const session = (rows: RailRow[]): Rail =>
-  rail({ key: 'session:me', axis: 'session', lanes: [lane('change:p/auth', { title: 'Auth' })], rows });
+  rail({ key: 'session:me', axis: 'session', lanes: [lane('change:p/auth', { label: 'Auth' })], rows });
 const file = (seq: number, files: string[], at = `2026-11-06T10:0${seq}:00.000Z`): RailRow =>
   row(seq, { kind: 'file', op: 'observe', key: 'session:me', type: 'session', lane: 'change:p/auth', files, at });
 

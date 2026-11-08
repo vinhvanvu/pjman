@@ -324,7 +324,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
           <div className="flex items-center gap-2 border-b border-line bg-raised px-5 py-1.5 text-xs text-ink-muted">
             <Flag className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
             <span className="min-w-0 truncate">
-              Showing only work toward {chosenMilestone?.title ?? short(milestone)}
+              Showing only work toward {chosenMilestone?.gist ?? short(milestone)}
             </span>
             <button
               type="button"

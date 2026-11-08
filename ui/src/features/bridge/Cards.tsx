@@ -226,7 +226,7 @@ export function MotionCard({
           search={{}}
           className="min-w-0 flex-1 truncate font-medium after:absolute after:inset-0 after:content-['']"
         >
-          {c.name ?? c.title ?? short(c.key)}
+          {c.name ?? c.gist ?? short(c.key)}
         </Link>
         <StatusChip status={c.status} className="shrink-0" />
         <span className="shrink-0 text-meta text-ink-faint tabular-nums">{agoWords(c.last, now)}</span>

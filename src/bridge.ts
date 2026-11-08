@@ -18,8 +18,7 @@ export type SessionState = 'working' | 'waiting' | 'stopped' | 'ended';
 
 export interface BridgeChange {
   key: string;
-  /** The gist. */
-  title?: string;
+  gist?: string;
   name?: string;
   status?: string;
   /** The next step of the plan, as a line; derived. */
@@ -57,8 +56,7 @@ export interface BridgeSession {
 export interface BridgeMotion {
   key: string;
   name?: string;
-  /** The gist. */
-  title?: string;
+  gist?: string;
   status?: string;
   /** The feature path the change names, the product left out, top first. */
   path: { key: string; name: string }[];
@@ -158,7 +156,7 @@ export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[
   return {
     key: c.key,
     name: str(c.data.name),
-    title: lineOf(c.data),
+    gist: str(c.data.gist),
     status: str(c.data.status),
     path: featurePath(loaded, c),
     steps: { done: counted.filter((s) => s.state === 'done').length, total: counted.length, dropped: steps.length - counted.length },
@@ -198,7 +196,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     const c = live(loaded, d.change)!;
     proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), d]);
   }
-  const asChange = (c: Rec): BridgeChange => ({ key: c.key, title: lineOf(c.data), name: str(c.data.name), status: str(c.data.status), next: nextLine(nextStep(stepsOf(c.data))), path: featurePath(loaded, c) });
+  const asChange = (c: Rec): BridgeChange => ({ key: c.key, gist: str(c.data.gist), name: str(c.data.name), status: str(c.data.status), next: nextLine(nextStep(stepsOf(c.data))), path: featurePath(loaded, c) });
 
   const rows: BridgeSession[] = [];
   for (const rec of loaded.records) {

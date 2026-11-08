@@ -16,8 +16,11 @@ export interface Row {
   key: string;
   path: string;
   valid: boolean;
-  /** The record's one line: a title; a change's or a decision's gist (the-ladder). */
+  /** A product's, feature's, project's, aspect's or source's sentence. A change and a decision have none: their line
+   *  is the gist (decision interface-audit/output-follows-model). */
   title?: string;
+  /** A change's or a decision's one line: what it is and why (the-ladder). */
+  gist?: string;
   /** Which one in a crowd: a feature's, a change's or a decision's name, one to four words. */
   name?: string;
   status?: string;
@@ -29,11 +32,15 @@ export interface Row {
   branch?: ChangeBranch;
 }
 
+/** A row's one line: a change's or a decision's gist, anything else's title. */
+export const lineOfRow = (r: Pick<Row, 'gist' | 'title'>): string | undefined => r.gist ?? r.title;
+
 export function row(r: Rec): Row {
   const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
   return {
     type: r.type, key: r.key, path: r.path, valid: r.valid,
-    title: lineOf(r.data), name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
+    ...(r.type === 'change' || r.type === 'decision' ? { gist: s(r.data.gist) } : { title: s(r.data.title) }),
+    name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
     writer: s(r.data.writer), session: s(r.data.session), data: r.data,
   };
 }
@@ -173,7 +180,7 @@ export function formatLs(rows: Row[]): string {
   const w = Math.min(48, Math.max(...rows.map((r) => r.key.length)));
   const dateOf = (r: Row) => r.created ?? (typeof r.data.started === 'string' ? r.data.started.slice(0, 10) : '');
   return rows
-    .map((r) => `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.title ?? (r.valid ? '' : '(invalid)')}`)
+    .map((r) => `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.gist ?? r.title ?? (r.valid ? '' : '(invalid)')}`)
     .join('\n');
 }
 
@@ -396,13 +403,15 @@ export function decisionLine(dec: Row & { supersededBy?: string }): string {
 /** `key — name`, the gist beneath: how a change or a decision heads its context. With no name yet (an ingested or
  *  migrated record), the gist heads it. */
 function heading(level: string, r: Row): string {
-  if (!r.name) return `${level} ${r.key} — ${r.title ?? labelOf(r.data, r.key)}`;
-  return `${level} ${r.key} — ${r.name}${r.title && r.title !== r.name ? `\n${r.title}` : ''}`;
+  const line = lineOfRow(r);
+  if (!r.name) return `${level} ${r.key} — ${line ?? labelOf(r.data, r.key)}`;
+  return `${level} ${r.key} — ${r.name}${line && line !== r.name ? `\n${line}` : ''}`;
 }
 
 /** `name: gist` on one line, the name left out when it is the gist or absent. */
 export function nameAndLine(r: Pick<Row, 'name' | 'title'>): string {
-  return `${r.name && r.name !== r.title ? `${r.name}: ` : ''}${r.title ?? r.name ?? ''}`;
+  const line = lineOfRow(r);
+  return `${r.name && r.name !== line ? `${r.name}: ` : ''}${line ?? r.name ?? ''}`;
 }
 
 export function formatChangeContext(c: ChangeContext): string {

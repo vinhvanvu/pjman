@@ -80,7 +80,7 @@ export function RoadmapChart({
   const tickList = useMemo(() => ticks(span.from, span.to), [span]);
   const allBars = useMemo(() => bars(rows, now), [rows, now]);
   const x = (t: number) => ((Math.max(t, span.from) - span.from) / (span.to - span.from)) * PAST_W;
-  const titles = useMemo(() => new Map(rows.map((r) => [r.key, r.title])), [rows]);
+  const titles = useMemo(() => new Map(rows.map((r) => [r.key, r.gist])), [rows]);
   // an entry that works on an aspect carries a diamond, the aspects named on hover
   const worksOn = useMemo(
     () => new Map(rows.map((r) => [r.key, aspectNames(r, scope.aspects).join(', ')])),
@@ -403,8 +403,8 @@ export function RoadmapChart({
                       onMouseLeave={() => setHover(undefined)}
                       onFocus={() => setHover(b.row.key)}
                       onBlur={() => setHover(undefined)}
-                      title={`${b.row.title ?? short(b.row.key)} · ${b.row.status ?? 'open'} · ${day(b.from)} → ${b.done ? day(b.to) : 'now'}`}
-                      aria-label={`${b.row.title ?? short(b.row.key)}, ${b.row.status ?? 'open'}`}
+                      title={`${b.row.gist ?? short(b.row.key)} · ${b.row.status ?? 'open'} · ${day(b.from)} → ${b.done ? day(b.to) : 'now'}`}
+                      aria-label={`${b.row.gist ?? short(b.row.key)}, ${b.row.status ?? 'open'}`}
                       aria-current={selected === b.row.key ? 'true' : undefined}
                       className="absolute flex items-center py-[7px] outline-none"
                       style={{ left, width: Math.min(width, PAST_W - left), top: 5 + i * MARK_H, height: MARK_H }}
@@ -475,7 +475,7 @@ export function RoadmapChart({
                           onMouseLeave={() => setHover(undefined)}
                           onFocus={() => setHover(e.key)}
                           onBlur={() => setHover(undefined)}
-                          title={`${e.title ?? short(e.key)} · ${e.status ?? 'open'}${e.parent && c.kind === 'later' ? ` · under ${short(e.parent)}` : ''}${v.length ? ` · ${v.map((w) => violationText(w, titles)).join('; ')}` : ''}`}
+                          title={`${e.gist ?? short(e.key)} · ${e.status ?? 'open'}${e.parent && c.kind === 'later' ? ` · under ${short(e.parent)}` : ''}${v.length ? ` · ${v.map((w) => violationText(w, titles)).join('; ')}` : ''}`}
                           aria-current={selected === e.key ? 'true' : undefined}
                           className={cn(
                             'flex h-5 min-w-0 items-center gap-1.5 rounded-chip border px-1.5 text-left text-meta outline-none',
@@ -495,7 +495,7 @@ export function RoadmapChart({
                             className={cn('size-[7px] shrink-0 rounded-full', statusTone(e.status).bg)}
                             aria-hidden="true"
                           />
-                          <span className="min-w-0 flex-1 truncate">{e.title ?? short(e.key)}</span>
+                          <span className="min-w-0 flex-1 truncate">{e.gist ?? short(e.key)}</span>
                           {e.live && <Pulse className="size-[6px]" />}
                           {worksOn.get(e.key) && (
                             <span className="shrink-0" title={`works on ${worksOn.get(e.key)}`}>

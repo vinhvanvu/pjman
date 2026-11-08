@@ -97,9 +97,9 @@ function StructureRow({ node: n, showProject }: { node: ScopeNode; showProject?:
   if (n.type === 'change' && n.row) {
     const r = n.row;
     return (
-      <div className="flex min-w-0 flex-1 items-center gap-2 pr-2" title={r.title}>
+      <div className="flex min-w-0 flex-1 items-center gap-2 pr-2" title={r.gist}>
         {r.live && <Pulse className="size-[7px]" />}
-        <span className="min-w-0 flex-1 truncate font-medium">{r.title ?? short(r.key)}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">{r.gist ?? short(r.key)}</span>
         <StatusChip status={r.status} />
         {r.ticket && (
           <Chip tone="quiet" mono>
@@ -119,13 +119,13 @@ function StructureRow({ node: n, showProject }: { node: ScopeNode; showProject?:
   if (n.type === 'unassigned') {
     return (
       <div className="flex min-w-0 flex-1 items-center gap-2 pr-2">
-        <span className="truncate text-ink-muted">{n.title}</span>
+        <span className="truncate text-ink-muted">{n.title ?? n.gist}</span>
         <Chip tone="quiet">{n.open} open</Chip>
       </div>
     );
   }
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-2 pr-2" title={n.title}>
+    <div className="flex min-w-0 flex-1 items-center gap-2 pr-2" title={n.title ?? n.gist}>
       <span className="min-w-0 truncate font-medium">{n.name ?? n.title ?? short(n.key)}</span>
       <Label>{n.level}</Label>
       <span className="ml-auto flex shrink-0 items-center gap-2.5 text-meta text-ink-faint">

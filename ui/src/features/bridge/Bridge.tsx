@@ -59,7 +59,7 @@ export function Bridge({
   const onChange = useMemo(() => sessionChanges(data.sessions), [data.sessions]);
   const heldSet = useMemo(() => new Set(held), [held]);
   const heldChanges = held.map((k) => data.changes.find((c) => c.key === k));
-  const names = heldChanges.map((c, i) => (c ? (c.name ?? c.title ?? short(c.key)) : short(held[i]!)));
+  const names = heldChanges.map((c, i) => (c ? (c.name ?? c.gist ?? short(c.key)) : short(held[i]!)));
   return (
     <div className="flex flex-col gap-4 p-4 md:p-5" data-scroll-restoration-id="bridge">
       <h2 className="sr-only">Bridge</h2>

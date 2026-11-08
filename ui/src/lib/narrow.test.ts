@@ -4,7 +4,7 @@ import { beneathMilestone, narrowToAspect, narrowToMilestone, pruneTree, worksOn
 
 const row = (key: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   key: `change:${key}`,
-  title: key,
+  gist: key,
   status: 'open',
   features: [],
   waiting: 0,

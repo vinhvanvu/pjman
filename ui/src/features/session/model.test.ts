@@ -5,7 +5,7 @@ import { absence, chipViews, sessionBar, sessionTitle, shownOf, viewing, waitsLi
 const lane = (id: string, writes: number, o: Partial<RailLane> = {}): RailLane => ({
   id,
   kind: 'change',
-  title: id.split('/').pop(),
+  label: id.split('/').pop(),
   count: writes + 1,
   writes,
   ...o,

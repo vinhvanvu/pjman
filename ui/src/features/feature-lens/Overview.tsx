@@ -33,7 +33,8 @@ export function Overview({ scope, lens, aspect }: { scope: Scope; lens: Lens; as
   const node = scope.node;
   const body = bodyOf(scope);
   const title = node ? (node.name ?? node.title ?? short(node.key)) : 'Everything';
-  const sentence = node?.name && node.title && node.title !== node.name ? node.title : node?.summary;
+  const line = node?.title ?? node?.gist;
+  const sentence = node?.name && line && line !== node.name ? line : node?.summary;
   const open = scope.changes.filter((r) => r.status !== 'done' && r.status !== 'dropped');
   const inFlight = open.filter((r) => r.status === 'active' || r.status === 'review' || r.status === 'blocked');
 
@@ -106,7 +107,7 @@ function ProductBody({ scope, lens }: { scope: Scope; lens: Lens }) {
                   <NodeLink to={m.key} lens={lens} className="flex flex-col gap-2 px-4 py-3 hover:bg-raised">
                     <div className="flex items-center gap-2">
                       {m.live && <Pulse className="size-[7px]" />}
-                      <span className="min-w-0 flex-1 truncate font-medium">{m.title ?? short(m.key)}</span>
+                      <span className="min-w-0 flex-1 truncate font-medium">{m.gist ?? short(m.key)}</span>
                       {m.waiting > 0 && <Chip tone="quiet">○ {m.waiting} waiting</Chip>}
                       <span className="w-14 text-right text-meta text-ink-faint">
                         {p.done} / {p.total}

@@ -17,7 +17,7 @@ import { loadStore, resolve } from './records.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
 import { order } from './commands/order.js';
-import { decide, reopen } from './commands/decide.js';
+import { decide, reopen } from './commands/decision.js';
 import { withStoreLock } from './lock.js';
 import { intake } from './intake.js';
 import { CliError } from './util.js';

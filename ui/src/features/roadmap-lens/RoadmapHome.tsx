@@ -49,7 +49,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
   const cols = columns(scope);
   const inOrder = cols.filter((c) => c.kind !== 'later');
   const later = cols.find((c) => c.kind === 'later');
-  const titles = new Map(scope.changes.map((r) => [r.key, r.title]));
+  const titles = new Map(scope.changes.map((r) => [r.key, r.gist]));
   const title = scope.node ? (scope.node.name ?? scope.node.title ?? short(scope.node.key)) : 'Everything';
   const worst = scope.bugs[0]?.severity;
   const loudBugs = loud(scope.bugs);
@@ -148,7 +148,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
             {later.entries.slice(0, 8).map((r) => (
               <li key={r.key} className="flex items-center hover:bg-raised">
                 <NodeLink to={r.key} lens={lens} className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-4">
-                  <span className="min-w-0 flex-1 truncate">{r.title ?? short(r.key)}</span>
+                  <span className="min-w-0 flex-1 truncate">{r.gist ?? short(r.key)}</span>
                   {r.parent && <Chip tone="quiet">↳ {short(r.parent)}</Chip>}
                   <StatusChip status={r.status} />
                 </NodeLink>
@@ -180,7 +180,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
             {scope.bugs.slice(0, 4).map((b) => (
               <li key={b.key}>
                 <NodeLink to={b.key} lens={lens} className="flex items-center gap-2 px-4 py-2 hover:bg-raised">
-                  <span className="min-w-0 flex-1 truncate">{b.title ?? short(b.key)}</span>
+                  <span className="min-w-0 flex-1 truncate">{b.gist ?? short(b.key)}</span>
                   {b.severity && (
                     <Chip
                       tone="quiet"

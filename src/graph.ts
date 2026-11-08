@@ -9,7 +9,7 @@ import { resolve, type Loaded, type Rec } from './records.js';
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { parseAspectEffect } from './aspects.js';
-import { changeContext, row, type ChangeContext, type Row } from './commands/view.js';
+import { changeContext, lineOfRow, row, type ChangeContext, type Row } from './commands/view.js';
 
 // --- edges ---------------------------------------------------------------------------------------
 
@@ -351,13 +351,13 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
   const how = r.via && r.via !== r.key ? ` via ${r.via}` : '';
   const what = r.status === 'key' ? 'a source key with no record' : r.status === 'invalid' ? 'a record that does not parse' : r.status === 'alias' ? 'a former slug' : n.record?.type ?? 'a record';
   out.push(`${n.input} → ${r.key} (${r.shape}${how}; ${what})`);
-  if (n.record) out.push(`${n.record.type} ${n.record.key}${n.record.title ? ` — ${n.record.title}` : ''}${n.record.status ? ` [${n.record.status}]` : ''}  ${n.record.path}`);
+  if (n.record) out.push(`${n.record.type} ${n.record.key}${lineOfRow(n.record) ? ` — ${lineOfRow(n.record)}` : ''}${n.record.status ? ` [${n.record.status}]` : ''}  ${n.record.path}`);
   const line = (e: Edge, other: string) => `- ${e.edge} ${other}${e.observed ? ` (observed by ${e.on.replace(/^sessions\//, 'session:').replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})` : ''}`;
   const inbound = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   const outbound = n.out.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   if (inbound.length) out.push(`\nreferenced by:\n${inbound.map((e) => line(e, e.from)).join('\n')}`);
   if (outbound.length) out.push(`\nrefers to:\n${outbound.map((e) => line(e, e.to)).join('\n')}`);
-  if (n.members.length) out.push(`\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${m.title ? ` — ${m.title}` : ''}`).join('\n')}`);
+  if (n.members.length) out.push(`\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${lineOfRow(m) ? ` — ${lineOfRow(m)}` : ''}`).join('\n')}`);
   if (!n.record && !inbound.length && !outbound.length) out.push('nothing in the store references it');
   for (const c of n.changes) {
     const v = n.via[c.change.key];

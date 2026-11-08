@@ -71,9 +71,9 @@ export function MilestonePage({
             {typeof c.data.target === 'string' && <Chip tone="quiet">target {c.data.target}</Chip>}
           </div>
           <h1 className="text-[22px] leading-tight font-semibold tracking-tight">
-            {c.name ?? c.title ?? short(c.key)}
+            {c.name ?? c.gist ?? short(c.key)}
           </h1>
-          {c.name && c.title && c.title !== c.name && <p className="max-w-[640px] text-ink-muted">{c.title}</p>}
+          {c.name && c.gist && c.gist !== c.name && <p className="max-w-[640px] text-ink-muted">{c.gist}</p>}
           <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
           <Link
             to="/$lens/$"
@@ -135,7 +135,7 @@ export function MilestonePage({
                   >
                     {r.status === 'done' && <Check className="size-2.5 text-primary-foreground" strokeWidth={3} />}
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{r.title ?? short(r.key)}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{r.gist ?? r.title ?? short(r.key)}</span>
                   <StatusChip status={r.status} />
                 </NodeLink>
               ))}

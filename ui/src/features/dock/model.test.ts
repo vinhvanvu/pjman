@@ -6,7 +6,7 @@ const EMPTY = { criteria: [], options: [], comments: [] };
 
 const row = (key: string, o: Partial<ChangeRow> = {}): ChangeRow => ({
   key,
-  title: o.title ?? key.slice(key.lastIndexOf('/') + 1),
+  gist: o.gist ?? key.slice(key.lastIndexOf('/') + 1),
   status: 'open',
   features: [],
   waiting: 0,
@@ -63,8 +63,8 @@ describe('pickups', () => {
       changes: [
         row('change:p/c', { features: f('feature:p/store'), waiting: 2, decided: 1, position: 0 }),
         row('change:p/d', { features: f('feature:p/store'), waiting: 1, position: 2 }),
-        row('change:p/e', { features: f('feature:p/store'), decided: 3, position: 5, title: 'Later' }),
-        row('change:p/f', { features: f('feature:p/store'), title: 'Also ready' }),
+        row('change:p/e', { features: f('feature:p/store'), decided: 3, position: 5, gist: 'Later' }),
+        row('change:p/f', { features: f('feature:p/store'), gist: 'Also ready' }),
       ],
     });
     expect(g!.changes.map((p) => [p.row.key, p.proposed])).toEqual([

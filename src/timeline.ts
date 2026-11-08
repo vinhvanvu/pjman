@@ -20,8 +20,8 @@ export interface TimelineEvent {
   fields?: string[];
   writer?: string;
   session?: string;
-  /** The written record's title (a session's: the title of the change it is on), as it reads now. */
-  title?: string;
+  /** What the written record is called as it reads now: its name, else its line (a session's: its change's). */
+  label?: string;
   /** A decision was opened or its status moved: the ticks the transport marks. */
   decision: boolean;
   /** On such a tick: the status the write left the decision in, read from its commit (proposed when opened,
@@ -167,7 +167,7 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
       fields: e.fields,
       writer: e.writer,
       session: e.session,
-      title: p.title,
+      label: p.title,
       decision: e.type === 'decision' && (e.op === 'created' || e.op === 'applied' || !!e.fields?.includes('status')),
     });
   }
