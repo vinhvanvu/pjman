@@ -74,6 +74,8 @@ export interface RowView {
   folded?: number;
   /** Dimmed: a lane row that is not the lit lane. */
   dim: boolean;
+  /** Who wrote it: the session, else the writer (a person deciding from the dashboard has no session). */
+  by?: string;
 }
 
 /** The rows newest first, each read into words; `lit` dims every lane row but the lit lane's (the trunk never dims). */
@@ -100,6 +102,7 @@ export function rowViews(
         key: r.key,
         drill: r.drill,
         dim: lit !== undefined && r.lane !== null && r.lane !== lit,
+        by: r.session ?? r.writer,
       };
       // the lane's name; a trunk row names nobody, since the scope is the page itself
       const who = laneTitle;
@@ -282,4 +285,63 @@ export function kindsOn(off: readonly string[], axis: Rail['axis']): RailRowKind
   const groups = KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
   if (!off.some((id) => groups.some((g) => g.id === id))) return undefined;
   return groups.filter((g) => !off.includes(g.id)).flatMap((g) => g.kinds);
+}
+
+/** A session as a change's rail names it (decision change-detail/rail-unfiltered). */
+export interface RunSession {
+  key: string;
+  title: string;
+  live: boolean;
+}
+
+/** Each writer's hue on a change's rail, by the order of their keys, so a new page repaints nothing; a sixth and
+ *  beyond share the folded ink. */
+export function sessionColours(keys: readonly string[]): Map<string, string> {
+  const out = new Map<string, string>();
+  [...new Set(keys)].toSorted().forEach((k, i) => out.set(k, LANE_HUES[i] ?? MORE));
+  return out;
+}
+
+export interface RunHead {
+  /** The writer the run is by: a session's key, or a person's. */
+  by: string;
+  title: string;
+  /** The way to its page: a session has one, a person deciding from the dashboard has none. */
+  session?: string;
+  live: boolean;
+  colour: string;
+  /** How many of the shown rows the run holds. */
+  count: number;
+}
+
+/** The rows of a change's rail by session (decision change-detail/rail-unfiltered): every row in its writer's hue,
+ *  and a head before each run of rows by one writer, newest first, so the hand-offs between sessions read as the
+ *  rail's own structure. A row with no writer stays in the run before it. */
+export function sessionRuns(
+  rows: readonly RowView[],
+  sessions: readonly RunSession[],
+  colours = sessionColours([...sessions.map((s) => s.key), ...rows.flatMap((r) => (r.by ? [r.by] : []))]),
+): { rows: RowView[]; heads: Map<number, RunHead> } {
+  const named = new Map(sessions.map((s) => [s.key, s]));
+  const heads = new Map<number, RunHead>();
+  let run: RunHead | undefined;
+  const out = rows.map((r) => {
+    const by = r.by ?? run?.by;
+    if (by && by !== run?.by) {
+      const s = named.get(by);
+      const isSession = by.startsWith('session:');
+      run = {
+        by,
+        title: s?.title ?? (isSession ? short(by).slice(0, 8) : short(by)),
+        session: isSession ? by : undefined,
+        live: !!s?.live,
+        colour: colours.get(by) ?? MORE,
+        count: 0,
+      };
+      heads.set(r.seq, run);
+    }
+    if (run) run.count += 1;
+    return run ? { ...r, colour: run.colour } : r;
+  });
+  return { rows: out, heads };
 }

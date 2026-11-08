@@ -13,6 +13,8 @@ import {
   pageRows,
   railQuery,
   rowViews,
+  sessionColours,
+  sessionRuns,
   shownLine,
   TRUNK,
   UNFOLDED,
@@ -358,5 +360,38 @@ describe('railQuery', () => {
       railQuery({ limit: 8, axis: 'session', only: 'change:b', lanesOn: ['change:a'], kindsOff: ['files'] }),
     ).toEqual({ limit: 8, lanes: ['change:b'], fold: UNFOLDED });
     expect(UNFOLDED).toBeGreaterThan(5);
+  });
+});
+
+describe('sessionRuns', () => {
+  const tree = (rows: RailRow[]) =>
+    rowViews(rail({ axis: 'tree', lanes: [], rows }), undefined, Date.parse('2026-11-06T11:00:00Z'));
+  it('heads each run of rows by one session, newest first, naming it, marking the live one, and colours each row by its session', () => {
+    const rows = tree([
+      row(1, { session: 'session:a' }),
+      row(2, { session: 'session:a' }),
+      row(3, { session: 'session:b' }),
+      row(4, { writer: 'person:vinh' }),
+    ]);
+    const sessions = [
+      { key: 'session:a', title: 'claude-code · 2026-11-05', live: false },
+      { key: 'session:b', title: 'claude-code · 2026-11-06', live: true },
+    ];
+    const { rows: out, heads } = sessionRuns(rows, sessions);
+    expect(out.map((r) => r.seq)).toEqual([4, 3, 2, 1]);
+    expect([...heads.keys()]).toEqual([4, 3, 2]);
+    expect(heads.get(4)).toMatchObject({ by: 'person:vinh', title: 'vinh', session: undefined, count: 1 });
+    expect(heads.get(3)).toMatchObject({ by: 'session:b', title: 'claude-code · 2026-11-06', live: true, count: 1 });
+    expect(heads.get(2)).toMatchObject({ by: 'session:a', session: 'session:a', live: false, count: 2 });
+    const colours = sessionColours(['session:a', 'session:b', 'person:vinh']);
+    expect(out.find((r) => r.seq === 1)!.colour).toBe(colours.get('session:a'));
+    expect(out.find((r) => r.seq === 3)!.colour).toBe(colours.get('session:b'));
+    expect(new Set(colours.values()).size).toBe(3);
+  });
+  it('keeps a row with no writer in the run above it, and a hue follows the key, never the order of the rows', () => {
+    const { heads } = sessionRuns(tree([row(1, {}), row(2, { session: 'session:a' })]), []);
+    expect([...heads.keys()]).toEqual([2]);
+    expect(heads.get(2)!.count).toBe(2);
+    expect(sessionColours(['session:b', 'session:a']).get('session:a')).toBe(LANE_HUES[0]);
   });
 });

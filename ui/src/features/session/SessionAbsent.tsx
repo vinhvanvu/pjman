@@ -28,7 +28,9 @@ export function SessionAbsent({ id, error }: { id: string; error: Error }) {
         title={`No session ${id}.`}
         hint={
           <>
-            <div>The store has no record of it. A session that starts on this id will show here when its record is written.</div>
+            <div>
+              The store has no record of it. A session that starts on this id will show here when its record is written.
+            </div>
             <Link to="/" className="mt-2 inline-block text-ink-muted hover:text-ink">
               Back to the product
             </Link>

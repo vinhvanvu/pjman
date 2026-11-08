@@ -174,6 +174,8 @@ export interface ChangeContext {
   observed: { edge: string; to: string; session: string; at?: string }[];
   /** The aspects the change works under: named by it, or at the features it names (decision aspects/aspect-shape). */
   aspects?: ChangeAspects;
+  /** The releases that shipped it, oldest first: a change can ship in part in one and finish in a later one. */
+  releases: { key: string; version: string; at?: string; url?: string }[];
 }
 
 export interface StoreContext {
@@ -293,10 +295,15 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const branch = branchOf(rec, observedBranches(loaded));
   const features = effectsOf(rec).map((e) => liveKey(e.key)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => r?.type === 'feature');
   const aspects = aspectsOfChange(loaded, rec, features);
+  const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  const releases = loaded.records
+    .filter((r) => r.type === 'release' && r.valid && list(r.data.ships).some((k) => liveKey(k) === rec.key))
+    .map((r) => ({ key: r.key, version: str(r.data.version) ?? r.releaseVersion ?? r.key, at: str(r.data.at), url: str(r.data.url) }))
+    .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
   return {
     change: row(rec), sections, plan, planProgress: planProgress(plan), next: nextStep(plan), needs: needsOf(rec), stale: rungs.stale,
     migrated: typeof rec.data.migrated === 'string' ? rec.data.migrated : undefined,
-    decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects,
+    decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects, releases,
   };
 }
 

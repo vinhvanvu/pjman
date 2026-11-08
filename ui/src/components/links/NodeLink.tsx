@@ -1,10 +1,12 @@
 // A link to any key, following the link rule. Two modes: `select` (the default) keeps the scope and puts the key in
 // the selection; `focus` makes the key the scope. Both push a history entry: a place changed, so Back undoes it.
-// A key that lives in another lens is always a focus into that lens. Sessions and everything else go to their routes.
-import { Link, type LinkProps } from '@tanstack/react-router';
+// A key that lives in another lens is always a focus into that lens. A change focused is its own page
+// (decision change-detail/own-route), and a decision is read on its change, open; on a page that is no lens (the
+// change's own page) there is no selection, so every link focuses. Sessions and everything else go to their routes.
+import { Link, useLocation, type LinkProps } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import type { Lens } from '@/data/contract';
-import { changeOfDecision, targetOf } from '@/lib/keys';
+import { changeOfDecision, kindOf, restOf, targetOf } from '@/lib/keys';
 
 export interface NodeLinkProps extends Omit<LinkProps, 'to' | 'params' | 'search' | 'children' | 'replace'> {
   to: string;
@@ -31,12 +33,29 @@ export const focusSearch = (prev: Search): Search => ({
   days: prev.days,
 });
 
-export function NodeLink({ to, lens, mode = 'select', children, ...rest }: NodeLinkProps) {
-  // a decision is seen on its change, in the decisions tab; one at product or store level goes through the getter
+/** The path of a change's own page: the key after `change:`. */
+export const changePath = (key: string): string => restOf(key);
+
+export function NodeLink({ to, lens, mode: asked = 'select', children, ...rest }: NodeLinkProps) {
+  const { pathname } = useLocation();
+  const mode = pathname.startsWith('/change/') ? 'focus' : asked;
+  // a decision is seen on its change, open: selected on the map (the decisions tab, for a milestone), else on the
+  // change's page; one at product or store level goes through the getter
   const change = changeOfDecision(to);
   if (change) {
+    return mode === 'select' ? (
+      <Link to="." search={(prev: Search) => ({ ...selectSearch(change, 'decisions')(prev), decision: to })} {...rest}>
+        {children}
+      </Link>
+    ) : (
+      <Link to="/change/$" params={{ _splat: changePath(change) }} search={{ decision: to }} {...rest}>
+        {children}
+      </Link>
+    );
+  }
+  if (kindOf(to) === 'change' && mode === 'focus') {
     return (
-      <Link to="." search={selectSearch(change, 'decisions')} {...rest}>
+      <Link to="/change/$" params={{ _splat: changePath(to) }} search={{}} {...rest}>
         {children}
       </Link>
     );
