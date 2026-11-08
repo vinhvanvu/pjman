@@ -425,6 +425,20 @@ esac
     at('T1', 'SessionStart', { session_id: 'dock-7', source: 'startup' });
     assert.deepEqual(seen().slice(13), [`browser --surface surface:1 navigate ${bridge}`, 'browser --surface surface:1 navigate http://dash.test/session/dock-7']);
     at('T1', 'SessionEnd', { session_id: 'dock-7', reason: 'logout' });
+    // the agent's own bind (filing a change binds the run to it): a store write that binds nothing leaves the pane parked;
+    // once the session holds a change, the next binding write brings the pane to the session (change:bind-moves-the-dock)
+    git(['checkout', '-q', home]);
+    at('T1', 'SessionStart', { session_id: 'dock-8', source: 'startup' });
+    const pjmanBin = path.resolve(here, '..', '..', 'bin', 'pjman.js');
+    const shell = (command: string) => at('T1', 'PostToolUse', { session_id: 'dock-8', tool_name: 'Bash', tool_input: { command } });
+    shell('pjman session log dock-8 "looked around"');
+    assert.deepEqual(seen().slice(15), ['close-surface --surface surface:1', `browser open ${bridge}`], 'an unbound session leaves the pane on the bridge');
+    execFileSync(process.execPath, [pjmanBin, 'session', 'bind', 'dock-8', 'change:eight-week-test', '--reason', 'created'], { cwd: project, env });
+    shell('pjman new change eight-week-test --name "…"');
+    assert.deepEqual(seen().slice(17), ['browser --surface surface:1 navigate http://dash.test/session/dock-8'], 'the agent bound a change: the pane follows the session');
+    shell('pjman session log dock-8 "again"');
+    assert.equal(seen().length, 18, 'a binding taken up once is not taken up again');
+    at('T1', 'SessionEnd', { session_id: 'dock-8', reason: 'logout' });
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });
