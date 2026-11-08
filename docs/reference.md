@@ -57,7 +57,7 @@ pjman new change <slug> --name … --gist … --origin … --intent … --done-w
                         [--features "adds feature:<slug>"]… [--aspects "changes aspect:<slug>"]… [--depends-on <change>]… [--owners <actor>]… [--binds <key>]… [--links <key>]…
                         [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]
 pjman decision <change>/<slug> --name … --gist … --question … [--criterion …]… --option <id>=<one line>… [--case <id>=<points, one per line>]… [--recommend <id>[=why]] [--supersedes <decision>] [--links <key>]…
-pjman decision <key> [--question …] [--option <id>=…]… [--comment … --by person:<handle>] [--reject <id>[=why]]… [--recommend <id>[=why]] [--accept <id>[=their words] --by person:<handle> [--revisit …]] [--reopen] [--from -]
+pjman decision <key> [--question …] [--option <id>=…]… [--comment … [--on <id>] --by person:<handle>] [--reject <id>[=why]]… [--recommend <id>[=why]] [--accept <id>[=their words] --by person:<handle> [--revisit …]] [--reopen] [--from -]
 pjman step <change> add <text> [--before <n>|--after <n>|--first|--last] | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last
 pjman new release <version> --at <timestamp> [--level patch|minor|major] [--commit <sha>] [--url …] [--ships <change>]… [--body <notes>|-]   written by npm run release; its creation is the event
 pjman new source <kind>:<key> [--title …] [--url …]

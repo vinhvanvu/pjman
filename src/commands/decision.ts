@@ -61,7 +61,7 @@ function writerOf(opts: { writer?: string; session?: string }): string | undefin
 
 /** The entries from the command's flags, in the order a reader expects them: question, criteria, options and their
  *  case, comments, rejections, the recommendation, the acceptance, a reopening. */
-export function entriesFromFlags(f: { question?: string; criterion?: string[]; option?: string[]; case?: string[]; recommend?: string; comment?: string; reject?: string[]; accept?: string; revisit?: string; reopen?: boolean; by?: string }, writer: string | undefined): EntryInput[] {
+export function entriesFromFlags(f: { question?: string; criterion?: string[]; option?: string[]; case?: string[]; recommend?: string; comment?: string; on?: string; reject?: string[]; accept?: string; revisit?: string; reopen?: boolean; by?: string }, writer: string | undefined): EntryInput[] {
   const out: EntryInput[] = [];
   const by = f.by ?? writer;
   if (f.question?.trim()) out.push({ type: 'question', text: f.question.trim(), by: writer });
@@ -74,7 +74,10 @@ export function entriesFromFlags(f: { question?: string; criterion?: string[]; o
     cases.delete(id);
   }
   if (cases.size) throw new CliError(`--case names ${[...cases.keys()].join(', ')}, which --option does not define in this call; a case is written with its option`);
-  if (f.comment?.trim()) out.push({ type: 'comment', text: f.comment.trim(), by });
+  // a comment may name the option it is about (--on <id>); the views draw it beneath that option
+  if (f.on !== undefined && (!f.comment?.trim() || f.reopen)) throw new CliError('--on names the option a --comment is about; it goes with --comment');
+  if (f.on !== undefined && !SLUG_RE.test(f.on)) throw new CliError(`--on: '${f.on}' is not an option id (a slug)`);
+  if (f.comment?.trim() && !f.reopen) out.push({ type: 'comment', text: f.comment.trim(), by, ...(f.on ? { option: f.on } : {}) });
   for (const r of f.reject ?? []) { const { id, text } = idText(r, '--reject', false); out.push({ type: 'reject', option: id, text, by: writer }); }
   if (f.recommend) { const { id, text } = idText(f.recommend, '--recommend', false); out.push({ type: 'recommendation', option: id, text, by: writer }); }
   if (f.accept) { const { id, text } = idText(f.accept, '--accept', false); out.push({ type: 'accept', option: id, text, by, revisit: f.revisit?.trim() || undefined }); }
@@ -176,6 +179,9 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
         if (state.options.find((o) => o.id === entry.option)?.rejected !== undefined) notes.push(`${entry.option} had been rejected; accepted now`);
         break;
       }
+      case 'comment':
+        if (entry.option && !ids.has(entry.option)) throw new CliError(`comment: --on '${entry.option}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`);
+        break;
       case 'reopen':
         if (!state.accepted) throw new CliError(`${key} is not decided; nothing to reopen`);
         if (supersededBy(loaded, key).length) throw new CliError(`${key} is superseded by ${supersededBy(loaded, key).map((r) => r.key).join(', ')}; reopen that instead`);

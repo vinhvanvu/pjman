@@ -59,7 +59,7 @@ working it.
    is one line, and its case is points, short enough to read on a card. It is created `proposed`. The same command
    adds to it later: a reframed `--question`, a new `--option`, the same `--option <id>` again to restate it (its text
    and case replace the earlier ones; the thread keeps both), the person's words as `--comment "…" --by
-   person:<handle>`, `--reject <id>="why"`, a moved `--recommend`; large ones as JSON on stdin (`--from -`). **Never accept a decision on your own judgment**; deciding is the person's. Say in your
+   person:<handle>` (with `--on <id>` when they are about one option, so the views draw them beneath it), `--reject <id>="why"`, a moved `--recommend`; large ones as JSON on stdin (`--from -`). **Never accept a decision on your own judgment**; deciding is the person's. Say in your
    reply that a decision is open and what you recommend. **When the person decides in chat ("agreed", "go", "accept
    it"), that is the decision: record it at once**, never hand them the command:
    `pjman decision <change>/<slug> --accept <id>="<their words>" --by person:<handle> [--revisit "<when to look again>"]`.
