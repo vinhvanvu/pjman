@@ -96,7 +96,7 @@ export interface Entry {
    *  them as bullets. A later option entry with the same id restates the option: its text and case replace the
    *  earlier ones, the marks on it stay, the thread keeps both. */
   case?: string;
-  /** The option a recommendation, a rejection or an acceptance names. */
+  /** The option a recommendation, a rejection or an acceptance names; on a comment, the option it is about. */
   option?: string;
   /** An acceptance's condition for revisiting the decision. */
   revisit?: string;
@@ -133,7 +133,8 @@ export interface DecisionState {
   criteria: string[];
   options: OptionState[];
   recommendation?: { option: string; text?: string; at: string };
-  comments: { by?: string; at: string; text: string }[];
+  /** The comments in order; one about an option names it, and the views draw it beneath that option. */
+  comments: { by?: string; at: string; text: string; option?: string }[];
   accepted?: { option: string; by?: string; at: string; text?: string; revisit?: string };
 }
 
@@ -157,7 +158,7 @@ export function decisionState(entries: Entry[]): DecisionState {
         if (o) { o.recommended = true; s.recommendation = { option: o.id, text: e.text, at: e.at }; }
         break;
       }
-      case 'comment': if (e.text) s.comments.push({ by: e.by, at: e.at, text: e.text }); break;
+      case 'comment': if (e.text) s.comments.push({ by: e.by, at: e.at, text: e.text, ...(e.option ? { option: e.option } : {}) }); break;
       case 'reject': { const o = option(e.option); if (o) o.rejected = e.text ?? ''; break; }
       case 'accept': {
         const o = option(e.option);
@@ -194,7 +195,7 @@ export function formatDecisionState(s: DecisionState): string[] {
     }
   }
   if (s.recommendation?.text) out.push(`Why ${s.recommendation.option}: ${s.recommendation.text}`);
-  for (const c of s.comments) out.push(`${c.by ?? 'someone'} (${dayOf(c.at)}): ${c.text}`);
+  for (const c of s.comments) out.push(`${c.by ?? 'someone'} (${dayOf(c.at)})${c.option ? ` on ${c.option}` : ''}: ${c.text}`);
   if (s.accepted) out.push(`Accepted ${s.accepted.option}${s.accepted.by ? ` by ${s.accepted.by}` : ''} on ${dayOf(s.accepted.at)}${s.accepted.text ? `: ${s.accepted.text}` : ''}${s.accepted.revisit ? ` (revisit when ${s.accepted.revisit})` : ''}`);
   return out;
 }

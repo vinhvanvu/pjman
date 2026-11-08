@@ -181,6 +181,23 @@ test('a decision is a thread: created at any size, added to later, accepted by a
   assert.deepEqual(errors(store), []);
 });
 
+test('a comment may name the option it is about: carried in the thread and the state, said in the context, checked against the options', () => {
+  decision(store, 'login/remember', { name: 'Remember me', gist: 'How long a device stays signed in', entries: [{ type: 'question', text: 'How long is a device remembered?' }, { type: 'option', id: 'week', text: 'A week' }, { type: 'option', id: 'month', text: 'A month' }, { type: 'recommendation', option: 'week' }] });
+  const flags = entriesFromFlags({ comment: 'a week is fine on a laptop, short on a phone', on: 'week', by: 'person:vinh' }, 'agent:bot');
+  assert.deepEqual(flags, [{ type: 'comment', text: 'a week is fine on a laptop, short on a phone', by: 'person:vinh', option: 'week' }]);
+  const r = decision(store, 'login/remember', { entries: flags });
+  assert.deepEqual(r.state.comments.map((c) => [c.option, c.text]), [['week', 'a week is fine on a laptop, short on a phone']]);
+  const rec = loadStore(store).byKey.get('decision:app/login/remember')![0];
+  assert.equal(threadOf(rec.data).at(-1)!.option, 'week');
+  assert.match(formatDecisionState(decisionState(threadOf(rec.data))).join('\n'), /person:vinh \(\d{4}-\d\d-\d\d\) on week: a week is fine on a laptop/);
+  // a comment about no option stays as it was
+  assert.equal(decision(store, 'login/remember', { entries: [{ type: 'comment', text: 'either is fine', by: 'person:vinh' }] }).state.comments.at(-1)!.option, undefined);
+  assert.throws(() => decision(store, 'login/remember', { entries: [{ type: 'comment', text: 'x', option: 'year', by: 'person:vinh' }] }), /not an option/);
+  assert.throws(() => entriesFromFlags({ on: 'week' }, undefined), /goes with --comment/);
+  assert.throws(() => entriesFromFlags({ comment: 'x', on: 'Not A Slug' }, undefined), /not an option id/);
+  assert.deepEqual(errors(store), []);
+});
+
 test('an ingested ticket makes a change in the shape with a draft gist, and says what it needs; pjman owns it afterwards', () => {
   set(store, 'project:app', ['tracker=linear', 'ext.linear.team=APP'], {});
   const issues = [{ identifier: 'APP-1', title: 'Login  is broken', url: 'https://linear.app/acme/issue/APP-1/login', state: { name: 'Todo', type: 'unstarted' }, team: { key: 'APP' } }];

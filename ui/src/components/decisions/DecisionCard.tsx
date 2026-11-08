@@ -2,7 +2,7 @@
 // many options), the ladder (the two rungs, a meta line and the one action, Accept the recommendation, with a chevron
 // to the thread), and the thread beneath the ladder in reading order: the question, the criteria, the options as a
 // choice list with each one's case, the recommended one marked with its why, the rejected dimmed with the reason, the
-// person's comments, then the action row: Accept the chosen option, or pick another and accept it, with a line in
+// person's comments (one about an option beneath that option, the rest after the options), then the action row: Accept the chosen option, or pick another and accept it, with a line in
 // the person's words. A decided decision is a row whose thread opens read-only with Reopen as its only action. One
 // component serves every surface that shows a decision.
 import { cn } from 'cn';
@@ -196,6 +196,8 @@ function Thread({
   const s = d.state;
   const who = (by?: string) => (by && actor && by === actor ? 'you' : by ? short(by) : 'someone');
   const why = s.accepted?.text ?? s.recommendation?.text;
+  // a comment about an option is drawn beneath it; one about none, or an option no longer in the thread, after them
+  const general = s.comments.filter((c) => !c.option || !s.options.some((o) => o.id === c.option));
   return (
     <div className={cn('flex flex-col gap-3 border-t pt-3', LINE)}>
       {s.question && (
@@ -221,13 +223,15 @@ function Thread({
             o={o}
             on={editable ? o.id === chosen : o.accepted}
             why={o.recommended || o.accepted ? why : undefined}
+            comments={s.comments.filter((c) => c.option === o.id)}
+            who={who}
             onPick={editable && onPick ? () => onPick(o.id) : undefined}
           />
         ))}
       </ol>
-      {s.comments.length > 0 && (
+      {general.length > 0 && (
         <div className="flex flex-col gap-1.5 text-xs leading-normal">
-          {s.comments.map((c, i) => (
+          {general.map((c, i) => (
             <span key={i} className="flex gap-1.5">
               <span className="shrink-0 text-ink-faint">{who(c.by)} ·</span>
               <span>{c.text}</span>
@@ -257,7 +261,24 @@ function Thread({
 
 /** One option: a choice when the thread is editable, the accepted one marked otherwise; its case as lines, the why
  *  beneath the recommended one, the reason beneath a rejected one. */
-function Option({ o, on, why, onPick }: { o: OptionState; on: boolean; why?: string; onPick?: () => void }) {
+type Comment = CardDecision['state']['comments'][number];
+
+function Option({
+  o,
+  on,
+  why,
+  comments,
+  who,
+  onPick,
+}: {
+  o: OptionState;
+  on: boolean;
+  why?: string;
+  /** The person's comments about this option, beneath its case. */
+  comments: readonly Comment[];
+  who: (by?: string) => string;
+  onPick?: () => void;
+}) {
   const rejected = o.rejected !== undefined;
   const Tag = onPick ? 'button' : 'div';
   return (
@@ -309,6 +330,12 @@ function Option({ o, on, why, onPick }: { o: OptionState; on: boolean; why?: str
               {o.rejected}
             </div>
           )}
+          {comments.map((c, i) => (
+            <div key={i} className="mt-1.5 flex gap-1.5 text-xs leading-normal">
+              <span className="shrink-0 text-ink-faint">{who(c.by)} ·</span>
+              <span>{c.text}</span>
+            </div>
+          ))}
         </div>
       </Tag>
     </li>

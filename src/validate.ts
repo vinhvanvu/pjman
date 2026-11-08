@@ -422,6 +422,7 @@ export function validate(loaded: Loaded): Problem[] {
                 if (typeof x.option !== 'string' || !ids.has(x.option)) err(r, `thread[${i}]: ${type} names option '${String(x.option)}', which no earlier entry defines`);
                 if (type === 'accept' && (typeof x.by !== 'string' || !x.by.startsWith('person:'))) err(r, `thread[${i}]: an acceptance is a person's (by: person:<handle>)`);
               } else if (type !== 'reopen' && (typeof x.text !== 'string' || !x.text.trim())) err(r, `thread[${i}]: a ${type} needs its text`);
+              if (type === 'comment' && x.option !== undefined && (typeof x.option !== 'string' || !ids.has(x.option))) err(r, `thread[${i}]: the comment is on option '${String(x.option)}', which no earlier entry defines`);
               for (const f of Object.keys(x)) if (!['type', 'at', 'by', 'text', 'id', 'case', 'option', 'revisit'].includes(f)) warn(r, `thread[${i}]: unknown field '${f}'`);
             });
             const st = decisionState(threadOf(d));

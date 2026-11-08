@@ -75,7 +75,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'decision', about: "write a decision at any size, one commit: created when it does not exist (then --name, --gist, --question and one --option are required), added to otherwise. Its foundation is a thread of entries: the question, criteria, options with their case, the recommendation with its reasoning, the person's comments in their words, rejections, the acceptance (a person's, with their words and when to revisit), a reopening. Status, decider and date follow the thread. --from - takes {name, gist, entries:[{type, text, id, case, option, by, revisit}]} as JSON on stdin",
     usage: [
       'pjman decision <change>/<slug> --name <one to four words> --gist <one line> --question <text> [--criterion <text>]... --option <id>=<text>... [--case <id>=<what it costs, what it rules out>]... [--recommend <id>[=<why>]] [--supersedes <decision>] [--links <key>]...',
-      'pjman decision <key> [--question <reframed>] [--option <id>=<text>]... [--comment <the person\'s words> [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]',
+      'pjman decision <key> [--question <reframed>] [--option <id>=<text>]... [--comment <the person\'s words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]',
       'pjman decision <key> --accept <id>[=<their words>] --by person:<handle> [--revisit <when to look again>]   (the person decides; an agent never does)',
       'pjman decision <key> --reopen [--comment <why>]',
       'pjman decision <key> --from -   (entries as JSON on stdin)',
@@ -198,6 +198,7 @@ function parse(args: string[]) {
     case: { type: 'string', multiple: true },
     recommend: { type: 'string' },
     comment: { type: 'string' },
+    on: { type: 'string' },
     reject: { type: 'string', multiple: true },
     accept: { type: 'string' },
     revisit: { type: 'string' },
@@ -380,7 +381,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const writer = envelope({ writer: v.writer }).writer;
       let name = v.name;
       let gist = v.gist;
-      let entries = entriesFromFlags({ question: v.question, criterion: v.criterion, option: v.option, case: v.case, recommend: v.recommend, comment: v.comment, reject: v.reject, accept: v.accept, revisit: v.revisit, reopen: v.reopen, by: v.by }, writer);
+      let entries = entriesFromFlags({ question: v.question, criterion: v.criterion, option: v.option, case: v.case, recommend: v.recommend, comment: v.comment, on: v.on, reject: v.reject, accept: v.accept, revisit: v.revisit, reopen: v.reopen, by: v.by }, writer);
       if (v.from !== undefined) {
         if (v.from !== '-') throw new CliError('--from takes - (the entries as JSON on stdin)');
         const j = entriesFromJson(fs.readFileSync(0, 'utf8'), writer);
