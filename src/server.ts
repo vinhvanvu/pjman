@@ -73,6 +73,17 @@ export function defaultStaticDir(): string | null {
   return fs.existsSync(path.join(dir, 'index.html')) ? dir : null;
 }
 
+/** The host name of an authority (`name`, `name:port`, `[v6]:port`), lower-cased and without a trailing dot; null when it is not one. */
+export function hostnameOf(authority: string | undefined): string | null {
+  if (!authority) return null;
+  try {
+    const name = new URL(`http://${authority}`).hostname;
+    return name.endsWith('.') ? name.slice(0, -1) : name;
+  } catch {
+    return null;
+  }
+}
+
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
@@ -91,6 +102,12 @@ const WRITES = ['/order', '/decide', '/reopen'];
 
 export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const staticDir = opts.staticDir === undefined ? defaultStaticDir() : opts.staticDir;
+  const bound = opts.host ?? '127.0.0.1';
+  /** The names this server answers to: the loopback names, the address it binds (the machine's name when it binds
+   *  every interface), and any *.localhost name, which a browser resolves to loopback itself, so none of these can be
+   *  another site rebound to this address. The port is not compared: behind a proxy such as portless it is the proxy's. */
+  const ownNames = new Set(['localhost', '127.0.0.1', '[::1]', bound.includes(':') && !bound.startsWith('[') ? `[${bound}]` : bound, ...(bound === '0.0.0.0' || bound === '::' ? [os.hostname().toLowerCase()] : [])]);
+  const own = (name: string) => ownNames.has(name) || name.endsWith('.localhost');
 
   const send = (res: http.ServerResponse, status: number, body: unknown) => {
     const seq = lastSeq(store);
@@ -98,7 +115,6 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     res.writeHead(status, {
       'content-type': 'application/json; charset=utf-8',
       'x-pjman-seq': String(seq),
-      'access-control-allow-origin': '*',
       'cache-control': 'no-store',
     });
     res.end(text);
@@ -114,6 +130,9 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
    *  decide a proposed decision or reopen a decided one (decision decide-in-place/decide-route-and-reopen). */
   const write = (req: http.IncomingMessage, res: http.ServerResponse, route: string): void => {
     if (!WRITES.includes(route)) throw new HttpError(405, 'method-not-allowed', `${req.method} ${route} is not allowed; the writes are ${WRITES.map((w) => `POST ${w}`).join(', ')}`);
+    // a write is JSON and says so: a cross-site form or a text/plain fetch, which a browser sends without asking, is not one
+    const type = (req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+    if (type !== 'application/json') throw new HttpError(415, 'unsupported-media-type', `a write is JSON: send Content-Type application/json${type ? `, not ${type}` : ''}`);
     let text = '';
     req.setEncoding('utf8');
     req.on('data', (chunk: string) => { text += chunk; });
@@ -140,11 +159,6 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   };
 
   const api = (req: http.IncomingMessage, res: http.ServerResponse, route: string, url: URL): void => {
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, HEAD, POST, OPTIONS', 'access-control-allow-headers': 'content-type' });
-      res.end();
-      return;
-    }
     if (req.method === 'POST') return write(req, res, route);
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'method-not-allowed', `${req.method} is not allowed; the API reads, and writes only through ${WRITES.map((w) => `POST ${w}`).join(', ')}`);
     // as of a moment (at=<event seq|instant>): the records at its commit, the stream cut after it, the clock set to it
@@ -281,7 +295,6 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           'content-type': 'text/event-stream',
           'cache-control': 'no-store',
           connection: 'keep-alive',
-          'access-control-allow-origin': '*',
           'x-pjman-seq': String(lastSeq(store)),
         });
         res.write(`retry: 2000\n\n`);
@@ -318,6 +331,16 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
 
   return http.createServer((req, res) => {
     try {
+      // who may call (decision local-server-cross-origin/who-may-call): the request names this server by one of its own
+      // names, and a page that sends an Origin was loaded from one; no CORS header is ever sent, so another site's page
+      // reads nothing and writes nothing, and a site rebound to this address is refused by its Host
+      const host = hostnameOf(req.headers.host);
+      if (!host || !own(host)) throw new HttpError(403, 'forbidden-host', `${req.headers.host ?? 'no Host'} is not a name of this server; it answers to ${[...ownNames].join(', ')} and any *.localhost name`);
+      const origin = req.headers.origin;
+      if (origin !== undefined) {
+        const from = /^https?:\/\//.test(origin) ? hostnameOf(origin.replace(/^https?:\/\//, '')) : null;
+        if (!from || !own(from)) throw new HttpError(403, 'forbidden-origin', `a page at ${origin} may not call this server; only its own pages (${[...ownNames].join(', ')} and any *.localhost name) may`);
+      }
       const url = new URL(req.url ?? '/', 'http://localhost');
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');

@@ -280,3 +280,65 @@ test('a session the store does not hold is a 404 with its own code, so the page 
   assert.equal(r.body.error?.code, 'no-session');
   assert.equal(r.body.error?.message, 'session:not-yet has no record');
 });
+
+test('who may call: the server answers to its own names and *.localhost, refuses any other Host or Origin, sends no CORS header, and a write is JSON', async () => {
+  // http.request, not fetch: the Host header is set by hand
+  const raw = (method: string, route: string, headers: Record<string, string>, body?: string) =>
+    new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: { error?: { code: string; message: string } } }>((resolve, reject) => {
+      const u = new URL(base + route);
+      const req = http.request({ host: u.hostname, port: u.port, method, path: u.pathname + u.search, headers }, (res) => {
+        let text = '';
+        res.setEncoding('utf8');
+        res.on('data', (c: string) => { text += c; });
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text.startsWith('{') ? JSON.parse(text) : {} }));
+      });
+      req.on('error', reject);
+      req.end(body);
+    });
+  // the Host: loopback, the proxy's names (port ignored), a trailing dot; a rebound site is not one of this server's names
+  for (const host of ['127.0.0.1:1', 'localhost', '[::1]:7331', 'api.pjman.localhost:1355', 'worktree-x.api.pjman.localhost:1355', 'LOCALHOST.']) {
+    const r = await raw('GET', '/api/v1/store', { host });
+    assert.equal(r.status, 200, `${host}: ${r.body.error?.message}`);
+    assert.equal(r.headers['access-control-allow-origin'], undefined, 'no CORS header on a read');
+  }
+  for (const host of ['evil.example:7331', 'evil.example', '10.0.0.5:7331', 'localhost.evil.example']) {
+    const r = await raw('GET', '/api/v1/store', { host });
+    assert.equal(r.status, 403, host);
+    assert.equal(r.body.error?.code, 'forbidden-host');
+  }
+  assert.equal((await raw('GET', '/', { host: 'evil.example' })).status, 403, 'the app is refused too');
+  assert.equal((await raw('GET', '/', { host: 'localhost' })).status, 200);
+  // the Origin: the dev proxy's page and the server's own pass; another site's page, or an opaque one, is refused, on reads and writes alike
+  const order = JSON.stringify({ change: 'change:login', last: true });
+  const json = { 'content-type': 'application/json' };
+  for (const origin of ['http://pjman.localhost:1355', 'http://worktree-x.pjman.localhost:1355', base, 'http://localhost:7331']) {
+    const r = await raw('POST', '/api/v1/order', { ...json, origin }, order);
+    assert.equal(r.status, 200, `${origin}: ${r.body.error?.message}`);
+    assert.equal(r.headers['access-control-allow-origin'], undefined, 'no CORS header on a write');
+  }
+  for (const origin of ['https://evil.example', 'http://evil.example:7331', 'null', 'http://localhost.evil.example', 'file://']) {
+    const r = await raw('POST', '/api/v1/order', { ...json, origin }, order);
+    assert.equal(r.status, 403, origin);
+    assert.equal(r.body.error?.code, 'forbidden-origin');
+    assert.equal((await raw('GET', '/api/v1/store', { origin })).status, 403, `a read from ${origin}`);
+  }
+  // no Origin at all (curl, the CLI) writes
+  assert.equal((await raw('POST', '/api/v1/order', json, order)).status, 200);
+  // a write says it is JSON; a cross-site form or text/plain fetch does not
+  for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=x', '']) {
+    const r = await raw('POST', '/api/v1/order', type ? { 'content-type': type } : {}, order);
+    assert.equal(r.status, 415, type);
+    assert.equal(r.body.error?.code, 'unsupported-media-type');
+  }
+  assert.equal((await raw('POST', '/api/v1/order', { 'content-type': 'Application/JSON; charset=utf-8' }, order)).status, 200);
+  // no preflight: OPTIONS is not a method the API answers
+  assert.equal((await raw('OPTIONS', '/api/v1/order', {})).status, 405);
+  // the event stream carries no CORS header either
+  const stream = await new Promise<http.IncomingMessage>((resolve, reject) => {
+    const u = new URL(base + '/api/v1/events');
+    http.get({ host: u.hostname, port: u.port, path: u.pathname, headers: { accept: 'text/event-stream' } }, resolve).on('error', reject);
+  });
+  assert.equal(stream.statusCode, 200);
+  assert.equal(stream.headers['access-control-allow-origin'], undefined);
+  stream.destroy();
+});
