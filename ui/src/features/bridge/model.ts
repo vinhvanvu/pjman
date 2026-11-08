@@ -1,203 +1,175 @@
-// The bridge's need strip, as pure derivations: what waits on the person first, at the grain of the decision (every
-// proposed decision in the product, by change, the newest proposal first, with the session bound to that change when
-// one is in the window), then the sessions by state (decision stage-strip-transport; decision
-// rail-destinations/three-destinations makes the first group the inbox). Need is the stable frame; inside a group
-// the most recent write comes first. A session shown on a waiting change is not repeated in the groups below.
-import type { BridgeSession, SessionState, TimelineEvent, WaitingChange } from '@/data/contract';
-import { ago, plural } from '@/lib/format';
-import { changeOfDecision } from '@/lib/keys';
+// The bridge's cards, as pure derivations (decision bridge-rework/cards-and-transport): the changes in motion grouped
+// by motion (working now, stopped with a next set, in review, blocked), each the most recently touched first; what a
+// card says about its step and its sessions; and the tie to the transport, which ticks are a change's writes, so a
+// card under the pointer lights them and a held card filters to them. Nothing here keeps state.
+import type { BridgeMotion, BridgeSession, TimelineEvent } from '@/data/contract';
+import { agoWords, plural } from '@/lib/format';
+import { changeOfDecision, short } from '@/lib/keys';
 
-/** A change with decisions proposed on it, and the session on it when one is in the window. */
-export interface WaitItem extends WaitingChange {
-  session?: BridgeSession;
-}
+export type MotionState = 'working' | 'stopped' | 'review' | 'blocked';
 
-export interface NeedGroup {
-  state: Exclude<SessionState, 'waiting'>;
-  /** What the group is called. */
+export interface MotionGroup {
+  state: MotionState;
   label: string;
-  sessions: BridgeSession[];
+  changes: BridgeMotion[];
 }
 
-export interface StripData {
-  /** What waits on the person: one item per change with a proposed decision, the newest proposal first. */
-  waits: WaitItem[];
-  /** The sessions by state, in the order of need, those already shown on a waiting change left out. */
-  groups: NeedGroup[];
-}
-
-/** The session groups in the order of need after what waits on the person: what stopped with a next set, what is
- *  working now, what ended with its work in review. Every group is listed, empty or not. An ended session whose
- *  change is not in review is not in the strip: nothing about it needs the person. */
-export const NEED_ORDER: readonly { state: NeedGroup['state']; label: string }[] = [
+/** The groups in the order of motion. Every group is listed, empty or not, so the frame holds still. */
+export const MOTION_ORDER: readonly { state: MotionState; label: string }[] = [
+  { state: 'working', label: 'Working now' },
   { state: 'stopped', label: 'Stopped · next set' },
-  { state: 'working', label: 'Working' },
-  { state: 'ended', label: 'Ended · in review' },
+  { state: 'review', label: 'In review' },
+  { state: 'blocked', label: 'Blocked' },
 ];
 
-const newestFirst = (a: BridgeSession, b: BridgeSession) =>
-  (b.last ?? '').localeCompare(a.last ?? '') || a.key.localeCompare(b.key);
+/** Every session the bridge carries, by key: the rows and the subagents under them. */
+export function allSessions(sessions: readonly BridgeSession[]): Map<string, BridgeSession> {
+  const out = new Map<string, BridgeSession>();
+  for (const s of sessions) {
+    out.set(s.key, s);
+    for (const c of s.children) out.set(c.key, c);
+  }
+  return out;
+}
 
-export function strip(data: { waitingOn: readonly WaitingChange[]; sessions: readonly BridgeSession[] }): StripData {
-  const sessions = data.sessions.toSorted(newestFirst);
-  const shown = new Set<string>();
-  const waits = data.waitingOn.map((w) => {
-    const session = sessions.find((s) => s.change?.key === w.change.key);
-    if (session) shown.add(session.key);
-    return { ...w, session };
-  });
-  const rest = sessions.filter((s) => !shown.has(s.key));
-  const groups = NEED_ORDER.map(({ state, label }) => ({
+/** A change's motion: blocked and in review are its status; working while a session on it works; else stopped. */
+export function motionOf(c: BridgeMotion, sessions: ReadonlyMap<string, BridgeSession>): MotionState {
+  if (c.status === 'blocked') return 'blocked';
+  if (c.status === 'review') return 'review';
+  if (c.sessions.some((k) => sessions.get(k)?.state === 'working')) return 'working';
+  return 'stopped';
+}
+
+const newestFirst = (a: BridgeMotion, b: BridgeMotion) => b.last.localeCompare(a.last) || a.key.localeCompare(b.key);
+
+/** The changes in motion by group, each group the most recently touched first. */
+export function groupsOf(data: {
+  changes: readonly BridgeMotion[];
+  sessions: readonly BridgeSession[];
+}): MotionGroup[] {
+  const sessions = allSessions(data.sessions);
+  return MOTION_ORDER.map(({ state, label }) => ({
     state,
     label,
-    // a session that stopped waiting on a decision not shown above (none in this product's list) reads as stopped
-    sessions: rest.filter(
-      (s) => (s.state === state || (state === 'stopped' && s.state === 'waiting')) && (state !== 'ended' || s.inReview),
-    ),
+    changes: data.changes.filter((c) => motionOf(c, sessions) === state).toSorted(newestFirst),
   }));
-  return { waits, groups };
 }
 
-/** The words after a card's feature path: what the session last did and when. */
-export function cardWhen(s: Pick<BridgeSession, 'state' | 'last' | 'line'>, now = Date.now()): string {
-  const since = s.last ? ago(s.last, now) : '';
-  const back = since && since !== 'just now' ? `${since} ago` : since;
-  switch (s.state) {
-    case 'working':
-      return back ? `wrote ${back}` : 'working';
-    case 'ended':
-      return back ? `ended ${back}` : 'ended';
-    default:
-      return back ? `stopped ${back}` : 'stopped';
-  }
-}
+/** The grid as one list (change:motion-design): every group's heading and its cards in a row, so a card that moves
+ *  between groups slides there as one motion, and a held grid freezes one order. */
+export type CardRow =
+  | {
+      key: string;
+      kind: 'head';
+      state: MotionState;
+      label: string;
+      count: number;
+      words: string;
+    }
+  | { key: string; kind: 'card'; change: BridgeMotion };
 
-/** The faint words for a session's subagents, when it has any: how many, and whether one is still working. */
-export function subagentWords(children: readonly Pick<BridgeSession, 'state'>[]): string | undefined {
-  if (children.length === 0) return undefined;
-  const working = children.filter((c) => c.state === 'working').length;
-  const word = (n: number) => `${n} subagent${n === 1 ? '' : 's'}`;
-  return working ? `${word(working)} working` : `+${word(children.length)}`;
-}
-
-// The bridge's lanes, pure (decision live-sessions/stage-strip-transport): one row per session over the transport's
-// window, each line it wrote a beat, a flag where it opened a decision, a bar from its first act to its last. Rows
-// are read from the same events the transport draws, so the two stand on one axis; a subagent's events are its
-// parent's row, as the strip carries a subagent under its parent.
-
-export interface Lane {
-  session: BridgeSession;
-  /** The lines it wrote, in order. */
-  beats: TimelineEvent[];
-  /** The decisions it opened. */
-  flags: TimelineEvent[];
-  /** Its first and last act inside the window, lines and writes alike. */
-  first: string;
-  last: string;
-}
-
-/** The session an event belongs to: the one stamped on it, or the session record it wrote. */
-export const sessionOf = (e: TimelineEvent): string | undefined =>
-  e.session ?? (e.type === 'session' ? e.key : undefined);
-
-export interface LaneRows {
-  /** The sessions working a change, each its row. */
-  lanes: Lane[];
-  /** The sessions on no change yet, folded into one line that opens their rows. */
-  unbound: Lane[];
-}
-
-/** The rows: the bridge's sessions in its order (most recent act first), those with something in the window. A
- *  session on no change has no row of its own: it is counted apart until it binds, and then its row stands under its
- *  change with every beat it wrote before. One that ended without ever naming a change is left out, as the strip
- *  leaves it out: it has nothing to show and nowhere to open. */
-export function lanesOf(sessions: readonly BridgeSession[], events: readonly TimelineEvent[]): LaneRows {
-  const row = new Map<string, string>();
-  for (const s of sessions) {
-    row.set(s.key, s.key);
-    for (const c of s.children) row.set(c.key, s.key);
-  }
-  const by = new Map<string, Omit<Lane, 'session'>>();
-  for (const e of events) {
-    const s = sessionOf(e);
-    const key = s && row.get(s);
-    if (!key) continue;
-    let lane = by.get(key);
-    if (!lane) by.set(key, (lane = { beats: [], flags: [], first: e.at, last: e.at }));
-    lane.last = e.at;
-    if (e.op === 'log' && e.type === 'session') lane.beats.push(e);
-    if (e.type === 'decision' && e.op === 'created') lane.flags.push(e);
-  }
-  const rows: LaneRows = { lanes: [], unbound: [] };
-  for (const s of sessions) {
-    const lane = s.state === 'ended' && !s.change ? undefined : by.get(s.key);
-    if (lane) (s.change ? rows.lanes : rows.unbound).push({ session: s, ...lane });
-  }
-  return rows;
-}
-
-// The strip as one list (change:motion-design): every group's heading and its cards in a row, so a card that moves
-// between groups slides there as one motion, and a held strip freezes one order.
-
-export type StripRow =
-  | { key: string; kind: 'head'; state: SessionState; label: string; count: number; words: string }
-  | { key: string; kind: 'wait'; item: WaitItem }
-  | { key: string; kind: 'session'; session: BridgeSession; fold?: NeedGroup['state'] }
-  | { key: string; kind: 'fold'; state: NeedGroup['state']; count: number };
-
-export const sessionRow = (s: BridgeSession): StripRow => ({ key: `s:${s.key}`, kind: 'session', session: s });
-
-/** The headings and cards in the order of need. A group's sessions on no change follow its cards as one folded
- *  line, as the lanes fold them (decision lanes-unbound-sessions/strip-unbound-cards), their cards beneath it marked
- *  with the fold: `unfolded` hides them while it is closed, after the hold, so opening a fold under the pointer
- *  shows its cards at once. */
-export function stripRows({ waits, groups }: StripData): StripRow[] {
-  const decisions = waits.reduce((n, w) => n + w.proposed.length, 0);
-  const rows: StripRow[] = [
-    {
-      key: 'h:waiting',
-      kind: 'head',
-      state: 'waiting',
-      label: 'Waits on you',
-      count: waits.length,
-      words: waits.length
-        ? `${plural(decisions, 'decision')} on ${plural(waits.length, 'change')} · newest first`
-        : 'none',
-    },
-    ...waits.map((item): StripRow => ({ key: `w:${item.change.key}`, kind: 'wait', item })),
-  ];
+export function cardRows(groups: readonly MotionGroup[]): CardRow[] {
+  const rows: CardRow[] = [];
   for (const g of groups) {
-    const n = g.sessions.length;
+    const n = g.changes.length;
     rows.push({
       key: `h:${g.state}`,
       kind: 'head',
       state: g.state,
       label: g.label,
       count: n,
-      words: n ? `${plural(n, 'session')}${n > 1 ? ' · by last write' : ''}` : 'none',
+      words: n ? `${plural(n, 'change')}${n > 1 ? ' · by last touch' : ''}` : 'none',
     });
-    rows.push(...g.sessions.filter((s) => s.change).map(sessionRow));
-    const unbound = g.sessions.filter((s) => !s.change);
-    if (unbound.length === 0) continue;
-    rows.push({ key: `f:${g.state}`, kind: 'fold', state: g.state, count: unbound.length });
-    rows.push(...unbound.map((s): StripRow => ({ key: `s:${s.key}`, kind: 'session', session: s, fold: g.state })));
+    rows.push(
+      ...g.changes.map((change): CardRow => ({
+        key: `c:${change.key}`,
+        kind: 'card',
+        change,
+      })),
+    );
   }
   return rows;
 }
 
-/** The rows with the cards of every fold not in `open` left out. */
-export const unfolded = (rows: readonly StripRow[], open: ReadonlySet<string>): StripRow[] =>
-  rows.filter((r) => r.kind !== 'session' || !r.fold || open.has(r.fold));
+/** The words a card says about where the work stands: the lead (a label) and the text after it. Blocked says what
+ *  blocks it; in review says the plan is done or what is left; otherwise the step the work stands on, `step n of m`
+ *  while it is active, `next` while it waits to start. */
+export function stepWords(c: BridgeMotion): { lead: string; text: string } {
+  if (c.status === 'blocked' && c.blockedOn) return { lead: 'on', text: c.blockedOn };
+  if (c.status === 'review' && (!c.step || c.steps.total === 0))
+    return {
+      lead: 'done',
+      text: c.steps.total ? `${c.steps.done} of ${c.steps.total}; waits for a look` : 'waits for a look',
+    };
+  if (!c.step)
+    return {
+      lead: 'plan',
+      text: c.steps.total ? 'every step done' : c.steps.dropped ? 'every step dropped' : 'no steps yet',
+    };
+  if (c.step.state === 'active') return { lead: `step ${c.step.n} of ${c.steps.total}`, text: c.step.text };
+  return { lead: 'next', text: c.step.text };
+}
 
-/** The last of the live arrivals that touched a card: written by its session, or to its change or a decision on it. */
+/** The words on a session's pill: who, what it is doing, since when. */
+export function pillWords(s: Pick<BridgeSession, 'agent' | 'state' | 'last'>, now = Date.now()): string {
+  const who = s.agent ? short(s.agent) : 'session';
+  const since = s.last ? agoWords(s.last, now) : '';
+  const when = since ? ` · ${since}` : '';
+  switch (s.state) {
+    case 'working':
+      return `${who} · working${when}`;
+    case 'waiting':
+      return `${who} · waiting${when}`;
+    case 'ended':
+      return `${who} · ended${when}`;
+    default:
+      return `${who} · stopped${when}`;
+  }
+}
+
+/** The change each session is on, by key, a subagent's its own change else its parent's. */
+export function sessionChanges(sessions: readonly BridgeSession[]): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const s of sessions) {
+    if (s.change) out.set(s.key, s.change.key);
+    for (const c of s.children) {
+      const on = c.change?.key ?? s.change?.key;
+      if (on) out.set(c.key, on);
+    }
+  }
+  return out;
+}
+
+/** The change an event is a write to: the change itself, the change of a decision, or the change the session that
+ *  wrote it is on. */
+export function changeOfEvent(e: TimelineEvent, onChange: ReadonlyMap<string, string>): string | undefined {
+  if (e.type === 'change') return e.key;
+  if (e.type === 'decision') return changeOfDecision(e.key);
+  const s = e.session ?? (e.type === 'session' ? e.key : undefined);
+  return s ? onChange.get(s) : undefined;
+}
+
+/** The ticks that are a change's writes: what a card under the pointer lights on the transport, and what a held card
+ *  filters it to. */
+export function ticksOf(
+  change: string,
+  events: readonly TimelineEvent[],
+  onChange: ReadonlyMap<string, string>,
+): ReadonlySet<number> {
+  const out = new Set<number>();
+  for (const e of events) if (changeOfEvent(e, onChange) === change) out.add(e.seq);
+  return out;
+}
+
+/** The sessions on no change that are not over: counted in one folded line, since nothing on the grid carries them. */
+export const unbound = (sessions: readonly BridgeSession[]): BridgeSession[] =>
+  sessions.filter((s) => !s.change && s.state !== 'ended');
+
+/** The last of the live arrivals that touched a change: a write to it, to a decision on it, or by a session on it. */
 export function lastArrival(
   arrivals: readonly TimelineEvent[],
-  session?: Pick<BridgeSession, 'key'>,
-  change?: { key: string },
+  change: string,
+  onChange: ReadonlyMap<string, string>,
 ): TimelineEvent | undefined {
-  return arrivals.findLast(
-    (e) =>
-      (!!session && (e.session === session.key || e.key === session.key)) ||
-      (!!change && (e.key === change.key || changeOfDecision(e.key) === change.key)),
-  );
+  return arrivals.findLast((e) => changeOfEvent(e, onChange) === change);
 }

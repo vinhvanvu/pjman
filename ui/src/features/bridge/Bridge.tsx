@@ -1,71 +1,145 @@
-// The bridge's content in the canvas's columns (decision stage-strip-transport): the lanes on the left, the sessions
-// over the transport's window, and the need strip on the right, what waits on the person first at the grain of the
-// decision, then the sessions by state. The transport stands above both (the page's route); held at a moment, the
-// heading says which, and locked on an event, the cards it touched are outlined. The stage (the lineage graph lit by
-// sessions) comes last, above the lanes.
-import type { Bridge as BridgeData, Lens } from '@/data/contract';
+// The bridge's content (decision bridge-rework/cards-and-transport): under the transport, which the route draws and
+// which is the bridge's one timeline, a line that says what the page holds, the held cards when any are held
+// (decision held-card-lifts: lifted out of the grid into a row here, beside the words that name them and release
+// them; several may be held at once and the transport shows the union of their writes), then the changes in motion
+// as cards. Held at a moment, the line says which. Nothing here decides: the bridge orients and explores, deciding
+// happens in the dock.
+import { cn } from 'cn';
+import { AnimatePresence, m } from 'motion/react';
+import { useMemo } from 'react';
+import type { Bridge as BridgeData, TimelineEvent } from '@/data/contract';
 import { momentWords } from '@/features/moment';
 import { plural } from '@/lib/format';
-import { useRolling } from '@/features/transport';
+import { short } from '@/lib/keys';
+import { MOVE } from '@/lib/motion';
 import { useFresh } from '@/state/arrivals';
 import { useAt, useCursor, useResolved } from '@/state/moment';
-import { Lanes } from './Lanes';
-import { Strip, type Touched } from './Strip';
 import { TONE } from '@/lib/tones';
-import { cn } from 'cn';
+import { Cards, MotionCard, type Touched } from './Cards';
+import { allSessions, lastArrival, sessionChanges } from './model';
 
 export function Bridge({
   data,
-  lens,
   product,
   productName,
+  events,
+  now,
+  hover,
+  onHover,
+  held,
+  onHold,
+  onRelease,
   touched,
 }: {
   data: BridgeData;
   product: string;
-  lens: Lens;
   productName: string;
+  /** The transport's events, for what arrived live. */
+  events: readonly TimelineEvent[];
+  now: number;
+  hover?: string;
+  onHover: (change: string | undefined) => void;
+  /** The changes held, in the order held. */
+  held: readonly string[];
+  /** Holds or releases one change. */
+  onHold: (change: string) => void;
+  /** Releases every held change. */
+  onRelease: () => void;
   touched?: Touched;
 }) {
   const working = data.sessions.filter((s) => s.state === 'working').length;
   const cursor = useCursor();
   const resolved = useResolved();
-  const held = cursor.at || cursor.event ? momentWords(cursor, resolved) : undefined;
-  // what arrived live a moment ago, which the strip washes; at a held moment nothing on the page is arriving
+  const at = cursor.at || cursor.event ? momentWords(cursor, resolved) : undefined;
+  // what arrived live a moment ago, which a card washes; at a held moment nothing on the page is arriving
   const fresh = useFresh();
-  const { events } = useRolling(product);
-  const arrivals = held ? [] : events.filter((e) => fresh(e.seq));
+  const arrivals = at ? [] : events.filter((e) => fresh(e.seq));
   const moment = `${product}|${useAt() ?? 'now'}`;
+  const byKey = useMemo(() => allSessions(data.sessions), [data.sessions]);
+  const onChange = useMemo(() => sessionChanges(data.sessions), [data.sessions]);
+  const heldSet = useMemo(() => new Set(held), [held]);
+  const heldChanges = held.map((k) => data.changes.find((c) => c.key === k));
+  const names = heldChanges.map((c, i) => (c ? (c.name ?? c.title ?? short(c.key)) : short(held[i]!)));
   return (
-    <div className="flex flex-col gap-5 p-5 md:p-6 lg:h-full lg:min-h-0" data-scroll-restoration-id="bridge">
-      {/* no title of its own: the top bar names the page and each column names itself; the line says what the page
-          holds, and the moment when it is held at one */}
+    <div className="flex flex-col gap-4 p-4 md:p-5" data-scroll-restoration-id="bridge">
       <h2 className="sr-only">Bridge</h2>
       <p className="text-meta text-ink-faint">
-        {held && (
-          <span className={cn('font-medium', TONE.waits.text)}>{held[0]!.toUpperCase() + held.slice(1)} · </span>
-        )}
-        {plural(data.sessions.length, 'session')} across {productName} in the last{' '}
-        {data.days === 1 ? 'day' : plural(data.days, 'day')}
+        {at && <span className={cn('font-medium', TONE.waits.text)}>{at[0]!.toUpperCase() + at.slice(1)} · </span>}
+        {plural(data.changes.length, 'change')} in motion across {productName} in the last{' '}
+        {data.days === 1 ? 'day' : plural(data.days, 'day')} · {plural(data.sessions.length, 'session')}
         {working ? ` · ${working} working` : ''}
-        {data.waiting ? ` · ${plural(data.waiting, 'decision')} on you` : ''}
+        {hover && !heldSet.has(hover) ? ' · its writes are lit above' : ''}
       </p>
-      {/* the canvas's columns: what shows on the left (the lanes now, the stage above them later), what commands on
-          the right, each scrolling on its own at desktop width; narrow, they stack and the page scrolls */}
-      <div className="flex flex-wrap items-start gap-5 lg:min-h-0 lg:flex-1 lg:flex-nowrap lg:items-stretch">
-        <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-4 lg:overflow-y-auto">
-          <Lanes product={product} sessions={data.sessions} moment={moment} />
-        </div>
-        <Strip
-          waitingOn={data.waitingOn}
-          sessions={data.sessions}
-          lens={lens}
-          touched={touched}
-          arrivals={arrivals}
-          moment={moment}
-          className="min-w-0 flex-[1_1_360px] lg:w-[380px] lg:flex-none lg:overflow-y-auto lg:pr-1"
-        />
-      </div>
+      {held.length > 0 && (
+        <section aria-label="Held changes" className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+            <span className="text-meta font-medium tracking-wide text-primary uppercase">Held</span>
+            <span className="text-ink-muted">
+              the transport shows only the writes to{' '}
+              {names.map((n, i) => (
+                <span key={held[i]}>
+                  {i > 0 && (i === names.length - 1 ? ' and ' : ', ')}
+                  <span className="font-medium text-ink">{n}</span>
+                </span>
+              ))}
+              {heldChanges.some((c) => !c) ? ' · nothing of one of them in the window' : ''}
+            </span>
+            <button
+              type="button"
+              onClick={onRelease}
+              className="rounded-chip border border-line px-2 py-0.5 text-meta text-ink-muted hover:bg-raised hover:text-ink"
+            >
+              {held.length > 1 ? 'Release all' : 'Release'}
+            </button>
+          </div>
+          <ol aria-label="Held cards" className="grid grid-cols-1 gap-2.5 lg:grid-cols-2 xl:grid-cols-3">
+            <AnimatePresence initial={false}>
+              {heldChanges.map(
+                (c) =>
+                  c && (
+                    <m.li
+                      key={c.key}
+                      layout="position"
+                      layoutId={`card:${c.key}`}
+                      // it arrives by the shared layout motion from its place in the grid, and leaves at once so the
+                      // grid's returning copy alone is seen
+                      initial={false}
+                      exit={{ opacity: 0, transition: { duration: 0 } }}
+                      transition={MOVE}
+                      className="min-w-0"
+                    >
+                      <MotionCard
+                        change={c}
+                        byKey={byKey}
+                        held
+                        hot={hover === c.key}
+                        onHover={onHover}
+                        onHold={() => onHold(c.key)}
+                        outlined={touched?.change === c.key}
+                        arrival={lastArrival(arrivals, c.key, onChange)}
+                        now={now}
+                      />
+                    </m.li>
+                  ),
+              )}
+            </AnimatePresence>
+          </ol>
+        </section>
+      )}
+      <Cards
+        changes={data.changes}
+        sessions={data.sessions}
+        byKey={byKey}
+        onChange={onChange}
+        hover={hover}
+        onHover={onHover}
+        held={heldSet}
+        onHold={onHold}
+        touched={touched}
+        arrivals={arrivals}
+        moment={moment}
+        now={now}
+      />
     </div>
   );
 }

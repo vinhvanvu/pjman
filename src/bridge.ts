@@ -1,14 +1,17 @@
-// The bridge's data: the product's sessions, each with the state the person reads it by (working, waiting on a
-// decision, stopped with a next, ended) and the facts a card carries. Everything is derived from what the store
-// already holds: the session's log lines (the hook writes one at every stop and at the end), the writes stamped with
-// the session, the change it is bound to and the decisions proposed on that change. Nothing is stored.
+// The bridge's data (decision bridge-rework/cards-and-transport): the product's changes in motion, every change
+// touched inside the window with the facts a card carries (status, steps done of total, the step the work stands on,
+// the sessions on it), and the product's sessions, each with the state the person reads it by (working, waiting on a
+// decision, stopped with a next, ended). Everything is derived from what the store already holds: the session's log
+// lines (the hook writes one at every stop and at the end), the writes stamped with the session, the change it is
+// bound to, the change's plan and the decisions proposed on it. Nothing is stored. No decision is listed: the bridge
+// shows none.
 import type { Store } from './config.js';
 import { readEvents } from './events.js';
 import { productOf } from './commands/order.js';
 import type { Loaded, Rec } from './records.js';
 import { LIVE_MINUTES, proposedDecisions, type WaitingDecision } from './scope.js';
 import { effectsOf, live, rootProductOf, structuralParent } from './tree.js';
-import { lineOf, nextStep, stepsOf } from './foundation.js';
+import { lineOf, nextStep, stepsOf, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
 
 export type SessionState = 'working' | 'waiting' | 'stopped' | 'ended';
@@ -50,23 +53,36 @@ export interface BridgeSession {
   inReview: boolean;
 }
 
-/** A change with decisions proposed on it: what waits on the person, at the grain of the decision. */
-export interface WaitingChange {
-  change: BridgeChange;
-  /** Its proposed decisions, newest first. */
-  proposed: WaitingDecision[];
+/** A change in motion: touched inside the window and not finished, with what a card says about it. */
+export interface BridgeMotion {
+  key: string;
+  name?: string;
+  /** The gist. */
+  title?: string;
+  status?: string;
+  /** The feature path the change names, the product left out, top first. */
+  path: { key: string; name: string }[];
+  /** Steps done of the steps that count, and how many were dropped (not counted). */
+  steps: { done: number; total: number; dropped: number };
+  /** The step the work stands on: the active one, else the first open, with its note. Absent when the plan is empty
+   *  or every step is done. */
+  step?: { n: number; text: string; state: StepState; note?: string };
+  /** What blocks it, as the record says, when it is blocked. */
+  blockedOn?: string;
+  /** The last instant anything touched it inside the window: a write to it or to a decision on it, or an act of a
+   *  session on it. */
+  last: string;
+  /** The sessions on it that acted inside the window, most recent first, by key; a subagent's is its own key. */
+  sessions: string[];
 }
 
 export interface Bridge {
   product: string | null;
   days: number;
-  /** Every proposed decision in the product, grouped by change, the change with the newest proposal first: the
-   *  strip's first group and the inbox's data. */
-  waitingOn: WaitingChange[];
+  /** The changes in motion, the most recently touched first. */
+  changes: BridgeMotion[];
   /** The sessions that acted inside the window, most recent first; a subagent's session sits under its parent. */
   sessions: BridgeSession[];
-  /** How many decisions wait on the person. */
-  waiting: number;
 }
 
 export interface BridgeOpts {
@@ -125,6 +141,34 @@ export function featurePath(loaded: Loaded, change: Rec): BridgeChange['path'] {
   return out;
 }
 
+/** The change of a decision's key: `decision:<product>/<change>/<slug>` is on `change:<product>/<change>`; a decision
+ *  at the product or store level (two segments or one) is on none. The same reading as ui/src/lib/keys.ts. */
+export function changeOfDecision(key: string): string | undefined {
+  if (!key.startsWith('decision:')) return undefined;
+  const parts = key.slice('decision:'.length).split('/');
+  return parts.length === 3 ? `change:${parts[0]}/${parts[1]}` : undefined;
+}
+
+/** One change as the bridge's card reads it. */
+export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[]): BridgeMotion {
+  const steps = stepsOf(c.data);
+  const counted = steps.filter((s) => s.state !== 'dropped');
+  const next = nextStep(steps);
+  const blockedOn = c.sections.get('Blocked on')?.trim();
+  return {
+    key: c.key,
+    name: str(c.data.name),
+    title: lineOf(c.data),
+    status: str(c.data.status),
+    path: featurePath(loaded, c),
+    steps: { done: counted.filter((s) => s.state === 'done').length, total: counted.length, dropped: steps.length - counted.length },
+    step: next ? { n: next.n, text: next.step.text, state: next.step.state, note: next.step.note } : undefined,
+    blockedOn: blockedOn || undefined,
+    last,
+    sessions,
+  };
+}
+
 const DAY = 24 * 60 * 60_000;
 
 export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bridge {
@@ -134,16 +178,20 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   const productKey = opts.product ? (opts.product.startsWith('product:') ? opts.product : `product:${opts.product}`) : null;
 
   // the last act of each session from the stream: a write stamped with it, its own line excluded (the line's own
-  // instant is read from the log, so a stop reads as a stop and not as an act after it)
+  // instant is read from the log, so a stop reads as a stop and not as an act after it); and the last touch of each
+  // change inside the window: a write to it, or to a decision on it
   const acts = new Map<string, string>();
+  const touched = new Map<string, string>();
   for (const e of readEvents(store)) {
     if (opts.until !== undefined && e.seq > opts.until) break;
+    const c = e.type === 'change' ? e.key : e.type === 'decision' ? changeOfDecision(e.key) : undefined;
+    if (c && e.at >= since && (!touched.has(c) || e.at > touched.get(c)!)) touched.set(c, e.at);
     const s = e.session ?? (e.type === 'session' ? e.key : undefined);
     if (!s) continue;
     if (e.op === 'log' && e.key === s) continue;
     if (!acts.has(s) || e.at > acts.get(s)!) acts.set(s, e.at);
   }
-  // the proposed decisions in the product, by change, oldest first within a change: the same derivation the inbox reads
+  // the proposed decisions in the product, by change, oldest first within a change: a session stopped on one waits
   const inProduct = (c: Rec | undefined) => !!c && (!productKey || productOf(loaded, c)?.key === productKey);
   const proposedOn = new Map<string, WaitingDecision[]>();
   for (const d of proposedDecisions(loaded, (d) => inProduct(live(loaded, d.changeKey)))) {
@@ -151,9 +199,6 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), d]);
   }
   const asChange = (c: Rec): BridgeChange => ({ key: c.key, title: lineOf(c.data), name: str(c.data.name), status: str(c.data.status), next: nextLine(nextStep(stepsOf(c.data))), path: featurePath(loaded, c) });
-  const waitingOn: WaitingChange[] = [...proposedOn.entries()]
-    .map(([key, ds]) => ({ change: asChange(live(loaded, key)!), proposed: [...ds].reverse() }))
-    .sort((a, b) => (b.proposed[0].created ?? '').localeCompare(a.proposed[0].created ?? '') || a.change.key.localeCompare(b.change.key));
 
   const rows: BridgeSession[] = [];
   for (const rec of loaded.records) {
@@ -203,5 +248,32 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   }
   for (const r of sessions) r.children.sort(newestFirst);
   sessions.sort(newestFirst);
-  return { product: productKey, days, waitingOn, sessions, waiting: waitingOn.reduce((n, w) => n + w.proposed.length, 0) };
+
+  // the changes in motion: touched by a write or by a session inside the window, in the product, not finished. A
+  // subagent on no change of its own is on its parent's, as the dashboard reads it. A key is read through the store,
+  // so a change renamed inside the window is one change, touched under both names.
+  const changeOfRow = (r: BridgeSession): BridgeChange | undefined =>
+    r.change ?? (r.parent ? byKey.get(r.parent)?.change : undefined);
+  const onChange = new Map<string, BridgeSession[]>();
+  for (const r of rows) {
+    const on = changeOfRow(r);
+    if (!on) continue;
+    onChange.set(on.key, [...(onChange.get(on.key) ?? []), r]);
+    if (r.last && (!touched.has(on.key) || r.last > touched.get(on.key)!)) touched.set(on.key, r.last);
+  }
+  const resolved = new Map<string, { rec: Rec; last: string }>();
+  for (const [key, last] of touched) {
+    const c = live(loaded, key);
+    if (!c || c.type !== 'change' || !c.valid) continue;
+    const seen = resolved.get(c.key);
+    if (!seen || last > seen.last) resolved.set(c.key, { rec: c, last });
+  }
+  const changes: BridgeMotion[] = [];
+  for (const [key, { rec: c, last }] of resolved) {
+    if (c.data.status === 'done' || c.data.status === 'dropped') continue;
+    if (!inProduct(c)) continue;
+    changes.push(motionOf(loaded, c, last, [...(onChange.get(key) ?? [])].sort(newestFirst).map((r) => r.key)));
+  }
+  changes.sort((a, b) => b.last.localeCompare(a.last) || a.key.localeCompare(b.key));
+  return { product: productKey, days, changes, sessions };
 }

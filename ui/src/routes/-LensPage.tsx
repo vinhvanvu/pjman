@@ -18,7 +18,7 @@ import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
 import type { ChangeContext, Lens, ProductRow, Scope, SessionView, Tab } from '@/data/contract';
-import { useBridge, useDecideAction, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
+import { useDecideAction, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
 import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
@@ -181,8 +181,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   // identity has one source (lib/identity.ts): the URL, else this page's own scope; never a guess
   const fresh = freshScope(data, scope.isPlaceholderData);
   const product = pageProduct(node, fresh, store?.products);
-  // the rail's bridge entry carries how many decisions wait on the person
-  const bridge = useBridge(product?.key);
   usePrefetchDestinations(product?.key);
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
@@ -214,7 +212,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       current={lens === 'feature' || lens === 'roadmap' ? lens : undefined}
       lens={lens}
       node={node}
-      waiting={bridge.data?.waiting}
       sessionSlot={<ThisSession />}
       themeSlot={<ThemePicker />}
       personSlot={
@@ -513,7 +510,7 @@ function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
         onReopen={reopen}
       />
       <p className="text-xs text-ink-faint">
-        Accepting decides it as you and wakes the sessions working this change; the bridge lists what waits on you.{' '}
+        Accepting decides it as you and wakes the sessions working this change; the dock shows what waits on you.{' '}
         <NodeLink to={ctx.change.key} lens={lens} className="hover:text-primary">
           Back to the change
         </NodeLink>

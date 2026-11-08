@@ -6,8 +6,11 @@
 // The bar rolls: ticks, hour marks and a held head are placed once, at their instants, on a layer that slides left
 // as the clock moves, so nothing on it is redrawn as time passes and only real arrivals and departures appear or
 // leave. The timeline is read now, so a paused page still sees what arrived after it. Each event that arrives live
-// flashes the now marker at the bar's right edge in that event's colour (change:motion-design), the moment its beat
-// on the lanes and its card on the strip light up.
+// flashes the now marker at the bar's right edge in that event's colour (change:motion-design), the moment the card
+// of the change it wrote washes on the bridge.
+// The bridge ties its cards to the bar (decision bridge-rework/cards-and-transport): a card under the pointer lights
+// its writes here and dims the rest, a tick under the pointer lights its card, and held changes filter the bar to
+// their writes, previous and next stepping through those alone.
 import { useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Pause, Play, StepBack, StepForward } from 'lucide-react';
@@ -61,15 +64,6 @@ function useWindow(product: string | undefined, cursor: Cursor, resolved: Moment
   return { view, span, timeline: useTimeline(product, span.from, span.to, after) };
 }
 
-/** The event the page is locked on, among the product's, when one is selected. */
-export function useLockedEvent(product: string | undefined): TimelineEvent | undefined {
-  const cursor = useCursor();
-  const resolved = useResolved();
-  const now = useNow();
-  const { timeline } = useWindow(product, cursor, resolved, now);
-  return cursor.event ? timeline.data?.events.find((e) => e.seq === cursor.event) : undefined;
-}
-
 const agoWords = (a: string) => (a === 'just now' || !/^\d/.test(a) ? a : `${a} ago`);
 
 /** The head: a pole through the bar with its label flown from the top, on the side that keeps it inside the bar,
@@ -93,10 +87,13 @@ function Flag({ pct, label, side }: { pct: number; label: string; side: 'left' |
 const iconButton =
   'grid size-8 shrink-0 place-items-center rounded-row border border-line bg-surface text-ink-muted hover:bg-raised hover:text-ink disabled:pointer-events-none disabled:opacity-40';
 
-/** The rolling window as a page draws it, shared by the transport and the lanes so both stand on one axis: the
- *  cursor and its mode, the view, the events read for it, the frame things are placed in (`at` gives an instant's
- *  place in it), the layer that slides that frame to the view, where the held head stands, and the move to a new
- *  cursor. */
+/** No events yet: one array, so what derives from it keeps a stable input while the window loads. */
+const NO_EVENTS: readonly TimelineEvent[] = [];
+
+/** The rolling window as a page draws it, read once by the page and handed to the transport so both stand on one
+ *  axis and one clock: the cursor and its mode, the view, the events read for it, the frame things are placed in
+ *  (`at` gives an instant's place in it), the layer that slides that frame to the view, where the held head stands,
+ *  and the move to a new cursor. */
 export function useRolling(product: string | undefined) {
   const cursor = useCursor();
   const resolved = useResolved();
@@ -104,7 +101,7 @@ export function useRolling(product: string | undefined) {
   const now = useNow();
   const navigate = useNavigate();
   const { view, span, timeline } = useWindow(product, cursor, resolved, now);
-  const events = timeline.data?.events ?? [];
+  const events: readonly TimelineEvent[] = timeline.data?.events ?? NO_EVENTS;
   // the layer's own frame: twelve hours ending at the span's end, fixed until the hour turns; it is shifted to the
   // view, and the shift is the only thing that changes as the clock moves
   const layerStart = Date.parse(span.to) - WINDOW_MS;
@@ -141,9 +138,28 @@ export function useRolling(product: string | undefined) {
   };
 }
 
-export function Transport({ product }: { product: string }) {
-  const r = useRolling(product);
-  const { cursor, resolved, mode, now, view, span, timeline, events, selected, heldAt, layerStart, layer, go } = r;
+export type Rolling = ReturnType<typeof useRolling>;
+
+export interface TransportTies {
+  /** The ticks a card under the pointer lights (decision bridge-rework/cards-and-transport): these stand out, the
+   *  rest dim. Absent, every tick reads as itself. */
+  lit?: ReadonlySet<number>;
+  /** The held changes' writes (decision hold-is-a-button): only these ticks are shown and stepped through. */
+  only?: ReadonlySet<number>;
+  /** The tick under the pointer, so the page can light the card it wrote; undefined as it leaves. */
+  onHoverEvent?: (e: TimelineEvent | undefined) => void;
+}
+
+/** The transport on its own window, for a page that reads nothing else from it. */
+export function Transport({ product, ...ties }: { product: string } & TransportTies) {
+  return <TransportBar r={useRolling(product)} {...ties} />;
+}
+
+/** The transport on the window the page read (`useRolling`), so the page's cards and the bar share one clock. */
+export function TransportBar({ r, lit, only, onHoverEvent }: { r: Rolling } & TransportTies) {
+  const { cursor, resolved, mode, now, view, span, timeline, selected, heldAt, layerStart, layer, go } = r;
+  // held on a change, the bar is that change's writes alone: the ticks, the steps and the count of what arrived
+  const events = only ? r.events.filter((e) => only.has(e.seq)) : r.events;
   const fresh = useFresh();
   const latest = events.findLast((e) => fresh(e.seq));
   const [drag, setDrag] = useState<number | null>(null);
@@ -160,7 +176,7 @@ export function Transport({ product }: { product: string }) {
   const pause = () => go({ at: new Date().toISOString() });
 
   const arrived = new Set(arrivedSince(events, cursor).map((e) => e.seq));
-  const arrivedCount = timeline.data?.arrivedAfter ?? arrived.size;
+  const arrivedCount = only ? arrived.size : (timeline.data?.arrivedAfter ?? arrived.size);
   const headPct = drag ?? (mode === 'live' ? 100 : along(heldAt, view.start));
   const headLabel =
     drag !== null
@@ -170,8 +186,8 @@ export function Transport({ product }: { product: string }) {
         : clock(new Date(heldAt).toISOString(), now);
 
   const pctAt = (clientX: number) => {
-    const r = bar.current!.getBoundingClientRect();
-    return Math.min(100, Math.max(0, ((clientX - r.left) / r.width) * 100));
+    const box = bar.current!.getBoundingClientRect();
+    return Math.min(100, Math.max(0, ((clientX - box.left) / box.width) * 100));
   };
   // a drag to the right edge of a rolling bar is now; nothing lies beyond it
   const scrubTo = (pct: number) => {
@@ -275,9 +291,16 @@ export function Transport({ product }: { product: string }) {
                   pct={along(Date.parse(e.at), layerStart)}
                   held={e.seq === cursor.event}
                   fresh={mode !== 'live' && arrived.has(e.seq)}
+                  lit={lit ? lit.has(e.seq) : undefined}
                   onLock={() => go({ event: e.seq })}
-                  onTip={(el) => tips.show(e, el)}
-                  onUntip={tips.hide}
+                  onTip={(el) => {
+                    tips.show(e, el);
+                    onHoverEvent?.(e);
+                  }}
+                  onUntip={() => {
+                    tips.hide();
+                    onHoverEvent?.(undefined);
+                  }}
                 />
               ))}
             </div>
@@ -359,12 +382,14 @@ export function Transport({ product }: { product: string }) {
 }
 
 /** One event on the bar: a tick, taller where a decision was opened or moved and coloured by the status it left; the
- *  pointer on it shows its tip, a click locks on it. */
+ *  pointer on it shows its tip, a click locks on it. Lit (a card under the pointer wrote it) it stands taller in the
+ *  accent; while anything is lit, the rest dim. */
 function Tick({
   event: e,
   pct,
   held,
   fresh,
+  lit,
   onLock,
   onTip,
   onUntip,
@@ -373,6 +398,8 @@ function Tick({
   pct: number;
   held: boolean;
   fresh: boolean;
+  /** Lit, dimmed (something else is lit), or neither. */
+  lit?: boolean;
   onLock: () => void;
   onTip: (el: Element) => void;
   onUntip: () => void;
@@ -382,7 +409,11 @@ function Tick({
       type="button"
       tabIndex={-1}
       aria-label={`Lock on event #${e.seq}`}
-      className={cn('group absolute top-0 h-full w-1.5 -translate-x-1/2', e.decision && 'z-[1]')}
+      className={cn(
+        'group absolute top-0 h-full w-1.5 -translate-x-1/2 transition-opacity',
+        (e.decision || lit) && 'z-[1]',
+        lit === false && 'opacity-30',
+      )}
       style={{ left: `${pct}%` }}
       onPointerDown={(ev) => ev.stopPropagation()}
       onPointerEnter={(ev) => onTip(ev.currentTarget)}
@@ -394,6 +425,7 @@ function Tick({
           'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full group-hover:bg-ink',
           e.decision ? cn('h-4 w-[3px]', decisionTone(e.status).bg) : cn('h-2.5 w-px', TONE.quiet.bg),
           fresh && !e.decision && 'bg-primary',
+          lit && 'h-4 w-[3px] bg-primary shadow-[0_0_6px_1px] shadow-primary/50',
           held && 'h-5 w-[3px] bg-primary',
         )}
       />
