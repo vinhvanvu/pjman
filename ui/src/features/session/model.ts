@@ -162,3 +162,16 @@ export function sourcesView(ctx: Pick<ChangeContext, 'sources' | 'branch'>): {
 /** The identity row's label: where the session is now, or what the person is viewing instead. */
 export const identityLabel = (isViewing: boolean, kind: 'change' | 'bug' = 'change'): string =>
   `${isViewing ? 'viewing' : 'on now'} · ${kind}`;
+
+/** How long a session the store does not hold is taken to be one about to start, before the page says there is none:
+ *  the docked pane is pointed at the page before the record is written, and the write lands within a few seconds. */
+export const STARTING_MS = 10_000;
+
+export type Absence = 'starting' | 'none' | 'failed';
+
+/** What the page shows when the session view failed: no record within the starting window is a session on its way
+ *  (change:session-page-before-record); past it, no such session; any other failure is the server's, said as it is. */
+export function absence(status: number | undefined, waited: boolean): Absence {
+  if (status !== 404) return 'failed';
+  return waited ? 'none' : 'starting';
+}

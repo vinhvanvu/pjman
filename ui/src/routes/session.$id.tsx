@@ -1,7 +1,7 @@
 // /session/:id: the page that follows a session. Opening it adopts the session for this tab, so the pill brings the
 // person back from anywhere. Width decides the page, never the route (decision one-tree-two-variables): wide, the
 // session tree opened out with the rail in its panel; docked, the lens page whose dock is the same tree folded. A
-// session on no change yet stands at its product.
+// session on no change yet stands at its product. A session the store has no view for is waited for, or said absent.
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { useSessionView } from '@/data/queries';
@@ -9,6 +9,7 @@ import { useWide } from '@/hooks/useMediaQuery';
 import { kindOf } from '@/lib/keys';
 import { useFollow } from '@/state/follow';
 import { Pending } from '@/components/Pending';
+import { SessionAbsent } from '@/features/session';
 import { LensPage } from './-LensPage';
 import { pageSearch } from './-search';
 import { SessionWide } from './-SessionWide';
@@ -24,12 +25,7 @@ function SessionPage() {
   useEffect(() => adopt(id), [id, adopt]);
   const wide = useWide();
   const { data, error } = useSessionView(id);
-  if (error)
-    return (
-      <div className="p-6 text-sm text-ink-muted">
-        No session {id}: {error.message}
-      </div>
-    );
+  if (error) return <SessionAbsent key={id} id={id} error={error} />;
   if (!data) return <Pending />;
   if (wide && data.session) return <SessionWide session={data.session} />;
   const key = data.showing.key;

@@ -3,7 +3,7 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useAt } from '@/state/moment';
-import { api } from './client';
+import { api, ApiError } from './client';
 import type { DecideAction, DecideBody, OrderBody, Rail, RailQuery, ScopeQuery } from './contract';
 
 /** Every key ends with the moment it reads as of ('now' when none), so a page at a moment never shares a cache
@@ -100,6 +100,10 @@ export function useDecideAction(kind: 'decide' | 'reopen'): DecideAction | undef
   return at ? undefined : (decision, opts) => mutation.mutateAsync({ decision, ...opts });
 }
 
+/** A session the store does not hold: the page waits for it rather than retrying, since the record's write is an
+ *  event and the stream's invalidation refetches the errored query the moment it lands. */
+const noSession = (e: unknown) => e instanceof ApiError && e.status === 404;
+
 export function useSessionView(id: string | undefined) {
   const at = useAt();
   return useQuery({
@@ -107,6 +111,7 @@ export function useSessionView(id: string | undefined) {
     queryFn: () => api.sessionView(id!, at),
     enabled: !!id,
     placeholderData: keepPreviousData,
+    retry: (count, error) => count < 1 && !noSession(error),
   });
 }
 

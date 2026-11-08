@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeContext, RailLane } from '@/data/contract';
 import {
+  absence,
   childrenView,
   chipViews,
   effectsOf,
@@ -118,5 +119,16 @@ describe('the path and the sources', () => {
   it('labels the identity row by where the session is', () => {
     expect(identityLabel(false)).toBe('on now · change');
     expect(identityLabel(true, 'bug')).toBe('viewing · bug');
+  });
+});
+
+describe('absence', () => {
+  it('takes a session the store has not got as starting, until the window has passed', () => {
+    expect(absence(404, false)).toBe('starting');
+    expect(absence(404, true)).toBe('none');
+  });
+  it('says any other failure as the server\'s, whether or not the window has passed', () => {
+    expect(absence(500, false)).toBe('failed');
+    expect(absence(undefined, true)).toBe('failed');
   });
 });
