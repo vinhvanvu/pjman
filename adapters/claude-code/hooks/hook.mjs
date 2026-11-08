@@ -15,7 +15,8 @@
 //                     the agent is told the candidates; a ticket of the project's tracker with no record is read from the tracker and created
 //                     through the sync (gh for GitHub), or the agent is told to; then the brief (pjman brief --session): the bound change's
 //                     context in full when the binding moved, else what changed on it since the last brief
-//   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
+//   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change;
+//                     a shell call that may bind (filing a change, `pjman session bind`) reads the session's binding, and a moved one is taken up as a prompt's bind is
 //   Stop              a turn that acted appends one log line, from the harness's last message; the size of each brief given this turn and the
 //                     receipt of what the store received since the last turn are shown to the person
 //   SubagentStart     a child session with `parent`
@@ -24,7 +25,7 @@
 //
 //   The view beside the session. In cmux: the dashboard (pjman serve, started if none is running) is docked in a browser pane
 //   at session start, opened on the product's bridge, and the pane is pointed at the session's page once the session binds a
-//   change (from its branch at start, or from a prompt); a session that never binds leaves it on the bridge. The pane belongs
+//   change (from its branch at start, from a prompt, or by the agent filing or binding one); a session that never binds leaves it on the bridge. The pane belongs
 //   to the terminal: it closes at session end, and a /clear keeps it, parked on the bridge for the next session there to take
 //   over the same way. Elsewhere, and whenever the pane was closed, `pjman open --session` brings the page back; the
 //   session's id is exported to the agent's shell as PJMAN_SESSION.
@@ -201,6 +202,11 @@ function resolveProject(st, sid, input, env, cwd, root) {
 }
 
 /** Observed edges from the bound change to the branch and the open pull request, once each per session. */
+/** A change the hook took up as the session's subject, remembered so a later read of the record does not take it up again. */
+function taken(st, key) {
+  st.taken = [...new Set([...(st.taken ?? []), key])];
+  return key;
+}
 function observeWork(st, sid, cwd, env) {
   if (!st.bound) return;
   const branch = currentBranch(cwd);
@@ -576,6 +582,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (main) exportToShell(env);
   if (st.seq === undefined) st.seq = read.receipt?.seq ?? 0; // receipts start from here
   if (start.bound) st.bound = start.bound;
+  if (st.bound) taken(st, st.bound);
   if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
   let text = (read.brief ?? '') + `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
   if (st.unscoped) text += `This session started outside any registered repository (${input.cwd || process.cwd()}). It is recorded with no project until a tool call lands in one: edit a file there or \`cd\` into it in a shell command, and the session is resolved to that project. Run pjman from inside the repository you work in, so its writes resolve to that project.\n\n`;
@@ -662,7 +669,7 @@ async function main() {
       if (found?.hint) parts.push(found.hint);
       else if (found?.key && st.bound !== found.key) {
         if (tryPjman(['session', 'bind', sid, found.key, '--reason', 'prompt'], { cwd, env }) !== null) {
-          st.bound = found.key;
+          st.bound = taken(st, found.key);
           sidebarStatus(found.key);
           observeWork(st, sid, cwd, env);
           if (!input.agent_id) await followView(sid, cwd); // the first subject: a pane parked by a clear follows now
@@ -680,6 +687,21 @@ async function main() {
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
       const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|note|session|mv|rm|fmt|sync|order|apply|undo|migrate)\b/;
       if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
+      // the agent's own bind (filing a change binds the run to it, or `pjman session bind`) gives the session its subject as a
+      // prompt's does: the sidebar names it and a parked pane follows (change:bind-moves-the-dock)
+      const bindingWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:new|session|apply)\b/;
+      if (input.tool_name === 'Bash' && bindingWrite.test(String(input.tool_input?.command ?? ''))) {
+        const changes = tryPjman(['show', `session:${sid}`, '--json'], { cwd, json: true })?.data?.changes;
+        // the newest binding, unless the hook has taken it up before (a prompt can bind an earlier change again, which
+        // leaves the record's order as it was)
+        const last = Array.isArray(changes) ? changes.at(-1) : null;
+        if (last && last !== st.bound && !st.taken?.includes(last)) {
+          st.bound = taken(st, last);
+          sidebarStatus(last);
+          observeWork(st, sid, cwd, env);
+          if (!input.agent_id) await followView(sid, cwd);
+        }
+      }
       if (input.tool_name === 'Bash' && /\bgit\s+(checkout|switch)\b|\bgh\s+pr\s+create\b/.test(String(input.tool_input?.command ?? ''))) observeWork(st, sid, cwd, env);
       const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
       if (file && st.bound) {
