@@ -1,6 +1,8 @@
 // A change's decisions as a group (decision detail-pages/decision-card): the proposed first and oldest first, one open
-// as the ladder and the rest rows under a waits-on-you head with the count; the decided as rows whose thread opens
-// read-only; the superseded and reverted folded under one history line. Opening is in place: the card's height eases
+// as the ladder and the rest rows under a waits-on-you head with the count; the decided folded under one count line
+// by default (decided decided-decisions-fold/fold-by-default), opening to rows that read each answer and whose thread
+// opens read-only, the fold open at once when a link names one of them; the superseded and reverted folded under one
+// history line. Opening is in place: the card's height eases
 // open, the cards beneath move down, nothing else changes; several may be open on a wide page, one at a time docked.
 // The open decision is in the URL, so a link to a decision lands on it open. Deciding from an open card collapses it
 // into a decided row that leaves the waiting group at once: it holds, washed done green, then fades where it stands
@@ -14,7 +16,7 @@ import { useHeldList } from '@/lib/hold';
 import { liveItem } from '@/lib/motion';
 import { TONE } from '@/lib/tones';
 import { DecisionCard } from './DecisionCard';
-import { type CardDecision, grouped, openByDefault } from './model';
+import { type CardDecision, decidedHead, grouped, openByDefault } from './model';
 
 /** A decided card holds, washed done green, then fades where it stands; its children take the label, so the wash
  *  shows. */
@@ -77,12 +79,16 @@ export function DecisionGroup({
     return new Set(first ? [first] : []);
   });
   const [thread, setThread] = useState<Set<string>>(() => new Set(linked ? [linked] : []));
+  // the decided fold: closed by default, open while a link names a decided decision
+  const isDecided = (key: string | undefined) => !!key && decided.some((d) => d.key === key);
+  const [decidedOpen, setDecidedOpen] = useState(() => isDecided(linked));
   const [seen, setSeen] = useState(linked);
   if (linked !== seen) {
     setSeen(linked);
     if (linked) {
       setOpen((prev) => (wide ? new Set(prev).add(linked) : new Set([linked])));
       setThread((prev) => new Set(prev).add(linked));
+      if (isDecided(linked)) setDecidedOpen(true);
     }
   }
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -156,21 +162,37 @@ export function DecisionGroup({
         </AnimatePresence>
       </ol>
       {where === 'change' && decided.length > 0 && (
-        <ol className="flex flex-col">
-          {decided.map((d) => (
-            <li key={d.key}>
-              <DecisionCard
-                d={d}
-                depth={thread.has(d.key) ? 'thread' : 'row'}
-                lens={lens}
-                actor={actor}
-                onToggleThread={() => toggleThread(d.key)}
-                onReopen={onReopen}
-                showChange={showChange}
-              />
-            </li>
-          ))}
-        </ol>
+        <div className="flex flex-col">
+          <button
+            type="button"
+            onClick={() => setDecidedOpen((v) => !v)}
+            aria-expanded={decidedOpen}
+            className="flex min-h-[30px] items-center gap-2 self-start text-left text-body text-ink-muted hover:text-ink"
+          >
+            <span aria-hidden="true" className={cn('size-[9px] shrink-0 rotate-45 rounded-[2px]', TONE.done.bg)} />
+            <span>
+              {decidedHead(decided.length)}
+              {decidedOpen ? '' : ' …'}
+            </span>
+          </button>
+          {decidedOpen && (
+            <ol className="flex flex-col pl-[17px]">
+              {decided.map((d) => (
+                <li key={d.key}>
+                  <DecisionCard
+                    d={d}
+                    depth={thread.has(d.key) ? 'thread' : 'row'}
+                    lens={lens}
+                    actor={actor}
+                    onToggleThread={() => toggleThread(d.key)}
+                    onReopen={onReopen}
+                    showChange={showChange}
+                  />
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       )}
       {where === 'change' && history.length > 0 && (
         <div className="flex flex-col pl-[17px]">
