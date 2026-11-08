@@ -8,10 +8,11 @@ import { openPage, openUrl } from './commands/open.js';
 import { withStoreLock } from './lock.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
-import { loadStore, resolve } from './records.js';
-import { CliError, plural } from './util.js';
+import { loadStore, resolve, unresolvedError } from './records.js';
+import { CliError, notFound, plural, usageError } from './util.js';
+import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from './validate.js';
-import { findReferences, formatNeighbourhood, formatReferences, get } from './graph.js';
+import { findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from './graph.js';
 import { renderView, watchStore } from './commands/pane.js';
 import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
 import { installedTool, readServeAddress, startServer } from './server.js';
@@ -26,7 +27,7 @@ import { envelope } from './write.js';
 import { fmt } from './commands/fmt.js';
 import { mv } from './commands/mv.js';
 import { rm } from './commands/rm.js';
-import { apply, undo } from './commands/apply.js';
+import { apply, applyLines, undo } from './commands/apply.js';
 import { liftsOfStore } from './lift.js';
 import { formatRest, restOf } from './rest.js';
 import { formatTree, tree } from './tree.js';
@@ -35,240 +36,50 @@ import { activity, formatActivity } from './activity.js';
 import { set } from './commands/set.js';
 import { decision, entriesFromFlags, entriesFromJson } from './commands/decision.js';
 import { formatPlan, step } from './commands/step.js';
-import { order } from './commands/order.js';
+import { order, sequenceOf } from './commands/order.js';
 import { formatIntake, intake } from './intake.js';
-import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, show, storeContext } from './commands/view.js';
+import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, row, show, storeContext } from './commands/view.js';
 import { describeMigration, formatMismatch, migrate, pendingMigration } from './commands/migrate.js';
 import { TOOL_VERSION } from './version.js';
 import { formatIdentity, identity } from './identity.js';
 import { shortenText } from './keys.js';
 
 
-/** One entry per command: the usage lines and a one-line purpose. `pjman <cmd> --help` prints one; `pjman --help` prints all. */
-const COMMANDS: { name: string; usage: string[]; about: string }[] = [
-  { name: 'init', about: 'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, holding their forge login and git email as accounts), ask whether the first session should propose a product map (--map or --no-map answers without asking; the answer is the project\'s map field), set the actor, install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record)',
-    usage: ['pjman init [--name <project-name>] [--product product:<slug>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--in-project]'] },
-  { name: 'start', about: 'the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL', usage: ['pjman start [--port <n>] [--open]'] },
-  { name: 'stop', about: 'stop the dashboard server', usage: ['pjman stop'] },
-  { name: 'open', about: "the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere",
-    usage: ['pjman open [--session <id>]'] },
-  { name: 'brief', about: "print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md); with --session, what the store has for that session since its last brief: the bound change's context in full when the binding moved (or --full), else what changed on it, its milestone, its decisions and its dependency edges, without the session's own writes, one line per record, and the other live sessions near it; the brief records how far it reached and ends with its size",
-    usage: ['pjman brief', 'pjman brief --session <id> [--full] [--json]'] },
-  { name: 'new', about: 'create a record; refused if it would not validate',
-    usage: [
-      'pjman new product <slug> --title <t> [--name <one to three words>] [--owners <actor>]... [--levels <label>]... [--sequence <change>]... [--summary <s>]',
-      'pjman new feature <slug> --title <t> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>]',
-      '        keys are paths under the product (feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug>); inside a project the slug alone names a record',
-      'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...',
-      'pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--owners <actor>]... [--body <base>|-]   (what applies across the product; the body is the base)',
-      'pjman new place <aspect>/<place> --feature feature:<slug> [--body <fork>|-] [--links <key>]...   (where the aspect applies; the body is the fork, empty for the base as it is)',
-      'pjman new change <slug> --name <one to four words> --gist <one line> --origin <the request in the person\'s words, or the key it came from> --intent <the need, for whom> --done-when <the outcome that closes it>',
-      '                        [--scope <in, and out>] [--open-questions <items>] [--blocked-on <an outside blocker>] [--notes <free>] [--status open] [--project <key>] [--parent <change>]',
-      '                        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...',
-      '                        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]   (a bug against a live node; a milestone\'s date; the plan is written with pjman step)',
-      'pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]   (a version the product shipped; its creation is the event)',
-      'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]...',
-      'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...   (a person\'s accounts)',
-      'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>]',
-    ] },
-  { name: 'set', about: "change authored fields on a record (a list is comma-separated; an empty value removes the field; a change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole, and a base written lists every place it reaches; field=- reads the value from stdin; a decision's supersedes only adds, and marks each named decision superseded in the same commit). A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten",
-    usage: ['pjman set <key> <field>=<value>...', 'pjman set <key> <field>=- < file   (one value from stdin)'] },
-  { name: 'decision', about: "write a decision at any size, one commit: created when it does not exist (then --name, --gist, --question and one --option are required), added to otherwise. Its foundation is a thread of entries: the question, criteria, options with their case, the recommendation with its reasoning, the person's comments in their words, rejections, the acceptance (a person's, with their words and when to revisit), a reopening. Status, decider and date follow the thread. --from - takes {name, gist, entries:[{type, text, id, case, option, by, revisit}]} as JSON on stdin",
-    usage: [
-      'pjman decision <change>/<slug> --name <one to four words> --gist <one line> --question <text> [--criterion <text>]... --option <id>=<text>... [--case <id>=<what it costs, what it rules out>]... [--recommend <id>[=<why>]] [--supersedes <decision>] [--links <key>]...',
-      'pjman decision <key> [--question <reframed>] [--option <id>=<text>]... [--comment <the person\'s words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]',
-      'pjman decision <key> --accept <id>[=<their words>] --by person:<handle> [--revisit <when to look again>]   (the person decides; an agent never does)',
-      'pjman decision <key> --reopen [--comment <why>]',
-      'pjman decision <key> --from -   (entries as JSON on stdin)',
-    ] },
-  { name: 'step', about: "a change's plan, written only through commands: steps as data, each with a text, a state (open, active, done, dropped) and a note of where the work stands; every move is one commit and one event on the change. The next step (the active one, else the first open), the plan's progress and the active step's note are derived",
-    usage: [
-      'pjman step <change> add <text> [--before <n>|--after <n>|--first|--last] [--note <text>]',
-      'pjman step <change> start|done|drop|reopen <n> [--note <where the work stands>]',
-      'pjman step <change> note <n> <text>',
-      'pjman step <change> move <n> --before <m>|--after <m>|--first|--last',
-    ] },
-  { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
-    usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
-  { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge; unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
-    usage: ['pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]   (the start as one write: the record unless it exists, the start line, the change the branch names bound and its edge observed, the brief; --json carries the brief)', 'pjman session log <id> <text>', 'pjman session bind <id> <change> [--reason prompt|created|branch]', 'pjman session unbind <id> <change>', 'pjman session observe <id> <edge> <from> <to>', 'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)', 'pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in; logged)'] },
-  { name: 'note', about: "a note to whoever works a change, or to one running session: one line under Notes on that record, given in full in the session's next brief; a session working the change, or the one addressed, is woken for it where its adapter can (pjman undo <commit> takes it back)",
-    usage: ['pjman note <change|session:<id>> <text>'] },
-  { name: 'wakes', about: "the events that wake a session: a decision on its bound change set decided, a note on that change or on the session, by anyone but the session; --follow keeps printing them as they land, from the stream's tail (or --since), until the session's process ends",
-    usage: ['pjman wakes --session <id> [--since <seq>] [--follow] [--json]'] },
-  { name: 'context', about: "what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions",
-    usage: ['pjman context [<change> | project:<slug>] [--all] [--json]'] },
-  { name: 'ls', about: 'list records, by type, status, project and kind; bugs come worst first, then oldest', usage: ['pjman ls [project|change|decision|source|session|actor] [--status <s>] [--project <key>] [--kind bug|work] [--json]'] },
-  { name: 'refs', about: "every reference in a text that resolves to something, in order, each with the change it leads to: change:<slug>, a URL, a ticket in any shape the store's source kinds know, an existing slug; the last mention is what a prompt is about. Never writes",
-    usage: ['pjman refs <text> [--json]', 'pjman refs - [--json]   (text on stdin)'] },
-  { name: 'intake', about: "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Never writes; the intake skill answers its four questions from this",
-    usage: ['pjman intake <text> [--json]', 'pjman intake - [--json]   (text on stdin)'] },
-  { name: 'tree', about: "the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature",
-    usage: ['pjman tree [product:<slug>|feature:<slug>] [--json]'] },
-  { name: 'activity', about: "the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person",
-    usage: ['pjman activity <key> [--days 14] [--since <iso>] [--json]'] },
-  { name: 'get', about: 'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out (exit 1 when nothing matches)',
-    usage: ['pjman get <ref> [--json]'] },
-  { name: 'view', about: "one reference as a Markdown document, or the project's board without one; --out writes a file, --watch re-renders whenever the store changes. A session's view is the dashboard's: pjman open --session",
-    usage: ['pjman view [<ref>] [--out <file>] [--watch]'] },
-  { name: 'show', about: 'print one record by key', usage: ['pjman show <key> [--json]'] },
-  { name: 'rest', about: "where a change may rest: whether a stop on it is one the record allows, and why. It rests when a decision on it is proposed, a blocker is recorded (blocked-on, a dependency not done), a person set it blocked, review, done or dropped, or its plan has run to its end; with steps still open and none of those it does not rest, and the open steps are listed (exit 1). The adapter's stop hook reads this; never writes",
-    usage: ['pjman rest <change> [--json]'] },
-  { name: 'validate', about: 'check every record and every reference; errors are reported, never dropped (exit 1 on errors)',
-    usage: ['pjman validate [--json]'] },
-  { name: 'fmt', about: 'rewrite records in canonical form: field order, the YAML rule, repaired quoting (--check reports only)',
-    usage: ['pjman fmt [--check]'] },
-  { name: 'mv', about: 'rename a change or a feature (the folder moves, the old slug stays as an alias; <product>/<slug> moves it to another product), a product (every key beneath it follows), a project (directories bound to it follow), a decision (within or across changes) or a person (the old handle stays as an alias; the user config follows); every reference is rewritten in the same commit',
-    usage: ['pjman mv change:<old> change:<new>', 'pjman mv feature:<old> feature:<new>', 'pjman mv product:<old> product:<new>', 'pjman mv project:<old> project:<new>', 'pjman mv decision:<change>/<old> decision:<change>/<new>', 'pjman mv person:<old> person:<new>'] },
-  { name: 'migrate', about: "the one move the store still waits for, one commit, one event, pjman undo <commit> reverts it. The layout: every product becomes a folder holding its features and changes, every key gains its product segment wherever it is written, each moved record keeps its old slug as an alias. The foundation: every change and decision mapped into its shape, nothing dropped (a title becomes a draft gist, a summary the Intent, next and a prose plan go to Notes, a list plan becomes steps, a decision's text one option accepted by whoever decided it), each marked migrated until it is next written. Then the stamp: pjman.yaml names the format the store is in (the pjman version that introduced its latest move), so a store from a newer pjman is refused by an older one, and an older store is told to migrate. Each move names the version that introduced it",
-    usage: ['pjman migrate'] },
-  { name: 'lift', about: "move every open, planning or active change up to what its plan says, as one batch (pjman undo reverts it): planning once it has a step, active once a step has started, review once every step is done. The same rule runs after every write; this is the backfill for a store written before it (--check lists the lifts only)",
-    usage: ['pjman lift [--check]'] },
-  { name: 'apply', about: "many writes as one commit: the commands one per line (new, set, decision, step, mv, rm, order, session, note; as typed after pjman), run in order with every commit held, then one commit and the events with it, closed by one 'applied' event on the record --for names (a decision that proposed a map, a change). A line that fails refuses the whole batch and nothing is written",
-    usage: ['pjman apply [<file>|-] [--for <key>]'] },
-  { name: 'undo', about: 'revert the last batch (or the commit named) as one commit, every record put back; refused while a later write touched a record of that batch',
-    usage: ['pjman undo [<commit>]'] },
-  { name: 'rm', about: "remove a record (a change takes its decisions with it). Refused while anything refers to it, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped",
-    usage: ['pjman rm <key> [--detach] [--json]'] },
-  { name: 'events', about: "the store's event stream: one event per write (seq, at, op, key, type, path, fields, writer, session, commit); `rebuild` rewrites it from the store's git history",
-    usage: ['pjman events [--since <seq>] [--session <key>] [--json]', 'pjman events --receipt [--since <seq>] [--session <key>] [--json]   what the store received, one line per record, for a person', 'pjman events rebuild'] },
-  { name: 'follow', about: 'print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to',
-    usage: ['pjman follow [--since <seq>] [--json]'] },
-  { name: 'serve', about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs",
-    usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>] [--register|--no-register]   (PORT from the environment when --port is absent; a checkout registers only with --register)'] },
-  { name: 'sync', about: "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered",
-    usage: ['pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]', 'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]', 'pjman sync github            (no --from: prints the gh command that reads the issues)'] },
-  { name: 'index', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'] },
-  { name: 'query', about: 'run a read-only SQL query against the index', usage: ['pjman query "<sql>"'] },
-  { name: 'where', about: 'print the store this directory resolves to and its mode', usage: ['pjman where [--json]'] },
-  { name: 'whoami', about: "who you are: the configured person, their record and their accounts in order, the first of a handle kind as the primary one; from the store alone, no app asked. --verify asks each account kind's checker (GitHub through gh; a kind with no checker reports unchecked) and gives each account a verdict, verified, unknown or unchecked, with the answers cached for a day (--fresh asks again). What is off is said with the command that resolves it: a provisional handle (one that claims no account of a handle kind), a sign-in claimed by another person, an account the app does not know. Writes nothing",
-    usage: ['pjman whoami [--verify] [--fresh] [--json]'] },
-];
+const PARSE_OPTIONS = FLAG_TYPES;
 
-const GLOBAL = `global flags: --store <path>  --writer <actor>  --session <session>  --created <date>  --json  --help  --version
-environment:  PJMAN_STORE  PJMAN_WRITER  PJMAN_SESSION  PJMAN_HOME`;
-
-function usage(name?: string): string {
-  const cmds = name ? COMMANDS.filter((c) => c.name === name) : COMMANDS;
-  if (cmds.length === 0) return usage();
-  const body = cmds.map((c) => `${c.usage.map((u) => '  ' + u).join('\n')}\n      ${c.about}`).join('\n\n');
-  const head = name ? '' : 'pjman — a context graph for product development\n\n';
-  return `${head}usage:\n${body}\n\n${GLOBAL}\n`;
-}
-
+/** The arguments parsed, then held to the command's own declaration (decision interface-audit/flags-per-command): a
+ *  flag it does not take is refused naming the ones it does, a retired flag with where its job went, and more
+ *  positionals than it takes are refused (a text with spaces is one quoted argument). */
 function parse(args: string[]) {
+  let parsed;
   try {
-    return parseArgs({
-  args,
-  allowPositionals: true,
-  strict: true,
-  options: {
-    help: { type: 'boolean', short: 'h' },
-    version: { type: 'boolean', short: 'V' },
-    json: { type: 'boolean' },
-    store: { type: 'string' },
-    writer: { type: 'string' },
-    session: { type: 'string' },
-    created: { type: 'string' },
-    'in-project': { type: 'boolean' },
-    'no-start': { type: 'boolean' },
-    'no-adapter': { type: 'boolean' },
-    verify: { type: 'boolean' },
-    fresh: { type: 'boolean' },
-    brief: { type: 'string' },
-    open: { type: 'boolean' },
-    all: { type: 'boolean' },
-    project: { type: 'string' },
-    tracker: { type: 'string' },
-    name: { type: 'string' },
-    title: { type: 'string' },
-    status: { type: 'string' },
-    summary: { type: 'string' },
-    plan: { type: 'string' },
-    next: { type: 'string' },
-    gist: { type: 'string' },
-    origin: { type: 'string' },
-    intent: { type: 'string' },
-    'done-when': { type: 'string' },
-    scope: { type: 'string' },
-    'open-questions': { type: 'string' },
-    'blocked-on': { type: 'string' },
-    notes: { type: 'string' },
-    note: { type: 'string' },
-    question: { type: 'string' },
-    criterion: { type: 'string', multiple: true },
-    option: { type: 'string', multiple: true },
-    case: { type: 'string', multiple: true },
-    recommend: { type: 'string' },
-    comment: { type: 'string' },
-    on: { type: 'string' },
-    reject: { type: 'string', multiple: true },
-    accept: { type: 'string' },
-    revisit: { type: 'string' },
-    reopen: { type: 'boolean' },
-    by: { type: 'string' },
-    binds: { type: 'string', multiple: true },
-    links: { type: 'string', multiple: true },
-    owners: { type: 'string', multiple: true },
-    features: { type: 'string', multiple: true },
-    aspects: { type: 'string', multiple: true },
-    feature: { type: 'string' },
-    'depends-on': { type: 'string', multiple: true },
-    kind: { type: 'string' },
-    severity: { type: 'string' },
-    target: { type: 'string' },
-    sequence: { type: 'string', multiple: true },
-    levels: { type: 'string', multiple: true },
-    level: { type: 'string' },
-    tag: { type: 'string' },
-    at: { type: 'string' },
-    commit: { type: 'string' },
-    ships: { type: 'string', multiple: true },
-    product: { type: 'string' },
-    days: { type: 'string' },
-    'decided-by': { type: 'string' },
-    'decided-on': { type: 'string' },
-    supersedes: { type: 'string' },
-    decision: { type: 'string' },
-    why: { type: 'string' },
-    url: { type: 'string' },
-    agent: { type: 'string' },
-    'on-behalf-of': { type: 'string' },
-    parent: { type: 'string' },
-    started: { type: 'string' },
-    body: { type: 'string' },
-    check: { type: 'boolean' },
-    out: { type: 'string' },
-    since: { type: 'string' },
-    port: { type: 'string' },
-    register: { type: 'boolean' },
-    'no-register': { type: 'boolean' },
-    host: { type: 'string' },
-    static: { type: 'string' },
-    team: { type: 'string' },
-    repo: { type: 'string' },
-    from: { type: 'string' },
-    watch: { type: 'boolean' },
-    detach: { type: 'boolean' },
-    full: { type: 'boolean' },
-    follow: { type: 'boolean' },
-    receipt: { type: 'boolean' },
-    reason: { type: 'string' },
-    log: { type: 'string' },
-    branch: { type: 'string' },
-    before: { type: 'string' },
-    after: { type: 'string' },
-    first: { type: 'boolean' },
-    last: { type: 'boolean' },
-    later: { type: 'boolean' },
-    for: { type: 'string' },
-    map: { type: 'boolean' },
-    'no-map': { type: 'boolean' },
-  },
-    });
+    parsed = parseArgs({ args, allowPositionals: true, strict: true, options: PARSE_OPTIONS });
   } catch (e) {
-    throw new CliError(`${(e as Error).message.split('\n')[0]}\n(a value that starts with a dash is passed as --flag=value)`, 2);
+    throw usageError(`${(e as Error).message.split('\n')[0].replace(/\. To specify a positional argument.*$/, '')} (a value that starts with a dash is passed as --flag=value)`);
   }
+  const { values: v, positionals: pos } = parsed;
+  const cmd = commandOf(pos[0] ?? '');
+  if (cmd && !v.help) {
+    // flags and arity by subcommand where the declaration keys them so
+    const bySub = (!Array.isArray(cmd.flags)) || (cmd.args !== undefined && typeof cmd.args === 'object');
+    const sub = bySub ? pos[cmd.subAt ?? 1] : undefined;
+    const allowed = flagsFor(cmd, sub);
+    const label = `pjman ${cmd.name}${sub && allowed ? ` ${sub}` : ''}`;
+    if (allowed) {
+      for (const f of Object.keys(v)) {
+        if ((GLOBAL_FLAGS as readonly string[]).includes(f) || allowed.includes(f)) continue;
+        if (RETIRED_FLAGS[f]) throw usageError(`--${f} is retired: ${RETIRED_FLAGS[f]}`);
+        throw usageError(`${label} takes no --${f}; it takes ${allowed.length ? allowed.map((x) => `--${x}`).join(' ') : 'no flags of its own'} (pjman help ${cmd.name})`);
+      }
+    }
+    const max = argsFor(cmd, sub);
+    const given = pos.length - 1 - (sub !== undefined ? 1 : 0);
+    if (max !== undefined && given > max) {
+      const extra = pos.slice(pos.length - (given - max));
+      throw usageError(`${label} takes ${max === 0 ? 'no arguments' : max === 1 ? 'one argument' : `${max} arguments`}; got ${extra.map((x) => `'${x}'`).join(' ')} besides (quote a text with spaces as one argument; pjman help ${cmd.name})`);
+    }
+  }
+  return parsed;
 }
 
 // Inside a product the slug alone names a record: text output drops the product segment of the current project's product
@@ -289,6 +100,16 @@ const out = (s: string) => {
 // JSON keeps the full keys: it is read by programs, and the product segment is part of the key
 const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '\n');
 
+/** The same act over several records as one commit and one undo (decision interface-audit/bulk-writes): the lines
+ *  held as a batch, each run by `run`; in a store the tool does not commit, one by one. */
+function batch(store: ReturnType<typeof requireStore>, v: { session?: string; writer?: string }, lines: string[][], run: (argv: string[]) => void): { commit: string | null } {
+  if (store.mode !== 'standalone') {
+    for (const l of lines) run(l);
+    return { commit: null };
+  }
+  return applyLines(store, lines.map((argv, i) => ({ line: i + 1, argv })), run, { session: v.session, writer: v.writer });
+}
+
 /** The current project's tracker (its ticket source kind), or null. */
 function trackerOf(store: ReturnType<typeof requireStore>): string | null {
   if (!store.project) return null;
@@ -304,13 +125,21 @@ function main(argv: string[]): number {
     return 0;
   }
   if (v.help || cmd === 'help') {
-    out(usage(cmd === 'help' ? pos[1] : cmd));
+    const name = cmd === 'help' ? pos[1] : cmd;
+    if (!name) {
+      out(overview());
+      return 0;
+    }
+    const text = helpFor(name);
+    if (!text) throw usageError(`no entity or command '${name}'; pjman --help lists them`);
+    out(text);
     return 0;
   }
   if (!cmd) {
-    out(usage());
-    return 1;
+    out(overview());
+    return 2;
   }
+  if (!commandOf(cmd)) throw usageError(`unknown command '${cmd}'; pjman --help lists them`);
   const cwd = process.cwd();
   // a session's brief records its watermark, and a session reading a change's context moves its focus: both write
   const writes = WRITE_COMMANDS.has(cmd) || (cmd === 'brief' && !!v.session) || (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
@@ -345,12 +174,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'new': {
       const store = scoped(requireStore(cwd, v.store));
       const [, type, ident] = pos;
-      if (!type || !ident) throw new CliError('usage: pjman new <product|feature|aspect|place|project|change|decision|release|source|actor|session> <ident> [flags]');
-      if (type === 'change' && (v.plan !== undefined || v.next !== undefined)) throw new CliError(v.plan !== undefined ? 'the plan is written with pjman step <change> add "…"' : 'next is retired: the next step is the plan\'s first open step (pjman step), an outside blocker is --blocked-on');
+      if (!type || !ident) throw usageError('usage: pjman new <product|feature|aspect|place|project|change|decision|release|source|actor|session> <ident> [flags]');
       const flags: NewFlags = {
         title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary,
         gist: v.gist, origin: v.origin, intent: v.intent, doneWhen: v['done-when'], scope: v.scope, openQuestions: v['open-questions'], blockedOn: v['blocked-on'], notes: v.notes,
-        binds: v.binds, links: v.links, decidedBy: v['decided-by'], decidedOn: v['decided-on'],
+        binds: v.binds, links: v.links, steps: v.step,
         supersedes: v.supersedes, name: v.name, url: v.url,
         agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, started: v.started,
         product: v.product, owners: v.owners, features: v.features, level: v.level, levels: v.levels,
@@ -380,7 +208,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'decision': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman decision <change>/<slug> --name … --gist … --question … --option <id>=<text>… [--recommend <id>[=<why>]] | pjman decision <key> <entries…> | --from -');
+      if (!pos[1]) throw usageError('usage: pjman decision <change>/<slug> --name … --gist … --question … --option <id>=<text>… [--recommend <id>[=<why>]] | pjman decision <key> <entries…> | --from -');
       const writer = envelope({ writer: v.writer }).writer;
       let name = v.name;
       let gist = v.gist;
@@ -403,64 +231,76 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'step': {
       const store = scoped(requireStore(cwd, v.store));
       const [, ref, verb, ...rest] = pos;
-      if (!ref || !verb) throw new CliError('usage: pjman step <change> add <text> | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last');
+      if (!ref || !verb) throw usageError('usage: pjman step <change> add <text> | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last');
       const num = (s: string | undefined) => (s === undefined ? undefined : Number(s));
       const n = verb === 'add' ? undefined : num(rest[0]);
-      const text = verb === 'add' ? rest.join(' ') : verb === 'note' ? rest.slice(1).join(' ') : undefined;
-      const r = step(store, ref, verb, n, { text, note: v.note, before: num(v.before), after: num(v.after), first: v.first, last: v.last, session: v.session, writer: v.writer });
+      let texts: string[] | undefined;
+      if (verb === 'add') {
+        if (v.from !== undefined) {
+          if (v.from !== '-') throw usageError('--from takes - (the steps one per line on stdin)');
+          if (rest.length) throw usageError('step add takes its texts as arguments or --from -, not both');
+          texts = fs.readFileSync(0, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean);
+        } else {
+          // several texts are several steps: a one-word text among several is words left unquoted, refused before it files them apart
+          if (rest.length > 1 && rest.some((t) => !/\s/.test(t.trim()))) throw usageError(`step add got ${rest.length} texts, some of one word ('${rest.find((t) => !/\s/.test(t.trim()))}'): each quoted text is a step; quote a step's words together`);
+          texts = rest;
+        }
+      }
+      const text = verb === 'note' || verb === 'edit' ? rest.slice(1).join(' ') : undefined;
+      const r = step(store, ref, verb, n, { texts, text, note: v.note, before: num(v.before), after: num(v.after), first: v.first, last: v.last, session: v.session, writer: v.writer });
       if (v.json) json(r);
-      else out(`${r.key} step ${r.n} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}`);
+      else out(`${r.key} step ${r.count > 1 ? `${r.n}-${r.n + r.count - 1}` : r.n} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}`);
       return 0;
     }
     case 'session': {
       const store = scoped(requireStore(cwd, v.store));
       const [, sub, id, ...rest] = pos;
       if (sub === 'start') {
-        if (!id) throw new CliError('usage: pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]');
+        if (!id) throw usageError('usage: pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]');
         const r = sessionStart(store, id, { agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, log: v.log, branch: v.branch, full: !!v.full, writer: v.writer, session: v.session });
         // the brief's text is what the agent reads, named as the context names records; the rest keeps full keys
         if (v.json) json({ ...r, brief: r.brief ? { ...r.brief, text: shortenText(r.brief.text, scopeProduct) } : null });
         else out(`${r.created ? 'created' : 'started'} ${r.key}${r.bound ? `, bound ${r.bound} (branch)` : ''}${r.brief ? `; ${formatBriefSize(r.brief)}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'log') {
-        if (!id || !rest.length) throw new CliError('usage: pjman session log <id> <text>');
+        if (!id || !rest.length) throw usageError('usage: pjman session log <id> <text>');
         const r = sessionLog(store, id, rest.join(' '));
         out(`logged to ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'bind') {
-        if (!id || !rest[0]) throw new CliError('usage: pjman session bind <id> <change> [--reason prompt|created|branch]');
+        if (!id || !rest[0]) throw usageError('usage: pjman session bind <id> <change> [--reason prompt|created|branch]');
         const reasons = ['prompt', 'created', 'branch', 'by hand'] as const;
         const reason = (v.reason ?? 'by hand') as BindReason;
         if (!reasons.includes(reason)) throw new CliError(`--reason takes ${reasons.join(', ')}`);
         const r = sessionBind(store, id, rest[0], reason);
         out(r.added ? `bound in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `already bound in ${r.path}`);
       } else if (sub === 'unbind') {
-        if (!id || !rest[0]) throw new CliError('usage: pjman session unbind <id> <change>');
+        if (!id || !rest[0]) throw usageError('usage: pjman session unbind <id> <change>');
         const r = sessionUnbind(store, id, rest[0]);
         out(`unbound in ${r.path}${r.dropped ? `; ${r.dropped} observed edge${r.dropped === 1 ? '' : 's'} dropped` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'observe') {
-        if (!id || rest.length < 3) throw new CliError('usage: pjman session observe <id> <edge> <from> <to>');
+        if (!id || rest.length < 3) throw usageError('usage: pjman session observe <id> <edge> <from> <to>');
         const r = sessionObserve(store, id, rest[0], rest[1], rest[2]);
         out(`observed in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'focus') {
-        if (!id || !rest[0]) throw new CliError('usage: pjman session focus <id> <change>');
+        if (!id || !rest[0]) throw usageError('usage: pjman session focus <id> <change>');
         const r = sessionFocus(store, id, rest[0]);
         out(r.moved ? `focus moved in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `focus already there in ${r.path}`);
       } else if (sub === 'project') {
-        if (!id || !rest[0]) throw new CliError('usage: pjman session project <id> <project>');
+        if (!id || !rest[0]) throw usageError('usage: pjman session project <id> <project>');
         const r = sessionProject(store, id, rest[0]);
         out(r.moved ? `resolved ${r.path} to ${r.project}${r.commit ? ` (committed ${r.commit})` : ''}` : `${r.path} is already ${r.project}'s`);
-      } else throw new CliError('usage: pjman session <log|bind|unbind|observe|focus|project> …');
+      } else throw usageError('usage: pjman session <log|bind|unbind|observe|focus|project> …');
       return 0;
     }
     case 'note': {
       const store = scoped(requireStore(cwd, v.store));
       const [, ref, ...rest] = pos;
-      if (!ref || !rest.length) throw new CliError('usage: pjman note <change|session:<id>> <text>');
-      const r = note(store, ref, rest.join(' '), { writer: v.writer, session: v.session });
+      if (!ref || !rest.length) throw usageError('usage: pjman note <change|session:<id>> <text>');
+      const r = note(store, ref.startsWith('session:') ? ref : resolveArg(loadStore(store), ref, { cwd, projectDir: store.projectDir, project: store.project }), rest.join(' '), { writer: v.writer, session: v.session });
       out(`noted on ${r.key}${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} takes it back)` : ''}`);
       return 0;
     }
     case 'wakes': {
-      if (!v.session) throw new CliError('usage: pjman wakes --session <id> [--since <seq>] [--follow] [--json]');
+      if (!v.session) throw usageError('usage: pjman wakes --session <id> [--since <seq>] [--follow] [--json]');
       const store = scoped(requireStore(cwd, v.store));
       const tail = readEvents(store).at(-1)?.seq ?? 0;
       const print = (w: Wake) => out(v.json ? JSON.stringify(w) : `#${w.seq} ${w.why}`);
@@ -502,23 +342,29 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'ls': {
       const store = scoped(requireStore(cwd, v.store));
-      const rows = ls(store, { type: pos[1], status: v.status, project: v.project, kind: v.kind });
+      const loaded = loadStore(store);
+      const at = (raw: string | undefined, kinds: string[]) => (raw === undefined ? undefined : resolveArg(loaded, raw, { kinds }));
+      const rows = ls(store, { type: pos[1], status: v.status, kind: v.kind, project: at(v.project, ['project']), product: at(v.product, ['product']), parent: at(v.parent, ['change', 'feature', 'product']), feature: at(v.feature, ['feature']) });
       v.json ? json(rows) : out(formatLs(rows));
       return 0;
     }
     case 'tree': {
       const store = scoped(requireStore(cwd, v.store));
-      const nodes = tree(loadStore(store), pos[1]);
+      const loaded = loadStore(store);
+      const root = pos[1] ? resolveArg(loaded, pos[1], { kinds: ['product', 'feature'] }) : undefined;
+      const nodes = tree(loaded, root);
+      if (root && !nodes.length) throw notFound(pos[1], { as: 'product or feature' });
       if (v.json) json(nodes);
-      else out(nodes.length ? formatTree(nodes) : pos[1] ? `${pos[1]} is not a product or a feature` : 'no products yet: pjman new product <slug> --title <t>');
+      else out(nodes.length ? formatTree(nodes) : 'no products yet: pjman new product <slug> --title <t>');
       return 0;
     }
     case 'activity': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman activity <key> [--days 14]');
+      if (!pos[1]) throw usageError('usage: pjman activity <key> [--days 14]');
       const loaded = loadStore(store);
-      const res = resolve(loaded, pos[1]);
-      if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`${pos[1]} does not resolve to a record`);
+      const key = resolveArg(loaded, pos[1], { cwd, projectDir: store.projectDir, project: store.project });
+      const res = resolve(loaded, key);
+      if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, pos[1]);
       const a = activity(store, loaded, res.rec.key, { days: v.days ? Number(v.days) : undefined, since: v.since });
       v.json ? json(a) : out(formatActivity(a, formatEvent));
       return 0;
@@ -528,7 +374,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (pos[1] && (pos[1].startsWith('product:') || pos[1].startsWith('feature:'))) {
         const loaded = loadStore(store);
         const nodes = tree(loaded, pos[1]);
-        if (!nodes.length) throw new CliError(`${pos[1]} does not resolve to a product or a feature`);
+        if (!nodes.length) throw notFound(pos[1], { as: 'product or feature' });
         const a = activity(store, loaded, nodes[0].key, {});
         v.json ? json({ tree: nodes[0], activity: a }) : out(formatTree(nodes) + '\n' + formatActivity(a, formatEvent));
         return 0;
@@ -553,14 +399,15 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'get': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman get <ref>');
+      if (!pos[1]) throw usageError('usage: pjman get <ref>');
       const n = get(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project });
+      if (n.resolution.status === 'none') throw notFound(pos[1], { tried: n.resolution.tried });
       v.json ? json(n) : out(formatNeighbourhood(n, formatChangeContext));
-      return n.resolution.status === 'none' ? 1 : 0;
+      return 0;
     }
     case 'intake': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman intake <text> | pjman intake - (text on stdin)');
+      if (!pos[1]) throw usageError('usage: pjman intake <text> | pjman intake - (text on stdin)');
       const text = pos[1] === '-' ? fs.readFileSync(0, 'utf8') : pos.slice(1).join(' ');
       const i = intake(store, loadStore(store), text.trim(), { cwd, projectDir: store.projectDir, project: store.project });
       v.json ? json(i) : out(formatIntake(i));
@@ -568,7 +415,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'refs': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman refs <text> | pjman refs - (text on stdin)');
+      if (!pos[1]) throw usageError('usage: pjman refs <text> | pjman refs - (text on stdin)');
       const text = pos[1] === '-' ? fs.readFileSync(0, 'utf8') : pos.slice(1).join(' ');
       const refs = findReferences(loadStore(store), text, { cwd, projectDir: store.projectDir, project: store.project });
       v.json ? json(refs) : out(formatReferences(refs));
@@ -605,33 +452,55 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'show': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman show <key>');
-      const r = show(store, pos[1]);
-      v.json ? json({ key: r.rec.key, path: r.rec.path, data: r.rec.data, body: r.rec.body }) : out(`# ${r.rec.path}\n${r.text}`);
+      if (!pos[1]) throw usageError('usage: pjman show <key>');
+      const r = show(store, resolveArg(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project }));
+      v.json ? json({ ...row(r.rec), body: r.rec.body }) : out(`# ${r.rec.path}\n${r.text}`);
       return 0;
     }
     case 'set': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1] || !pos[2]) throw new CliError('usage: pjman set <key> <field>=<value>...');
+      // the refs come first, then the pairs: a pair is the first argument with = in it (a key never has one)
+      const at = pos.findIndex((p, i) => i > 0 && /^[a-z_][a-z0-9_.-]*[+-]?=/.test(p));
+      const refs = at < 0 ? pos.slice(1) : pos.slice(1, at);
+      const pairs = at < 0 ? [] : pos.slice(at);
+      if (!refs.length || !pairs.length) throw usageError('usage: pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...');
+      const stray = pairs.find((p) => !/^[a-z_][a-z0-9_.-]*[+-]?=/.test(p));
+      if (stray) throw usageError(`'${stray}' is not field=value; the records come first, then the fields`);
       // one value may come from stdin, `field=-`: a multi-line text, such as an aspect's base or a place's fork
-      const pairs = pos.slice(2);
-      if (pairs.filter((p) => p.endsWith('=-')).length > 1) throw new CliError('only one field=- reads stdin');
-      const stdinPairs = pairs.map((p) => (p.endsWith('=-') ? `${p.slice(0, -1)}${fs.readFileSync(0, 'utf8')}` : p));
-      const r = set(store, pos[1], stdinPairs, { session: v.session });
-      v.json ? json(r) : out(`set ${r.changed.join(', ')} on ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}`);
+      if (pairs.filter((p) => p.endsWith('=-')).length > 1) throw usageError('only one field=- reads stdin');
+      if (refs.length > 1 && pairs.some((p) => p.endsWith('=-'))) throw usageError('field=- sets one record; name one');
+      const stdinPairs = pairs.map((p) => (p.endsWith('=-') && !p.endsWith('+=-') && !p.endsWith('-=-') ? `${p.slice(0, -1)}${fs.readFileSync(0, 'utf8')}` : p));
+      const loaded = loadStore(store);
+      const keys = refs.map((r) => resolveArg(loaded, r, { cwd, projectDir: store.projectDir, project: store.project }));
+      if (keys.length === 1) {
+        const r = set(store, keys[0], stdinPairs, { session: v.session });
+        v.json ? json(r) : out(`${r.changed.length ? `set ${r.changed.join(", ")} on` : "nothing to change on"} ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}`);
+        return 0;
+      }
+      // several records: one batch, one commit, one undo (decision interface-audit/bulk-writes)
+      const results: ReturnType<typeof set>[] = [];
+      const b = batch(store, v, keys.map((k) => ['set', k, ...stdinPairs]), (line) => results.push(set(store, line[1], line.slice(2), { session: v.session })));
+      v.json ? json({ results, commit: b.commit }) : out(`${results.map((r) => `set ${r.changed.join(', ')} on ${r.key}${r.notes.map((n) => `\nnote: ${n}`).join('')}`).join('\n')}\n${plural(results.length, 'record')} as one commit${b.commit ? ` (committed ${b.commit}; pjman undo reverts it)` : ''}`);
       return 0;
     }
     case 'order': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman order <change> --before <change> | --after <change> | --first | --last | --later');
+      const moves = [v.before, v.after, v.first, v.last, v.later].filter((x) => x !== undefined && x !== false).length;
+      if (!moves) {
+        const loaded = loadStore(store);
+        const o = sequenceOf(loaded, pos[1] ? resolveArg(loaded, pos[1], { kinds: ['product', 'change', 'feature'] }) : null);
+        v.json ? json(o) : out(o.sequence.length ? `${o.product} order:\n${o.sequence.map((k, i) => `${String(i + 1).padStart(3)}. ${k}`).join('\n')}\nthen later: ${plural(o.later, 'open change')}` : `${o.product} has no order yet: pjman order <change> --first`);
+        return 0;
+      }
+      if (!pos[1]) throw usageError('usage: pjman order <change> --before <change> | --after <change> | --first | --last | --later');
       const r = order(store, pos[1], { before: v.before, after: v.after, first: v.first, last: v.last, later: v.later, session: v.session, writer: v.writer });
       v.json ? json(r) : out(`${r.product} sequence: ${r.sequence.length ? r.sequence.join(' → ') : '(empty)'}${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'mv': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1] || !pos[2]) throw new CliError('usage: pjman mv <key> <new key>  (change, project or decision)');
-      const r = mv(store, pos[1], pos[2], { session: v.session });
+      if (!pos[1] || !pos[2]) throw usageError('usage: pjman mv <key> <new key>  (change, project or decision)');
+      const r = mv(store, resolveArg(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project }), pos[2], { session: v.session });
       if (v.json) json(r);
       else {
         out(`moved ${r.from} → ${r.to}; rewrote ${plural(r.rewritten.length, 'file')}${r.commit ? ` (committed ${r.commit})` : ''}`);
@@ -652,7 +521,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'rest': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman rest <change> [--json]');
+      if (!pos[1]) throw usageError('usage: pjman rest <change> [--json]');
       const r = restOf(loadStore(store), pos[1]);
       v.json ? json(r) : out(formatRest(r));
       return r.rests ? 0 : 1;
@@ -697,10 +566,18 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'rm': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman rm <key> [--detach]');
-      const r = rm(store, pos[1], { detach: v.detach, session: v.session, writer: v.writer });
-      if (v.json) json(r);
-      else out(`removed ${r.key} (${plural(r.removed.length, 'file')})${r.detached.length ? `; detached from ${r.detached.map((d) => `${d.key} ${d.fields.join(',')}`).join(', ')}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
+      if (!pos[1]) throw usageError('usage: pjman rm <ref>... [--detach]');
+      const loaded = loadStore(store);
+      const keys = pos.slice(1).map((r) => resolveArg(loaded, r, { cwd, projectDir: store.projectDir, project: store.project }));
+      const said = (r: ReturnType<typeof rm>) => `removed ${r.key} (${plural(r.removed.length, 'file')})${r.detached.length ? `; detached from ${r.detached.map((d) => `${d.key} ${d.fields.join(',')}`).join(', ')}` : ''}`;
+      if (keys.length === 1) {
+        const r = rm(store, keys[0], { detach: v.detach, session: v.session, writer: v.writer });
+        v.json ? json(r) : out(`${said(r)}${r.commit ? ` (committed ${r.commit})` : ''}`);
+        return 0;
+      }
+      const results: ReturnType<typeof rm>[] = [];
+      const b = batch(store, v, keys.map((k) => ['rm', k]), (line) => results.push(rm(store, line[1], { detach: v.detach, session: v.session, writer: v.writer })));
+      v.json ? json({ results, commit: b.commit }) : out(`${results.map(said).join('\n')}\n${plural(results.length, 'record')} as one commit${b.commit ? ` (committed ${b.commit}; pjman undo reverts it)` : ''}`);
       return 0;
     }
     case 'events': {
@@ -710,7 +587,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         out(`rebuilt ${plural(r.events, 'event')} from ${plural(r.commits, 'commit')}`);
         return 0;
       }
-      if (pos[1]) throw new CliError('usage: pjman events [--since <seq>] [--session <key>] [--receipt] | pjman events rebuild');
+      if (pos[1]) throw usageError('usage: pjman events [--since <seq>] [--session <key>] [--receipt] | pjman events rebuild');
       if (v.receipt) {
         const r = receipt(store, { since: v.since ? Number(v.since) : 0, session: v.session });
         v.json ? json(r) : out(formatReceipt(r) || '(nothing recorded)');
@@ -739,7 +616,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         const store = scoped(requireStore(cwd, v.store));
         const key = session.startsWith('session:') ? session : `session:${session}`;
         const res = resolve(loadStore(store), key);
-        if (res.status !== 'ok' || res.rec.type !== 'session') throw new CliError(`${key} has no record in the store`);
+        if (res.status !== 'ok' || res.rec.type !== 'session') throw notFound(key, { as: 'session' });
       }
       const s = start({ cwd, log: out });
       const url = openUrl(s.address, session);
@@ -786,7 +663,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       return 0;
     }
     case 'sync': {
-      if (pos[1] !== 'linear' && pos[1] !== 'github') throw new CliError('usage: pjman sync linear|github --from <file|-> [--project <key>]');
+      if (pos[1] !== 'linear' && pos[1] !== 'github') throw usageError('usage: pjman sync linear|github --from <file|-> [--project <key>]');
       const store = scoped(requireStore(cwd, v.store));
       const r = pos[1] === 'linear'
         ? syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session })
@@ -809,7 +686,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'query': {
       const store = scoped(requireStore(cwd, v.store));
-      if (!pos[1]) throw new CliError('usage: pjman query "<sql>"');
+      if (!pos[1]) throw usageError('usage: pjman query "<sql>"');
       json(query(store, pos[1]));
       return 0;
     }
@@ -838,7 +715,11 @@ try {
   process.exitCode = main(process.argv.slice(2));
 } catch (e) {
   if (e instanceof CliError) {
-    process.stderr.write(`pjman: ${e.message}\n`);
+    // one contract (decision interface-audit/error-contract): the message on stderr, or under --json the API's error
+    // shape on stdout, where a program reading the answer looks
+    const argv = process.argv.slice(2);
+    if (argv.includes('--json')) json({ error: { code: e.code, message: e.message, ...(e.tried ? { tried: e.tried } : {}) } });
+    else process.stderr.write(`pjman: ${e.message}\n`);
     process.exitCode = e.exitCode;
   } else {
     throw e;

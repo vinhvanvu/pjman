@@ -122,7 +122,8 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const sendAll = send;
   const fail = (res: http.ServerResponse, e: unknown) => {
     if (e instanceof HttpError) return send(res, e.status, { error: { code: e.code, message: e.message, tried: e.tried } });
-    if (e instanceof CliError) return send(res, 400, { error: { code: 'bad-request', message: e.message } });
+    // a refusal from the library answers with the CLI's code: not found 404, ambiguous 409, anything else 400
+    if (e instanceof CliError) return send(res, e.code === 'not-found' ? 404 : e.code === 'ambiguous' ? 409 : 400, { error: { code: e.code === 'usage' || e.code === 'refused' ? 'bad-request' : e.code, message: e.message, ...(e.tried ? { tried: e.tried } : {}) } });
     send(res, 500, { error: { code: 'internal', message: (e as Error).message } });
   };
 
@@ -207,14 +208,14 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const key = `${m[1]}:${decodeURIComponent(m[2])}`;
       if (m[3]) {
         const n = get(loaded, key, getOpts);
-        if (n.resolution.status === 'none') throw new HttpError(404, 'not-found', `${key} has no record`, n.resolution.tried);
+        if (n.resolution.status === 'none') throw new HttpError(404, 'not-found', `${key} resolves to nothing`, n.resolution.tried);
         return send(res, 200, { data: n });
       }
       const r = resolve(loaded, key);
       if (r.status === 'ok' || r.status === 'alias' || r.status === 'invalid') {
         return send(res, 200, { data: { ...row(r.rec), body: r.rec.body, sections: Object.fromEntries(r.rec.sections), via: r.status === 'alias' ? r.via : undefined } });
       }
-      throw new HttpError(404, 'not-found', `${key} has no record`);
+      throw new HttpError(404, 'not-found', `${key} resolves to nothing`);
     }
     if (route === '/resolve') {
       const ref = url.searchParams.get('ref');
@@ -233,7 +234,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const key = url.searchParams.get('key');
       if (!key) throw new HttpError(400, 'bad-request', 'key is required');
       const r = resolve(loaded, key);
-      if (r.status !== 'ok' && r.status !== 'alias') throw new HttpError(404, 'not-found', `${key} has no record`);
+      if (r.status !== 'ok' && r.status !== 'alias') throw new HttpError(404, 'not-found', `${key} resolves to nothing`);
       const days = url.searchParams.get('days');
       return send(res, 200, { data: activity(store, loaded, r.rec.key, { days: days ? Number(days) : undefined, since: url.searchParams.get('since') ?? undefined, ...asOf }) });
     }
@@ -241,7 +242,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const key = url.searchParams.get('key');
       if (!key) throw new HttpError(400, 'bad-request', 'key is required');
       const r = resolve(loaded, key);
-      if (r.status !== 'ok' && r.status !== 'alias') throw new HttpError(404, 'not-found', `${key} has no record`);
+      if (r.status !== 'ok' && r.status !== 'alias') throw new HttpError(404, 'not-found', `${key} resolves to nothing`);
       const q = url.searchParams;
       const num = (name: string) => (q.get(name) ? Number(q.get(name)) : undefined);
       const list = (name: string) => (q.get(name) === null ? undefined : q.get(name)!.split(',').filter(Boolean));
@@ -268,7 +269,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const key = id.startsWith('session:') ? id : `session:${id}`;
       // its own code, since a session the store does not hold yet is one the page waits for: the pane is pointed at
       // the page before the record is written (change:session-page-before-record)
-      if (resolve(loaded, key).status !== 'ok') throw new HttpError(404, 'no-session', `${key} has no record`);
+      if (resolve(loaded, key).status !== 'ok') throw new HttpError(404, 'no-session', `${key} resolves to nothing`);
       return send(res, 200, { data: viewData(store, { session: id, ...getOpts }, loaded) });
     }
     if ((m = /^\/projects\/([a-z0-9][a-z0-9-]*)\/board$/.exec(route))) {

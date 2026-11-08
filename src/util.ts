@@ -1,7 +1,31 @@
+/** What a refusal is, the same codes the API answers with (decision interface-audit/error-contract): `usage` exits 2,
+ *  the rest exit 1. */
+export type ErrorCode = 'usage' | 'not-found' | 'ambiguous' | 'refused';
+
 export class CliError extends Error {
-  constructor(message: string, public exitCode = 1) {
+  /** A usage error exits 2; anything else 1. */
+  public exitCode: number;
+  constructor(message: string, exitCode = 1, public code: ErrorCode = exitCode === 2 ? 'usage' : 'refused', public tried?: string[]) {
     super(message);
+    this.exitCode = code === 'usage' ? 2 : exitCode;
   }
+}
+
+/** A command called the wrong way: exit 2. */
+export function usageError(message: string): CliError {
+  return new CliError(message, 2, 'usage');
+}
+
+/** One phrasing for a reference that names nothing: `<ref> resolves to nothing` (or `to no <type>`), with what was
+ *  tried and the command that would make it, when known. */
+export function notFound(ref: string, opts: { as?: string; tried?: string[]; hint?: string } = {}): CliError {
+  const tried = opts.tried?.length ? `; tried: ${opts.tried.join('; ')}` : '';
+  return new CliError(`${ref} resolves to ${opts.as ? `no ${opts.as}` : 'nothing'}${tried}${opts.hint ? `; ${opts.hint}` : ''}`, 1, 'not-found', opts.tried);
+}
+
+/** Two or more records answer to one reference: refused, naming them. */
+export function ambiguous(ref: string, candidates: string[]): CliError {
+  return new CliError(`${ref} is ambiguous: ${candidates.join(', ')} (name one by its key)`, 1, 'ambiguous', candidates);
 }
 
 /** The calendar date (yyyy-mm-dd) in local time: the day the person worked, not the UTC day. */

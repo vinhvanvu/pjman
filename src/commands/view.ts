@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { readUserConfig, SEVERITIES } from '../config.js';
+import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
-import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
+import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
-import { effectsOf, structuralParent } from '../tree.js';
+import { effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from '../tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
 import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
 import { urlOf } from '../refs.js';
-import { CliError } from '../util.js';
+import { CliError, usageError, notFound } from '../util.js';
 import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from '../foundation.js';
 
 export interface Row {
@@ -86,17 +86,73 @@ export function bugOrder(a: { severity?: string; created?: string; key: string }
   return rank(a.severity) - rank(b.severity) || (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key);
 }
 
-export function ls(store: Store, opts: { type?: string; status?: string; project?: string; kind?: string }): Row[] {
+const LIST_TYPES: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'actor'];
+
+/** The statuses a listing can filter by, per type that has one. */
+const STATUSES: Partial<Record<RecordType, readonly string[]>> = { change: CANONICAL_STATUSES, decision: DECISION_STATUSES, feature: FEATURE_STATUSES };
+
+export interface LsOpts {
+  type?: string;
+  status?: string;
+  project?: string;
+  kind?: string;
+  /** Anything under this product (a project's records through the project). */
+  product?: string;
+  /** A milestone's children, a feature's nodes, a change's decisions. */
+  parent?: string;
+  /** The changes naming this node or a node beneath it, and the nodes beneath it. */
+  feature?: string;
+}
+
+export function ls(store: Store, opts: LsOpts): Row[] {
   const loaded = loadStore(store);
   let recs = loaded.records;
+  let t: RecordType | undefined;
   if (opts.type) {
-    const t = TYPE_ALIASES[opts.type];
-    if (!t) throw new CliError(`unknown type '${opts.type}' (product, feature, project, change, decision, source, session, actor)`);
+    t = TYPE_ALIASES[opts.type];
+    if (!t) throw usageError(`unknown entity '${opts.type}' (${LIST_TYPES.join(', ')})`);
     recs = recs.filter((r) => r.type === t);
   }
-  if (opts.status) recs = recs.filter((r) => r.data.status === opts.status);
-  if (opts.project) recs = recs.filter((r) => r.type !== 'change' || r.data.project === opts.project);
-  if (opts.kind) recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
+  if (opts.status) {
+    // a status no listed type has is a typo, refused rather than answered with nothing (decision interface-audit/error-contract)
+    const known = t ? STATUSES[t] : [...new Set(Object.values(STATUSES).flat())];
+    if (t && !known) throw usageError(`a ${t} has no status to filter by`);
+    if (known && !known.includes(opts.status)) throw usageError(`--status ${opts.status} is not a status${t ? ` of a ${t}` : ''} (${known.join(', ')})`);
+    recs = recs.filter((r) => r.data.status === opts.status);
+  }
+  if (opts.kind) {
+    if (!(CHANGE_KINDS as readonly string[]).includes(opts.kind)) throw usageError(`--kind ${opts.kind} is not a kind of change (${CHANGE_KINDS.join(', ')})`);
+    recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
+  }
+  const node = (flag: string, raw: string): Rec => {
+    const res = resolve(loaded, raw);
+    if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, `${flag} ${raw}`);
+    return res.rec;
+  };
+  if (opts.project) {
+    const p = node('--project', opts.project.includes(':') ? opts.project : `project:${opts.project}`);
+    recs = recs.filter((r) => r.type !== 'change' || r.data.project === p.key);
+  }
+  if (opts.product) {
+    const p = node('--product', opts.product.includes(':') ? opts.product : `product:${opts.product}`);
+    recs = recs.filter((r) => r.type !== 'product' && rootProductOf(loaded, r)?.key === p.key);
+  }
+  if (opts.parent) {
+    const p = node('--parent', opts.parent);
+    recs = recs.filter((r) => (r.type === 'decision' ? r.changeKey === p.key : live(loaded, r.data.parent)?.key === p.key || (r.type === 'feature' && live(loaded, r.data.product)?.key === p.key)));
+  }
+  if (opts.feature) {
+    const f = node('--feature', opts.feature.includes(':') ? opts.feature : `feature:${opts.feature}`);
+    const beneath = (rec: Rec | undefined): boolean => {
+      const seen = new Set<string>();
+      for (let cur = rec; cur && !seen.has(cur.key); cur = structuralParent(loaded, cur)) {
+        if (cur.key === f.key) return true;
+        seen.add(cur.key);
+      }
+      return false;
+    };
+    recs = recs.filter((r) => (r.type === 'change' ? effectsOf(r).some((e) => beneath(live(loaded, e.key))) : r.type === 'feature' ? r.key !== f.key && beneath(r) : false));
+  }
   // a change's row carries its branch and worktree name, computed once for the listing
   const observed = recs.some((r) => r.type === 'change') ? observedBranches(loaded) : null;
   const prefix = readUserConfig().branch_prefix;
@@ -137,7 +193,7 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
     return { rec: res.rec, text };
   }
   if (res.status === 'malformed') throw new CliError(`'${key}' is not a key`);
-  throw new CliError(`${key} has no record`);
+  throw notFound(key);
 }
 
 // --- context ---------------------------------------------------------------
@@ -227,7 +283,7 @@ function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
 export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
   const raw = key.startsWith('change:') ? key : `change:${key}`;
   const res = resolve(loaded, raw);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
+  if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, raw);
   const rec = res.rec;
   // the sections in order of depth, the known ones first; anything else the record holds follows
   const sections: Record<string, string> = {};
@@ -415,7 +471,7 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
   let project: Row | null = null;
   if (opts.project) {
     const res = resolve(loaded, opts.project.startsWith('project:') ? opts.project : `project:${opts.project}`);
-    if (res.status !== 'ok') throw new CliError(`${opts.project} does not resolve to a project`);
+    if (res.status !== 'ok') throw notFound(opts.project, { as: 'project' });
     project = row(res.rec);
   }
   const changes = loaded.records

@@ -6,9 +6,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { readUserConfig, writeUserConfig, type Store } from '../config.js';
 import { gitMv, isTracked, toplevel } from '../git.js';
-import { parseDecisionRest, parseKey, parseScopedRest, SLUG_RE } from '../keys.js';
-import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
-import { CliError } from '../util.js';
+import { aspectKey, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE } from '../keys.js';
+import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
+import { CliError, usageError, notFound } from '../util.js';
 import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
 
 export interface MvResult {
@@ -77,7 +77,7 @@ const dirOf = (rel: string): string => path.dirname(rel);
 /** The record a `from` key names, with its product; a bare key goes through the scope. */
 function source(loaded: Loaded, from: string, type: RecordType): Rec {
   const res = resolve(loaded, from);
-  if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw new CliError(res.status === 'missing' ? `${from} does not exist` : unresolved(res, from));
+  if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw unresolvedError(res, from);
   if (res.rec.type !== type) throw new CliError(`${from} is a ${res.rec.type}, not a ${type}`);
   if (!res.rec.valid) throw new CliError(`${res.rec.path} is invalid; fix it before renaming`);
   return res.rec;
@@ -90,7 +90,7 @@ function mvScoped(store: Store, loaded: Loaded, type: 'feature' | 'change', from
   const t = parseScopedRest(toRaw.slice(type.length + 1));
   if (!t) throw new CliError(`'${toRaw}' is not ${type}:<slug> or ${type}:<product>/<slug>`);
   const toProduct = t.product ?? rec.productSlug!;
-  if (t.product && !loaded.byKey.has(`product:${toProduct}`)) throw new CliError(`product:${toProduct} does not exist`);
+  if (t.product && !loaded.byKey.has(`product:${toProduct}`)) throw notFound(`product:${toProduct}`);
   const from = rec.key;
   const to = `${type}:${toProduct}/${t.slug}`;
   if (to === from) throw new CliError(`${from} already has that key`);
@@ -165,7 +165,7 @@ function mvProject(store: Store, loaded: Loaded, fromRaw: string, toRaw: string,
 function mvActor(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
   const fromKey = parseKey(fromRaw)!;
   const rec = loaded.byKey.get(fromRaw)?.[0] ?? loaded.byKey.get(loaded.aliases.get(fromRaw)?.[0] ?? '')?.[0];
-  if (!rec || rec.type !== 'actor') throw new CliError(`${fromRaw} does not exist`);
+  if (!rec || rec.type !== 'actor') throw notFound(fromRaw);
   if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before renaming`);
   const toHandle = toRaw.slice(fromKey.kind.length + 1);
   if (!SLUG_RE.test(toHandle)) throw new CliError(`'${toHandle}' is not a slug`);
@@ -189,14 +189,14 @@ function mvActor(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, o
 function mvDecision(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
   const rec = source(loaded, fromRaw, 'decision');
   const t = parseDecisionRest(toRaw.slice('decision:'.length));
-  if (!t) throw new CliError('usage: pjman mv decision:<change>/<old> decision:<change>/<new>  (decision:/<slug> at store level)');
+  if (!t) throw usageError('usage: pjman mv decision:<change>/<old> decision:<change>/<new>  (decision:/<slug> at store level)');
   // where it goes: the same change, another change (through the scope), product level, or store level
   let product: string | null = null;
   let change: Rec | undefined;
   if (t.head) {
     if (t.segments === 3) {
       change = loaded.byKey.get(`change:${t.head}/${t.change}`)?.[0];
-      if (!change) throw new CliError(`change:${t.head}/${t.change} does not exist`);
+      if (!change) throw notFound(`change:${t.head}/${t.change}`);
       product = t.head;
     } else {
       const res = resolve(loaded, `change:${t.head}`, rec.productSlug ?? loaded.scope);
@@ -204,7 +204,7 @@ function mvDecision(store: Store, loaded: Loaded, fromRaw: string, toRaw: string
         change = res.rec;
         product = change.productSlug!;
       } else if (loaded.byKey.has(`product:${t.head}`)) product = t.head;
-      else throw new CliError(`change:${t.head} does not exist (nor does product:${t.head})`);
+      else throw notFound(t.head, { tried: [`change:${t.head}`, `product:${t.head}`] });
     }
   }
   const from = rec.key;
@@ -221,10 +221,37 @@ function mvDecision(store: Store, loaded: Loaded, fromRaw: string, toRaw: string
   return finish(store, loaded, from, to, 'decision', newRel, rewritten, pathAfter, opts);
 }
 
+/** An aspect (its folder, its places with it) or a place (its file), within its product and, for a place, its aspect:
+ *  every reference is rewritten in the same commit. Neither keeps an alias: nothing outside the store names them. */
+function mvAspect(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
+  const res = resolve(loaded, fromRaw);
+  if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw unresolvedError(res, fromRaw);
+  const rec = res.rec;
+  if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before renaming`);
+  const p = rec.productSlug!;
+  const [, aslug] = rec.key.slice('aspect:'.length).split('/');
+  // the new key in any form: the new slug alone, or as much of the full key as is given
+  const parts = toRaw.slice('aspect:'.length).split('/');
+  if (!parts.every((x) => SLUG_RE.test(x))) throw new CliError(`'${toRaw}' is not an aspect key`);
+  const last = parts[parts.length - 1];
+  const to = rec.type === 'aspect' ? aspectKey(p, last) : aspectKey(p, aslug, last);
+  const from = rec.key;
+  if (rec.type === 'place' && parts.length >= 2 && parts[parts.length - 2] !== aslug) throw new CliError(`a place stays under its aspect (${aspectKey(p, aslug)}); remove it and make it under the other`);
+  if (to === from) throw new CliError(`${from} already has that key`);
+  if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
+  const oldRel = rec.type === 'aspect' ? path.dirname(rec.path) : rec.path;
+  const newRel = rec.type === 'aspect' ? path.join('products', p, 'aspects', last) : path.join(path.dirname(rec.path), `${last}.md`);
+  move(store, oldRel, newRel);
+  const pathAfter = (rel: string) => (rel === oldRel ? newRel : rel.startsWith(oldRel + '/') ? newRel + rel.slice(oldRel.length) : rel);
+  const rewrite = (text: string) => (rec.type === 'aspect' ? rewritePrefix(rewriteKey(text, from, to), `${from}/`, `${to}/`) : rewriteKey(text, from, to));
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text) => rewrite(text));
+  return finish(store, loaded, from, to, rec.type, rec.type === 'aspect' ? path.join(newRel, 'aspect.md') : newRel, rewritten, pathAfter, opts);
+}
+
 export function mv(store: Store, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
   const from = parseKey(fromRaw);
   const to = parseKey(toRaw);
-  if (!from || !to) throw new CliError('usage: pjman mv <key> <new key>  (product, feature, change, decision, project, person or agent)');
+  if (!from || !to) throw usageError('usage: pjman mv <kind>:<old> <kind>:<new>  (product, feature, aspect, place, project, change, decision, person, agent)');
   if (from.kind !== to.kind) throw new CliError(`mv keeps the kind: ${from.kind} → ${to.kind}`);
   const loaded = loadStore(store);
   switch (from.kind) {
@@ -233,9 +260,10 @@ export function mv(store: Store, fromRaw: string, toRaw: string, opts: { session
     case 'product': return mvProduct(store, loaded, from.raw, to.raw, opts);
     case 'project': return mvProject(store, loaded, from.raw, to.raw, opts);
     case 'decision': return mvDecision(store, loaded, from.raw, to.raw, opts);
+    case 'aspect': return mvAspect(store, loaded, from.raw, to.raw, opts);
     case 'person':
     case 'agent': return mvActor(store, loaded, from.raw, to.raw, opts);
-    default: throw new CliError('mv renames products, features, changes, decisions, projects, people and agents; sources and sessions are not renamed (their keys are external)');
+    default: throw new CliError('mv renames products, features, aspects and places, changes, decisions, projects, people and agents; sources and sessions keep their keys (they are external), a release its version (a fact)');
   }
 }
 

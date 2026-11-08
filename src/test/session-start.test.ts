@@ -83,7 +83,7 @@ test('a session started outside any project is resolved to the project of the re
   assert.deepEqual(ev.fields, ['project', 'log']);
   assert.equal(ev.value, 'project:web');
   assert.equal(sessionProject(store, 's-loose', 'web').moved, false, 'the same project again is no write');
-  assert.throws(() => sessionProject(store, 's-loose', 'project:nowhere'), /does not resolve|not found|unknown/i);
+  assert.throws(() => sessionProject(store, 's-loose', 'project:nowhere'), /resolves to nothing|not found|unknown/i);
   assert.throws(() => sessionProject(store, 's-loose', 'change:web/login'), /is not a project/);
   assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error'), []);
 });

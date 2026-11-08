@@ -5,7 +5,7 @@ import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
 import { LIVE_MINUTES } from '../scope.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
-import { CliError } from '../util.js';
+import { CliError, notFound } from '../util.js';
 import { decisionLine, nextLine, readinessLines, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
 import { formatStep, nextStep, stepsOf } from '../foundation.js';
 
@@ -197,7 +197,7 @@ export function viewData(store: Store, opts: ViewOpts, loaded: Loaded = loadStor
   if (opts.session) {
     const id = opts.session.startsWith('session:') ? opts.session : `session:${opts.session}`;
     const res = resolve(loaded, id);
-    if (res.status !== 'ok') throw new CliError(`${id} does not resolve to a session`);
+    if (res.status !== 'ok') throw notFound(id, { as: 'session' });
     showing.session = res.rec.key;
     const session = sessionFacts(store, loaded, res.rec, opts);
     if (session.on) {

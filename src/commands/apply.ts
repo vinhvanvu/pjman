@@ -7,7 +7,7 @@ import type { Store } from '../config.js';
 import { emit, keyOfPath, typeOfPath, type EventInput } from '../events.js';
 import { commitAll, git } from '../git.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
-import { CliError } from '../util.js';
+import { CliError, notFound } from '../util.js';
 import { beginBatch, endBatch, envelope } from '../write.js';
 
 /** The commands a batch may hold: writes to records, nothing that starts a server, reads, or nests. */
@@ -96,15 +96,19 @@ function requireClean(store: Store): void {
 const forOf = (store: Store, key: string | undefined): { key: string; type: RecordType | 'store' } => {
   if (!key) return { key: 'store', type: 'store' };
   const res = resolve(loadStore(store), key);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`--for ${key} does not resolve to a record`);
+  if (res.status !== 'ok' && res.status !== 'alias') throw notFound(`--for ${key}`);
   return { key: res.rec.key, type: res.rec.type };
 };
 
 /** Run every line through `run` (the CLI's own dispatcher) with commits held; one commit and the events at the end. */
 export function apply(store: Store, text: string, run: (argv: string[]) => void, opts: { for?: string; session?: string; writer?: string } = {}): ApplyResult {
+  return applyLines(store, parseBatch(text), run, opts);
+}
+
+/** A batch already split into argv lists: one commit, as apply makes one. A bulk set or rm builds its lines here. */
+export function applyLines(store: Store, lines: { line: number; argv: string[] }[], run: (argv: string[]) => void, opts: { for?: string; session?: string; writer?: string } = {}): ApplyResult {
   requireStandalone(store, 'apply');
   requireClean(store);
-  const lines = parseBatch(text);
   if (!lines.length) throw new CliError('the batch is empty');
   const target = forOf(store, opts.for);
   const env = envelope(opts);

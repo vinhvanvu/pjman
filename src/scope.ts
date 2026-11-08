@@ -9,7 +9,7 @@ import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row 
 import { ahead, productOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
-import { CliError, localDate } from './util.js';
+import { CliError, localDate, notFound } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
 import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState } from './foundation.js';
 import { nextLine } from './commands/view.js';
@@ -439,7 +439,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   let node: Rec | undefined;
   if (opts.node) {
     const res = resolve(loaded, opts.node);
-    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`${opts.node} has no record`);
+    if (res.status !== 'ok' && res.status !== 'alias') throw notFound(opts.node);
     node = res.rec;
     if (!['product', 'feature', 'project', 'change'].includes(node.type)) throw new CliError(`${node.key} is not a node of the tree (product, feature, project or change)`);
   }

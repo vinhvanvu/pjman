@@ -3,7 +3,7 @@
 // <commit>` takes it back, as any one write.
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { loadStore, resolve, unresolved } from '../records.js';
+import { loadStore, resolve, unresolved, unresolvedError } from '../records.js';
 import { CliError, nowIso } from '../util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 
@@ -29,7 +29,7 @@ export function note(store: Store, ref: string, text: string, flags: { writer?: 
   if (!text.trim()) throw new CliError('a note needs its text');
   const loaded = loadStore(store);
   const res = resolve(loaded, ref);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, ref));
+  if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, ref);
   const rec = res.rec;
   if (rec.type !== 'change' && rec.type !== 'session') throw new CliError(`a note is addressed to a change or a session, not ${rec.key}`);
   if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before adding a note`);

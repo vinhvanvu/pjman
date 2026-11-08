@@ -8,7 +8,7 @@ import type { Store } from '../config.js';
 import type { EventInput } from '../events.js';
 import { canon } from '../graph.js';
 import { parseKey } from '../keys.js';
-import { eventKeysOf, loadStore, resolve, unresolved, type Rec } from '../records.js';
+import { eventKeysOf, loadStore, resolve, unresolved, unresolvedError, type Rec } from '../records.js';
 import { CliError } from '../util.js';
 import { envelope, errorsAt, finishWrite, render } from '../write.js';
 
@@ -82,7 +82,7 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
   if (!key) throw new CliError(`'${raw}' is not a key (kind:rest)`);
   const loaded = loadStore(store);
   const res = resolve(loaded, key.raw);
-  if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw new CliError(res.status === 'ambiguous' ? unresolved(res, key.raw) : `${key.raw} does not exist`);
+  if (res.status !== 'ok' && res.status !== 'alias' && res.status !== 'invalid') throw unresolvedError(res, key.raw);
   const rec = res.rec;
 
   // what goes: a change takes its folder (decisions included), an aspect its places; anything else is one file

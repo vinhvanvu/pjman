@@ -1,7 +1,7 @@
 // Linear: the translation from what Linear's tools answer (read by whoever holds the connection) to tickets.
 import { CANONICAL_STATUSES, type Store } from '../config.js';
 import { loadStore, resolve } from '../records.js';
-import { CliError } from '../util.js';
+import { CliError, notFound } from '../util.js';
 import { slugFor } from '../refs.js';
 import { applyTickets, itemsIn, obj, readObserved, type SyncResult, type Ticket } from './apply.js';
 
@@ -76,7 +76,7 @@ export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
   const projectKey = opts.project ?? store.project;
   if (!projectKey) throw new CliError('no project: run from a registered repository or pass --project project:<slug>');
   const pres = resolve(loaded, projectKey.startsWith('project:') ? projectKey : `project:${projectKey}`);
-  if (pres.status !== 'ok') throw new CliError(`${projectKey} does not resolve to a project`);
+  if (pres.status !== 'ok') throw notFound(projectKey, { as: 'project' });
   const project = pres.rec;
   if (str(project.data.tracker) !== 'linear') throw new CliError(`${project.key} does not name linear as its tracker: pjman set ${project.key} tracker=linear ext.linear.team=<KEY>`);
   const team = opts.team ?? str(obj(obj(project.data.ext)?.linear)?.team);

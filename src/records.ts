@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { Store } from './config.js';
 import { parseRecord, sections, type Parsed } from './frontmatter.js';
 import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, releaseKey, SCOPED_KINDS, VERSION_RE, type Key } from './keys.js';
-import { CliError } from './util.js';
+import { ambiguous, CliError, notFound } from './util.js';
 
 export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'release' | 'source' | 'session' | 'actor';
 
@@ -567,9 +567,14 @@ export function recordOf(loaded: Loaded, raw: unknown, scope?: string | null): R
 
 /** One line saying why a reference did not resolve, for a refusal. */
 export function unresolved(res: Resolution, raw: string): string {
-  if (res.status === 'ambiguous') return `${raw} is ambiguous: ${res.candidates.join(', ')} (name the product: ${res.candidates[0]})`;
-  if (res.status === 'malformed') return `'${raw}' is not a key`;
-  return `${raw} does not resolve to a record`;
+  return unresolvedError(res, raw).message;
+}
+
+/** The refusal for a reference that did not resolve: ambiguous naming the candidates, else not found. */
+export function unresolvedError(res: Resolution, raw: string): CliError {
+  if (res.status === 'ambiguous') return ambiguous(raw, res.candidates);
+  if (res.status === 'malformed') return notFound(raw, { hint: 'a key is <kind>:<slug>, or the slug alone inside a project' });
+  return notFound(raw);
 }
 
 /** The keys a record's events were written under: its key, and every key it had before a rename (bare and scoped). */

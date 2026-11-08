@@ -217,7 +217,7 @@ test('the scope: one page as data, in a lens, at a node; a bad lens or node is a
   assert.equal(d2.change?.change.key, 'change:app/login');
   assert.equal(d2.health.days, 7);
   assert.equal((await getJson('/api/v1/scope?lens=colour')).status, 400);
-  assert.equal((await getJson('/api/v1/scope?node=change:nope')).status, 400);
+  assert.equal((await getJson('/api/v1/scope?node=change:nope')).status, 404);
 });
 
 test('the one write: POST /order moves a change in its product\'s sequence as the person signed in; anything else is refused', async () => {
@@ -234,7 +234,8 @@ test('the one write: POST /order moves a change in its product\'s sequence as th
   r = await post({ change: 'change:second', later: true });
   assert.deepEqual(r.body.data?.sequence, ['change:app/login']);
   r = await post({ change: 'change:nope', first: true });
-  assert.equal(r.status, 400);
+  assert.equal(r.status, 404);
+  assert.equal((r.body as { error?: { code: string } }).error?.code, 'not-found');
   r = await post({ change: 'change:login' });
   assert.equal(r.status, 400);
   assert.match(r.body.error?.message ?? '', /say where/);
@@ -278,7 +279,7 @@ test('a session the store does not hold is a 404 with its own code, so the page 
   const r = await getJson('/api/v1/sessions/not-yet/view');
   assert.equal(r.status, 404);
   assert.equal(r.body.error?.code, 'no-session');
-  assert.equal(r.body.error?.message, 'session:not-yet has no record');
+  assert.equal(r.body.error?.message, 'session:not-yet resolves to nothing');
 });
 
 test('who may call: the server answers to its own names and *.localhost, refuses any other Host or Origin, sends no CORS header, and a write is JSON', async () => {

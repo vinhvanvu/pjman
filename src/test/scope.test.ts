@@ -158,7 +158,7 @@ test('a leaf change stands in its container for the lens; the crumbs climb that 
   assert.equal(root.tree[0].type, 'product');
   assert.deepEqual(root.products.map((r) => r.key), ['product:shop']);
   assert.throws(() => scope(store, loaded, { lens: 'colour' }), /lens must be one of/);
-  assert.throws(() => scope(store, loaded, { node: 'change:shop/nope' }), /has no record/);
+  assert.throws(() => scope(store, loaded, { node: 'change:shop/nope' }), /resolves to nothing/);
   assert.throws(() => scope(store, loaded, { node: 'session:live-1' }), /not a node of the tree/);
 });
 

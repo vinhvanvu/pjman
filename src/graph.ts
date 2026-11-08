@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } from './keys.js';
+import { ambiguous, notFound } from './util.js';
 import { keyFromUrl, mentions, scopeOf, shortForms, slugFor, trackerOf } from './refs.js';
 export { keyFromUrl, repoOf } from './refs.js';
 import { resolve, type Loaded, type Rec } from './records.js';
@@ -255,6 +256,42 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     if (sessions.length === 1) return { status: sessions[0].valid ? 'record' : 'invalid', key: sessions[0].key, shape: 'slug', tried };
   }
   return { status: 'none', tried };
+}
+
+/** A command's record argument as a key (decision interface-audit/key-arguments): a key passes through for the command
+ *  to resolve; a slug resolves the way get resolves one, except that two records answering to it are refused by name
+ *  rather than one picked; `<change>/<slug>` names a decision; anything else (a ticket id, a URL, a file) goes through
+ *  the getter. Nothing found is refused with what was tried. */
+export function resolveArg(loaded: Loaded, raw: string, opts: GetOpts & { kinds?: string[] } = {}): string {
+  const ref = raw.trim();
+  if (parseKey(ref) && !/^https?:\/\//i.test(ref)) return ref;
+  const live = (k: string): string | null => {
+    const r = resolve(loaded, k);
+    return r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? r.rec.key : null;
+  };
+  // a command that takes one kind (a product, a feature) asks only those: a product and its project often share a name
+  if (opts.kinds && SLUG_RE.test(ref)) {
+    const hits = [...new Set(opts.kinds.map((k) => live(`${k}:${ref}`)).filter((k): k is string => !!k))];
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw ambiguous(ref, hits);
+    throw notFound(ref, { as: opts.kinds.join(' or '), tried: opts.kinds.map((k) => `${k}:${ref}`) });
+  }
+  if (/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(ref)) {
+    const hits = [...new Set([live(`decision:${ref}`), live(`aspect:${ref}`)].filter((k): k is string => !!k))];
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw ambiguous(ref, hits);
+    throw notFound(ref, { tried: [`decision:${ref}`, `aspect:${ref}`] });
+  }
+  if (SLUG_RE.test(ref)) {
+    const kinds = ['change', 'project', 'feature', 'product', 'aspect'];
+    const hits = new Set(kinds.map((k) => live(`${k}:${ref}`)).filter((k): k is string => !!k));
+    for (const d of loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === ref)) hits.add(d.key);
+    if (hits.size === 1) return [...hits][0];
+    if (hits.size > 1) throw ambiguous(ref, [...hits]);
+  }
+  const res = resolveRef(loaded, ref, opts);
+  if (res.key && res.status !== 'none') return res.key;
+  throw notFound(ref, { tried: SLUG_RE.test(ref) ? ['change, project, feature, product, aspect, decision named so', ...res.tried.filter((t) => !t.startsWith('change:'))] : res.tried });
 }
 
 /** The getter: a reference in, the record and its neighbourhood out. */

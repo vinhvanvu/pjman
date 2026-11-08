@@ -9,9 +9,9 @@ import path from 'node:path';
 import type { Store } from '../config.js';
 import type { EventInput } from '../events.js';
 import { SLUG_RE } from '../keys.js';
-import { loadStore, resolve, unresolved, type Loaded, type Rec } from '../records.js';
+import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersededBy, supersedesOf } from '../supersede.js';
-import { CliError, isDateString, nowIso, today } from '../util.js';
+import { CliError, isDateString, nowIso, today, notFound } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, snapshot, validateOrUndo, writeFile } from '../write.js';
 import { dayOf, decisionState, foundationHash, foundationOf, gistProblem, nameProblem, threadOf, type DecisionState, type Entry } from '../foundation.js';
 import { decisionHome } from './new.js';
@@ -113,7 +113,7 @@ function find(loaded: Loaded, ref: string): Rec | undefined {
     if (!res.rec.valid) throw new CliError(`${res.rec.path} is invalid; fix it before writing to it`);
     return res.rec;
   }
-  if (res.status === 'ambiguous') throw new CliError(unresolved(res, raw));
+  if (res.status === 'ambiguous') throw unresolvedError(res, raw);
   return undefined;
 }
 
@@ -267,7 +267,7 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
 export function decide(store: Store, ref: string, opts: { by: string; option?: string; words?: string; session?: string }): DecisionResult {
   const loaded = loadStore(store);
   const rec = find(loaded, ref);
-  if (!rec) throw new CliError(`${ref} does not resolve to a decision`);
+  if (!rec) throw notFound(ref, { as: 'decision' });
   if (rec.data.status !== 'proposed') throw new CliError(`${rec.key} is ${String(rec.data.status)}, not proposed; only a proposed decision is decided`);
   const state = decisionState(threadOf(rec.data));
   const option = opts.option ?? state.recommendation?.option ?? (state.options.length === 1 ? state.options[0].id : undefined);
@@ -279,7 +279,7 @@ export function decide(store: Store, ref: string, opts: { by: string; option?: s
 export function reopen(store: Store, ref: string, opts: { session?: string; writer?: string } = {}): DecisionResult {
   const loaded = loadStore(store);
   const rec = find(loaded, ref);
-  if (!rec) throw new CliError(`${ref} does not resolve to a decision`);
+  if (!rec) throw notFound(ref, { as: 'decision' });
   if (rec.data.status !== 'decided') throw new CliError(`${rec.key} is ${String(rec.data.status)}, not decided; only a decided decision is reopened`);
   return decision(store, rec.key, { entries: [{ type: 'reopen' }], session: opts.session, writer: opts.writer });
 }
