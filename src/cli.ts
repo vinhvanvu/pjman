@@ -247,9 +247,10 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         }
       }
       const text = verb === 'note' || verb === 'edit' ? rest.slice(1).join(' ') : undefined;
-      const r = step(store, ref, verb, n, { texts, text, note: v.note, before: num(v.before), after: num(v.after), first: v.first, last: v.last, session: v.session, writer: v.writer });
+      const more = ['start', 'done', 'drop', 'reopen'].includes(verb) ? rest.slice(1).map((x) => Number(x)) : undefined;
+      const r = step(store, ref, verb, n, { texts, text, more, note: v.note, before: num(v.before), after: num(v.after), first: v.first, last: v.last, session: v.session, writer: v.writer });
       if (v.json) json(r);
-      else out(`${r.key} step ${r.count > 1 ? `${r.n}-${r.n + r.count - 1}` : r.n} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}`);
+      else out(`${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}`);
       return 0;
     }
     case 'session': {

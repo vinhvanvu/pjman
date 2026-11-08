@@ -16,6 +16,8 @@ export interface StepOpts {
   text?: string;
   /** The steps to add, each its own step, in one commit (decision interface-audit/bulk-writes). */
   texts?: string[];
+  /** More steps the same move takes (start, done, drop, reopen), beside `n`, in the same commit. */
+  more?: number[];
   note?: string;
   /** Where to place it: add and move. */
   before?: number;
@@ -32,8 +34,10 @@ export interface StepResult {
   verb: StepVerb;
   /** The step's number after the write, from 1 (the first of several added). */
   n: number;
-  /** How many steps the write touched: several for an add of several. */
+  /** How many steps the write touched: several for an add of several, or a move of several. */
   count: number;
+  /** The steps the write touched, by number after it, from 1. */
+  numbers: number[];
   steps: Step[];
   progress?: { done: number; total: number };
   next?: { n: number; step: Step };
@@ -77,6 +81,7 @@ export function step(store: Store, ref: string, verb: string, n: number | undefi
   const at = nowIso();
   let touched: number;
   let count = 1;
+  let numbers: number[] | undefined;
   const want = (what: string): number => {
     if (!steps.length) throw new CliError(`${rec.key}: the plan is empty: pjman step <change> add "…"`);
     if (n === undefined || !Number.isInteger(n) || n < 1 || n > steps.length) throw usageError(`${what} needs a step number from 1 to ${steps.length}`);
@@ -103,16 +108,27 @@ export function step(store: Store, ref: string, verb: string, n: number | undefi
       break;
     }
     case 'start': case 'done': case 'drop': case 'reopen': {
-      const i = want(verb);
-      const s = steps[i];
+      // one step, or several in one commit: the same move repeated is one write (decision interface-audit/bulk-writes)
+      const all = [n, ...(opts.more ?? [])];
+      if (new Set(all).size !== all.length) throw usageError(`a step is named twice: ${all.join(' ')}`);
       const next = verb === 'start' ? 'active' : verb === 'done' ? 'done' : verb === 'drop' ? 'dropped' : 'open';
-      if (s.state === next) throw new CliError(`step ${n} is already ${next}`);
-      if (verb === 'reopen' && s.state !== 'done' && s.state !== 'dropped') throw new CliError(`step ${n} is ${s.state}; reopen takes a done or dropped step`);
-      s.state = next;
-      s.at = at;
-      if (opts.note !== undefined) s.note = opts.note.trim() || undefined;
-      else if (verb === 'reopen') delete s.note;
-      touched = i;
+      const idx = all.map((k) => {
+        if (k === undefined || !Number.isInteger(k) || k < 1 || k > steps.length) want(verb);
+        return k! - 1;
+      });
+      if (!steps.length) want(verb);
+      for (const i of idx) {
+        const s = steps[i];
+        if (s.state === next) throw new CliError(`step ${i + 1} is already ${next}`);
+        if (verb === 'reopen' && s.state !== 'done' && s.state !== 'dropped') throw new CliError(`step ${i + 1} is ${s.state}; reopen takes a done or dropped step`);
+        s.state = next;
+        s.at = at;
+        if (opts.note !== undefined) s.note = opts.note.trim() || undefined;
+        else if (verb === 'reopen') delete s.note;
+      }
+      touched = Math.min(...idx);
+      count = idx.length;
+      numbers = idx.map((i) => i + 1);
       break;
     }
     case 'note': {
@@ -143,9 +159,10 @@ export function step(store: Store, ref: string, verb: string, n: number | undefi
   fs.writeFileSync(rec.abs, render('change', data, rec.body));
   validateOrUndo(store, [rec.path], [], prior);
   const env = envelope(opts);
-  const which = count > 1 ? `${touched + 1}-${touched + count}` : `${touched + 1}`;
+  numbers ??= Array.from({ length: count }, (_, k) => touched + 1 + k);
+  const which = numbers.join(',');
   const commit = finishWrite(store, `pjman: step ${rec.key} ${verb} ${which}`, env.session, [{ op: 'set', key: rec.key, type: 'change', path: rec.path, fields: ['plan', `step ${verb}`, ...(count > 1 ? [`${count} steps`] : [])], writer: env.writer }]);
-  return { key: rec.key, path: rec.path, verb: verb as StepVerb, n: touched + 1, count, steps, progress: planProgress(steps), next: nextStep(steps), commit };
+  return { key: rec.key, path: rec.path, verb: verb as StepVerb, n: touched + 1, count, numbers, steps, progress: planProgress(steps), next: nextStep(steps), commit };
 }
 
 export function formatPlan(steps: Step[]): string {

@@ -112,7 +112,7 @@ test('step add takes several texts as one commit, or lines on stdin; edit rewrit
   const head = readEvents(store).length;
   let r = pj(['step', 'login', 'add', 'Send the mail', 'Verify the link']);
   assert.equal(r.code, 0, r.err);
-  assert.match(r.out, /step 1-2 add/);
+  assert.match(r.out, /step 1,2 add/);
   // one write for both (the change lifted to planning is its own event)
   const adds = readEvents(store).slice(head).filter((e) => e.fields?.includes('step add'));
   assert.equal(adds.length, 1);
@@ -127,6 +127,15 @@ test('step add takes several texts as one commit, or lines on stdin; edit rewrit
   assert.equal(stepsOf(record('change:app/login').data)[1].text, 'Write the copy, short');
   assert.match(pj(['step', 'login', 'edit', '2', 'Write the copy, short']).err, /already reads so/);
   assert.match(pj(['step', 'checkout', 'done', '1']).err, /the plan is empty/);
+  // the same move over several steps is one commit
+  const before = readEvents(store).length;
+  r = pj(['step', 'login', 'done', '1', '3']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /step 1,3 done/);
+  assert.deepEqual(stepsOf(record('change:app/login').data).map((s) => s.state), ['done', 'open', 'done', 'open']);
+  assert.equal(readEvents(store).slice(before).filter((e) => e.fields?.includes('step done')).length, 1);
+  assert.match(pj(['step', 'login', 'done', '1', '2']).err, /step 1 is already done/);
+  assert.equal(stepsOf(record('change:app/login').data)[1].state, 'open', 'a refusal leaves every step as it was');
 });
 
 test('new change --step files the change with its plan in one write', () => {
@@ -169,6 +178,8 @@ test('set and rm over several records land as one commit, one applied event, and
   assert.equal(loadStore(store).byKey.has('change:app/old-one'), false);
   assert.equal(pj(['undo']).code, 0);
   assert.equal(loadStore(store).byKey.has('change:app/old-one'), true);
+  // the activity reads a batch as one entry
+  assert.match(pj(['activity', 'product:app']).out, /^#\d+-\d+ .* batch +2 set: change:old-one, change:old-two$/m);
   // a refusal on one refuses them all
   r = pj(['set', 'old-one', 'nope', 'notes=x']);
   assert.equal(r.code, 1);

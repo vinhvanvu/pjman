@@ -128,7 +128,7 @@ One step of a change's plan: a text, a state (open, active, done, dropped), a no
 |---|---|
 | create | `pjman step <change> add <text>... [--before <n>\|--after <n>\|--first\|--last]   (several quoted texts, or --from -: one commit)` |
 | read | `pjman context <change>   (the plan, with the next step)` |
-| update | `pjman step <change> start\|done\|drop\|reopen <n> [--note …] · note <n> <text> · edit <n> <text> · move <n> --before <m>` |
+| update | `pjman step <change> start\|done\|drop\|reopen <n>... [--note …] · note <n> <text> · edit <n> <text> · move <n> --before <m>` |
 | delete | `pjman step <change> drop <n>   (kept as dropped: the plan keeps its history)` |
 
 ### decision
@@ -286,7 +286,7 @@ pjman decision <key> --from -   (entries as JSON on stdin)
 
 pjman step <change> add <text>... [--before <n>|--after <n>|--first|--last] [--note <text>]   (each quoted text a step)
 pjman step <change> add --from - [--before <n>|…]   (one step per line on stdin)
-pjman step <change> start|done|drop|reopen <n> [--note <where the work stands>]
+pjman step <change> start|done|drop|reopen <n>... [--note <where the work stands>]   (several numbers: one commit)
 pjman step <change> note <n> <text>
 pjman step <change> edit <n> <text>
 pjman step <change> move <n> --before <m>|--after <m>|--first|--last

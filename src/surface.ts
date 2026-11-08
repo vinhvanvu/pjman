@@ -129,13 +129,13 @@ export const COMMANDS: Command[] = [
     usage: [
       'pjman step <change> add <text>... [--before <n>|--after <n>|--first|--last] [--note <text>]   (each quoted text a step)',
       'pjman step <change> add --from - [--before <n>|…]   (one step per line on stdin)',
-      'pjman step <change> start|done|drop|reopen <n> [--note <where the work stands>]',
+      'pjman step <change> start|done|drop|reopen <n>... [--note <where the work stands>]   (several numbers: one commit)',
       'pjman step <change> note <n> <text>',
       'pjman step <change> edit <n> <text>',
       'pjman step <change> move <n> --before <m>|--after <m>|--first|--last',
     ],
     flags: { add: ['before', 'after', 'first', 'last', 'note', 'from'], start: ['note'], done: ['note'], drop: ['note'], reopen: ['note'], note: [], edit: [], move: ['before', 'after', 'first', 'last'] },
-    args: { start: 2, done: 2, drop: 2, reopen: 2, move: 2 }, subAt: 2 },
+    args: { move: 2 }, subAt: 2 },
   { name: 'order', group: 'records', line: "the product's order, the roadmap: print it, or move a change in it",
     about: "the product's sequence, the roadmap's order. With a product (or nothing, inside a project), print it; with a change and a move, put it before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
     usage: ['pjman order [<product>] [--json]', 'pjman order <change> --before <change> | --after <change> | --first | --last | --later'],
@@ -313,7 +313,7 @@ export const ENTITIES: Entity[] = [
   { name: 'step', what: "one step of a change's plan: a text, a state (open, active, done, dropped), a note", ops: [
     ['create', 'pjman step <change> add <text>... [--before <n>|--after <n>|--first|--last]   (several quoted texts, or --from -: one commit)'],
     ['read', "pjman context <change>   (the plan, with the next step)"],
-    ['update', 'pjman step <change> start|done|drop|reopen <n> [--note …] · note <n> <text> · edit <n> <text> · move <n> --before <m>'],
+    ['update', 'pjman step <change> start|done|drop|reopen <n>... [--note …] · note <n> <text> · edit <n> <text> · move <n> --before <m>'],
     ['delete', 'pjman step <change> drop <n>   (kept as dropped: the plan keeps its history)'],
   ] },
   { name: 'decision', what: 'what was chosen and why: an append-only thread a person decides', ops: [
