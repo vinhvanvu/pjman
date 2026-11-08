@@ -120,6 +120,9 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
 
   const all = readEvents(store).filter((e) => (opts.until === undefined || e.seq <= opts.until) && e.at < to);
   const events = axis === 'tree' ? treeEvents(loaded, scope, all) : all.filter((e) => e.session === scope.key || e.key === scope.key);
+  // on a change, the files its sessions touched while on it: an observe is the session's, so it is found by its edges
+  if (scope.type === 'change') events.push(...fileEvents(loaded, scope, all));
+  events.sort((a, b) => a.seq - b.seq);
 
   // the lane a record's events fall in: the unit itself when it is a lane, else the nearest lane above it
   const candidates = axis === 'tree' ? treeLanes(loaded, scope) : new Map<string, Rec>();
@@ -167,7 +170,7 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   if (folded.length) lanes.push({ id: 'more', kind: 'more', last: folded[0][1].last, count: folded.reduce((n, [, t]) => n + t.count, 0), writes: folded.reduce((n, [, t]) => n + t.writes, 0), folded: folded.length });
   const placed = (lane: string | null): string | null => (lane && foldedIds.has(lane) ? 'more' : lane);
 
-  const observed = axis === 'session' && Array.isArray(scope.data.observed) ? (scope.data.observed as { from?: string; to?: string; at?: string }[]) : [];
+  const observed = axis === 'session' ? observedOf(scope) : [];
   const lines = axis === 'session' ? logLines(scope.body) : [];
   const claimed = new Set<{ at: string; text: string }>();
   const toRow = (e: StoreEvent): Row => {
@@ -193,7 +196,9 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
     }
     if (kind === 'file') {
       // the edge the write observed, from the record: the files it names, and the change it was on as the row's lane
-      const near = observed.filter((o) => o.at && Math.abs(Date.parse(o.at) - Date.parse(e.at)) < 2000);
+      // on a change, the session's own edges, and of those only the ones from this change
+      const edges = axis === 'session' ? observed : observedOf(live(loaded, e.key)).filter((o) => fromKey(loaded, o) === scope.key);
+      const near = edges.filter((o) => o.at && Math.abs(Date.parse(o.at) - Date.parse(e.at)) < NEAR_MS);
       const files = near.flatMap((o) => [o.from, o.to]).filter((k): k is string => !!k && k.startsWith('file:')).map((k) => k.slice('file:'.length));
       if (files.length) row.files = [...new Set(files)];
       const on = near.map((o) => o.from).find((k) => k?.startsWith('change:'));
@@ -245,6 +250,31 @@ function treeEvents(loaded: Loaded, scope: Rec, all: StoreEvent[]): StoreEvent[]
     if (r) for (const e of eventKeysOf(r)) keys.add(e);
   }
   return all.filter((e) => keys.has(e.key));
+}
+
+type Observed = { from?: string; to?: string; at?: string };
+/** How far apart an observe event and the edge it wrote can be. */
+const NEAR_MS = 2000;
+
+/** A session's observed edges, as its record holds them. */
+function observedOf(rec: Rec | undefined): Observed[] {
+  return rec && Array.isArray(rec.data.observed) ? (rec.data.observed as Observed[]).filter((o) => !!o && typeof o === 'object') : [];
+}
+
+/** The change an edge is from, under the key it has now. */
+function fromKey(loaded: Loaded, o: Observed): string | undefined {
+  return o.from ? live(loaded, o.from)?.key : undefined;
+}
+
+/** The observe events that touched a file from this change: each session's observe whose edges at that moment run from
+ *  the change to a file. */
+function fileEvents(loaded: Loaded, scope: Rec, all: StoreEvent[]): StoreEvent[] {
+  const edges = new Map<string, Observed[]>();
+  const edgesOf = (key: string): Observed[] => {
+    if (!edges.has(key)) edges.set(key, observedOf(live(loaded, key)).filter((o) => o.to?.startsWith('file:') && fromKey(loaded, o) === scope.key));
+    return edges.get(key)!;
+  };
+  return all.filter((e) => e.op === 'observe' && e.type === 'session' && edgesOf(e.key).some((o) => o.at && Math.abs(Date.parse(o.at) - Date.parse(e.at)) < NEAR_MS));
 }
 
 /** The units that can be lanes beneath a tree node: on a change its decisions; on a milestone its decisions and its

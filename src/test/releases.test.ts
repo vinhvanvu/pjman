@@ -10,7 +10,7 @@ import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
 import { rm } from '../commands/rm.js';
 import { set } from '../commands/set.js';
-import { ls } from '../commands/view.js';
+import { changeContext, ls } from '../commands/view.js';
 import { findStore, type Store } from '../config.js';
 import { keyOfPath, readEvents, typeOfPath } from '../events.js';
 import { get } from '../graph.js';
@@ -88,6 +88,12 @@ test('the graph: a change reads which release shipped it; the release lists its 
   const fromRelease = get(loaded, 'release:0.2.0');
   assert.deepEqual(fromRelease.out.filter((e) => e.edge === 'ships').map((e) => e.to), ['change:shop/cart-lines', 'change:shop/cart-total']);
   assert.ok(ls(store, { type: 'release' }).some((row) => row.key === 'release:shop/0.2.0'));
+});
+
+test("a change's context names the releases that shipped it, with the version and the instant", () => {
+  const ctx = changeContext(store, 'change:cart-lines');
+  assert.deepEqual(ctx.releases.map((r) => [r.key, r.version, r.at]), [['release:shop/0.2.0', '0.2.0', '2026-11-06T10:00:00.000Z']]);
+  assert.equal(ctx.releases[0].url, 'https://example.test/releases/v0.2.0');
 });
 
 test('refused: a second release of the same version, a version that is not semver, a change of another product, a change twice, no instant', () => {

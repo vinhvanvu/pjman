@@ -113,6 +113,18 @@ test('a file a session touched is a file row in the lane of the change it was on
   assert.equal(file.drill, 'change:web/auth');
 });
 
+test('a change: a file its session touched while on it is a file row on the trunk, drilling to the session', () => {
+  sessionObserve(store, 'me', 'binds', 'change:auth', 'file:ui/src/auth-change.ts');
+  sessionObserve(store, 'me', 'binds', 'change:billing', 'file:ui/src/billing.ts');
+  const r = rail(store, loadStore(store), 'change:auth');
+  const files = r.rows.filter((row) => row.kind === 'file');
+  assert.ok(files.some((f) => f.files?.includes('ui/src/auth-change.ts')));
+  assert.ok(files.every((f) => !f.files?.includes('ui/src/billing.ts')), 'a file from another change stays off');
+  assert.ok(files.every((f) => f.lane === null && f.drill === 'session:me'));
+  const billing = rail(store, loadStore(store), 'change:billing');
+  assert.ok(billing.rows.some((row) => row.kind === 'file' && row.files?.includes('ui/src/billing.ts')));
+});
+
 test('the product: every change beneath it is a lane, and beyond the handful the rest fold into one', () => {
   const r = rail(store, loadStore(store), 'product:web', { fold: 3 });
   assert.equal(r.lanes.length, 4);
@@ -183,7 +195,7 @@ test('the filter: only these kinds, only these lanes; the lanes stay listed and 
   assert.equal(tokens.rows[0]!.lane, 'decision:web/auth/tokens');
   assert.equal(tokens.earlier, all.rows.filter((row) => row.lane === 'decision:web/auth/tokens').length - 1);
   assert.ok(tokens.buckets.every((d) => Object.keys(d.lanes).every((l) => l === 'decision:web/auth/tokens')));
-  const none = rail(store, loadStore(store), 'change:auth', { kinds: ['file'] });
+  const none = rail(store, loadStore(store), 'change:auth', { kinds: ['switch'] });
   assert.deepEqual(none.rows, []);
   assert.equal(none.total, 0);
   assert.equal(none.earlier, 0);
