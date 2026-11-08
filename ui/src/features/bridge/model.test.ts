@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BridgeSession, WaitingChange } from '@/data/contract';
-import { cardWhen, proposedWhen, strip, subagentWords } from './model';
+import { cardWhen, strip, subagentWords } from './model';
 
 const s = (key: string, o: Partial<BridgeSession> = {}): BridgeSession => ({
   key: `session:${key}`,
@@ -98,14 +98,5 @@ describe('subagentWords', () => {
     expect(subagentWords([{ state: 'stopped' }])).toBe('+1 subagent');
     expect(subagentWords([{ state: 'stopped' }, { state: 'ended' }])).toBe('+2 subagents');
     expect(subagentWords([{ state: 'working' }, { state: 'stopped' }])).toBe('1 subagent working');
-  });
-});
-
-describe('proposedWhen', () => {
-  const now = Date.parse('2026-10-28T12:00:00Z');
-  it('says when the decision was opened', () => {
-    expect(proposedWhen('2026-10-28T10:00:00Z', now)).toBe('proposed 2h ago');
-    expect(proposedWhen('2026-10-28T11:59:50Z', now)).toBe('proposed just now');
-    expect(proposedWhen(undefined, now)).toBe('proposed');
   });
 });

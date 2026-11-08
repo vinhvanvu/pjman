@@ -80,15 +80,6 @@ export function subagentWords(children: readonly Pick<BridgeSession, 'state'>[])
   return working ? `${word(working)} working` : `+${word(children.length)}`;
 }
 
-/** "proposed 2h ago": when a decision was opened, from its day; the day alone when that is all that is known. */
-export function proposedWhen(created: string | undefined, now = Date.now()): string {
-  if (!created) return 'proposed';
-  const since = ago(created, now);
-  return since === 'just now' || /^\d/.test(since)
-    ? `proposed ${since === 'just now' ? since : `${since} ago`}`
-    : `proposed ${since}`;
-}
-
 // The bridge's lanes, pure (decision live-sessions/stage-strip-transport): one row per session over the transport's
 // window, each line it wrote a beat, a flag where it opened a decision, a bar from its first act to its last. Rows
 // are read from the same events the transport draws, so the two stand on one axis; a subagent's events are its
