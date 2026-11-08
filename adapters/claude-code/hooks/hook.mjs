@@ -20,10 +20,11 @@
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed, or parked on the bridge when the session was cleared
 //
-//   The view beside the session. In cmux: the dashboard's session page (pjman serve, started if none is running) is docked in a
-//   browser pane at session start and closed at session end. The pane belongs to the terminal, so a /clear keeps it: the pane
-//   is parked on the product's bridge, and the next session there takes it over once it binds a change (from its branch at
-//   start, or from a prompt). Elsewhere, and whenever the pane was closed, `pjman open --session` brings the page back; the
+//   The view beside the session. In cmux: the dashboard (pjman serve, started if none is running) is docked in a browser pane
+//   at session start, opened on the product's bridge, and the pane is pointed at the session's page once the session binds a
+//   change (from its branch at start, or from a prompt); a session that never binds leaves it on the bridge. The pane belongs
+//   to the terminal: it closes at session end, and a /clear keeps it, parked on the bridge for the next session there to take
+//   over the same way. Elsewhere, and whenever the pane was closed, `pjman open --session` brings the page back; the
 //   session's id is exported to the agent's shell as PJMAN_SESSION.
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -275,7 +276,8 @@ function cmux(args) {
 }
 // The pane is kept per terminal surface, not per session: /clear ends one session and starts the next in the same
 // terminal, so the pane stays; a second terminal keeps its own. The dock file holds the pane and the session it follows;
-// `sid: null` is a pane parked on the bridge after a clear (change:clear-moves-the-dock, decision where-the-pane-goes),
+// `sid: null` is a pane parked on the bridge, at a start or after a clear (change:clear-moves-the-dock, decision where-the-pane-goes;
+// change:start-on-the-bridge),
 // which the next session takes over only once it binds a change, so no page is shown for a session with no record or
 // no subject yet.
 const terminal = () => process.env.CMUX_SURFACE_ID || process.env.CMUX_PANEL_ID || null;
@@ -306,24 +308,45 @@ function parkedPane() {
   const dock = loadDock();
   return dock?.pane && dock.sid === null ? dock.pane : null;
 }
-/** The view docked: first thing at start, since it needs only the session id and the server, never the store. */
-async function dockView(sid, cwd) {
-  if (!inCmux()) return;
-  const dock = loadDock();
-  if (dock?.sid === sid) return; // resumed or compacted: the pane already shows this session
-  const server = await ensureServer(cwd);
-  if (!server) return; // no dashboard, no dock; `pjman open --session` brings it back once one runs
-  const url = `${server.url}/session/${encodeURIComponent(sid)}`;
-  // the terminal's pane, pointed at the new session; a pane the person closed fails, and a new one is opened
-  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok) return saveDock({ pane: dock.pane, sid });
+function bridgeUrl(server, store) {
+  return `${server.url}/bridge${store?.product ? `/${store.product}` : ''}`;
+}
+/** A new browser pane at the url: its surface id, or null when cmux could not open one or did not say which. */
+async function openPane(url) {
   const r = await runAsync('cmux', ['browser', 'open', url]);
   if (!r.ok) {
     note(`cmux browser open failed: ${r.err}`);
-    return;
+    return null;
   }
   const m = /surface[=:\s]+(surface:\d+|[0-9a-fA-F-]{36})/.exec(r.out);
-  if (m) saveDock({ pane: m[1], sid });
-  else if (r.out) note(`dock: could not read the surface from: ${r.out.trim().split('\n')[0]}`);
+  if (!m && r.out) note(`dock: could not read the surface from: ${r.out.trim().split('\n')[0]}`);
+  return m ? m[1] : null;
+}
+/** The view docked at a session's start: the terminal's pane on the product's bridge, parked, until the session binds a
+ *  change (change:start-on-the-bridge). A pane already on this session (resumed, compacted) or already parked is left as it
+ *  is; one on another session is pointed at the bridge; a terminal with no pane, or whose pane the person closed, gets one. */
+async function parkView(sid, cwd, store) {
+  if (!inCmux()) return;
+  const dock = loadDock();
+  if (dock?.sid === sid || dock?.sid === null) return;
+  const server = await ensureServer(cwd);
+  if (!server) return; // no dashboard, no dock; `pjman open --session` brings it back once one runs
+  const url = bridgeUrl(server, store);
+  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok) return saveDock({ pane: dock.pane, sid: null });
+  const pane = await openPane(url);
+  if (pane) saveDock({ pane, sid: null });
+}
+/** The pane pointed at the session's page: the terminal's pane, or a new one when the person closed it. */
+async function dockView(sid, cwd) {
+  if (!inCmux()) return;
+  const dock = loadDock();
+  if (dock?.sid === sid) return; // the pane already shows this session
+  const server = await ensureServer(cwd);
+  if (!server) return;
+  const url = `${server.url}/session/${encodeURIComponent(sid)}`;
+  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok) return saveDock({ pane: dock.pane, sid });
+  const pane = await openPane(url);
+  if (pane) saveDock({ pane, sid });
 }
 /** A parked pane follows the session the moment it binds a change: pointed at the session's page. */
 async function followView(sid, cwd) {
@@ -340,7 +363,7 @@ async function undockView(st, sid, reason, store) {
     if (dock?.sid === null) return; // parked already
     const server = readServeAddress();
     if (!server) return;
-    const url = `${server.url}/bridge${store?.product ? `/${store.product}` : ''}`;
+    const url = bridgeUrl(server, store);
     // a pane the person closed fails; the next session then opens its own
     if ((await runAsync('cmux', ['browser', '--surface', pane, 'navigate', url])).ok) saveDock({ pane, sid: null });
     else if (dock?.pane === pane) saveDock(null);
@@ -462,16 +485,16 @@ function briefText(st, b) {
   return b.text;
 }
 
-/** The session's start. The view docks first (a pane parked on the bridge by a clear waits instead, and follows only
- *  when the start binds a change); then the reads run side by side (the brief, the board, who the person is, the
+/** The session's start. The view docks first, the pane parked on the product's bridge (one already on this session or
+ *  already parked is left), and follows the session only when the start binds a change from the branch; then the reads
+ *  run side by side (the brief, the board, who the person is, the
  *  receipt's watermark, the branch's change, the done changes for the worktree scan, the open pull request); then the
  *  writes one after another (the session record, its log line, the binding from the branch, the session's brief). The
  *  stale worktrees, matched from the store's done changes, go ahead of the board so the harness's cap cannot cut them. */
 async function sessionStart(input, store, sid, env, st, cwd) {
   const main = !input.agent_id;
   const source = input.source || 'startup';
-  const parked = main && inCmux() && !!parkedPane();
-  const docking = main && !parked ? dockView(sid, cwd) : Promise.resolve();
+  const docking = main ? parkView(sid, cwd, store) : Promise.resolve();
   const branch = main ? currentBranch(cwd) : null;
   const read = await promiseObject({
     brief: pjmanAsync(['brief'], { cwd }),
@@ -516,7 +539,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (main) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
     await docking;
-    if (parked && st.bound) await followView(sid, cwd); // the branch gave the session its subject: the pane follows it
+    if (st.bound) await followView(sid, cwd); // the session has its subject (the branch's change, or one bound before): the parked pane follows it
     sidebarStatus(st.bound);
     saveState(sid, st);
   }

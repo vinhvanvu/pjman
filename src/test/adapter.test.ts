@@ -272,7 +272,7 @@ test('SessionStart exports the session and the agent as writer to the agent\'s s
   assert.equal(fs.readFileSync(file, 'utf8'), text, 'a subagent shares its parent\'s');
 });
 
-test('in cmux the pane belongs to the terminal: a clear parks it on the bridge and the next session takes it once it binds a change; another terminal keeps its own', () => {
+test('in cmux the pane belongs to the terminal: a start opens it on the bridge and the session takes it once it binds a change; a clear parks it again; another terminal keeps its own', () => {
   // a cmux that knows the surfaces it opened and records every call; a dashboard that is running
   const cbin = path.join(tmp, 'cmux-bin');
   const calls = path.join(tmp, 'cmux-calls');
@@ -295,36 +295,52 @@ esac
       env: { ...env, PATH: `${cbin}:${(env as Record<string, string>).PATH}`, CMUX_BUNDLE_ID: 'com.cmuxterm.app', CMUX_SURFACE_ID: terminal },
     });
   const seen = () => fs.readFileSync(calls, 'utf8').split('\n').filter((l) => l.startsWith('browser') || l.startsWith('close-surface'));
-  // the product's bridge, where a clear parks the pane (change:clear-moves-the-dock)
+  // the product's bridge, where the pane opens at a start and is parked by a clear (change:start-on-the-bridge, change:clear-moves-the-dock)
   const scope = loadStore(store).scope;
   const bridge = scope ? `http://dash.test/bridge/product:${scope}` : 'http://dash.test/bridge';
+  const git = (args: string[]) => execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@e.com', ...args], { cwd: project, encoding: 'utf8' }).trim();
+  git(['commit', '-q', '--allow-empty', '-m', 'root']); // a branch named for a change needs a commit to branch from
+  const home = git(['symbolic-ref', '--short', 'HEAD']);
   try {
+    // a brand new session opens the pane on the bridge; a compacted one leaves the pane as it is; the bind brings it to the session
     at('T1', 'SessionStart', { session_id: 'dock-1', source: 'startup' });
     at('T1', 'SessionStart', { session_id: 'dock-1', source: 'compact' });
-    assert.deepEqual(seen(), ['browser open http://dash.test/session/dock-1'], 'a compacted session keeps its page as it is');
+    assert.deepEqual(seen(), [`browser open ${bridge}`], 'a new session opens the pane on the bridge, and a compacted one leaves it there');
+    at('T1', 'UserPromptSubmit', { session_id: 'dock-1', prompt: 'work on change:eight-week-test' });
+    at('T1', 'SessionStart', { session_id: 'dock-1', source: 'compact' });
+    assert.deepEqual(seen().slice(1), ['browser --surface surface:1 navigate http://dash.test/session/dock-1'], 'the bind brings the pane to the session, and a compacted session keeps its page as it is');
     // /clear: the old session ends and parks the pane on the bridge; the next session leaves it there until it binds a change
     at('T1', 'SessionEnd', { session_id: 'dock-1', reason: 'clear' });
     at('T1', 'SessionStart', { session_id: 'dock-2', source: 'clear' });
-    assert.deepEqual(seen().slice(1), [`browser --surface surface:1 navigate ${bridge}`], 'a session with no subject leaves the pane on the bridge');
+    assert.deepEqual(seen().slice(2), [`browser --surface surface:1 navigate ${bridge}`], 'a session with no subject leaves the pane on the bridge');
     at('T1', 'UserPromptSubmit', { session_id: 'dock-2', prompt: 'work on change:eight-week-test' });
-    assert.deepEqual(seen().slice(2), ['browser --surface surface:1 navigate http://dash.test/session/dock-2'], 'the bind brings the pane to the session');
-    // a second terminal docks its own pane, and its end closes only that one
+    assert.deepEqual(seen().slice(3), ['browser --surface surface:1 navigate http://dash.test/session/dock-2'], 'the bind brings the pane to the session');
+    // a second terminal opens its own pane on the bridge, and its end closes only that one
     at('T2', 'SessionStart', { session_id: 'dock-3', source: 'startup' });
     at('T2', 'SessionEnd', { session_id: 'dock-3', reason: 'prompt_input_exit' });
-    assert.deepEqual(seen().slice(3), ['browser open http://dash.test/session/dock-3', 'close-surface --surface surface:2']);
+    assert.deepEqual(seen().slice(4), [`browser open ${bridge}`, 'close-surface --surface surface:2']);
     // a pane the person closed while parked: the session that binds opens a new one
     at('T1', 'SessionEnd', { session_id: 'dock-2', reason: 'clear' });
-    assert.deepEqual(seen().slice(5), [`browser --surface surface:1 navigate ${bridge}`]);
+    assert.deepEqual(seen().slice(6), [`browser --surface surface:1 navigate ${bridge}`]);
     fs.writeFileSync(open, '');
     at('T1', 'SessionStart', { session_id: 'dock-4', source: 'clear' });
     at('T1', 'UserPromptSubmit', { session_id: 'dock-4', prompt: 'work on change:eight-week-test' });
-    assert.deepEqual(seen().slice(6), ['browser --surface surface:1 navigate http://dash.test/session/dock-4', 'browser open http://dash.test/session/dock-4']);
+    assert.deepEqual(seen().slice(7), ['browser --surface surface:1 navigate http://dash.test/session/dock-4', 'browser open http://dash.test/session/dock-4']);
     // a parked pane closes with its terminal's session, as a followed one does
     at('T1', 'SessionEnd', { session_id: 'dock-4', reason: 'clear' });
     at('T1', 'SessionStart', { session_id: 'dock-5', source: 'clear' });
     at('T1', 'SessionEnd', { session_id: 'dock-5', reason: 'logout' });
-    assert.deepEqual(seen().slice(8), [`browser --surface surface:1 navigate ${bridge}`, 'close-surface --surface surface:1']);
+    assert.deepEqual(seen().slice(9), [`browser --surface surface:1 navigate ${bridge}`, 'close-surface --surface surface:1']);
+    // a start on a change's branch: the pane opens on the bridge and follows the session as soon as the start binds the change
+    git(['checkout', '-q', '-b', 'eight-week-test']);
+    at('T1', 'SessionStart', { session_id: 'dock-6', source: 'startup' });
+    assert.deepEqual(seen().slice(11), [`browser open ${bridge}`, 'browser --surface surface:1 navigate http://dash.test/session/dock-6'], 'the branch gave the session its subject: the pane follows it');
+    // a pane left on an ended session (its end never reached the hook) is pointed at the bridge by the next start
+    at('T1', 'SessionStart', { session_id: 'dock-7', source: 'startup' });
+    assert.deepEqual(seen().slice(13), [`browser --surface surface:1 navigate ${bridge}`, 'browser --surface surface:1 navigate http://dash.test/session/dock-7']);
+    at('T1', 'SessionEnd', { session_id: 'dock-7', reason: 'logout' });
   } finally {
+    git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });
   }
 });
