@@ -25,13 +25,14 @@
 //                     since the last turn are shown to the person
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
-//   SessionEnd        a closing log line; the view's pane is closed, or parked on the bridge when the session was cleared
+//   SessionEnd        a closing log line; the view's pane is closed, or parked on the bridge when the session was cleared, from
+//                     whatever page the person had browsed it to (one already on the bridge keeps its pins)
 //
 //   The view beside the session. In cmux: the dashboard (pjman serve, started if none is running) is docked in a browser pane
 //   at session start, opened on the product's bridge, and the pane is pointed at the session's page once the session binds a
 //   change (from its branch at start, from a prompt, or by the agent filing or binding one); a session that never binds leaves it on the bridge. The pane belongs
-//   to the terminal: it closes at session end, and a /clear keeps it, parked on the bridge for the next session there to take
-//   over the same way. Elsewhere, and whenever the pane was closed, `pjman open --session` brings the page back; the
+//   to the terminal: it closes at session end, and a /clear keeps it, sent back to the bridge from whatever page it showed and
+//   parked there for the next session to take over the same way. Elsewhere, and whenever the pane was closed, `pjman open --session` brings the page back; the
 //   session's id is exported to the agent's shell as PJMAN_SESSION.
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
@@ -421,10 +422,17 @@ async function undockView(st, sid, reason, store) {
   st.pane = null;
   if (!pane) return;
   if (reason === 'clear') {
-    if (dock?.sid === null) return; // parked already
     const server = readServeAddress();
     if (!server) return;
     const url = bridgeUrl(server, store);
+    // the dock records which session the pane follows, never the page it shows: a parked pane the person browsed to
+    // another page goes back to the bridge too (change:clear-returns-to-the-bridge); one already on the bridge is left
+    // as it is, its pins and position kept
+    const at = await runAsync('cmux', ['browser', '--surface', pane, 'get', 'url']);
+    if (at.ok && onPage(at.out.trim(), url)) {
+      if (dock?.sid !== null) saveDock({ pane, sid: null });
+      return;
+    }
     // a pane the person closed fails; the next session then opens its own
     if ((await runAsync('cmux', ['browser', '--surface', pane, 'navigate', url])).ok) saveDock({ pane, sid: null });
     else if (dock?.pane === pane) saveDock(null);
@@ -433,6 +441,8 @@ async function undockView(st, sid, reason, store) {
   cmux(['close-surface', '--surface', pane]);
   if (dock?.pane === pane) saveDock(null);
 }
+/** Whether a pane's url is the page at `base`, with or without a query, a hash or a deeper path beneath it. */
+const onPage = (at, base) => at === base || ['?', '#', '/'].some((c) => at.startsWith(base + c));
 function sidebarStatus(key) {
   if (key) cmux(['set-status', 'pjman', key, '--icon', 'point.3.connected.trianglepath.dotted']);
   else cmux(['clear-status', 'pjman']);
