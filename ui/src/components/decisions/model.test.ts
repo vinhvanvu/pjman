@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { DecisionState } from '@/data/contract';
-import { type CardDecision, chosenOf, decidedMeta, grouped, groupHead, openByDefault, proposedMeta } from './model';
+import {
+  answerOf,
+  type CardDecision,
+  chosenOf,
+  decidedHead,
+  decidedMeta,
+  grouped,
+  groupHead,
+  openByDefault,
+  proposedMeta,
+} from './model';
 
 const state = (o: Partial<DecisionState> = {}): DecisionState => ({ criteria: [], options: [], comments: [], ...o });
 const option = (id: string, recommended = false) => ({ id, text: id, recommended, accepted: false });
@@ -29,6 +39,22 @@ describe('the card words', () => {
       decidedMeta({ status: 'decided', decidedBy: 'person:vinhvanvu', decidedOn: '2026-11-06', state: state() }),
     ).toBe('decided by vinhvanvu · 2026-11-06');
     expect(decidedMeta({ status: 'superseded', state: state() })).toBe('superseded');
+  });
+  it('reads the answer off the accepted option, falling back to the acceptance, else nothing', () => {
+    const always = { ...option('always'), text: 'One count line by default', accepted: true };
+    expect(answerOf({ state: state({ options: [option('open'), always] }) })).toEqual({
+      id: 'always',
+      text: 'One count line by default',
+    });
+    // an acceptance that names an option the thread no longer lists still reads as the answer
+    expect(
+      answerOf({ state: state({ accepted: { option: 'b', at: '2026-11-08T00:00:00Z', text: 'the b way' } }) }),
+    ).toEqual({ id: 'b', text: 'the b way' });
+    expect(answerOf({ state: state({ options: [option('a')] }) })).toBeUndefined();
+  });
+  it('folds the decided to a count', () => {
+    expect(decidedHead(3)).toBe('3 decided');
+    expect(decidedHead(1)).toBe('1 decided');
   });
 });
 
@@ -65,8 +91,10 @@ describe('the group', () => {
   });
   it('heads the group by what waits and where the decided are', () => {
     expect(groupHead(0, 3, 'session')).toBe('nothing waits · the decided are on the rail');
-    expect(groupHead(0, 3, 'change')).toBe('nothing waits · 3 decided');
+    // on a change the fold's own line says how many are decided
+    expect(groupHead(0, 3, 'change')).toBe('nothing waits');
     expect(groupHead(0, 0, 'change')).toBe('nothing waits');
+    expect(groupHead(0, 0, 'session')).toBe('nothing waits');
     expect(groupHead(1, 0, 'session')).toBe('1 waits on you');
     expect(groupHead(2, 0, 'change')).toBe('2 wait on you, oldest first');
   });

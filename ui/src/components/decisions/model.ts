@@ -1,6 +1,6 @@
 // The decision card's model (decision detail-pages/decision-card): one shape for a decision wherever it is drawn, read
 // from what each surface has (a waiting decision beneath a node, a decision row on a change), and the words the card
-// says at each depth. Pure: data in, words out.
+// says at each depth: a decided row reads its answer, and the decided list folds to a count. Pure: data in, words out.
 import type { ChangeContext, DecisionState, WaitingDecision } from '@/data/contract';
 import { agoWords, plural } from '@/lib/format';
 import { changeOfDecision, short } from '@/lib/keys';
@@ -82,6 +82,20 @@ export function decidedMeta(d: Pick<CardDecision, 'decidedBy' | 'decidedOn' | 's
   return [by ? `decided by ${short(by)}` : 'decided', on].filter(Boolean).join(' · ');
 }
 
+/** The answer a decided row reads: the accepted option, by its id and its one line (decided decided-decisions-fold/
+ *  fold-by-default: the row reads the answer alone; the name and gist wait in the thread). Undefined when the thread
+ *  holds no accepted option, so the row falls back to the name. */
+export function answerOf(d: Pick<CardDecision, 'state'>): { id: string; text: string } | undefined {
+  const s = d.state;
+  const o = s.options.find((x) => x.accepted) ?? s.options.find((x) => x.id === s.accepted?.option);
+  if (o) return { id: o.id, text: o.text };
+  if (s.accepted) return { id: s.accepted.option, text: s.accepted.text ?? s.accepted.option };
+  return undefined;
+}
+
+/** "3 decided": the one line the decided list folds to on a change. */
+export const decidedHead = (n: number): string => `${n} decided`;
+
 /** The option Accept takes: the person's pick while they hold one, else the recommendation, else the only option;
  *  undefined when the thread recommends nothing among several, so Accept has nothing to name. The note says which. */
 export function chosenOf(
@@ -115,7 +129,8 @@ export function grouped(list: readonly CardDecision[]): {
 /** The group's head: what waits, and where the decided are. On the session page the decided are on the rail; on the
  *  change page they are rows beneath. */
 export function groupHead(waiting: number, decided: number, where: 'session' | 'change'): string {
-  const rest = where === 'session' ? 'the decided are on the rail' : decided ? `${decided} decided` : '';
+  // on a change the decided fold's own line carries the count, so the head does not repeat it
+  const rest = where === 'session' && decided ? 'the decided are on the rail' : '';
   if (waiting === 0) return ['nothing waits', rest].filter(Boolean).join(' · ');
   if (waiting === 1) return '1 waits on you';
   return `${waiting} wait on you, oldest first`;

@@ -3,8 +3,9 @@
 // to the thread), and the thread beneath the ladder in reading order: the question, the criteria, the options as a
 // choice list with each one's case, the recommended one marked with its why, the rejected dimmed with the reason, the
 // person's comments (one about an option beneath that option, the rest after the options), then the action row: Accept the chosen option, or pick another and accept it, with a line in
-// the person's words. A decided decision is a row whose thread opens read-only with Reopen as its only action. One
-// component serves every surface that shows a decision.
+// the person's words. A decided decision is a row that reads its answer, the accepted option by its id and its one line,
+// with who decided and when; its thread, opening read-only with Reopen as its only action, holds the name and the gist
+// (decided decided-decisions-fold/fold-by-default). One component serves every surface that shows a decision.
 import { cn } from 'cn';
 import { ChevronDown } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
@@ -17,7 +18,7 @@ import { NodeLink } from '@/components/links/NodeLink';
 import { Readiness } from '@/components/record/Foundation';
 import { pointsOf } from './Options';
 import { DecideControl } from './DecideControl';
-import { type CardDecision, chosenOf, decidedMeta, type Depth, nameOf, proposedMeta } from './model';
+import { answerOf, type CardDecision, chosenOf, decidedMeta, type Depth, nameOf, proposedMeta } from './model';
 
 /** The card's ground: the waits colour over the raised surface, a shade stronger when open. */
 const CARD = 'bg-[color-mix(in_srgb,var(--status-review)_7%,var(--muted))]';
@@ -342,10 +343,12 @@ function Option({
   );
 }
 
-/** A decided decision: a row with a diamond, the name, who and when; its thread opens read-only with Reopen. */
+/** A decided decision: a row with a diamond, the answer (the accepted option's id and line; the name when the thread
+ *  holds no accepted option), who and when; its thread opens read-only, the name and gist first, with Reopen. */
 function DecidedRow({ d, depth, lens, actor, onToggleThread, onReopen, showChange, className }: DecisionCardProps) {
   const thread = depth === 'thread';
   const faint = d.status !== 'decided';
+  const answer = answerOf(d);
   return (
     <div className={cn('flex flex-col', className)}>
       <button
@@ -358,7 +361,19 @@ function DecidedRow({ d, depth, lens, actor, onToggleThread, onReopen, showChang
           aria-hidden="true"
           className={cn('size-[9px] shrink-0 rotate-45 rounded-[2px]', faint ? 'bg-ink-faint' : TONE.done.bg)}
         />
-        <span className="min-w-0 flex-1 truncate">{nameOf(d)}</span>
+        {answer ? (
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            {/* the id says which of several was taken; the only option needs no label */}
+            {d.state.options.length > 1 && (
+              <span className="shrink-0 rounded-[4px] border border-line-strong bg-raised px-1 font-mono text-[11px] leading-[17px] text-ink">
+                {answer.id}
+              </span>
+            )}
+            <span className="min-w-0 truncate">{answer.text}</span>
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate">{nameOf(d)}</span>
+        )}
         {showChange && <span className="shrink-0 text-meta text-ink-faint">{short(d.change)}</span>}
         <span className="shrink-0 text-meta text-ink-faint">{decidedMeta(d)}</span>
         <ChevronDown
@@ -370,7 +385,9 @@ function DecidedRow({ d, depth, lens, actor, onToggleThread, onReopen, showChang
         {thread && (
           <m.div key="thread" {...UNFOLD} className="overflow-hidden">
             <div className="flex flex-col gap-2.5 pb-2 pl-[17px]">
-              {d.gist && d.name && <p className="text-body leading-normal text-ink-muted">{d.gist}</p>}
+              {/* the row read the answer, so the thread opens on the name and the gist */}
+              {answer && d.name && <p className="text-body leading-normal font-medium text-ink">{d.name}</p>}
+              {d.gist && (answer || d.name) && <p className="text-body leading-normal text-ink-muted">{d.gist}</p>}
               <Thread d={d} actor={actor} editable={false} />
               <div className="flex items-center gap-2.5 text-meta text-ink-faint">
                 <CopyKey refKey={d.key} />
