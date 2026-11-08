@@ -70,6 +70,16 @@ test('a change: its decisions are the lanes, its own events the trunk, every row
   assert.equal(r.total, r.rows.length);
 });
 
+test('a change names every session that touched it over its life, with its agent, its span and its count', () => {
+  const r = rail(store, loadStore(store), 'change:auth', { limit: 1 });
+  const me = r.sessions?.find((s) => s.key === 'session:me');
+  assert.ok(me, 'the session that wrote on the change is named');
+  assert.equal(me.agent, 'agent:claude-code');
+  assert.equal(me.onBehalfOf, 'person:tester');
+  assert.ok(me.count > 1 && me.first <= me.last);
+  assert.equal(rail(store, loadStore(store), 'session:me').sessions, undefined);
+});
+
 test('a milestone: its children are the lanes, and a write beneath a child falls in that lane', () => {
   const r = rail(store, loadStore(store), 'change:platform');
   assert.deepEqual(r.lanes.map((l) => l.id).sort(), ['change:web/child-a', 'change:web/child-b']);

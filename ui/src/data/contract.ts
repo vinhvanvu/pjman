@@ -27,6 +27,7 @@ export type {
   Row as RailRow,
   Bucket as RailBucket,
   RowKind as RailRowKind,
+  RailSession,
 } from '@contract/rail';
 export type { RecordType } from '@contract/records';
 export type { DecisionState, OptionState } from '@contract/foundation';

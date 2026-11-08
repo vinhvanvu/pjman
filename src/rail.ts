@@ -87,6 +87,19 @@ export interface Rail {
   earlier: number;
   /** The scope's last event, whenever it was. */
   last?: { seq: number; at: string };
+  /** On a change: every session that touched it over its life, oldest first, so its page can name who worked it. */
+  sessions?: RailSession[];
+}
+
+export interface RailSession {
+  key: string;
+  agent?: string;
+  onBehalfOf?: string;
+  started?: string;
+  /** Its first and last event on the change, and how many. */
+  first: string;
+  last: string;
+  count: number;
 }
 
 export interface RailOpts {
@@ -239,7 +252,9 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   }
 
   const last = events.at(-1);
-  return { key: scope.key, axis, from: from ?? rows[0]?.at ?? to, to, lanes, rows, buckets: [...byDay.values()], total: passing.length, earlier: older.length, last: last && { seq: last.seq, at: last.at } };
+  const out: Rail = { key: scope.key, axis, from: from ?? rows[0]?.at ?? to, to, lanes, rows, buckets: [...byDay.values()], total: passing.length, earlier: older.length, last: last && { seq: last.seq, at: last.at } };
+  if (scope.type === 'change') out.sessions = sessionsOn(loaded, events);
+  return out;
 }
 
 /** The events of a tree node: everything beneath it, under every key each record ever had. */
@@ -250,6 +265,23 @@ function treeEvents(loaded: Loaded, scope: Rec, all: StoreEvent[]): StoreEvent[]
     if (r) for (const e of eventKeysOf(r)) keys.add(e);
   }
   return all.filter((e) => keys.has(e.key));
+}
+
+/** The sessions that wrote the events, each once, in the order they first did. */
+function sessionsOn(loaded: Loaded, events: StoreEvent[]): RailSession[] {
+  const by = new Map<string, RailSession>();
+  for (const e of events) {
+    if (!e.session) continue;
+    const s = by.get(e.session);
+    if (s) {
+      s.last = e.at;
+      s.count += 1;
+      continue;
+    }
+    const rec = live(loaded, e.session);
+    by.set(e.session, { key: rec?.key ?? e.session, agent: str(rec?.data.agent), onBehalfOf: str(rec?.data.on_behalf_of), started: str(rec?.data.started), first: e.at, last: e.at, count: 1 });
+  }
+  return [...by.values()];
 }
 
 type Observed = { from?: string; to?: string; at?: string };

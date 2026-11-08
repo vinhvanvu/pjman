@@ -1,19 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ChangeContext, RailLane } from '@/data/contract';
-import {
-  absence,
-  childrenView,
-  chipViews,
-  effectsOf,
-  identityLabel,
-  planView,
-  sessionBar,
-  sessionTitle,
-  shownOf,
-  sourcesView,
-  viewing,
-  waitsLine,
-} from './model';
+import type { RailLane } from '@/data/contract';
+import { absence, chipViews, sessionBar, sessionTitle, shownOf, viewing, waitsLine } from './model';
 
 const lane = (id: string, writes: number, o: Partial<RailLane> = {}): RailLane => ({
   id,
@@ -77,57 +64,12 @@ describe('the session bar', () => {
   });
 });
 
-describe('the plan and the children', () => {
-  const step = (state: ChangeContext['plan'][number]['state'], text: string = state) => ({ text, state });
-  it('heads the plan by the step the work is on, the dropped apart, a segment a step', () => {
-    const v = planView([step('done'), step('active'), step('open'), step('dropped')]);
-    expect(v.sum).toBe('step 2 of 3 · 1 dropped');
-    expect(v.segments).toEqual(['done', 'on', 'open', 'dropped']);
-    expect(v.row?.state).toBe('active');
-  });
-  it('says when every step is done, or there are none', () => {
-    expect(planView([step('done'), step('done')]).sum).toBe('all 2 steps done');
-    expect(planView([]).sum).toBe('no steps yet');
-    expect(planView([step('open', 'a'), step('open', 'b')]).row?.text).toBe('a');
-  });
-  it('heads a milestone by its children', () => {
-    const child = (key: string, status: string) => ({ key, status }) as ChangeContext['children'][number];
-    const v = childrenView([child('a', 'done'), child('b', 'active'), child('c', 'open'), child('d', 'dropped')]);
-    expect(v.sum).toBe('1 of 3 done · 1 in flight');
-    expect(v.row?.key).toBe('b');
-  });
-});
-
-describe('the path and the sources', () => {
-  it('reads feature effects as written', () => {
-    expect(effectsOf(['adds feature:p/x', 'feature:p/y'])).toEqual([
-      { effect: 'adds', key: 'feature:p/x' },
-      { effect: 'changes', key: 'feature:p/y' },
-    ]);
-    expect(effectsOf(undefined)).toEqual([]);
-  });
-  it('sums the sources as the branch, the links and the files', () => {
-    const src = (key: string) => ({ key, via: 'links' as const });
-    const v = sourcesView({
-      sources: [src('url:https://x'), src('file:a.ts'), src('file:b.ts')],
-      branch: { name: 'detail-pages', worktree: 'detail-pages', observed: false },
-    });
-    expect(v.sum).toBe('branch detail-pages · 1 link · 2 files');
-    expect(v.files).toHaveLength(2);
-    expect(sourcesView({ sources: [] }).sum).toBe('no files yet');
-  });
-  it('labels the identity row by where the session is', () => {
-    expect(identityLabel(false)).toBe('on now · change');
-    expect(identityLabel(true, 'bug')).toBe('viewing · bug');
-  });
-});
-
 describe('absence', () => {
   it('takes a session the store has not got as starting, until the window has passed', () => {
     expect(absence(404, false)).toBe('starting');
     expect(absence(404, true)).toBe('none');
   });
-  it('says any other failure as the server\'s, whether or not the window has passed', () => {
+  it("says any other failure as the server's, whether or not the window has passed", () => {
     expect(absence(500, false)).toBe('failed');
     expect(absence(undefined, true)).toBe('failed');
   });

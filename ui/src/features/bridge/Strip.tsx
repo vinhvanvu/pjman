@@ -165,13 +165,12 @@ function Heading({ row }: { row: Extract<StripRow, { kind: 'head' }> }) {
   );
 }
 
-/** The frame every card shares: a link to the session's dock when there is a session, else to the change on the
- *  product map, on `tab` when one is named. The bridge has no record pane, so a change always opens on the map, never
- *  as a selection on the bridge. The last live event that touched the card washes over it. */
+/** The frame every card shares: a link to the session's page when there is a session, else to the change's own page,
+ *  where its decisions are read in place (decision change-detail/own-route). The bridge has no record pane, so a
+ *  change always opens on its page, never as a selection on the bridge. The last live event that touched the card washes over it. */
 function CardFrame({
   session,
   change,
-  tab,
   arrival,
   className,
   children,
@@ -179,7 +178,6 @@ function CardFrame({
   session?: BridgeSession;
   change?: BridgeChange;
   lens: Lens;
-  tab?: 'decisions';
   arrival?: TimelineEvent;
   className?: string;
   children: ReactNode;
@@ -204,7 +202,7 @@ function CardFrame({
     );
   if (change)
     return (
-      <Link to="/$lens/$" params={{ lens: 'feature', _splat: change.key }} search={{ tab }} className={frame}>
+      <Link to="/change/$" params={{ _splat: restOf(change.key) }} search={{}} className={frame}>
         {wash}
         {children}
       </Link>
@@ -290,7 +288,6 @@ export function WaitCard({
       session={session}
       change={change}
       lens={lens}
-      tab="decisions"
       arrival={lastArrival(arrivals, session, change)}
       className={cn(TONE.waits.line, isTouched(touched, session, change) && OUTLINE)}
     >

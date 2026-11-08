@@ -14,9 +14,12 @@
 // asked for arrives at once.
 // Alive (change:motion-design): a row that arrives opens its space and fades in, washed in its lane's colour; the
 // dim is a short fade; under reduced motion the fades stay and nothing slides.
+// On a change's page the rail runs by session (decision change-detail/rail-unfiltered): every row in its writer's
+// hue and a head where the writer changes, naming the session with the way to its page, the live one breathing; one
+// rail over every session, so the hand-offs read as its structure, and no filter of its own.
 // The flat list is the other rendering of the same rows: the same words in a plain list, without the rail.
 import { cn } from 'cn';
-import { ChevronUp, Link2, List, Rows3 } from 'lucide-react';
+import { ChevronRight, ChevronUp, Link2, List, Rows3 } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import { useRef, useState, type ReactNode } from 'react';
 import type { Lens, RailQuery } from '@/data/contract';
@@ -24,6 +27,7 @@ import { useRailPages } from '@/data/queries';
 import { EmptyState } from '@/components/EmptyState';
 import { Label } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
+import { Pulse } from '@/components/presence/Presence';
 import { useHeldList } from '@/lib/hold';
 import { liveItem, Wash } from '@/lib/motion';
 import { useFresh } from '@/state/arrivals';
@@ -36,10 +40,14 @@ import {
   pageRows,
   railQuery,
   rowViews,
+  sessionColours,
+  sessionRuns,
   shownLine,
   type BucketView,
   type LaneView,
   type RowView,
+  type RunHead,
+  type RunSession,
 } from './model';
 
 export type RailRendering = 'rail' | 'list';
@@ -59,6 +67,7 @@ export function ActivityRail({
   label = 'Timeline',
   note,
   held = false,
+  sessions,
   className,
 }: {
   /** The key the rail is drawn at: a change, a milestone, a feature, the product, a session. */
@@ -76,6 +85,8 @@ export function ActivityRail({
   note?: ReactNode;
   /** Held still (lib/hold): the live page keeps its places and new rows wait until the release. */
   held?: boolean;
+  /** On a change's page: the rail runs by session, a head at each hand-off, with no filter of its own. */
+  sessions?: readonly RunSession[];
   className?: string;
 }) {
   const [rendering, setRendering] = useState<RailRendering>('rail');
@@ -101,8 +112,19 @@ export function ActivityRail({
     dimTo,
   );
   const buckets = bucketViews(last.buckets);
-  const filtered = !only && (lanesOn.length > 0 || kindsOff.length > 0);
-  const groups = only ? [] : KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
+  const fixed = !!only || !!sessions;
+  const filtered = !fixed && (lanesOn.length > 0 || kindsOff.length > 0);
+  const groups = fixed ? [] : KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
+  // by session: one hue per writer across every page, so an older page repaints nothing
+  const colours = sessions
+    ? sessionColours([
+        ...sessions.map((x) => x.key),
+        ...merged.flatMap((r) => ((r.session ?? r.writer) ? [(r.session ?? r.writer)!] : [])),
+      ])
+    : undefined;
+  const runs = (rows: RowView[]) => (sessions ? sessionRuns(rows, sessions, colours) : { rows, heads: undefined });
+  const liveRuns = runs(live);
+  const olderRuns = runs(older);
   const open = (day: string) => {
     const start = dayStart(day);
     if (!reaches.current.includes(start)) reaches.current = [...reaches.current, start];
@@ -117,7 +139,7 @@ export function ActivityRail({
           <span className="text-meta text-ink-faint">{shownLine(merged.length, first.total)}</span>
           <Toggle rendering={rendering} onChange={setRendering} />
         </div>
-        {!only && lanes.length > 0 && (
+        {!fixed && lanes.length > 0 && (
           <LaneChips lanes={lanes} lit={lit} on={lanesOn} onToggle={(id) => setLanesOn(toggled(lanesOn, id))} />
         )}
         {groups.length > 1 && (
@@ -138,11 +160,11 @@ export function ActivityRail({
         <>
           {/* keyed on the fixed lane: a new lane is a new list, so the hold takes it as it stands and no row of the last
               lane stays on */}
-          <Rows key={only ?? 'all'} rows={live} lens={lens} held={held} />
-          {older.length > 0 && <Rows rows={older} lens={lens} />}
+          <Rows key={only ?? 'all'} rows={liveRuns.rows} heads={liveRuns.heads} lens={lens} held={held} />
+          {older.length > 0 && <Rows rows={olderRuns.rows} heads={olderRuns.heads} lens={lens} />}
         </>
       ) : (
-        <FlatList rows={[...live, ...older]} lens={lens} />
+        <FlatList rows={[...liveRuns.rows, ...olderRuns.rows]} lens={lens} />
       )}
       {q.hasNextPage && (
         <button
@@ -338,15 +360,64 @@ function Words({ row, lens }: { row: RowView; lens: Lens }) {
   );
 }
 
-/** The rows on the rail, newest first, inside a live list. */
-function Rows({ rows: live, lens, held = false }: { rows: RowView[]; lens: Lens; held?: boolean }) {
+/** A run's head: the session's name in its hue, the live one breathing, how many of the shown rows are its, and the
+ *  way to its page. */
+function Head({ head, lens }: { head: RunHead; lens: Lens }) {
+  return (
+    <m.li
+      {...liveItem}
+      style={laneStyle(head.colour)}
+      className="relative grid grid-cols-[52px_18px_minmax(0,1fr)] items-start gap-x-2"
+    >
+      <span />
+      <span className="relative min-h-[36px] self-stretch before:absolute before:bottom-0 before:left-[8px] before:top-0 before:w-0.5 before:bg-line">
+        <ChevronUp
+          aria-hidden="true"
+          className="absolute left-[2px] top-[6px] size-3.5 bg-surface text-[var(--lane)]"
+          strokeWidth={2.5}
+        />
+      </span>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 pt-1.5 pb-3 text-xs font-semibold text-[var(--lane)]">
+        {head.live && <Pulse className="breathe size-[7px]" />}
+        <span className="min-w-0 truncate">{head.title}</span>
+        <span className="font-medium text-ink-faint">
+          {head.live ? 'on it now' : `${head.count} ${head.count === 1 ? 'row' : 'rows'} here`}
+        </span>
+        {head.session && (
+          <NodeLink
+            to={head.session}
+            lens={lens}
+            className="ml-auto inline-flex items-center gap-0.5 text-meta font-medium text-primary hover:underline"
+          >
+            session
+            <ChevronRight className="size-3" aria-hidden="true" />
+          </NodeLink>
+        )}
+      </div>
+    </m.li>
+  );
+}
+
+/** The rows on the rail, newest first, inside a live list; by session, each run under its head. */
+function Rows({
+  rows: live,
+  heads,
+  lens,
+  held = false,
+}: {
+  rows: RowView[];
+  heads?: Map<number, RunHead>;
+  lens: Lens;
+  held?: boolean;
+}) {
   const fresh = useFresh();
   // held still under the pointer or focus: the rows keep their places, a new one waits until the release
   const { shown: rows } = useHeldList(live, held, rowKey);
   return (
     <ol className="flex flex-col">
       <AnimatePresence initial={false}>
-        {rows.map((row) => (
+        {rows.flatMap((row) => [
+          ...(heads?.has(row.seq) ? [<Head key={`head-${row.seq}`} head={heads.get(row.seq)!} lens={lens} />] : []),
           <m.li
             key={row.seq}
             {...liveItem}
@@ -364,8 +435,8 @@ function Rows({ rows: live, lens, held = false }: { rows: RowView[]; lens: Lens;
             <div className="min-w-0 pb-3.5 pt-1 text-body leading-normal">
               <Words row={row} lens={lens} />
             </div>
-          </m.li>
-        ))}
+          </m.li>,
+        ])}
       </AnimatePresence>
     </ol>
   );

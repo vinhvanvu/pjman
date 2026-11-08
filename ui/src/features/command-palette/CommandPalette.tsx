@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/command';
 import type { Lens, RecordType, Row } from '@/data/contract';
 import { useRecords } from '@/data/queries';
-import { short, targetOf } from '@/lib/keys';
+import { kindOf, restOf, short, targetOf } from '@/lib/keys';
 import { StatusChip } from '@/components/chips/Chip';
 
 const GROUPS: { type: RecordType; label: string }[] = [
@@ -62,7 +62,9 @@ export function CommandPalette({
   const go = (key: string) => {
     onOpenChange(false);
     const t = targetOf(key, lens);
-    if (t.kind === 'node')
+    // a change is its own page (decision change-detail/own-route); a milestone moves on from there to the lens
+    if (kindOf(key) === 'change') void navigate({ to: '/change/$', params: { _splat: restOf(key) }, search: {} });
+    else if (t.kind === 'node')
       void navigate({
         to: '/$lens/$',
         params: { lens: t.lens, _splat: t.node },

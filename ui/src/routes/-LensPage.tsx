@@ -2,7 +2,7 @@
 // features; owns nothing but the composition. URL state comes in as props and search (the path is the scope, `sel`
 // the selection, the filter params the narrowing); server state through the scope hook, once for the scope and once
 // for the selection; client state from the stores.
-import { useNavigate, useSearch } from '@tanstack/react-router';
+import { Navigate, useNavigate, useSearch } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Diamond, Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
@@ -10,7 +10,7 @@ import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
 import { DecisionGroup } from '@/components/decisions/DecisionGroup';
 import { fromRow, groupHead } from '@/components/decisions/model';
-import { focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
+import { changePath, focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
 import { AppShell } from '@/components/shell/AppShell';
 import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
@@ -27,7 +27,7 @@ import { AspectPicker, Overview, pathTo, ProductMap, type MapFilter } from '@/fe
 import { MilestonePage } from '@/features/milestone-lens';
 import { RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
 import { narrowToAspect, narrowToMilestone } from '@/lib/narrow';
-import { ChangeRecord } from '@/features/record';
+import { ChangeView } from '@/features/change';
 import { MomentChip } from '@/features/moment';
 import { FollowPill, ThisSession } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
@@ -58,6 +58,9 @@ function kindOf(s: Scope): string {
 
 const isContainer = (s: Scope): boolean =>
   !!s.node && (s.node.type !== 'change' || (s.change?.children.length ?? 0) > 0);
+
+/** A change with no children: its own page is the change (decision change-detail/own-route), the lens only selects it. */
+const isLeafChange = (s: Scope | undefined): boolean => !!s?.node && s.node.type === 'change' && !isContainer(s);
 
 const narrowScope = (s: Scope | undefined, milestone?: string, aspect?: string): Scope | undefined => {
   const m = s && milestone ? narrowToMilestone(s, milestone) : s;
@@ -276,10 +279,18 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     const path = isScope
       ? []
       : shown.crumbs.slice(at + 1).map((c) => ({ key: c.key, label: c.name ?? c.title ?? short(c.key) }));
-    const tabs: readonly Tab[] = shown.change ? ['overview', 'activity', 'decisions'] : ['overview', 'activity'];
-    const live = new Set(shown.sessions.map((s) => s.key));
+    // a leaf change is read whole in the tree (its decisions and its rail with it); a milestone keeps its tabs
+    const leaf = isLeafChange(shown);
+    const tabs: readonly Tab[] = leaf
+      ? ['overview']
+      : shown.change
+        ? ['overview', 'activity', 'decisions']
+        : ['overview', 'activity'];
     let body: React.ReactNode;
-    if (tab === 'activity') {
+    if (leaf && shown.change) {
+      // the change tree folded, the change bar on top and the rail beneath (decision change-detail/docked-is-folded)
+      body = <ChangeView ctx={shown.change} scope={shown} lens={lens} wide={false} />;
+    } else if (tab === 'activity') {
       // the rail beneath the node, whatever it is (change:activity-timeline): a change, a milestone, a feature, the product
       const beneath = shown.node?.key ?? node;
       body = beneath ? (
@@ -290,11 +301,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     } else if (tab === 'decisions' && shown.change) {
       body = <DecisionsTab ctx={shown.change} lens={lens} />;
     } else if (shown.node?.type === 'change' && shown.change) {
-      body = shown.change.children.length ? (
-        <MilestonePage scope={shown} ctx={shown.change} lens={lens} />
-      ) : (
-        <ChangeRecord ctx={shown.change} lens={lens} liveSessions={live} />
-      );
+      body = <MilestonePage scope={shown} ctx={shown.change} lens={lens} />;
     } else if (isScope && chosenAspect) {
       // the map narrowed to an aspect and nothing selected: the aspect, read whole
       body = <AspectPane aspect={chosenAspect} lens={lens} />;
@@ -454,6 +461,18 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       onLayoutChange={(l) => setSplit(splitId, l)}
     />
   );
+
+  // a leaf change stood on is its own page (decision change-detail/own-route): an old link moves there, the decision
+  // it named open; the docked session page stands on its change and stays
+  if (!following && fresh && isLeafChange(fresh) && fresh.node)
+    return (
+      <Navigate
+        to="/change/$"
+        params={{ _splat: changePath(fresh.node.key) }}
+        search={{ decision: search.decision }}
+        replace
+      />
+    );
 
   return (
     <AppShell wide={wide} rail={rail} bar={bar} railOpen={railOpen} onCloseRail={() => setRailOpenFor(null)}>
