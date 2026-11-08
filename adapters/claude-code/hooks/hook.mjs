@@ -2,7 +2,9 @@
 // The Claude Code adapter for pjman: one script, one event per invocation, every write through `pjman`.
 // Never blocks, never fails the session: on any error it logs to the plugin data directory and exits 0.
 //
-//   SessionStart      register the repository if it is not a project yet (auto_register); dock the view first; run the reads side by
+//   SessionStart      register the repository if it is not a project yet (auto_register); a start outside any repository (a parent
+//                     directory, the home folder) is a session of the global store with no project, resolved to the project of the
+//                     repository it first works in (PostToolUse); dock the view first; run the reads side by
 //                     side (the brief, `pjman context`, who the person is at startup and /clear (`pjman whoami --verify`, cached a day
 //                     by the tool; injected only when something is off, the rename or claim offered and never run), the receipt's
 //                     watermark, the done changes for the stale-worktree scan, the open PR off main); then the one write, `pjman
@@ -146,6 +148,45 @@ function autoRegisterOff() {
   } catch {
     return false;
   }
+}
+
+/** The person's global store, when it exists: where a session that starts outside any project is recorded. */
+function globalStore() {
+  const root = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'store');
+  return fs.existsSync(path.join(root, 'pjman.yaml')) ? root : null;
+}
+
+/** The directory a tool call worked in: the file it wrote, or the directory a shell command changed into. */
+function workedDir(input) {
+  const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
+  if (file) return path.dirname(path.resolve(file));
+  if (input.tool_name !== 'Bash') return null;
+  const m = /(?:^|&&|;|\|)\s*cd\s+(?:--\s+)?(?:(["'])((?:~|\/)[^"']*)\1|((?:~|\/)[^\s"'&;|]*))/.exec(String(input.tool_input?.command ?? ''));
+  const dir = m ? m[2] ?? m[3] : null;
+  return dir ? dir.replace(/^~(?=\/|$)/, os.homedir()) : null;
+}
+
+/** A session that started outside any project is resolved to the project of the repository it works in, the first time a
+ *  tool call lands inside one: the record is told, and from here every hook call runs from that repository. */
+function resolveProject(st, sid, input, env) {
+  const dir = workedDir(input);
+  if (!dir || !fs.existsSync(dir)) return false;
+  const override = process.env.PJMAN_STORE;
+  delete process.env.PJMAN_STORE;
+  let where = null;
+  try {
+    where = pjman(['where', '--json'], { cwd: dir, json: true });
+  } catch {
+    where = null;
+  } finally {
+    if (override !== undefined && !where?.project) process.env.PJMAN_STORE = override;
+  }
+  if (!where?.project || !where.project_dir) return false;
+  if (tryPjman(['session', 'project', sid, where.project], { cwd: where.project_dir, env }) === null) return false;
+  st.projectDir = where.project_dir;
+  st.unscoped = false;
+  note(`resolved to ${where.project} from ${where.project_dir}`);
+  return true;
 }
 
 /** Observed edges from the bound change to the branch and the open pull request, once each per session. */
@@ -504,6 +545,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (start.bound) st.bound = start.bound;
   if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
   let text = (read.brief ?? '') + `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
+  if (st.unscoped) text += `This session started outside any registered repository (${input.cwd || process.cwd()}). It is recorded with no project until a tool call lands in one: edit a file there or \`cd\` into it in a shell command, and the session is resolved to that project. Run pjman from inside the repository you work in, so its writes resolve to that project.\n\n`;
   const stale = main ? staleWorktreesText(staleWorktrees(cwd, read.done ?? [])) : '';
   if (stale) text += `${stale}\n---\n`;
   text += read.context ?? '';
@@ -531,27 +573,43 @@ async function promiseObject(obj) {
 // --- main ---------------------------------------------------------------------------------------
 async function main() {
   const input = readStdin();
-  const cwd = input.cwd || process.cwd();
+  const mainSid = input.session_id;
+  if (!mainSid) return;
+  const sid = input.agent_id || mainSid; // inside a subagent, the child session is the writer
+  const st = loadState(sid);
+  // a session resolved to a project after starting outside one runs from that repository from then on
+  const cwd = st.projectDir && fs.existsSync(st.projectDir) ? st.projectDir : input.cwd || process.cwd();
   let store;
   try {
     store = pjman(['where', '--json'], { cwd, json: true });
   } catch {
-    // not a project yet: a git repository registers itself at session start, unless the user config says otherwise
-    if (EVENT !== 'SessionStart' || autoRegisterOff() || !gitTop(cwd)) return;
-    if (tryPjman(['init', '--no-start', '--no-adapter'], { cwd }) === null) return;
-    try {
-      store = pjman(['where', '--json'], { cwd, json: true });
-    } catch {
-      return;
+    if (gitTop(cwd)) {
+      // not a project yet: a git repository registers itself at session start, unless the user config says otherwise
+      if (EVENT !== 'SessionStart' || autoRegisterOff()) return;
+      if (tryPjman(['init', '--no-start', '--no-adapter'], { cwd }) === null) return;
+      try {
+        store = pjman(['where', '--json'], { cwd, json: true });
+      } catch {
+        return;
+      }
+    } else {
+      // outside any repository: the session is the person's, recorded in the global store with no project until a tool
+      // call lands in a registered repository (resolveProject). The store is named to this process only, never to the
+      // agent's shell, so the agent's own writes still resolve by the directory they run in.
+      const root = globalStore();
+      if (!root || (EVENT !== 'SessionStart' && !st.unscoped)) return;
+      process.env.PJMAN_STORE = root;
+      try {
+        store = pjman(['where', '--json'], { cwd, json: true });
+      } catch {
+        return;
+      }
+      st.unscoped = true;
     }
   }
   _sourceKinds = store.source_kinds ?? [];
 
-  const mainSid = input.session_id;
-  if (!mainSid) return;
-  const sid = input.agent_id || mainSid; // inside a subagent, the child session is the writer
   const env = { PJMAN_WRITER: AGENT, PJMAN_SESSION: `session:${sid}` };
-  const st = loadState(sid);
 
   switch (EVENT) {
     case 'SessionStart':
@@ -577,6 +635,7 @@ async function main() {
       return;
     }
     case 'PostToolUse': {
+      if (st.unscoped) resolveProject(st, sid, input, env);
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
       const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|note|session|mv|rm|fmt|sync|order|apply|undo|migrate)\b/;
       if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
@@ -589,7 +648,7 @@ async function main() {
           try { return fs.realpathSync(p); } catch { return p === path.dirname(p) ? p : path.join(real(path.dirname(p)), path.basename(p)); }
         };
         const abs = real(path.resolve(cwd, file));
-        const project = real(process.env.CLAUDE_PROJECT_DIR || cwd);
+        const project = real(st.projectDir || process.env.CLAUDE_PROJECT_DIR || cwd);
         const rel = path.relative(project, abs);
         const inProject = rel && !rel.startsWith('..') && !path.isAbsolute(rel);
         const inStore = !path.relative(real(store.root), abs).startsWith('..');

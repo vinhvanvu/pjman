@@ -14,6 +14,10 @@ export const CHANGE_KINDS = ['work', 'bug'] as const;
  *  workaround, else cosmetic. In order from worst. */
 /** A project's answer to the map question: the first session proposes a product map, or not. */
 export const MAP_ANSWERS = ['propose', 'skip'] as const;
+/** What a project's repository holds, as `pjman init` inventoried it: documentation, code, both, or nothing yet. The
+ *  map comes to the product by this: docs give the sentences, code the split, bare grows from the work. */
+export const HOLDS = ['bare', 'docs', 'code', 'docs+code'] as const;
+export type Holds = (typeof HOLDS)[number];
 export const SEVERITIES = ['product', 'feature', 'capability', 'nuisance', 'cosmetic'] as const;
 export const LAYERS = ['core', 'sources', 'work'] as const;
 export const DEFAULT_SOURCE_KINDS = [

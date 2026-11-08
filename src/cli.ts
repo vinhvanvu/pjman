@@ -19,7 +19,7 @@ import { syncLinear } from './sync/linear.js';
 import { syncGithub } from './sync/github.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
-import { sessionBind, sessionFocus, type BindReason, sessionLog, sessionObserve, sessionStart, sessionUnbind } from './commands/session.js';
+import { sessionBind, sessionFocus, type BindReason, sessionLog, sessionObserve, sessionStart, sessionUnbind, sessionProject } from './commands/session.js';
 import { brief, followWakes, formatBriefSize, type Wake } from './hydrate.js';
 import { note } from './commands/note.js';
 import { envelope } from './write.js';
@@ -90,7 +90,7 @@ const COMMANDS: { name: string; usage: string[]; about: string }[] = [
   { name: 'order', about: "move a change in its product's sequence, the roadmap's order: before or after another entry, first, last, or off the sequence (later). The rest of the order is never touched",
     usage: ['pjman order <change> --before <change> | --after <change> | --first | --last | --later'] },
   { name: 'session', about: 'append to a session record: a log line, a change it worked on, an observed edge; unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
-    usage: ['pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]   (the start as one write: the record unless it exists, the start line, the change the branch names bound and its edge observed, the brief; --json carries the brief)', 'pjman session log <id> <text>', 'pjman session bind <id> <change> [--reason prompt|created|branch]', 'pjman session unbind <id> <change>', 'pjman session observe <id> <edge> <from> <to>', 'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)'] },
+    usage: ['pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]   (the start as one write: the record unless it exists, the start line, the change the branch names bound and its edge observed, the brief; --json carries the brief)', 'pjman session log <id> <text>', 'pjman session bind <id> <change> [--reason prompt|created|branch]', 'pjman session unbind <id> <change>', 'pjman session observe <id> <edge> <from> <to>', 'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)', 'pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in; logged)'] },
   { name: 'note', about: "a note to whoever works a change, or to one running session: one line under Notes on that record, given in full in the session's next brief; a session working the change, or the one addressed, is woken for it where its adapter can (pjman undo <commit> takes it back)",
     usage: ['pjman note <change|session:<id>> <text>'] },
   { name: 'wakes', about: "the events that wake a session: a decision on its bound change set decided, a note on that change or on the session, by anyone but the session; --follow keeps printing them as they land, from the stream's tail (or --since), until the session's process ends",
@@ -440,7 +440,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (!id || !rest[0]) throw new CliError('usage: pjman session focus <id> <change>');
         const r = sessionFocus(store, id, rest[0]);
         out(r.moved ? `focus moved in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `focus already there in ${r.path}`);
-      } else throw new CliError('usage: pjman session <log|bind|unbind|observe|focus> …');
+      } else if (sub === 'project') {
+        if (!id || !rest[0]) throw new CliError('usage: pjman session project <id> <project>');
+        const r = sessionProject(store, id, rest[0]);
+        out(r.moved ? `resolved ${r.path} to ${r.project}${r.commit ? ` (committed ${r.commit})` : ''}` : `${r.path} is already ${r.project}'s`);
+      } else throw new CliError('usage: pjman session <log|bind|unbind|observe|focus|project> …');
       return 0;
     }
     case 'note': {

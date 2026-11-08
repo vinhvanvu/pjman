@@ -5,7 +5,7 @@ import type { Store } from './config.js';
 import { findReferences, type GetOpts } from './graph.js';
 import type { Loaded, Rec } from './records.js';
 import { ahead, productOf } from './commands/order.js';
-import { progressOf } from './commands/view.js';
+import { mapState, progressOf, type MapState } from './commands/view.js';
 import { derivedStatus, effectsOf, levelOf, live, structuralParent } from './tree.js';
 import { lineOf } from './foundation.js';
 
@@ -48,6 +48,9 @@ export interface Intake {
   milestones: { key: string; title?: string; status?: string; progress?: { done: number; total: number }; target?: string }[];
   /** The order's tail: the product, the last entries of its sequence, and how many open changes come after it as later. */
   tail: { product: string | null; sequence: string[]; later: number };
+  /** The product has no map yet (decision cold-start-gaps/map-first-at-intake): what the repository holds and how the map
+   *  comes with this change, in the same breath. Absent once the product has a feature or the project said skip. */
+  map?: MapState;
 }
 
 const STOP = new Set(('a an the and or of to in on for with by from at as is are be was were it its this that these those we i you he she they ' +
@@ -156,11 +159,16 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
     return false;
   };
   const later = product ? changes.filter((c) => isOpen(c) && c.data.kind !== 'bug' && productOf(loaded, c)?.key === product.key && !onSequence(c)).length : 0;
-  return { text, words: ask, duplicates, done, nodes, milestones, tail: { product: product?.key ?? null, sequence: sequence.slice(-3), later } };
+  const map = projectRec ? mapState(loaded, projectRec, store.projectDir) : undefined;
+  return { text, words: ask, duplicates, done, nodes, milestones, tail: { product: product?.key ?? null, sequence: sequence.slice(-3), later }, map };
 }
 
 export function formatIntake(i: Intake): string {
   const out: string[] = [`# intake — ${i.text.length > 80 ? i.text.slice(0, 77) + '…' : i.text}`];
+  if (i.map) {
+    out.push(`\n## No map yet (the map comes with this change, in the same breath)`);
+    out.push(i.map.prompt);
+  }
   const line = (c: ChangeCandidate) => `- ${c.key} [${c.status ?? '?'}${c.kind === 'bug' ? ', bug' : ''}] — ${c.title ?? ''}${c.referenced ? ' · named in the request' : ` · ${c.words.join(', ')}`}${c.features.length ? ` · ${c.features.join(', ')}` : ''}${c.parent ? ` · under ${c.parent}` : ''}`;
   out.push(`\n## Duplicates (open changes that may already cover it)`);
   out.push(i.duplicates.length ? i.duplicates.map(line).join('\n') : '(none: nothing open shares its words)');
@@ -169,7 +177,7 @@ export function formatIntake(i: Intake): string {
     out.push(i.done.map(line).join('\n'));
   }
   out.push(`\n## Nodes (what on the map it may alter; name the most specific)`);
-  out.push(i.nodes.length ? i.nodes.map((n) => `- ${n.key} (${n.level}, ${n.derived}) — ${n.name ?? n.title ?? ''}${n.path.length ? ` · under ${n.path.join(' › ')}` : ''} · ${n.words.join(', ')}`).join('\n') : '(none: no feature shares its words; a new capability only if it is a behaviour a user would recognise)');
+  out.push(i.nodes.length ? i.nodes.map((n) => `- ${n.key} (${n.level}, ${n.derived}) — ${n.name ?? n.title ?? ''}${n.path.length ? ` · under ${n.path.join(' › ')}` : ''} · ${n.words.join(', ')}`).join('\n') : i.map ? '(none: the product has no map; see above)' : '(none: no feature shares its words; look at the tree for the feature it correlates to before creating a capability beneath it, only when it is a behaviour a user would recognise; a bug that breaks a behaviour no node has creates the live node, under the feature it correlates to)');
   out.push(`\n## Milestones in flight (nearest to done first)`);
   out.push(i.milestones.length ? i.milestones.map((m) => `- ${m.key} [${m.status ?? '?'}]${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}${m.target ? ` · target ${m.target}` : ''} — ${m.title ?? ''}`).join('\n') : '(none)');
   out.push(`\n## The order's tail${i.tail.product ? ` (${i.tail.product})` : ''}`);

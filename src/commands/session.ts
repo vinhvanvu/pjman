@@ -18,15 +18,15 @@ function load(store: Store, id: string) {
   return { loaded, rec };
 }
 
-type SaveOp = 'log' | 'bind' | 'observe' | 'unbind' | 'focus' | 'briefed';
+type SaveOp = 'log' | 'bind' | 'observe' | 'unbind' | 'focus' | 'briefed' | 'project';
 
 /** `value`: on a bind or a focus, the key of the change, so the event says where the session went. */
 function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: SaveOp, value?: string): string | null {
   const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render('session', data, body));
   validateOrUndo(store, [rec.path], [], prior);
-  const fields = { log: ['log'], bind: ['changes'], observe: ['observed'], unbind: ['changes', 'observed', 'log'], focus: ['focus'], briefed: ['briefed'] }[op];
-  const evOp = op === 'unbind' || op === 'focus' || op === 'briefed' ? 'set' : op;
+  const fields = { log: ['log'], bind: ['changes'], observe: ['observed'], unbind: ['changes', 'observed', 'log'], focus: ['focus'], briefed: ['briefed'], project: ['project', 'log'] }[op];
+  const evOp = op === 'unbind' || op === 'focus' || op === 'briefed' || op === 'project' ? 'set' : op;
   return finishWrite(store, message, rec.key, [{ op: evOp, key: rec.key, type: 'session', path: rec.path, fields, value, writer: envelope({}).writer }]);
 }
 
@@ -187,6 +187,24 @@ export function sessionFocus(store: Store, id: string, changeKey: string): { pat
   if (prior?.change === key && !moved) return { path: rec.path, commit: null, moved: false };
   const commit = save(store, rec, { ...rec.data, focus: { change: key, at: nowIso() } }, rec.body, `pjman: session focus ${rec.key} ${key}`, 'focus', key);
   return { path: rec.path, commit, moved: true };
+}
+
+/** A session that started outside any project (a parent directory, the home folder) is resolved to the project of the
+ *  repository it works in once it writes there (decision: cold-start-gaps, the session from a parent directory): the
+ *  project is set and the resolution logged, so the writes the session made under that project read as its own.
+ *  Unchanged when the session already names that project. */
+export function sessionProject(store: Store, id: string, projectKey: string): { path: string; project: string; commit: string | null; moved: boolean } {
+  const { loaded, rec } = load(store, id);
+  const raw = projectKey.includes(':') ? projectKey : `project:${projectKey}`;
+  const res = resolve(loaded, raw);
+  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
+  if (res.rec.type !== 'project') throw new CliError(`${raw} is not a project`);
+  const key = res.rec.key;
+  if (rec.data.project === key) return { path: rec.path, project: key, commit: null, moved: false };
+  const prior = typeof rec.data.project === 'string' ? ` (was ${rec.data.project})` : ' (started outside any project)';
+  const body = withLogLine(rec, `resolved to ${key} from the repository it works in${prior}`);
+  const commit = save(store, rec, { ...rec.data, project: key }, body, `pjman: session project ${rec.key} ${key}`, 'project', key);
+  return { path: rec.path, project: key, commit, moved: true };
 }
 
 /** The watermark: the change the last brief was for (none when it carried only notes to an unbound session) and the

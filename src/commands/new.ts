@@ -16,6 +16,8 @@ export interface NewFlags {
   tracker?: string;
   /** A project's answer to the map question: propose (the first session proposes a product map) or skip. */
   map?: string;
+  /** What the project's repository holds, as init inventoried it: bare, docs, code or docs+code. */
+  holds?: string;
   status?: string;
   summary?: string;
   /** A change's rungs and sections (foundation.ts): name, gist, Origin, Intent, Done when, then the optional ones. */
@@ -278,7 +280,7 @@ export function newProject(store: Store, ident: string, flags: NewFlags): NewRes
   const rel = path.join('projects', `${slug}.md`);
   refuseExisting(store, rel);
   const loaded = loadStore(store);
-  const data: Record<string, unknown> = { title: flags.title, product: flags.product, parent: flags.parent, tracker: flags.tracker, map: flags.map, owners: listOrNone(flags.owners), links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
+  const data: Record<string, unknown> = { title: flags.title, product: flags.product, parent: flags.parent, tracker: flags.tracker, map: flags.map, holds: flags.holds, owners: listOrNone(flags.owners), links: flags.links?.length ? flags.links : undefined, ...stamp(flags) };
   fullKeys(loaded, 'project', data, undefined, null);
   writeFile(store, rel, render('project', data, flags.body ? flags.body.trim() + '\n' : ''));
   return finish(store, 'project', `project:${slug}`, rel, [rel], flags);

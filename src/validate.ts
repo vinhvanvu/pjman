@@ -1,4 +1,4 @@
-import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, MAP_ANSWERS, SEVERITIES } from './config.js';
+import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, HOLDS, MAP_ANSWERS, SEVERITIES } from './config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug, VERSION_RE } from './keys.js';
 import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
@@ -26,7 +26,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'writer', 'session', 'created'],
   aspect: ['title', 'name', 'parent', 'writer', 'session', 'created'],
   place: ['feature', 'writer', 'session', 'created'],
-  project: ['title', 'product', 'parent', 'tracker', 'map', 'writer', 'session', 'created'],
+  project: ['title', 'product', 'parent', 'tracker', 'map', 'holds', 'writer', 'session', 'created'],
   change: ['name', 'gist', 'status', 'kind', 'severity', 'project', 'parent', 'target', 'rungs_from', 'migrated', 'writer', 'session', 'created'],
   decision: ['name', 'gist', 'status', 'decided_by', 'decided_on', 'rungs_from', 'migrated', 'writer', 'session', 'created'], // supersedes: a key or a list, checked below
   release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'writer', 'session', 'created'],
@@ -305,6 +305,7 @@ export function validate(loaded: Loaded): Problem[] {
         }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
         if (typeof d.map === 'string' && !(MAP_ANSWERS as readonly string[]).includes(d.map)) err(r, `map '${d.map}' is not one of ${MAP_ANSWERS.join(', ')}`);
+        if (typeof d.holds === 'string' && !(HOLDS as readonly string[]).includes(d.holds)) err(r, `holds '${d.holds}' is not one of ${HOLDS.join(', ')}`);
         if (typeof d.tracker === 'string' && !store.config.source_kinds.map((k) => k.toLowerCase()).includes(d.tracker.toLowerCase())) {
           err(r, `tracker '${d.tracker}' is not in source_kinds (${store.config.source_kinds.join(', ')})`);
         }
