@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeRow, WaitingDecision } from '@/data/contract';
-import { asksOf, byIntent, byMoved, decisionsByChange, intentOf, strayDecisions } from './work';
+import { asksOf, byIntent, byMotion, byMoved, decisionsByChange, intentOf, motionOf, strayDecisions } from './work';
 
 const row = (key: string, status: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
   key: `change:${key}`,
@@ -67,5 +67,50 @@ describe('work by intent', () => {
     expect(
       byMoved([row('b', 'open', { moved: '2026-01-02' }), row('a', 'open', { moved: '2026-01-03' })]).map((r) => r.key),
     ).toEqual(['change:a', 'change:b']);
+  });
+});
+
+describe('by motion', () => {
+  const row = (key: string, o: Partial<ChangeRow> = {}): ChangeRow =>
+    ({
+      key: `change:${key}`,
+      features: [],
+      waiting: 0,
+      decided: 0,
+      live: false,
+      children: 0,
+      dependsOn: [],
+      aspects: [],
+      needs: [],
+      stale: false,
+      status: 'active',
+      ...o,
+    }) as ChangeRow;
+
+  it("reads a change's motion as the bridge does, what waits on the person first", () => {
+    expect(motionOf(row('w', { waiting: 1, live: true }))).toBe('waiting');
+    expect(motionOf(row('live', { live: true, status: 'blocked' }))).toBe('working');
+    expect(motionOf(row('b', { status: 'blocked' }))).toBe('blocked');
+    expect(motionOf(row('r', { status: 'review' }))).toBe('review');
+    expect(motionOf(row('s', { step: { n: 2, text: 'next', state: 'open' } }))).toBe('stopped');
+    expect(motionOf(row('n', { next: '2. next' }))).toBe('stopped');
+    expect(motionOf(row('o', { status: 'planning' }))).toBe('open');
+  });
+
+  it('groups in the order of motion, each most recently moved first, done and dropped left out', () => {
+    const groups = byMotion([
+      row('old', { status: 'open', moved: '2026-11-01' }),
+      row('done', { status: 'done' }),
+      row('live', { live: true, moved: '2026-11-03' }),
+      row('new', { status: 'open', moved: '2026-11-02' }),
+      row('wait', { waiting: 2, moved: '2026-10-01' }),
+      row('dropped', { status: 'dropped', waiting: 1 }),
+    ]);
+    expect(groups.map((g) => [g.motion, g.rows.map((r) => r.key)])).toEqual([
+      ['waiting', ['change:wait']],
+      ['working', ['change:live']],
+      ['open', ['change:new', 'change:old']],
+    ]);
+    expect(groups.map((g) => g.label)).toEqual(['Waits on you', 'Working now', 'Open · no plan yet']);
   });
 });

@@ -23,7 +23,7 @@ import { ActivityView } from '@/features/activity';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
 import { AspectPane } from '@/features/aspects';
-import { AspectPicker, Overview, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
+import { AspectPicker, NodeRecord, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
 import { MilestonePage } from '@/features/milestone-lens';
 import { RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
 import { narrowToAspect, narrowToMilestone } from '@/lib/narrow';
@@ -32,7 +32,8 @@ import { MomentChip } from '@/features/moment';
 import { FollowPill, ThisSession } from '@/features/session-follow';
 import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
-import { short } from '@/lib/keys';
+import { useNow } from '@/hooks/useNow';
+import { productOf, short } from '@/lib/keys';
 import { usePreferences } from '@/state/preferences';
 import { freshScope, pageProduct } from '@/lib/identity';
 import type { PageSearch } from './-search';
@@ -84,6 +85,9 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     [search.days, withDone, search.retired],
   );
   const scope = useScope({ lens, node, ...flags });
+  // identity has one source (lib/identity.ts): the URL, else this page's own scope; never a guess
+  const fresh = freshScope(scope.data, scope.isPlaceholderData);
+  const product = pageProduct(node, fresh, store?.products);
   const sel = search.sel && search.sel !== node ? search.sel : undefined;
   const selection = useScope({ lens, node: sel, ...flags }, !!sel);
   const isScope = !sel;
@@ -102,6 +106,33 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const shown = sel ? narrowedSelection : narrowed;
 
   const tab: Tab = search.tab ?? 'overview';
+  const now = useNow();
+  // the tie between the map and the record (decision feature-detail/hold-lights-the-map): the change under the
+  // pointer, on a row or a card, lights its row, its path and its card; the changes held in the URL (`hold`, the
+  // param the bridge uses, so a hold carries between the two) light their paths, dim the rest of the map, lift their
+  // cards under the figures and narrow the timeline to their writes. Only this product's changes count
+  const [hover, setHover] = useState<string | undefined>(undefined);
+  const hold = search.hold;
+  const held = useMemo(() => {
+    const mine = node ? productOf(node) : undefined;
+    return hold ? hold.split(',').filter((k) => k && (!mine || productOf(k) === mine)) : [];
+  }, [hold, node]);
+  const writeHold = useCallback(
+    (next: readonly string[]) => {
+      setHover(undefined);
+      void navigate({
+        to: '.',
+        search: (prev: Record<string, unknown>) => ({ ...prev, hold: next.length ? next.join(',') : undefined }),
+        replace: true,
+      });
+    },
+    [navigate],
+  );
+  const toggleHold = useCallback(
+    (change: string) => writeHold(held.includes(change) ? held.filter((k) => k !== change) : [...held, change]),
+    [held, writeHold],
+  );
+  const releaseAll = useCallback(() => writeHold([]), [writeHold]);
   const filter = useMemo<MapFilter>(
     () => ({
       q: search.q,
@@ -127,7 +158,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const [railOpenFor, setRailOpenFor] = useState<string | null>(null);
   const railOpen = railOpenFor === pageKey;
   const [palette, setPalette] = useState(false);
-  const openPalette = useCallback(() => setPalette(true), []);
+  const openPalette = useCallback(() => setPalette(true), [setPalette]);
   useCommandPaletteHotkey(openPalette);
 
   // the acts. A history entry per place (scope, selection): select, clear and focus push, so Back undoes the last
@@ -178,9 +209,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const onExpandedChange = useCallback((ids: string[]) => setExpanded(scopeKey, ids), [setExpanded, scopeKey]);
 
   const data = narrowed;
-  // identity has one source (lib/identity.ts): the URL, else this page's own scope; never a guess
-  const fresh = freshScope(data, scope.isPlaceholderData);
-  const product = pageProduct(node, fresh, store?.products);
   usePrefetchDestinations(product?.key);
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
@@ -278,16 +306,14 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       : shown.crumbs.slice(at + 1).map((c) => ({ key: c.key, label: c.name ?? c.title ?? short(c.key) }));
     // a leaf change is read whole in the tree (its decisions and its rail with it); a milestone keeps its tabs
     const leaf = isLeafChange(shown);
-    const tabs: readonly Tab[] = leaf
-      ? ['overview']
-      : shown.change
-        ? ['overview', 'activity', 'decisions']
-        : ['overview', 'activity'];
+    // a milestone keeps its tabs; a node is read whole, its timeline in the record (decision one-node-record)
+    const tabs: readonly Tab[] = !leaf && shown.change ? ['overview', 'activity', 'decisions'] : ['overview'];
+    const shownTab: Tab = tabs.includes(tab) ? tab : 'overview';
     let body: React.ReactNode;
     if (leaf && shown.change) {
       // the change tree folded, the change bar on top and the rail beneath (decision change-detail/docked-is-folded)
       body = <ChangeView ctx={shown.change} scope={shown} lens={lens} wide={false} />;
-    } else if (tab === 'activity') {
+    } else if (shownTab === 'activity') {
       // the rail beneath the node, whatever it is (change:activity-timeline): a change, a milestone, a feature, the product
       const beneath = shown.node?.key ?? node;
       body = beneath ? (
@@ -295,7 +321,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       ) : (
         <EmptyState title="Nothing has happened here yet." className="m-5" />
       );
-    } else if (tab === 'decisions' && shown.change) {
+    } else if (shownTab === 'decisions' && shown.change) {
       body = <DecisionsTab ctx={shown.change} lens={lens} />;
     } else if (shown.node?.type === 'change' && shown.change) {
       body = <MilestonePage scope={shown} ctx={shown.change} lens={lens} />;
@@ -306,7 +332,19 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       // nothing selected in the roadmap lens: the order as a list
       body = <RoadmapHome scope={shown} lens={lens} />;
     } else {
-      body = <Overview scope={shown} lens={lens} aspect={filter.aspect} />;
+      body = (
+        <NodeRecord
+          scope={shown}
+          lens={lens}
+          aspect={filter.aspect}
+          held={held}
+          onHold={toggleHold}
+          onRelease={releaseAll}
+          hover={hover}
+          onHover={setHover}
+          now={now}
+        />
+      );
     }
     pane = (
       <div className="flex min-h-0 flex-1 flex-col">
@@ -314,7 +352,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
           kind={lens === 'roadmap' && isScope ? 'scope' : isScope && chosenAspect ? 'aspect' : kind}
           isScope={isScope}
           path={path}
-          tab={tabs.includes(tab) ? tab : 'overview'}
+          tab={shownTab}
           tabs={tabs}
           tabCounts={{ decisions: shown.change?.decisions.length }}
           onFocus={!isScope && isContainer(shown) && sel ? () => focus(sel) : undefined}
@@ -371,6 +409,11 @@ export function LensPage({ lens, node, following }: LensPageProps) {
         onFilterChange={setFilter}
         changes={scope.data?.changes ?? []}
         version={scope.dataUpdatedAt}
+        hover={hover}
+        onHover={setHover}
+        held={held}
+        onHold={toggleHold}
+        now={now}
       />
     );
   } else if (lens === 'roadmap' && data.node?.type !== 'change') {
@@ -459,6 +502,17 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     />
   );
 
+  // a milestone stood on in the feature lens is the roadmap's (decision feature-detail/one-rollup-every-scope): its
+  // children sit at their features on the map, the milestone itself is read where milestones live
+  if (!following && lens === 'feature' && fresh?.node?.type === 'change' && isContainer(fresh))
+    return (
+      <Navigate
+        to="/$lens/$"
+        params={{ lens: 'roadmap', _splat: fresh.node.key }}
+        search={{ decision: search.decision, tab: search.tab }}
+        replace
+      />
+    );
   // a leaf change stood on is its own page (decision change-detail/own-route): an old link moves there, the decision
   // it named open; the docked session page stands on its change and stays
   if (!following && fresh && isLeafChange(fresh) && fresh.node)

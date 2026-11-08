@@ -65,3 +65,45 @@ export function asksOf(r: ChangeRow, decisions: number): string[] {
   if (r.status === 'blocked') out.push('unblock');
   return out;
 }
+
+// --- by motion (decision feature-detail/one-node-record) ----------------------------------------------------------
+
+export type Motion = 'waiting' | 'working' | 'stopped' | 'review' | 'blocked' | 'open';
+
+/** The groups in the order the bridge reads them, what waits on the person first and what has no plan last. */
+export const MOTIONS: readonly { id: Motion; label: string }[] = [
+  { id: 'waiting', label: 'Waits on you' },
+  { id: 'working', label: 'Working now' },
+  { id: 'stopped', label: 'Stopped · next set' },
+  { id: 'review', label: 'In review' },
+  { id: 'blocked', label: 'Blocked' },
+  { id: 'open', label: 'Open · no plan yet' },
+];
+
+/** A change's motion: a decision waiting on the person first, whatever else; then a live session on it; blocked and
+ *  in review as its status; stopped with a step to pick up; else open, with no plan yet. */
+export function motionOf(r: ChangeRow): Motion {
+  if (r.waiting > 0) return 'waiting';
+  if (r.live) return 'working';
+  if (r.status === 'blocked') return 'blocked';
+  if (r.status === 'review') return 'review';
+  if (r.step || r.next) return 'stopped';
+  return 'open';
+}
+
+export interface MotionGroup {
+  motion: Motion;
+  label: string;
+  rows: ChangeRow[];
+}
+
+/** The rows grouped by motion in order, each group most recently moved first; empty groups left out; done and
+ *  dropped changes never listed. */
+export function byMotion(rows: ChangeRow[]): MotionGroup[] {
+  const open = rows.filter((r) => r.status !== 'done' && r.status !== 'dropped');
+  return MOTIONS.map((m) => ({
+    motion: m.id,
+    label: m.label,
+    rows: byMoved(open.filter((r) => motionOf(r) === m.id)),
+  })).filter((g) => g.rows.length > 0);
+}

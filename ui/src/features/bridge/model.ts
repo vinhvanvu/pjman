@@ -3,8 +3,8 @@
 // card says about its step and its sessions; and the tie to the transport, which ticks are a change's writes, so a
 // card under the pointer lights them and a held card filters to them. Nothing here keeps state.
 import type { BridgeMotion, BridgeSession, TimelineEvent } from '@/data/contract';
-import { agoWords, plural } from '@/lib/format';
-import { changeOfDecision, short } from '@/lib/keys';
+import { plural } from '@/lib/format';
+import { changeOfDecision } from '@/lib/keys';
 
 export type MotionState = 'working' | 'stopped' | 'review' | 'blocked';
 
@@ -91,41 +91,9 @@ export function cardRows(groups: readonly MotionGroup[]): CardRow[] {
   return rows;
 }
 
-/** The words a card says about where the work stands: the lead (a label) and the text after it. Blocked says what
- *  blocks it; in review says the plan is done or what is left; otherwise the step the work stands on, `step n of m`
- *  while it is active, `next` while it waits to start. */
-export function stepWords(c: BridgeMotion): { lead: string; text: string } {
-  if (c.status === 'blocked' && c.blockedOn) return { lead: 'on', text: c.blockedOn };
-  if (c.status === 'review' && (!c.step || c.steps.total === 0))
-    return {
-      lead: 'done',
-      text: c.steps.total ? `${c.steps.done} of ${c.steps.total}; waits for a look` : 'waits for a look',
-    };
-  if (!c.step)
-    return {
-      lead: 'plan',
-      text: c.steps.total ? 'every step done' : c.steps.dropped ? 'every step dropped' : 'no steps yet',
-    };
-  if (c.step.state === 'active') return { lead: `step ${c.step.n} of ${c.steps.total}`, text: c.step.text };
-  return { lead: 'next', text: c.step.text };
-}
-
-/** The words on a session's pill: who, what it is doing, since when. */
-export function pillWords(s: Pick<BridgeSession, 'agent' | 'state' | 'last'>, now = Date.now()): string {
-  const who = s.agent ? short(s.agent) : 'session';
-  const since = s.last ? agoWords(s.last, now) : '';
-  const when = since ? ` · ${since}` : '';
-  switch (s.state) {
-    case 'working':
-      return `${who} · working${when}`;
-    case 'waiting':
-      return `${who} · waiting${when}`;
-    case 'ended':
-      return `${who} · ended${when}`;
-    default:
-      return `${who} · stopped${when}`;
-  }
-}
+// the words a card and a pill say live with the change component (components/change/model), the one drawing of a
+// change at every depth; re-exported so the bridge's tests and callers read them from here
+export { pillWords, stepWords } from '@/components/change/model';
 
 /** The change each session is on, by key, a subagent's its own change else its parent's. */
 export function sessionChanges(sessions: readonly BridgeSession[]): Map<string, string> {

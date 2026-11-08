@@ -40,6 +40,7 @@ export function RecordHeader({
     <div
       className={cn(
         'sticky top-0 z-10 flex flex-col gap-2 border-b border-line bg-ground/95 px-5 pt-3 backdrop-blur md:px-6',
+        tabs.length <= 1 && 'pb-2',
         className,
       )}
     >
@@ -77,6 +78,9 @@ export function RecordHeader({
           </Button>
         )}
       </div>
+      {/* one tab is no tab (decision feature-detail/one-node-record): a node's record is read whole, the tabs stay
+          for a milestone */}
+      {tabs.length > 1 && (
       <nav aria-label="Record tabs" className="-mb-px flex gap-4">
         {tabs.map((t) => (
           <Link
@@ -97,6 +101,7 @@ export function RecordHeader({
           </Link>
         ))}
       </nav>
+      )}
     </div>
   );
 }

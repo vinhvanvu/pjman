@@ -3,6 +3,11 @@ import type { ChangeRow, Scope, ScopeAspect, ScopeNode } from '@/data/contract';
 import {
   allFeatureKeys,
   allWork,
+  changeId,
+  litBy,
+  liveBeneath,
+  namesIn,
+  UNASSIGNED,
   aspectOutline,
   bodyOf,
   bugMark,
@@ -79,23 +84,88 @@ const tree: ScopeNode[] = [
 ];
 
 describe('the product map', () => {
-  it('is features only, indexed by parent', () => {
+  it('is the features with the changes at their leaves, the unassigned ones one group at the foot', () => {
     const map = productMap(tree);
-    expect([...map.items.keys()]).toEqual([
+    expect(allFeatureKeys(tree)).toEqual([
       'feature:dashboard',
       'feature:board',
       'feature:navigation',
       'feature:auto-navigation',
       'feature:store',
     ]);
-    expect(map.children.get('feature:navigation')).toEqual(['feature:auto-navigation']);
-    expect(allFeatureKeys(tree)).toHaveLength(5);
+    // the capabilities first, then the changes at the node
+    expect(map.children.get('feature:navigation')).toEqual([
+      'feature:auto-navigation',
+      changeId('feature:navigation', 'change:v2'),
+    ]);
+    expect(map.children.get('feature:dashboard')).toEqual([
+      'feature:board',
+      'feature:navigation',
+      changeId('feature:dashboard', 'change:here'),
+    ]);
+    expect(map.children.get(UNASSIGNED)).toEqual([changeId(UNASSIGNED, 'change:loose')]);
+    expect(map.children.get('__map__')).toEqual(['feature:dashboard', 'feature:store', UNASSIGNED]);
+    expect(map.items.get(changeId('feature:navigation', 'change:v2'))?.row?.key).toBe('change:v2');
+    expect(map.idsOf.get('change:v2')).toEqual([changeId('feature:navigation', 'change:v2')]);
     expect(unassigned(tree)?.children.map((c) => c.key)).toEqual(['change:loose']);
   });
 
-  it('knows the path to a selection', () => {
+  it("draws a change naming two features under each, and a milestone's children as leaves beside it", () => {
+    const twice = change('twice');
+    const milestone = { ...change('m'), children: [change('kid')] };
+    const t = [feature('a', [twice, milestone]), feature('b', [twice])];
+    const map = productMap(t);
+    expect(map.idsOf.get('change:twice')).toEqual([
+      changeId('feature:a', 'change:twice'),
+      changeId('feature:b', 'change:twice'),
+    ]);
+    expect(map.children.get('feature:a')).toEqual([
+      changeId('feature:a', 'change:twice'),
+      changeId('feature:a', 'change:m'),
+      changeId('feature:a', 'change:kid'),
+    ]);
+    expect(pathTo(t, 'change:kid')).toEqual(['feature:a']);
+  });
+
+  it("knows the path to a selection, a change's included", () => {
     expect(pathTo(tree, 'feature:auto-navigation')).toEqual(['feature:dashboard', 'feature:navigation']);
     expect(pathTo(tree, 'feature:store')).toEqual([]);
+    expect(pathTo(tree, 'change:v2')).toEqual(['feature:dashboard', 'feature:navigation']);
+    expect(pathTo(tree, 'change:loose')).toEqual([UNASSIGNED]);
+  });
+
+  it('names what it draws', () => {
+    const names = namesIn(tree);
+    expect(names.get('feature:navigation')).toBe('navigation');
+    expect(names.get('change:v2')).toBe('v2');
+  });
+
+  it('rolls a live change up to every node above it, and lights the path to a held one', () => {
+    const live = { ...change('live'), row: { ...change('live').row!, live: true } };
+    const t = [feature('top', [feature('mid', [live]), feature('other')]), feature('store')];
+    expect([...liveBeneath(t)]).toEqual(['feature:top', 'feature:mid']);
+    expect(liveBeneath(tree).size).toBe(0);
+    expect([...litBy(t, ['change:live'])].sort()).toEqual(['change:live', 'feature:mid', 'feature:top']);
+    expect([...litBy(tree, ['change:loose'])].sort()).toEqual(['change:loose', UNASSIGNED]);
+    expect(litBy(t, []).size).toBe(0);
+  });
+
+  it("keeps a node's changes when it is kept, and a change the text names where the node is not", () => {
+    const kept = filterTree(tree, { q: 'navigation' });
+    expect(kept.map((n) => n.key)).toEqual(['feature:dashboard']);
+    const nav = kept[0]!.children.find((n) => n.key === 'feature:navigation')!;
+    expect(nav.children.map((n) => n.key)).toEqual(['feature:auto-navigation', 'change:v2']);
+    // the text names the change alone: its node is kept for it, the other changes left out
+    const byChange = filterTree(tree, { q: 'v2' });
+    expect(
+      byChange[0]!.children.find((n) => n.key === 'feature:navigation')!.children.map((n) => n.key),
+    ).toEqual(['change:v2']);
+    expect(byChange[0]!.children.filter((n) => n.type === 'change')).toEqual([]);
+    // a state filter keeps the changes with the node it keeps
+    const live = { ...feature('live', [change('on-live')]), derived: 'live' };
+    expect(filterTree([live, feature('planned')], { states: ['live'] })[0]!.children.map((n) => n.key)).toEqual([
+      'change:on-live',
+    ]);
   });
 });
 

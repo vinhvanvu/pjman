@@ -15,7 +15,9 @@ import { MOVE } from '@/lib/motion';
 import { useFresh } from '@/state/arrivals';
 import { useAt, useCursor, useResolved } from '@/state/moment';
 import { TONE } from '@/lib/tones';
-import { Cards, MotionCard, type Touched } from './Cards';
+import { MotionCard } from '@/components/change/MotionCard';
+import { factsOfMotion } from '@/components/change/model';
+import { Cards, type Touched } from './Cards';
 import { allSessions, lastArrival, sessionChanges } from './model';
 
 export function Bridge({
@@ -109,8 +111,7 @@ export function Bridge({
                       className="min-w-0"
                     >
                       <MotionCard
-                        change={c}
-                        byKey={byKey}
+                        change={factsOfMotion(c, byKey)}
                         held
                         hot={hover === c.key}
                         onHover={onHover}
