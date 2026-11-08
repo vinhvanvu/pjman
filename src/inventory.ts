@@ -14,12 +14,16 @@ export interface Inventory {
   code: string[];
 }
 
-const SKIP = new Set(['.git', 'node_modules', 'dist', 'build', 'out', 'target', 'vendor', '.next', '.venv', 'venv', '__pycache__', 'coverage', '.pjman', '.claude', '.idea', '.vscode']);
+const SKIP = new Set(['.git', '.github', '.gitlab', '.circleci', 'node_modules', 'dist', 'build', 'out', 'target', 'vendor', '.next', '.venv', 'venv', '__pycache__', 'coverage', '.pjman', '.claude', '.idea', '.vscode']);
 const DOC_DIRS = new Set(['docs', 'doc', 'documentation', 'adr', 'adrs', 'rfcs', 'specs', 'design']);
 const NOT_DOCS = /^(license|licence|notice|changelog|contributing|code_of_conduct|security|authors|patents)(\.|$)/i;
 const DOC_EXT = new Set(['.md', '.mdx', '.rst', '.adoc', '.txt']);
-const MANIFESTS = ['package.json', 'pyproject.toml', 'setup.py', 'Cargo.toml', 'go.mod', 'Gemfile', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'mix.exs', 'composer.json', 'Package.swift', 'pubspec.yaml', 'CMakeLists.txt', 'Makefile', 'deno.json', 'bun.lockb'];
-const CODE_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.rb', '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.c', '.h', '.cc', '.cpp', '.hpp', '.cs', '.php', '.ex', '.exs', '.scala', '.clj', '.hs', '.ml', '.dart', '.lua', '.sh', '.zig', '.vue', '.svelte', '.sql', '.proto']);
+const MANIFESTS = ['package.json', 'pyproject.toml', 'setup.py', 'requirements.txt', 'Cargo.toml', 'go.mod', 'Gemfile', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'mix.exs', 'composer.json', 'Package.swift', 'pubspec.yaml', 'CMakeLists.txt', 'Makefile', 'deno.json', 'bun.lockb'];
+/** Source in a language: one file is code. */
+const CODE_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.rb', '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.c', '.h', '.cc', '.cpp', '.hpp', '.cs', '.php', '.ex', '.exs', '.scala', '.clj', '.hs', '.ml', '.dart', '.lua', '.zig', '.vue', '.svelte']);
+/** Scripts and schemas: a tooling folder has a few, a product of them has many. Three make a directory code. */
+const AUX_EXT = new Set(['.sh', '.bash', '.zsh', '.sql', '.proto', '.ps1']);
+const AUX_MIN = 3;
 /** A README is documentation once it says more than a title and an install line. */
 const README_MIN = 300;
 
@@ -65,14 +69,14 @@ export function inventory(dir: string): Inventory {
       if (DOC_DIRS.has(e.name.toLowerCase())) {
         const n = count(full, DOC_EXT, 3);
         if (n) docs.push(`${e.name}/ (${n} file${n === 1 ? '' : 's'})`);
-      } else if (count(full, CODE_EXT, 2, 1)) code.push(`${e.name}/`);
+      } else if (count(full, CODE_EXT, 2, 1) || count(full, AUX_EXT, 2, AUX_MIN) >= AUX_MIN) code.push(`${e.name}/`);
       continue;
     }
     const ext = path.extname(e.name).toLowerCase();
-    if (/^readme(\.|$)/i.test(e.name)) {
+    if (MANIFESTS.includes(e.name)) code.unshift(e.name);
+    else if (/^readme(\.|$)/i.test(e.name)) {
       if (size(full) >= README_MIN) docs.unshift(e.name);
     } else if (DOC_EXT.has(ext) && !NOT_DOCS.test(e.name)) docs.push(e.name);
-    else if (MANIFESTS.includes(e.name)) code.unshift(e.name);
     else if (CODE_EXT.has(ext)) code.push(e.name);
   }
   const holds: Holds = docs.length && code.length ? 'docs+code' : docs.length ? 'docs' : code.length ? 'code' : 'bare';

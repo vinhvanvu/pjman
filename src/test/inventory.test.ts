@@ -53,3 +53,14 @@ test('both: the documentation and the code, the better proposal', () => {
 test('a directory that does not exist is bare', () => {
   assert.equal(inventory(path.join(tmp, 'nowhere')).holds, 'bare');
 });
+
+test('a manifest named like a text file is code, not docs; a tooling folder of a script or two is not code', () => {
+  const cmake = inventory(make('cmake', { 'CMakeLists.txt': 'project(x)', 'src/main.cpp': 'int main() {}' }));
+  assert.deepEqual([cmake.holds, cmake.docs, cmake.code], ['code', [], ['CMakeLists.txt', 'src/']]);
+  const py = inventory(make('py', { 'requirements.txt': 'flask', 'README.md': '# x\n' }));
+  assert.deepEqual([py.holds, py.code], ['code', ['requirements.txt']]);
+  const docsOnly = inventory(make('docs-tooling', { 'README.md': 'x'.repeat(400), 'docs/a.md': '# a', 'scripts/build.sh': 'echo', '.github/workflows/ci.yml': 'on: push' }));
+  assert.deepEqual([docsOnly.holds, docsOnly.code], ['docs', []]);
+  const shell = inventory(make('shell', { 'bin/a.sh': '', 'bin/b.sh': '', 'bin/c.sh': '' }));
+  assert.deepEqual([shell.holds, shell.code], ['code', ['bin/']], 'a product of scripts is code');
+});

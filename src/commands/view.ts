@@ -4,7 +4,7 @@ import { readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
 import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
-import { effectsOf } from '../tree.js';
+import { effectsOf, structuralParent } from '../tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
 import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
 import { urlOf } from '../refs.js';
@@ -424,7 +424,7 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
 }
 
 /** The top-level features of a product: its layers, the roadmap's lanes. */
-const topFeatures = (loaded: Loaded, product: string): Rec[] => loaded.records.filter((r) => r.type === 'feature' && r.valid && `product:${r.productSlug}` === product && r.data.parent === undefined);
+const topFeatures = (loaded: Loaded, product: string): Rec[] => loaded.records.filter((r) => r.type === 'feature' && r.valid && structuralParent(loaded, r)?.key === product);
 
 export interface MapState {
   /** The product with no map, or null when the project has no product. */
@@ -453,9 +453,10 @@ export function mapState(loaded: Loaded, project: Pick<Row, 'key' | 'data'>, pro
 }
 
 /** The map skill's shape for a proposed tree is four to seven layers at the top; a map grown one change at a time
- *  (a bare repository, or capabilities filed before a proposal) can pass it. Then a regrouping is offered, once, in the
- *  context: the person asks for it, the skill never runs it unasked. */
+ *  (a bare repository, or capabilities filed before a proposal) can pass it. Then a regrouping is offered in the
+ *  context: the person asks for it, the skill never runs it unasked. `map=skip` ends this line as it ends the other. */
 export function regroupPrompt(loaded: Loaded, project: Pick<Row, 'key' | 'data'>): string | undefined {
+  if (project.data.map === 'skip') return undefined;
   const product = typeof project.data.product === 'string' ? project.data.product : undefined;
   if (!product) return undefined;
   const top = topFeatures(loaded, product);

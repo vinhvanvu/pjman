@@ -220,6 +220,15 @@ test('a session in an unregistered git repository registers it and gets the brie
   const back = context(hook('SessionStart', { cwd: plain, session_id: 'sess-plain', source: 'resume' }));
   assert.match(back, /project project:auto\. This run is session:sess-plain/);
   assert.doesNotMatch(back, /started outside any registered repository/);
+  // a relative cd is read against the session's directory; a folder that is nobody's is asked about once
+  const rel = context(hook('SessionStart', { cwd: tmp, session_id: 'sess-rel', source: 'startup' }));
+  assert.match(rel, /started outside any registered repository/);
+  hook('PostToolUse', { cwd: tmp, session_id: 'sess-rel', tool_name: 'Write', tool_input: { file_path: 'plain/notes.md' } });
+  const relRec = () => loadStore(global).records.find((r) => r.type === 'session' && r.sessionId === 'sess-rel')!;
+  assert.equal(relRec().data.project, undefined);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-rel.json'), 'utf8')).tried, [plain]);
+  hook('PostToolUse', { cwd: tmp, session_id: 'sess-rel', tool_name: 'Bash', tool_input: { command: 'cd auto && npm test' } });
+  assert.equal(relRec().data.project, 'project:auto');
   assert.deepEqual(validate(loadStore(global)).filter((p) => p.level === 'error'), []);
 });
 

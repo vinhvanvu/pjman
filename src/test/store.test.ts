@@ -759,6 +759,9 @@ test('init asks about the map once and records the answer; the context says when
   const grown = storeContext(store, { project: 'project:other' });
   assert.match(grown.regroupPrompt ?? '', /^product:other has 8 top-level features, more than a proposed map would have/);
   assert.match(formatStoreContext(grown), /\nmap outgrown: product:other has 8 top-level features/);
+  set(store, 'project:other', ['map=skip'], {});
+  assert.equal(storeContext(store, { project: 'project:other' }).regroupPrompt, undefined, 'skip ends this line too');
+  set(store, 'project:other', ['map=propose'], {});
   assert.throws(() => set(store, 'project:other', ['map=maybe'], {}), /not one of propose, skip/);
   assert.throws(() => set(store, 'project:other', ['holds=maybe'], {}), /not one of bare, docs, code, docs\+code/);
   assert.deepEqual(validate(loadStore(store)).filter((p) => p.path === 'projects/other.md'), [], 'holds is a known field: no warning');
