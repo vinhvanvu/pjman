@@ -268,11 +268,12 @@ export const UNFOLDED = 40;
 export function railQuery(o: {
   limit: number;
   axis: Rail['axis'];
-  only?: string;
+  only?: string | readonly string[];
   lanesOn: readonly string[];
   kindsOff: readonly string[];
 }): Pick<RailQuery, 'limit' | 'lanes' | 'kinds' | 'fold'> {
-  if (o.only) return { limit: o.limit, lanes: [o.only], fold: UNFOLDED };
+  const fixed = typeof o.only === 'string' ? [o.only] : o.only ? [...o.only] : [];
+  if (fixed.length) return { limit: o.limit, lanes: fixed, fold: UNFOLDED };
   return {
     limit: o.limit,
     lanes: o.lanesOn.length ? [...o.lanesOn] : undefined,

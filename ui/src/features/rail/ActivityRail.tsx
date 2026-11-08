@@ -77,9 +77,10 @@ export function ActivityRail({
   limit?: number;
   /** The lane kept whole while the rest dim. */
   lit?: string;
-  /** The one lane the rail holds (change:session-timeline-focus): the change the session page shows. The mount's
-   *  own filter stands in for the rail's, so the lane chips and the kind row are not drawn and nothing dims. */
-  only?: string;
+  /** The lanes the rail holds (change:session-timeline-focus; decision feature-detail/hold-lights-the-map): the
+   *  change the session page shows, or the changes held on the map. The mount's own filter stands in for the rail's,
+   *  so the lane chips and the kind row are not drawn and nothing dims. */
+  only?: string | readonly string[];
   /** The head's label, and what stands beside it (a session's liveness). */
   label?: string;
   note?: ReactNode;
@@ -96,7 +97,8 @@ export function ActivityRail({
   const axis = scope.startsWith('session:') ? 'session' : 'tree';
   // the days opened in the strip: read by the pager, so a refetch places the same pages again
   const reaches = useRef<string[]>([]);
-  const query: RailQuery = railQuery({ limit, axis, only, lanesOn, kindsOff });
+  const fixedLanes = typeof only === 'string' ? [only] : (only ?? []);
+  const query: RailQuery = railQuery({ limit, axis, only: fixedLanes, lanesOn, kindsOff });
   const q = useRailPages(scope, query, (last, pages, param) => nextPage(last, pages, param, limit, reaches.current));
   const pages = q.data?.pages ?? [];
   const first = pages[0];
@@ -105,14 +107,14 @@ export function ActivityRail({
   const last = pages.at(-1)!;
   const lanes = laneViews(first);
   const merged = pageRows(pages);
-  const dimTo = only ? undefined : lit;
+  const dimTo = fixedLanes.length ? undefined : lit;
   const live = rowViews({ axis: first.axis, lanes: first.lanes, rows: first.rows }, dimTo);
   const older = rowViews(
     { axis: first.axis, lanes: first.lanes, rows: merged.filter((r) => r.seq < (first.rows[0]?.seq ?? 0)) },
     dimTo,
   );
   const buckets = bucketViews(last.buckets);
-  const fixed = !!only || !!sessions;
+  const fixed = fixedLanes.length > 0 || !!sessions;
   const filtered = !fixed && (lanesOn.length > 0 || kindsOff.length > 0);
   const groups = fixed ? [] : KIND_GROUPS.filter((g) => !g.axis || g.axis === axis);
   // by session: one hue per writer across every page, so an older page repaints nothing
@@ -149,7 +151,7 @@ export function ActivityRail({
       {merged.length === 0 && buckets.length === 0 ? (
         <EmptyState
           title={
-            only
+            fixedLanes.length
               ? 'Nothing on this change from this session yet.'
               : filtered
                 ? 'Nothing passes the filter.'
@@ -160,7 +162,7 @@ export function ActivityRail({
         <>
           {/* keyed on the fixed lane: a new lane is a new list, so the hold takes it as it stands and no row of the last
               lane stays on */}
-          <Rows key={only ?? 'all'} rows={liveRuns.rows} heads={liveRuns.heads} lens={lens} held={held} />
+          <Rows key={fixedLanes.length ? fixedLanes.join(',') : 'all'} rows={liveRuns.rows} heads={liveRuns.heads} lens={lens} held={held} />
           {older.length > 0 && <Rows rows={olderRuns.rows} heads={olderRuns.heads} lens={lens} />}
         </>
       ) : (

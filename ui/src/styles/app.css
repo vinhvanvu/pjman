@@ -160,3 +160,22 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 45%, transparent);
   }
 }
+
+/* a live dot breathes (decision feature-detail/alive-on-the-map): its glow swells and settles on a slow cycle, the
+   same cycle as the focus chip's ring; a held thing never breathes, it wears a steady ring. Still under reduced
+   motion, the glow kept. */
+@utility breathe-dot {
+  animation: breathe-dot 2.4s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+@keyframes breathe-dot {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 25%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--live) 10%, transparent);
+  }
+}

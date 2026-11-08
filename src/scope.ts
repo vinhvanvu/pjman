@@ -11,7 +11,7 @@ import { violations, worstSeverity, type RoadmapRow, type Violation } from './ro
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
-import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState } from './foundation.js';
+import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
@@ -53,6 +53,11 @@ export interface ChangeRow {
   next?: string;
   /** The plan's progress: steps done over steps not dropped. */
   plan?: { done: number; total: number };
+  /** The step the work stands on: the active one, else the first open, with its note; absent when the plan is empty
+   *  or every step is done. What a card says beneath its steps bar, the same reading as the bridge's. */
+  step?: { n: number; text: string; state: StepState; note?: string };
+  /** What blocks it, as the record says, when it is blocked. */
+  blockedOn?: string;
   /** What the record still needs before it is worked: name, gist, intent, done when. */
   needs: string[];
   /** The name and gist were written from an earlier foundation. */
@@ -400,10 +405,14 @@ class Index {
     const kids = this.childrenOf.get(c.key) ?? [];
     const sessions = this.loaded.records.filter((s) => s.type === 'session' && this.liveSessions.has(s.key) && list(s.data.changes).some((k) => live(this.loaded, k)?.key === c.key));
     const steps = stepsOf(c.data);
+    const next = nextStep(steps);
+    const blockedOn = c.sections.get('Blocked on')?.trim();
     return {
       key: c.key, title: lineOf(c.data), name: str(c.data.name), status: str(c.data.status), created: str(c.data.created),
       project: live(this.loaded, c.data.project)?.key, parent: this.parentOf(c), ticket: ticketOf(this.loaded, c),
-      next: nextLine(nextStep(steps)), plan: planProgress(steps), needs: needsOf(c), stale: rungsOf(c).stale,
+      next: nextLine(next), plan: planProgress(steps), needs: needsOf(c), stale: rungsOf(c).stale,
+      step: next ? { n: next.n, text: next.step.text, state: next.step.state, note: next.step.note } : undefined,
+      blockedOn: blockedOn || undefined,
       progress: progressOf(kids.map((k) => ({ status: str(k.data.status) }))),
       features: [
         ...effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),

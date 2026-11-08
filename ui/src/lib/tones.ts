@@ -137,6 +137,9 @@ export const streamTone = (e: Pick<StoreEvent, 'type' | 'op' | 'fields'>): Tone 
 /** The glow a live dot carries. */
 export const GLOW = 'shadow-[0_0_0_3px_color-mix(in_srgb,var(--live)_25%,transparent)]';
 
-/** A session's dot: its state's colour, glowing while it works. */
-export const sessionDot = (state: SessionState): string =>
-  state === 'working' ? `${SESSION.working.bg} ${GLOW}` : SESSION[state].bg;
+/** A dot that means a session is working here: the live green, its glow swelling on a slow cycle (decision
+ *  feature-detail/alive-on-the-map); still under reduced motion, where the glow stays. */
+export const workingDot = `${TONE.live.bg} ${GLOW} breathe-dot`;
+
+/** A session's dot: its state's colour, breathing while it works. */
+export const sessionDot = (state: SessionState): string => (state === 'working' ? workingDot : SESSION[state].bg);
