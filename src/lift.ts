@@ -1,7 +1,8 @@
 // The status lift (decision status-from-the-plan/derive-or-write): a rule on the store's events moves a change forward
 // through pjman set, never back. A step added makes it planning; a step started (or done) makes it active, and so does a
-// session writing a file of the project for it (the observed edge names the change). Blocked, review, done and dropped
-// are a person's; the rule leaves them, and a status already past the lift stays. Each lift is its own write, so
+// session writing a file of the project for it (the observed edge names the change); the last step done makes it review
+// (change:run-to-the-end: the plan has run to its end, the work awaits the person). Blocked, done and dropped are a
+// person's; the rule leaves them, and a status already past the lift stays. Each lift is its own write, so
 // `pjman undo <commit>` reverses it.
 import type { Store } from './config.js';
 import type { EventInput } from './events.js';
@@ -11,20 +12,23 @@ import { set } from './commands/set.js';
 import { live } from './tree.js';
 
 /** The statuses the rule moves from, lowest first; any other status is a person's and stays. */
-const RANK: Record<string, number> = { open: 0, planning: 1, active: 2 };
+const RANK: Record<string, number> = { open: 0, planning: 1, active: 2, review: 3 };
 
 export interface Lift {
   key: string;
   from: string;
-  to: 'planning' | 'active';
+  to: 'planning' | 'active' | 'review';
   because: string;
 }
 
 const statusOf = (rec: Rec): string => (typeof rec.data.status === 'string' ? rec.data.status : 'open');
 
-/** What the plan alone says: planning once it has a step, active once a step has started. */
+/** What the plan alone says: planning once it has a step, active once a step has started, review once every step
+ *  is done or dropped with at least one done. */
 function fromPlan(rec: Rec): Lift['to'] | undefined {
   const steps = stepsOf(rec.data);
+  const counted = steps.filter((s) => s.state !== 'dropped');
+  if (counted.length && counted.every((s) => s.state === 'done')) return 'review';
   if (steps.some((s) => s.state === 'active' || s.state === 'done')) return 'active';
   return steps.length ? 'planning' : undefined;
 }

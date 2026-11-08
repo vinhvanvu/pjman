@@ -15,9 +15,13 @@
 //                     the agent is told the candidates; a ticket of the project's tracker with no record is read from the tracker and created
 //                     through the sync (gh for GitHub), or the agent is told to; then the brief (pjman brief --session): the bound change's
 //                     context in full when the binding moved, else what changed on it since the last brief
-//   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write records an observed `links` edge from the bound change
-//   Stop              a turn that acted appends one log line, from the harness's last message; the size of each brief given this turn and the
-//                     receipt of what the store received since the last turn are shown to the person
+//   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write in the project records an
+//                     observed `links` edge from the bound change and marks the turn as having written code
+//   Stop              a turn that wrote code for the bound change may end only where the change rests (pjman rest: a decision proposed, a
+//                     blocker recorded, a status a person set, the plan run to its end); elsewhere the stop is refused once, with the open
+//                     steps and the ways out, and the turn goes on (change:run-to-the-end). Then a turn that acted appends one log line,
+//                     from the harness's last message; the size of each brief given this turn and the receipt of what the store received
+//                     since the last turn are shown to the person
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed, or parked on the bridge when the session was cleared
@@ -120,7 +124,7 @@ function loadState(sid) {
   try {
     return JSON.parse(fs.readFileSync(stateFile(sid), 'utf8'));
   } catch {
-    return { acted: 0, bound: null, observed: [], pane: null, seq: undefined, briefs: [] };
+    return { acted: 0, edited: 0, bound: null, observed: [], pane: null, seq: undefined, briefs: [] };
   }
 }
 function saveState(sid, st) {
@@ -448,6 +452,32 @@ function emitContext(event, text) {
 }
 
 /** The first sentence-like line of the assistant's message: headings are skipped, list markers stripped. */
+/** Where the bound change may rest, from the tool: `pjman rest` exits 1 when it does not, with the verdict on stdout all the same. */
+function restVerdict(key, cwd) {
+  try {
+    return pjman(['rest', key, '--json'], { cwd, json: true });
+  } catch (e) {
+    try {
+      if (e.stdout) return JSON.parse(e.stdout);
+    } catch {}
+    note(`pjman rest ${key} failed: ${String(e.stderr || e.message).trim().split('\n')[0]}`);
+    return null;
+  }
+}
+
+/** Why the stop is refused, for the agent: the change, the open steps, and the three ways the record lets it stop. */
+function restRefusal(r, store) {
+  const product = store.product ? String(store.product).replace(/^product:/, '') : null;
+  const short = (k) => (product ? k.replace(new RegExp(`^(feature|change|decision):${product}/`), '$1:') : k);
+  const key = short(r.key);
+  const steps = r.open.map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`).join('\n');
+  return [
+    `pjman: ${key} is not at a resting point. This turn wrote code for it and its plan still has ${r.open.length === 1 ? 'a step' : `${r.open.length} steps`} open:`,
+    steps,
+    `Carry on until the plan runs to its end; mark each step as it lands (pjman step ${key} done <n>). Stop only where the record lets you: a choice that forecloses options opened as a decision, proposed (pjman decision ${key}/<slug> …); an outside blocker recorded (pjman set ${key} blocked-on="…"); or every step done and the work committed on the worktree for review. If the person asked you to stop here, leave the plan where it stands (pjman step ${key} note <n> "…") and end the turn again.`,
+  ].join('\n');
+}
+
 function firstLine(text, max = 200) {
   const lines = String(text ?? '').split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
   const body = lines.filter((l) => !l.startsWith('#') && !/^```/.test(l)).map((l) => l.replace(/^[>*\-\d.)\s]+/, '').replace(/\*\*/g, '').trim()).find((l) => l.length > 0);
@@ -657,6 +687,7 @@ async function main() {
       return sessionStart(input, store, sid, env, st, cwd);
     case 'UserPromptSubmit': {
       const prompt = String(input.prompt ?? '');
+      st.edited = 0; // a new turn: what the last one wrote has been judged
       const found = promptChange(prompt, { cwd, env });
       const parts = [];
       if (found?.hint) parts.push(found.hint);
@@ -693,6 +724,7 @@ async function main() {
         const rel = path.relative(project, abs);
         const inProject = rel && !rel.startsWith('..') && !path.isAbsolute(rel);
         const inStore = !path.relative(real(store.root), abs).startsWith('..');
+        if (inProject && !inStore) st.edited = (st.edited ?? 0) + 1; // the turn wrote code for the change: its stop is judged (Stop)
         if (inProject && !inStore && store.source_kinds.includes('file')) {
           const edge = `${st.bound}|file:${rel}`;
           if (!st.observed.includes(edge)) {
@@ -705,6 +737,19 @@ async function main() {
     }
     case 'Stop':
     case 'SubagentStop': {
+      // Run to the end (change:run-to-the-end): a turn that wrote code for the bound change ends only where the change rests.
+      // The verdict is the tool's (pjman rest); the hook refuses the stop once per turn (the harness marks the retry with
+      // stop_hook_active, which passes), so a refusal is a push back into the plan, never a wall. A turn that only talked,
+      // or wrote nothing for the change, passes untouched; so does a subagent.
+      if (EVENT === 'Stop' && !input.agent_id && (st.edited ?? 0) > 0 && st.bound && !input.stop_hook_active) {
+        const r = restVerdict(st.bound, cwd);
+        if (r && !r.rests) {
+          process.stdout.write(JSON.stringify({ decision: 'block', reason: restRefusal(r, store) }));
+          saveState(sid, st); // edited stays: the retry passes on stop_hook_active and resets it
+          return;
+        }
+      }
+      st.edited = 0;
       if (st.acted > 0) {
         const line = firstLine(input.last_assistant_message);
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });

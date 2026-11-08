@@ -62,10 +62,11 @@ test('nothing automatic moves a status backwards', () => {
   set(store, 'change:ahead', ['status=active'], {});
   step(store, 'change:ahead', 'add', undefined, { text: 'first' });
   assert.equal(statusOf('ahead'), 'active');
-  // a step reopened leaves the change active
+  // the only step done runs the plan to its end: review; the step reopened leaves the change there
   step(store, 'change:plain', 'done', 1);
+  assert.equal(statusOf('plain'), 'review');
   step(store, 'change:plain', 'reopen', 1);
-  assert.equal(statusOf('plain'), 'active');
+  assert.equal(statusOf('plain'), 'review');
 });
 
 test('a session bound to a change makes it active when it writes a file, not when it only binds or lands on a branch', () => {
@@ -78,6 +79,30 @@ test('a session bound to a change makes it active when it writes a file, not whe
   assert.equal(statusOf('worked'), 'active');
   const lifted = readEvents(store).at(-1)!;
   assert.equal(lifted.session, 'session:s1');
+});
+
+test('the last step done makes a change review; a dropped step does not count; a step reopened leaves it there', () => {
+  change(store, 'finished', { project: 'project:web' });
+  step(store, 'change:finished', 'add', undefined, { text: 'first' });
+  step(store, 'change:finished', 'add', undefined, { text: 'second' });
+  step(store, 'change:finished', 'add', undefined, { text: 'third' });
+  step(store, 'change:finished', 'done', 1);
+  assert.equal(statusOf('finished'), 'active');
+  step(store, 'change:finished', 'drop', 3);
+  assert.equal(statusOf('finished'), 'active');
+  step(store, 'change:finished', 'done', 2);
+  assert.equal(statusOf('finished'), 'review');
+  const lifted = readEvents(store).at(-1)!;
+  assert.equal(lifted.op, 'set');
+  assert.deepEqual(lifted.fields, ['status']);
+  assert.equal(lifted.value, 'review');
+  step(store, 'change:finished', 'reopen', 2);
+  assert.equal(statusOf('finished'), 'review');
+  // a plan of dropped steps only is no plan run to its end
+  change(store, 'abandoned', { project: 'project:web' });
+  step(store, 'change:abandoned', 'add', undefined, { text: 'first' });
+  step(store, 'change:abandoned', 'drop', 1);
+  assert.equal(statusOf('abandoned'), 'planning');
 });
 
 test('the backfill lists the changes whose status is behind their plan', () => {

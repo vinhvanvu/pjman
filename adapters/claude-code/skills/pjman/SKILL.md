@@ -70,10 +70,20 @@ working it.
 3. **Keep the plan true.** The plan is steps written only through commands: `pjman step <change> add "…"`, `start
    <n>`, `done <n> [--note "…"]`, `drop <n>`, `note <n> "<where the work stands>"`, `move <n> --before <m>`. Before
    you stop on a change, leave the plan where the work stands: the step in progress noted, the next one first among
-   the open ones, an outside blocker in `blocked-on=…`, and the status if it moved to `blocked`, `review`, `done` or
-   `dropped`; `planning` and `active` follow the plan by themselves (a step added, a step started, a file written for
-   the change). Whoever resumes reads the next step, not a handoff paragraph.
-4. **A new unit of work is a change, filed through intake.** Follow the `intake` skill first: `pjman intake "<the
+   the open ones, an outside blocker in `blocked-on=…`, and the status if it moved to `blocked` or `dropped`;
+   `planning`, `active` and `review` follow the plan by themselves (a step added, a step started, a file written for
+   the change, the last step done), and `done` is set once the branch is merged. Whoever resumes reads the next step,
+   not a handoff paragraph.
+4. **Run the plan to its end.** Once the person has given the go, the whole plan is the work, not its first step: do
+   not end a turn with steps open to report progress, to ask whether to continue, or because the turn has been long.
+   A change rests only where its record says so, and `pjman rest <change>` says whether it does: a decision you
+   opened `proposed` waits on the person; a blocker is recorded (`blocked-on=…`, or a dependency not done); or every
+   step is done and the work is committed on the worktree for the person to review. A question that comes up
+   mid-build is a decision, opened in the same turn (rule 2); then the build goes on around it where it can, and
+   stops at it where it cannot. A stop anywhere else on a turn that wrote code is refused once by the harness, which
+   names the open steps and these ways out; if the person asked you to stop there, leave the plan where it stands
+   and end the turn again.
+5. **A new unit of work is a change, filed through intake.** Follow the `intake` skill first: `pjman intake "<the
    request>"` shows what already exists (duplicates, the nodes it may alter, the milestones, the order's tail); then
    ```
    pjman new change <slug> --name "…" --gist "…" --origin "<the request in the person's words, or the key it came from>" \
@@ -88,11 +98,11 @@ working it.
    change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`.
    On every prompt the harness hands you the brief: what others changed on your bound change, its milestone, its
    decisions and its dependencies since your last brief, and other live sessions near it. Act on what it says.
-5. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
+6. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
    `url:https://…`); a record for a source is optional.
-6. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or
+7. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or
    decisions. Those belong to this adapter.
-7. **One worktree per change; the harness makes it, you name it, you clean it up.** Before the first edit on a change,
+8. **One worktree per change; the harness makes it, you name it, you clean it up.** Before the first edit on a change,
    enter a worktree named for it: the name is the change slug (`pjman context change:<slug>` shows it on the `branch:`
    line; `pjman new change` prints it), the harness creates the worktree and its branch (`claude --worktree <slug>`, or
    the enter-worktree tool in a running session). A session on a branch so named is bound to the change at start, with

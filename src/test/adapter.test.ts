@@ -9,9 +9,10 @@ import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
 import { findStore, type Store } from '../config.js';
 import { set } from '../commands/set.js';
+import { step } from '../commands/step.js';
 import { loadStore } from '../records.js';
 import { validate } from '../validate.js';
-import { change, decisionRec } from './shape.js';
+import { accept, change, decisionRec } from './shape.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.resolve(here, '..', '..', 'adapters', 'claude-code', 'hooks', 'hook.mjs');
@@ -102,6 +103,64 @@ test('a file write records an observed edge; a store write does not; a turn that
   assert.match(log, /Wrote the rule: E1 to E4 tallied weekly\./);
   assert.ok(!/nothing happened/.test(log));
   assert.ok(!/Read only/.test(log));
+});
+
+test('run to the end: a turn that wrote code may stop only where the change rests', () => {
+  change(store, 'run-it', { title: 'Run it', summary: 's', writer: 'person:tester' });
+  step(store, 'change:run-it', 'add', undefined, { text: 'first' });
+  step(store, 'change:run-it', 'add', undefined, { text: 'second' });
+  const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-run', ...input });
+  const wrote = () => at('PostToolUse', { tool_name: 'Write', tool_input: { file_path: path.join(project, 'src/run.ts') } });
+  const passes = (out: string, what: string) => assert.ok(!/"decision":"block"/.test(out), `${what}: ${out}`);
+  at('SessionStart', { source: 'startup' });
+  at('UserPromptSubmit', { prompt: 'build change:run-it' });
+  // a turn that only talked, or only wrote the store, ends where it likes
+  passes(at('Stop', { last_assistant_message: 'Here is what I would do.' }), 'a turn that only talked');
+  at('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'pjman step change:run-it start 1' } });
+  passes(at('Stop', { last_assistant_message: 'Started.' }), 'a turn that wrote the store only');
+  // a turn that wrote code with steps open is refused once: the change, the open steps, the ways out
+  at('UserPromptSubmit', { prompt: 'go' });
+  wrote();
+  const refused = JSON.parse(at('Stop', { last_assistant_message: 'Wrote the first part; shall I go on?' })) as { decision: string; reason: string };
+  assert.equal(refused.decision, 'block');
+  assert.match(refused.reason, /^pjman: change:run-it is not at a resting point\. This turn wrote code for it and its plan still has 2 steps open:\n- 1\. first\n- 2\. second\n/);
+  assert.match(refused.reason, /pjman decision change:run-it\/<slug>/);
+  assert.match(refused.reason, /pjman set change:run-it blocked-on=/);
+  assert.match(refused.reason, /committed on the worktree for review/);
+  // the retry the harness marks passes, and the turn is logged once
+  const retry = at('Stop', { last_assistant_message: 'Wrote the first part; shall I go on?', stop_hook_active: true });
+  passes(retry, 'the marked retry');
+  assert.match(loadStore(store).byKey.get('session:sess-run')![0].sections.get('Log') ?? '', /Wrote the first part/);
+  // a decision proposed on the change is a resting point; accepted, it no longer holds
+  at('UserPromptSubmit', { prompt: 'go on' });
+  wrote();
+  decisionRec(store, 'run-it/how', { title: 'How to cut it' });
+  passes(at('Stop', { last_assistant_message: 'A decision is open.' }), 'a decision proposed');
+  accept(store, 'decision:run-it/how', 'person:tester');
+  at('UserPromptSubmit', { prompt: 'go on' });
+  wrote();
+  assert.equal((JSON.parse(at('Stop', { last_assistant_message: 'Paused.' })) as { decision?: string }).decision, 'block');
+  // a blocker recorded is a resting point
+  set(store, 'change:run-it', ['blocked-on=the key from ops'], {});
+  passes(at('Stop', { last_assistant_message: 'Blocked on ops.', stop_hook_active: true }), 'the retry');
+  at('UserPromptSubmit', { prompt: 'go on' });
+  wrote();
+  passes(at('Stop', { last_assistant_message: 'Still blocked.' }), 'a blocker recorded');
+  set(store, 'change:run-it', ['blocked-on='], {});
+  // the plan run to its end: the change reads review by itself and the turn may end
+  at('UserPromptSubmit', { prompt: 'go on' });
+  wrote();
+  step(store, 'change:run-it', 'done', 1);
+  step(store, 'change:run-it', 'done', 2);
+  passes(at('Stop', { last_assistant_message: 'Done; committed for review.' }), 'the plan done');
+  assert.equal(loadStore(store).byKey.get('change:project/run-it')![0].data.status, 'review');
+  // a subagent that wrote code is never refused
+  change(store, 'run-sub', { title: 'Run sub', summary: 's', writer: 'person:tester' });
+  step(store, 'change:run-sub', 'add', undefined, { text: 'first' });
+  hook('SubagentStart', { agent_id: 'sub-run', agent_type: 'general-purpose' });
+  hook('UserPromptSubmit', { agent_id: 'sub-run', prompt: 'work change:run-sub' });
+  hook('PostToolUse', { agent_id: 'sub-run', tool_name: 'Write', tool_input: { file_path: path.join(project, 'src/sub.ts') } });
+  passes(hook('SubagentStop', { agent_id: 'sub-run', last_assistant_message: 'Wrote some.' }), 'a subagent');
 });
 
 test('a subagent is a child session with parent', () => {
