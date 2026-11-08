@@ -179,3 +179,25 @@ test('a batch line carries a multi-line text: \\n inside double quotes is a line
   assert.deepEqual(splitLine('set aspect:text "body=## Length\\n\\nShort."'), ['set', 'aspect:text', 'body=## Length\n\nShort.']);
   assert.deepEqual(splitLine('set x "a\\"b"'), ['set', 'x', 'a"b']);
 });
+
+test('a decision that reads as applying across the product cues an aspect, until its change names one or an aspect answers it', () => {
+  change(store, 'one-badge', { title: 'One badge', summary: 's', features: ['changes feature:cart'] });
+  const opened = decisionRec(store, 'one-badge/badge', { title: 'How the badge reads', decision: 'One component draws the badge on every surface' });
+  assert.ok(opened.notes.some((n) => /says "One component".*propose one/.test(n)), opened.notes.join('\n'));
+  let ctx = changeContext(store, 'change:one-badge');
+  assert.deepEqual(ctx.aspectCues.map((c) => c.decision), ['decision:shop/one-badge/badge']);
+  assert.match(formatChangeContext(ctx), /## May be an aspect\n\n- decision:shop\/one-badge\/badge says "One component"/);
+  // a plain decision is no cue
+  decisionRec(store, 'one-badge/colour', { title: 'The colour', decision: 'Amber' });
+  assert.equal(changeContext(store, 'change:one-badge').aspectCues.length, 1);
+  // a change that works on an aspect and names the decision answers it
+  newRecord(store, 'aspect', 'badge', { title: 'The badge', body: 'One badge.' });
+  change(store, 'badge-aspect', { title: 'Badge aspect', summary: 's', aspects: ['adds aspect:badge'], notes: 'Drawn from decision:one-badge/badge.' });
+  ctx = changeContext(store, 'change:one-badge');
+  assert.deepEqual(ctx.aspectCues, []);
+  assert.doesNotMatch(formatChangeContext(ctx), /May be an aspect/);
+  // a decision on a change that names an aspect is no cue
+  const onAspect = decisionRec(store, 'badge-aspect/where', { title: 'Where', decision: 'Everywhere the cart shows a count' });
+  assert.ok(!onAspect.notes.some((n) => /propose one/.test(n)));
+  assert.deepEqual(errors(), []);
+});

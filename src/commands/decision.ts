@@ -15,6 +15,7 @@ import { CliError, isDateString, nowIso, today } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, snapshot, validateOrUndo, writeFile } from '../write.js';
 import { dayOf, decisionState, foundationHash, foundationOf, gistProblem, nameProblem, threadOf, type DecisionState, type Entry } from '../foundation.js';
 import { decisionHome } from './new.js';
+import { acrossCueOfDecision, aspectKeysOf, ASPECT_CUE_HINT, coveredByAspect } from '../aspects.js';
 
 /** An entry as the command takes it, before the tool stamps it. */
 export type EntryInput = Omit<Entry, 'at'> & { at?: string };
@@ -259,6 +260,14 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     ? { op: 'set', key, type: 'decision', path: rel, fields: [...new Set(changed)], value: changed.includes('status') ? String(data.status) : undefined, writer: env.writer }
     : { op: 'created', key, type: 'decision', path: rel, writer: env.writer };
   const commit = finishWrite(store, subject, env.session, [event, ...also]);
+  // opened or decided, a decision that reads as applying across the product is the moment to propose an aspect
+  // (change:aspects-as-work-goes), unless its change already names one
+  if (!existing || appended.includes('accept')) {
+    const m = /^decision:(.+)\/[^/]+$/.exec(key);
+    const change = m ? loaded.byKey.get(`change:${m[1]}`)?.[0] : undefined;
+    const phrase = acrossCueOfDecision(data);
+    if (phrase && !(change && aspectKeysOf(loaded, change).length) && !(existing && coveredByAspect(loaded, existing))) notes.push(`it says "${phrase}": ${ASPECT_CUE_HINT}`);
+  }
   return { key, path: rel, created: !existing, appended, status: String(data.status), state, commit, notes };
 }
 

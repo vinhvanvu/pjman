@@ -6,6 +6,7 @@
 import { EFFECTS, type EffectName } from './tree.js';
 import { parseKey } from './keys.js';
 import { resolve, type Loaded, type Rec } from './records.js';
+import { threadOf } from './foundation.js';
 
 export interface AspectEffect {
   effect: EffectName;
@@ -221,4 +222,68 @@ export function formatChangeAspects(a: ChangeAspects): string[] {
     out.push('');
   }
   return out;
+}
+
+// Aspects as work goes (change:aspects-as-work-goes; decision how-it-is-caught): a decision whose thread says it holds
+// across the product ("every surface", "one component", "wherever") is the evidence an aspect may be missing. The
+// count on the store's own decisions found this the one signal worth reading; files touched by many features are hubs.
+// It is only ever a cue for the agent to judge and propose; nothing is created from it.
+const ACROSS =
+  /\b(every (?:surface|view|page|screen|lens)|one (?:shared )?component|wherever (?:it|a|an|the) \w+ (?:is shown|appears|is drawn)|across (?:the )?(?:app|dashboard|product|views|surfaces)|as on every \w+|everywhere)\b/i;
+
+/** The phrase in a text that says it applies across the product, if any. */
+export function acrossCue(text: string | undefined): string | undefined {
+  return text ? ACROSS.exec(text)?.[1] : undefined;
+}
+
+/** The phrase in a decision's thread (question, criteria, options and their case, comments, acceptance) or its gist
+ *  that says it applies across the product, if any. */
+export function acrossCueOfDecision(data: Record<string, unknown>): string | undefined {
+  for (const e of threadOf(data)) {
+    const hit = acrossCue(e.text) ?? acrossCue(e.case);
+    if (hit) return hit;
+  }
+  return acrossCue(typeof data.gist === 'string' ? data.gist : undefined);
+}
+
+export interface AspectCue {
+  decision: string;
+  phrase: string;
+}
+
+/** True when an aspect already answers the decision: an aspect's base or a fork names it, or a change that works on an
+ *  aspect names it in its sections. Keys are matched with or without their product segment. */
+export function coveredByAspect(loaded: Loaded, decision: Rec): boolean {
+  const full = decision.key;
+  const bare = decision.productSlug ? full.replace(`decision:${decision.productSlug}/`, 'decision:') : full;
+  const names = (text: string) => text.includes(full) || new RegExp(`${bare.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}(?![\\w/-])`).test(text);
+  return loaded.records.some((r) => {
+    if (r.type === 'aspect' || r.type === 'place') return names(r.body);
+    if (r.type === 'change' && aspectKeysOf(loaded, r).length) return [...r.sections.values()].some(names);
+    return false;
+  });
+}
+
+/** The decisions on a change that read as applying across the product, when the change names no aspect and no aspect
+ *  answers them already: the cue to propose one, or a place on one that exists. Superseded and reverted decisions are
+ *  left out. */
+export function aspectCuesOf(loaded: Loaded, change: Rec): AspectCue[] {
+  if (aspectKeysOf(loaded, change).length) return [];
+  return loaded.records
+    .filter((r) => r.type === 'decision' && r.changeKey === change.key && (r.data.status === 'proposed' || r.data.status === 'decided'))
+    .filter((r) => !coveredByAspect(loaded, r))
+    .flatMap((r) => {
+      const phrase = acrossCueOfDecision(r.data);
+      return phrase ? [{ decision: r.key, phrase }] : [];
+    });
+}
+
+/** What the agent does with a cue: judge it, and propose rather than create. */
+export const ASPECT_CUE_HINT =
+  'What applies across the product is an aspect. Unless one covers it (pjman ls aspect), propose one, or a place on one, as a decision with the base and places drafted (the aspect skill); never create it unasked.';
+
+/** The cue as a change's context prints it. */
+export function formatAspectCues(cues: AspectCue[]): string[] {
+  if (!cues.length) return [];
+  return ['## May be an aspect', '', ...cues.map((c) => `- ${c.decision} says "${c.phrase}"`), '', ASPECT_CUE_HINT];
 }

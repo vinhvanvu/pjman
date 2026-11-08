@@ -44,7 +44,11 @@ working it.
    record of what was decided, what was tried, and where the plan stands. Given a ticket, a URL or a file instead, run
    `pjman get <it>`: it finds the change through the graph. Its **Aspects** section, when there is one, is the
    contract the work is done under (how text reads, how the app moves, a shared component): follow the `aspect`
-   skill for it, and for anything that creates or edits an aspect.
+   skill for it, and for anything that creates or edits an aspect. Its **May be an aspect** section lists decisions
+   on the change that read as holding across the product while no aspect answers them: propose one (below).
+   Whenever the person states a rule for every surface, or the work builds one thing several views draw, that is an
+   aspect too: unless one covers it, propose it in the same turn as a decision with the base and places drafted, and
+   create it only on the go.
 2. **Open a decision `proposed` before acting on a choice that forecloses options** (a data model, a boundary, a
    dependency, a scope cut, anything a later reader would ask "why?" about), with the options laid out and one
    recommended:
