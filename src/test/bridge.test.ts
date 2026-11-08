@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { bridge, sessionState } from '../bridge.js';
+import { bridge, changeOfDecision, sessionState } from '../bridge.js';
 import { timeline } from '../timeline.js';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
@@ -70,6 +70,9 @@ before(() => {
   // no change yet: only its project names its product
   newRecord(store, 'session', 's-fresh', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionLog(store, 's-fresh', 'session started');
+  // in motion without a session: blocked, touched by a write; finished, touched but never listed
+  change(store, 'stuck', { title: 'Stuck', summary: 's', project: 'project:web', status: 'blocked', blockedOn: 'a key from the vendor', next: 'Wire it up.' });
+  change(store, 'shipped', { title: 'Shipped', summary: 's', project: 'project:web', status: 'done' });
 });
 
 test('sessionState: ended beats everything; working while the last act is recent and not a stop line; a stopped session waits when a decision is proposed', () => {
@@ -112,22 +115,52 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
   assert.deepEqual(by['session:s-work'].children.map((c) => [c.key, c.state, c.line?.text]), [['session:s-kid', 'stopped', 'Built the thing.']]);
   assert.equal(by['session:s-fresh'].state, 'stopped');
   assert.equal(by['session:s-fresh'].change, undefined);
-  assert.equal(b.waiting, 2); // decisions, not sessions
-  assert.deepEqual(b.waitingOn.map((w) => [w.change.key, w.proposed.map((d) => d.key)]), [
-    ['change:shop/card-form', ['decision:shop/card-form/why', 'decision:shop/card-form/later']], // newest proposed first
-  ]);
-  assert.deepEqual(b.waitingOn[0].change.path.map((f) => f.name), ['Checkout', 'Saved cards']);
-  assert.equal(b.waitingOn[0].proposed[0].state.options.find((o) => o.recommended)?.text, 'd');
+  assert.equal('waitingOn' in b, false); // the bridge lists no decision (decision bridge-rework/cards-and-transport)
   // most recent first
   const lasts = b.sessions.map((s) => s.last ?? '');
   assert.deepEqual(lasts, [...lasts].sort().reverse());
 });
 
+test('bridge: the changes in motion, every change touched in the window that is not finished, with its card\'s facts and the sessions on it', () => {
+  const b = bridge(store, loadStore(store), { product: 'product:shop' });
+  const by = Object.fromEntries(b.changes.map((c) => [c.key, c]));
+  assert.deepEqual(Object.keys(by).sort(), ['change:shop/card-form', 'change:shop/chore', 'change:shop/stuck']); // shipped is done: not in motion
+  // most recently touched first
+  const lasts = b.changes.map((c) => c.last);
+  assert.deepEqual(lasts, [...lasts].sort().reverse());
+  const chore = by['change:shop/chore'];
+  assert.equal(chore.status, 'review');
+  // on it, most recent first; the subagent on no change of its own is on its parent's
+  assert.deepEqual(chore.sessions, ['session:s-kid', 'session:s-end', 'session:s-stop', 'session:s-work']);
+  assert.deepEqual(chore.steps, { done: 0, total: 1, dropped: 0 });
+  assert.deepEqual(chore.step, { n: 1, text: 'Review it.', state: 'open', note: undefined });
+  assert.equal(chore.last, by['change:shop/chore'].last);
+  const card = by['change:shop/card-form'];
+  assert.deepEqual(card.sessions, ['session:s-wait']);
+  assert.deepEqual(card.path.map((f) => f.name), ['Checkout', 'Saved cards']);
+  assert.equal(card.title, 'Card form');
+  assert.equal(card.blockedOn, undefined);
+  const stuck = by['change:shop/stuck'];
+  assert.equal(stuck.status, 'blocked');
+  assert.equal(stuck.blockedOn, 'a key from the vendor');
+  assert.deepEqual(stuck.sessions, []); // touched by a write alone
+  assert.equal(stuck.step?.text, 'Wire it up.');
+});
+
+test('changeOfDecision: a decision\'s key names its change', () => {
+  assert.equal(changeOfDecision('decision:shop/card-form/later'), 'change:shop/card-form');
+  assert.equal(changeOfDecision('change:shop/card-form'), undefined);
+  assert.equal(changeOfDecision('decision:odd'), undefined);
+  assert.equal(changeOfDecision('decision:shop/pricing'), undefined); // a product-level decision is on no change
+});
+
 test('bridge: another product sees none of them; a window that has passed sees none either', () => {
   const other = bridge(store, loadStore(store), { product: 'product:other' });
   assert.equal(other.sessions.length, 0);
-  assert.equal(other.waiting, 0);
-  assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000 }).sessions.length, 0);
+  assert.equal(other.changes.length, 0);
+  const later = bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000 });
+  assert.equal(later.sessions.length, 0);
+  assert.equal(later.changes.length, 0);
   assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000, days: 7 }).sessions.length, 5); // the subagent's is under its parent
 });
 

@@ -49,8 +49,6 @@ export interface RailProps {
   node?: string;
   /** The lens the product switcher lands in, and that the node links use. */
   lens: Lens;
-  /** The bridge's badge: the decisions waiting on the person across the product. */
-  waiting?: number;
   /** The session this tab follows, as a destination at the foot (features/session-follow). */
   sessionSlot?: ReactNode;
   themeSlot?: ReactNode;
@@ -69,7 +67,6 @@ export function Rail({
   current,
   node,
   lens,
-  waiting,
   sessionSlot,
   themeSlot,
   personSlot,
@@ -144,7 +141,6 @@ export function Rail({
           >
             <Radar className="size-[15px] shrink-0" />
             Bridge
-            {waiting ? <span className={cn('ml-auto text-xs font-normal', TONE.waits.text)}>{waiting}</span> : null}
           </Link>
         )}
         {LENS_ITEMS.map(({ lens: l, label, icon: Icon }) => (

@@ -11,7 +11,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { TopBar } from '@/components/shell/TopBar';
 import type { ProductRow } from '@/data/contract';
-import { useBridge, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
+import { usePrefetchDestinations, useScope, useStore } from '@/data/queries';
 import { ChangeView } from '@/features/change';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { MomentChip } from '@/features/moment';
@@ -41,7 +41,6 @@ export function ChangePage({ changeKey }: { changeKey: string }) {
   // identity has one source: this page's own scope, never the page before it while this one loads
   const data = scope.data && !scope.isPlaceholderData ? scope.data : undefined;
   const productKey = data?.crumbs.find((c) => c.key.startsWith('product:'))?.key;
-  const bridge = useBridge(productKey);
   usePrefetchDestinations(productKey);
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
@@ -74,7 +73,6 @@ export function ChangePage({ changeKey }: { changeKey: string }) {
       products={store?.products.map(railProduct)}
       lens={LENS}
       node={productKey}
-      waiting={bridge.data?.waiting}
       sessionSlot={<ThisSession />}
       themeSlot={<ThemePicker />}
       personSlot={

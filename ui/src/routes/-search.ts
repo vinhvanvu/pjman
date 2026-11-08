@@ -37,6 +37,9 @@ export const pageSearch = z.object({
   show: z.string().optional().catch(undefined),
   /** The decision open to its thread (decision detail-pages/decision-card): a link to a decision lands on it open. */
   decision: z.string().optional().catch(undefined),
+  /** On the bridge: the changes held (decisions bridge-rework/hold-is-a-button and held-card-lifts), a comma list of
+   *  keys, each card lifted under the transport and the transport filtered to their writes; a link carries them. */
+  hold: z.string().optional().catch(undefined),
   /** The moment the page reads as of, and the event selected; every query carries them, so the whole page holds
    *  still at that moment. */
   at: atSearch,

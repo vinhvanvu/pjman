@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { BridgeSession, WaitingChange } from '@/data/contract';
-import { cardWhen, strip, subagentWords } from './model';
+import type { BridgeMotion, BridgeSession, TimelineEvent } from '@/data/contract';
+import {
+  cardRows,
+  changeOfEvent,
+  groupsOf,
+  lastArrival,
+  motionOf,
+  pillWords,
+  sessionChanges,
+  stepWords,
+  ticksOf,
+  unbound,
+} from './model';
 
 const s = (key: string, o: Partial<BridgeSession> = {}): BridgeSession => ({
   key: `session:${key}`,
@@ -9,94 +20,209 @@ const s = (key: string, o: Partial<BridgeSession> = {}): BridgeSession => ({
   children: [],
   ...o,
 });
-const change = (key: string) => ({ key: `change:p/${key}`, title: key, path: [] });
-const w = (key: string, decisions: string[]): WaitingChange => ({
-  change: change(key),
-  proposed: decisions.map((d) => ({
-    key: `decision:p/${key}/${d}`,
-    change: `change:p/${key}`,
-    title: d,
-    state: { criteria: [], options: [], comments: [] },
-    needs: [],
-    stale: false,
-  })),
+const on = (key: string) => ({ key: `change:p/${key}`, title: key, path: [] });
+const c = (key: string, o: Partial<BridgeMotion> = {}): BridgeMotion => ({
+  key: `change:p/${key}`,
+  name: key,
+  status: 'active',
+  path: [],
+  steps: { done: 0, total: 0, dropped: 0 },
+  last: '2026-11-08T10:00:00Z',
+  sessions: [],
+  ...o,
+});
+const ev = (seq: number, o: Partial<TimelineEvent>): TimelineEvent => ({
+  seq,
+  at: '2026-11-08T10:00:00Z',
+  op: 'set',
+  key: 'change:p/a',
+  type: 'change',
+  decision: false,
+  ...o,
 });
 
-describe('strip', () => {
-  it('lists every session group in the order of need, empty or not, and no waits when nothing is proposed', () => {
-    const { waits, groups } = strip({ waitingOn: [], sessions: [] });
-    expect(waits).toEqual([]);
-    expect(groups.map((g) => g.state)).toEqual(['stopped', 'working', 'ended']);
-    expect(groups.every((g) => g.sessions.length === 0)).toBe(true);
-  });
-
-  it('puts each session under its state, the most recent write first inside a group', () => {
-    const { groups } = strip({
-      waitingOn: [],
-      sessions: [
-        s('a', { state: 'working', last: '2026-10-28T10:00:00Z' }),
-        s('c', { state: 'working', last: '2026-10-28T11:00:00Z' }),
-        s('d', { state: 'ended', last: '2026-10-28T08:00:00Z', inReview: true }),
-        s('e', { state: 'stopped' }),
-      ],
-    });
-    const keys = (state: string) => groups.find((g) => g.state === state)!.sessions.map((x) => x.key);
-    expect(keys('stopped')).toEqual(['session:e']);
-    expect(keys('working')).toEqual(['session:c', 'session:a']);
-    expect(keys('ended')).toEqual(['session:d']);
-  });
-
-  it('keeps the waiting changes in the order given and pairs each with the newest session on that change, shown nowhere else', () => {
-    const { waits, groups } = strip({
-      waitingOn: [w('graph', ['toggle']), w('bridge', ['stage', 'rail'])],
-      sessions: [
-        s('old', { state: 'ended', last: '2026-10-28T08:00:00Z', change: change('graph'), inReview: true }),
-        s('g', { state: 'waiting', last: '2026-10-28T11:00:00Z', change: change('graph') }),
-        s('b', { state: 'working', last: '2026-10-28T10:00:00Z', change: change('bridge') }),
-        s('other', { state: 'working', last: '2026-10-28T09:00:00Z', change: change('dock') }),
-      ],
-    });
-    expect(waits.map((x) => [x.change.key, x.session?.key, x.proposed.length])).toEqual([
-      ['change:p/graph', 'session:g', 1],
-      ['change:p/bridge', 'session:b', 2],
+describe('motionOf and groupsOf', () => {
+  it('reads blocked and review from the status, working from a working session on it, else stopped', () => {
+    const sessions = new Map([
+      ['session:w', s('w', { state: 'working' })],
+      ['session:k', s('k', { state: 'stopped' })],
     ]);
-    const keys = (state: string) => groups.find((g) => g.state === state)!.sessions.map((x) => x.key);
-    expect(keys('working')).toEqual(['session:other']);
-    expect(keys('ended')).toEqual(['session:old']); // an older session on the same change still has its own row
-    expect(keys('stopped')).toEqual([]);
+    expect(motionOf(c('a', { status: 'blocked', sessions: ['session:w'] }), sessions)).toBe('blocked');
+    expect(motionOf(c('a', { status: 'review', sessions: ['session:w'] }), sessions)).toBe('review');
+    expect(motionOf(c('a', { sessions: ['session:w'] }), sessions)).toBe('working');
+    expect(motionOf(c('a', { sessions: ['session:k'] }), sessions)).toBe('stopped');
+    expect(motionOf(c('a', { status: 'planning' }), sessions)).toBe('stopped');
   });
 
-  it('reads a waiting change with no session in the window as a change alone', () => {
-    const { waits } = strip({ waitingOn: [w('graph', ['toggle'])], sessions: [] });
-    expect(waits[0]?.session).toBeUndefined();
-  });
-
-  it('leaves out an ended session whose change is not in review', () => {
-    const { groups } = strip({
-      waitingOn: [],
-      sessions: [s('done', { state: 'ended', inReview: false }), s('review', { state: 'ended', inReview: true })],
+  it('lists every group in order, empty or not, each the most recently touched first; a subagent working counts', () => {
+    const groups = groupsOf({
+      sessions: [
+        s('p', {
+          state: 'stopped',
+          children: [s('kid', { state: 'working' })],
+        }),
+      ],
+      changes: [
+        c('old', { last: '2026-11-08T08:00:00Z' }),
+        c('new', { last: '2026-11-08T09:00:00Z' }),
+        c('kid', { sessions: ['session:kid'] }),
+        c('rev', { status: 'review' }),
+      ],
     });
-    expect(groups.find((g) => g.state === 'ended')!.sessions.map((x) => x.key)).toEqual(['session:review']);
+    expect(groups.map((g) => [g.state, g.changes.map((x) => x.key)])).toEqual([
+      ['working', ['change:p/kid']],
+      ['stopped', ['change:p/new', 'change:p/old']],
+      ['review', ['change:p/rev']],
+      ['blocked', []],
+    ]);
+  });
+
+  it('lays the groups out as one list of headings and cards', () => {
+    const rows = cardRows(
+      groupsOf({
+        sessions: [],
+        changes: [c('a'), c('b', { status: 'blocked' })],
+      }),
+    );
+    expect(rows.map((r) => r.key)).toEqual([
+      'h:working',
+      'h:stopped',
+      'c:change:p/a',
+      'h:review',
+      'h:blocked',
+      'c:change:p/b',
+    ]);
+    expect(rows.filter((r) => r.kind === 'head').map((r) => (r.kind === 'head' ? r.words : ''))).toEqual([
+      'none',
+      '1 change',
+      'none',
+      '1 change',
+    ]);
   });
 });
 
-describe('cardWhen', () => {
-  const now = Date.parse('2026-10-28T12:00:00Z');
-  it('says what the session last did and how long ago', () => {
-    expect(cardWhen({ state: 'working', last: '2026-10-28T11:54:00Z' }, now)).toBe('wrote 6m ago');
-    expect(cardWhen({ state: 'working', last: '2026-10-28T11:59:50Z' }, now)).toBe('wrote just now');
-    expect(cardWhen({ state: 'waiting', last: '2026-10-28T11:38:00Z' }, now)).toBe('stopped 22m ago');
-    expect(cardWhen({ state: 'stopped', last: '2026-10-28T09:00:00Z' }, now)).toBe('stopped 3h ago');
-    expect(cardWhen({ state: 'ended', last: '2026-10-28T11:00:00Z' }, now)).toBe('ended 1h ago');
-    expect(cardWhen({ state: 'ended' }, now)).toBe('ended');
+describe('stepWords', () => {
+  it('says what blocks, that review waits for a look, the active step of the total, or the next', () => {
+    expect(stepWords(c('a', { status: 'blocked', blockedOn: 'a key from the vendor' }))).toEqual({
+      lead: 'on',
+      text: 'a key from the vendor',
+    });
+    expect(stepWords(c('a', { status: 'review', steps: { done: 5, total: 5, dropped: 0 } }))).toEqual({
+      lead: 'done',
+      text: '5 of 5; waits for a look',
+    });
+    expect(
+      stepWords(
+        c('a', {
+          status: 'review',
+          step: { n: 6, text: 'Look.', state: 'open' },
+          steps: { done: 5, total: 6, dropped: 0 },
+        }),
+      ),
+    ).toEqual({ lead: 'next', text: 'Look.' });
+    expect(
+      stepWords(
+        c('a', {
+          step: { n: 2, text: 'Build it.', state: 'active' },
+          steps: { done: 1, total: 6, dropped: 0 },
+        }),
+      ),
+    ).toEqual({ lead: 'step 2 of 6', text: 'Build it.' });
+    expect(
+      stepWords(
+        c('a', {
+          step: { n: 1, text: 'Start.', state: 'open' },
+          steps: { done: 0, total: 3, dropped: 0 },
+        }),
+      ),
+    ).toEqual({ lead: 'next', text: 'Start.' });
+    expect(stepWords(c('a'))).toEqual({ lead: 'plan', text: 'no steps yet' });
+    expect(stepWords(c('a', { steps: { done: 2, total: 2, dropped: 0 } }))).toEqual({
+      lead: 'plan',
+      text: 'every step done',
+    });
+    expect(stepWords(c('a', { steps: { done: 0, total: 0, dropped: 3 } }))).toEqual({
+      lead: 'plan',
+      text: 'every step dropped',
+    });
   });
 });
 
-describe('subagentWords', () => {
-  it('counts the subagents, and says when one is still working', () => {
-    expect(subagentWords([])).toBeUndefined();
-    expect(subagentWords([{ state: 'stopped' }])).toBe('+1 subagent');
-    expect(subagentWords([{ state: 'stopped' }, { state: 'ended' }])).toBe('+2 subagents');
-    expect(subagentWords([{ state: 'working' }, { state: 'stopped' }])).toBe('1 subagent working');
+describe('pillWords', () => {
+  const now = Date.parse('2026-11-08T12:00:00Z');
+  it('names who, what it is doing and since when', () => {
+    expect(
+      pillWords(
+        {
+          agent: 'agent:claude-code',
+          state: 'working',
+          last: '2026-11-08T11:59:50Z',
+        },
+        now,
+      ),
+    ).toBe('claude-code · working · just now');
+    expect(
+      pillWords(
+        {
+          agent: 'agent:claude-code',
+          state: 'ended',
+          last: '2026-11-08T11:00:00Z',
+        },
+        now,
+      ),
+    ).toBe('claude-code · ended · 1 h ago');
+    expect(pillWords({ state: 'stopped' }, now)).toBe('session · stopped');
+    expect(pillWords({ agent: 'agent:x', state: 'waiting', last: '2026-11-08T10:00:00Z' }, now)).toBe(
+      'x · waiting · 2 h ago',
+    );
+  });
+});
+
+describe('the tie to the transport', () => {
+  const sessions = [s('a', { change: on('a'), children: [s('kid')] }), s('b', { change: on('b') }), s('free')];
+  const onChange = sessionChanges(sessions);
+  const events = [
+    ev(1, { key: 'change:p/a' }),
+    ev(2, { key: 'decision:p/a/why', type: 'decision', decision: true }),
+    ev(3, { key: 'session:a', type: 'session', op: 'log' }),
+    ev(4, { key: 'session:kid', type: 'session', op: 'log' }),
+    ev(5, { key: 'change:p/b' }),
+    ev(6, { key: 'session:free', type: 'session', op: 'log' }),
+    ev(7, { key: 'feature:p/f', type: 'feature', session: 'session:b' }),
+  ];
+
+  it("maps each session to its change, a subagent to its own else its parent's", () => {
+    expect([...onChange]).toEqual([
+      ['session:a', 'change:p/a'],
+      ['session:kid', 'change:p/a'],
+      ['session:b', 'change:p/b'],
+    ]);
+  });
+
+  it("reads the change of an event: the change, the decision's change, or the writing session's change", () => {
+    expect(events.map((e) => changeOfEvent(e, onChange))).toEqual([
+      'change:p/a',
+      'change:p/a',
+      'change:p/a',
+      'change:p/a',
+      'change:p/b',
+      undefined,
+      'change:p/b',
+    ]);
+  });
+
+  it("collects the ticks that are a change's writes", () => {
+    expect([...ticksOf('change:p/a', events, onChange)]).toEqual([1, 2, 3, 4]);
+    expect([...ticksOf('change:p/b', events, onChange)]).toEqual([5, 7]);
+    expect([...ticksOf('change:p/none', events, onChange)]).toEqual([]);
+  });
+
+  it('finds the last live arrival that touched a change', () => {
+    expect(lastArrival(events, 'change:p/a', onChange)?.seq).toBe(4);
+    expect(lastArrival(events, 'change:p/none', onChange)).toBeUndefined();
+  });
+
+  it('counts the sessions on no change that are not over', () => {
+    expect(unbound([...sessions, s('gone', { state: 'ended' })]).map((x) => x.key)).toEqual(['session:free']);
   });
 });

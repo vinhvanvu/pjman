@@ -8,7 +8,7 @@ import { AppShell } from '@/components/shell/AppShell';
 import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { TopBar } from '@/components/shell/TopBar';
 import type { ProductRow, SessionFacts } from '@/data/contract';
-import { useBridge, usePrefetchDestinations, useStore } from '@/data/queries';
+import { usePrefetchDestinations, useStore } from '@/data/queries';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { MomentChip } from '@/features/moment';
 import { FollowPill, ThisSession } from '@/features/session-follow';
@@ -31,7 +31,6 @@ const railProduct = (p: ProductRow): RailProduct => ({
 export function SessionWide({ session }: { session: SessionFacts }) {
   const { data: store } = useStore();
   const productKey = session.product;
-  const bridge = useBridge(productKey);
   usePrefetchDestinations(productKey);
   const setLastProduct = usePreferences((s) => s.setLastProduct);
   useEffect(() => {
@@ -48,7 +47,6 @@ export function SessionWide({ session }: { session: SessionFacts }) {
       products={store?.products.map(railProduct)}
       lens={LENS}
       node={productKey}
-      waiting={bridge.data?.waiting}
       sessionSlot={<ThisSession />}
       themeSlot={<ThemePicker />}
       personSlot={

@@ -13,7 +13,7 @@ export type {
 } from '@contract/scope';
 export type { AspectAt, AspectWhole, ChangeAspects, Layer, PlaceLine } from '@contract/aspects';
 export type { Violation } from '@contract/roadmap';
-export type { Bridge, BridgeChange, BridgeSession, SessionState, WaitingChange } from '@contract/bridge';
+export type { Bridge, BridgeChange, BridgeMotion, BridgeSession, SessionState } from '@contract/bridge';
 export type { OrderResult } from '@contract/commands/order';
 export type { SetResult } from '@contract/commands/set';
 export type { ChangeContext, Row } from '@contract/commands/view';
