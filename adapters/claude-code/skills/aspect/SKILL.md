@@ -3,7 +3,8 @@ name: aspect
 description: >-
   Working with an aspect in a pjman store: what applies across the product rather than at one place on the tree (how
   text reads, how the app moves, a component reused in many views). Use when creating an aspect, adding a place it
-  applies, writing a place's fork, or editing an aspect's base; and when a change's context shows an Aspects section.
+  applies, writing a place's fork, or editing an aspect's base; when a change's context shows an Aspects or a May be
+  an aspect section; and when the person states a rule for every surface or the work builds one thing several views draw.
   Shapes the base by the kind of aspect, keeps every fork to what differs, and reconciles the forks whenever the base
   changes. Prescribes the record, never the work.
 ---
@@ -16,6 +17,21 @@ truth for what the aspect says. Each **place** names one existing feature where 
 beneath it. A place is read as the base, then the forks above it, then its own (`pjman show aspect:<aspect>/<place>`).
 
 The store holds no shape for either text. The shape is yours to choose, here, by what kind of aspect it is.
+
+## Noticing one
+
+Aspects come from the work, not only from a request for one. Three cues, each judged, never acted on silently:
+- The person states a rule for more than one place ("on every surface", "everywhere a card shows", "the same as the
+  change page").
+- The work builds one thing several views draw: a component imported from several features' views, a behaviour
+  copied from one view into another.
+- A change's context lists decisions under **May be an aspect**, or `pjman decision` says one reads that way: the
+  store found a decision whose thread holds across the product while no aspect answers it.
+
+On a cue, check `pjman ls aspect`. If one covers it, the cue is a place or a fork on it; otherwise it is a new aspect.
+Either way, propose it in the same turn as a decision on the change at hand, the base and the places drafted in its
+option, and write it only on the go, as one batch that also names the aspect on a change. A change that works on the
+aspect and names the decision it came from in its Notes answers the cue.
 
 ## Creating an aspect
 

@@ -6,7 +6,7 @@ import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType 
 import { supersedesOf } from '../supersede.js';
 import { effectsOf, structuralParent } from '../tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
-import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
+import { aspectAt, aspectCuesOf, aspectsOfChange, featureOfPlace, formatAspectAt, formatAspectCues, formatChangeAspects, reachOfBase, type AspectCue, type ChangeAspects } from '../aspects.js';
 import { urlOf } from '../refs.js';
 import { CliError } from '../util.js';
 import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from '../foundation.js';
@@ -175,6 +175,9 @@ export interface ChangeContext {
   observed: { edge: string; to: string; session: string; at?: string }[];
   /** The aspects the change works under: named by it, or at the features it names (decision aspects/aspect-shape). */
   aspects?: ChangeAspects;
+  /** Decisions on it that read as applying across the product while it names no aspect: the cue to propose one
+   *  (change:aspects-as-work-goes). */
+  aspectCues: AspectCue[];
   /** The releases that shipped it, oldest first: a change can ship in part in one and finish in a later one. */
   releases: { key: string; version: string; at?: string; url?: string }[];
 }
@@ -306,7 +309,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   return {
     change: row(rec), sections, plan, planProgress: planProgress(plan), next: nextStep(plan), needs: needsOf(rec), stale: rungs.stale,
     migrated: typeof rec.data.migrated === 'string' ? rec.data.migrated : undefined,
-    decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects, releases,
+    decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects, aspectCues: aspectCuesOf(loaded, rec), releases,
   };
 }
 
@@ -372,6 +375,7 @@ export function formatChangeContext(c: ChangeContext): string {
   }
   // the contract the change works under, after what was decided on it
   if (c.aspects) out.push('\n' + formatChangeAspects(c.aspects).join('\n').trimEnd());
+  if (c.aspectCues.length) out.push('\n' + formatAspectCues(c.aspectCues).join('\n'));
   if (c.sources.length) {
     out.push('\n## Sources');
     for (const s of c.sources) {
