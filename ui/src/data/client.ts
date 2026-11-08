@@ -120,7 +120,7 @@ export const api = {
   },
   scope: (q: ScopeQuery, at?: string) => {
     const p = new URLSearchParams({ lens: q.lens });
-    if (q.node) p.set('node', q.node);
+    if (q.node) p.set('key', q.node);
     if (q.days) p.set('days', String(q.days));
     if (q.done) p.set('done', '1');
     if (q.retired) p.set('retired', '1');

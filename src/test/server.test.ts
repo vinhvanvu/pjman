@@ -198,6 +198,20 @@ test('the app is served with a history fallback; unknown api routes are 404 json
   assert.equal(old.status, 404);
 });
 
+test('the index is data, one style: a member in the path, a record viewed as key, filters named as the CLI flags; the aliases are gone', async () => {
+  const index = (await getJson('/api/v1')).body.data as { routes: { method: string; path: string; query?: string[] }[]; conventions: Record<string, string> };
+  assert.ok(index.routes.some((r) => r.method === 'GET' && r.path === '/records' && r.query?.includes('parent')));
+  for (const r of index.routes.filter((x) => x.query?.includes('key'))) assert.ok(!r.query!.includes('node') && !r.query!.includes('root'), r.path);
+  assert.match(index.conventions.errors, /ambiguous 409/);
+  assert.equal((await getJson('/api/v1/bridge?product=app')).status, 404);
+  assert.equal((await getJson('/api/v1/board')).status, 404);
+  const tree = await getJson('/api/v1/tree?key=product:app');
+  assert.equal(tree.status, 200);
+  const ls = await getJson('/api/v1/records?type=change&status=bogus');
+  assert.equal(ls.status, 400);
+  assert.match((ls.body.error as { message: string }).message, /--status bogus is not a status of a change/);
+});
+
 test('the scope: one page as data, in a lens, at a node; a bad lens or node is a bad request', async () => {
   const root = await getJson('/api/v1/scope?lens=project');
   assert.equal(root.status, 200);
@@ -210,14 +224,14 @@ test('the scope: one page as data, in a lens, at a node; a bad lens or node is a
   assert.equal(project.key, 'project:app');
   assert.deepEqual(project.children.map((n) => n.key), ['change:app/login', 'change:app/signup']);
   assert.equal(project.children[0].row?.ticket?.label, 'APP-1');
-  const at = await getJson('/api/v1/scope?lens=feature&node=change:login&days=7');
+  const at = await getJson('/api/v1/scope?lens=feature&key=change:login&days=7');
   assert.equal(at.status, 200);
   const d2 = at.body.data as { container: string; change?: { change: { key: string } }; health: { days: number } };
   assert.equal(d2.container, 'product:app'); // no feature names it: the project's product
   assert.equal(d2.change?.change.key, 'change:app/login');
   assert.equal(d2.health.days, 7);
   assert.equal((await getJson('/api/v1/scope?lens=colour')).status, 400);
-  assert.equal((await getJson('/api/v1/scope?node=change:nope')).status, 404);
+  assert.equal((await getJson('/api/v1/scope?key=change:nope')).status, 404);
 });
 
 test('the one write: POST /order moves a change in its product\'s sequence as the person signed in; anything else is refused', async () => {
@@ -241,7 +255,7 @@ test('the one write: POST /order moves a change in its product\'s sequence as th
   assert.match(r.body.error?.message ?? '', /say where/);
   const other = await fetch(base + '/api/v1/records', { method: 'POST' });
   assert.equal(other.status, 405);
-  const scope = await getJson('/api/v1/scope?node=product:app');
+  const scope = await getJson('/api/v1/scope?key=product:app');
   assert.deepEqual((scope.body.data as { roadmap: { sequence: string[] } }).roadmap.sequence, ['change:app/login']);
 });
 
