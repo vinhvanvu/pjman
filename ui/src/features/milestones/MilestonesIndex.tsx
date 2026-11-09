@@ -1,7 +1,8 @@
 // The Milestones destination (decision milestone-detail/milestones-on-the-rail): the product's milestones in flight,
 // nearest to done first, each a card with its ring, name and status, gist, the figures line (children done, who is on
 // it now, the target; what waits and what is blocked in their colours) and the child in work or the next one; the done
-// milestones folded under one line at the foot, latest first. A card opens the milestone's page.
+// milestones folded under one line at the foot, latest first. A card opens the milestone's page. Every card in a row
+// stands the same height: each fills its cell and draws the same lines, a gist and a next line, even when empty.
 import { cn } from 'cn';
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
@@ -33,7 +34,7 @@ export function MilestonesIndex({ scope, lens, className }: { scope: Scope; lens
       </p>
       <ul className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(400px,1fr))]">
         {inFlight.map((m) => (
-          <li key={m.key}>
+          <li key={m.key} className="flex">
             <MilestoneCard m={m} lens={lens} />
           </li>
         ))}
@@ -89,7 +90,7 @@ function MilestoneCard({ m, lens }: { m: MilestoneIndexRow; lens: Lens }) {
       to={m.key}
       lens={lens}
       mode="focus"
-      className="grid grid-cols-[56px_minmax(0,1fr)] gap-x-4 rounded-card border border-line bg-surface px-4 py-4 hover:border-line-strong"
+      className="grid flex-1 grid-cols-[56px_minmax(0,1fr)] gap-x-4 rounded-card border border-line bg-surface px-4 py-4 hover:border-line-strong"
     >
       <Ring done={m.progress.done} total={m.progress.total} size={56} stroke={4}>
         <span className="text-[12px] font-semibold tabular-nums">
@@ -103,7 +104,9 @@ function MilestoneCard({ m, lens }: { m: MilestoneIndexRow; lens: Lens }) {
           <span className={cn('shrink-0 text-meta font-medium', tone.text)}>{m.status}</span>
           {m.moved && <span className="ml-auto shrink-0 text-[11px] text-ink-faint">{agoWords(m.moved)}</span>}
         </div>
-        {m.gist && m.gist !== m.name && <p className="line-clamp-1 text-body text-ink-muted">{m.gist}</p>}
+        <p className="line-clamp-1 min-h-[1.5em] text-body text-ink-muted">
+          {m.gist && m.gist !== m.name ? m.gist : ''}
+        </p>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-ink-muted">
           {line.parts.map((p, i) => (
             <span key={i}>
@@ -124,12 +127,16 @@ function MilestoneCard({ m, lens }: { m: MilestoneIndexRow; lens: Lens }) {
             </span>
           )}
         </div>
-        {m.next && (
-          <p className="mt-1 truncate text-[12.5px]">
-            <span className="text-ink-faint">{m.next.live ? 'working now · ' : 'next · '}</span>
-            {m.next.name}
-          </p>
-        )}
+        <p className="mt-1 truncate text-[12.5px]">
+          {m.next ? (
+            <>
+              <span className="text-ink-faint">{m.next.live ? 'working now · ' : 'next · '}</span>
+              {m.next.name}
+            </>
+          ) : (
+            <span className="text-ink-faint">every child done</span>
+          )}
+        </p>
       </div>
     </NodeLink>
   );
