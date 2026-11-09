@@ -180,7 +180,7 @@ function ChildRow({
         <span aria-label="a decision waits on you" className={cn('size-1.5 shrink-0 rounded-full', TONE.waits.bg)} />
       )}
       {c.blockedOn && (
-        <span className={cn('shrink-0 truncate text-meta', TONE.alarm.text)} title={c.blockedOn}>
+        <span className={cn('max-w-[40%] shrink truncate text-meta', TONE.alarm.text)} title={c.blockedOn}>
           waits on {c.blockedOn}
         </span>
       )}
@@ -191,7 +191,7 @@ function ChildRow({
       )}
       {wide && c.plan?.total ? (
         <span className="hidden shrink-0 text-meta text-ink-faint md:inline">
-          {c.step ? `step ${c.step.n} of ${c.plan.total}` : `${c.plan.done} of ${c.plan.total} steps`}
+          {c.plan.done} of {c.plan.total} steps
         </span>
       ) : null}
       {c.moved && <span className="ml-auto shrink-0 text-[11px] text-ink-faint">{agoWords(c.moved)}</span>}
