@@ -10,6 +10,15 @@ describe('the plan and the children', () => {
     expect(v.segments).toEqual(['done', 'on', 'open', 'dropped']);
     expect(v.row?.state).toBe('active');
   });
+  it('draws the bar in order whatever order the steps were worked in', () => {
+    expect(planView([step('done'), step('dropped'), step('open'), step('done'), step('active')]).segments).toEqual([
+      'done',
+      'done',
+      'on',
+      'open',
+      'dropped',
+    ]);
+  });
   it('says when every step is done, or there are none', () => {
     expect(planView([step('done'), step('done')]).sum).toBe('all 2 steps done');
     expect(planView([]).sum).toBe('no steps yet');

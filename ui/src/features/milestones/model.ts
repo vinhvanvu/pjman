@@ -120,14 +120,18 @@ export function childrenHead(list: readonly ChildView[], open?: string, next?: s
 export const childSegments = (list: readonly ChildView[], open?: string): string[] =>
   list.map((c) => (c.key === open && !c.behind ? 'on' : c.status));
 
-/** The open child's steps bar, from the row's progress and the step the work stands on: done segments, the one on,
- *  the rest open; nothing without a plan. */
+/** The open child's steps bar, from the row's progress and the step the work stands on: the done segments, then the one
+ *  on when the step is active, then the rest open (change:step-bar-in-order: by count alone, since the step's number
+ *  counts dropped steps while the bar does not); nothing without a plan. */
 export function stepSegments(c: Pick<ChildView, 'plan' | 'step'>): Segment[] {
   if (!c.plan?.total) return [];
-  const out: Segment[] = [];
-  for (let i = 1; i <= c.plan.total; i++)
-    out.push(i <= c.plan.done ? 'done' : c.step && i === c.step.n && c.step.state === 'active' ? 'on' : 'open');
-  return out;
+  const { done, total } = c.plan;
+  const on = c.step?.state === 'active' && done < total ? 1 : 0;
+  return [
+    ...Array<Segment>(Math.min(done, total)).fill('done'),
+    ...Array<Segment>(on).fill('on'),
+    ...Array<Segment>(Math.max(0, total - done - on)).fill('open'),
+  ];
 }
 
 /** The keys beneath a change among the product's rows: its children, their children, all the way down. */

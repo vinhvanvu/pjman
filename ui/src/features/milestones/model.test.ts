@@ -78,6 +78,23 @@ describe('the children as the plan', () => {
       'open',
       'open',
     ]);
+    // step 2 dropped, step 3 active: the step's number counts the dropped one, the bar does not
+    expect(stepSegments({ plan: { done: 1, total: 3 }, step: { n: 3, text: '', state: 'active' } })).toEqual([
+      'done',
+      'on',
+      'open',
+    ]);
+    // steps 1 and 3 done, step 2 active: the one on still shows
+    expect(stepSegments({ plan: { done: 2, total: 3 }, step: { n: 2, text: '', state: 'active' } })).toEqual([
+      'done',
+      'done',
+      'on',
+    ]);
+    expect(stepSegments({ plan: { done: 1, total: 3 }, step: { n: 2, text: '', state: 'open' } })).toEqual([
+      'done',
+      'open',
+      'open',
+    ]);
     expect(stepSegments({ plan: { done: 2, total: 2 } })).toEqual(['done', 'done']);
     expect(stepSegments({})).toEqual([]);
   });
