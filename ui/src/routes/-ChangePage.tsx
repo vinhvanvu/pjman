@@ -93,7 +93,7 @@ export function ChangePage({ changeKey }: { changeKey: string }) {
       {wide ? (
         <ChangeView ctx={ctx} scope={data} lens={LENS} wide page />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-auto">
           <ChangeView ctx={ctx} scope={data} lens={LENS} wide={false} page />
         </div>
       )}

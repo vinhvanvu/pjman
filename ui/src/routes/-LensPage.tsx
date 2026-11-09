@@ -459,7 +459,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const dockHome = docked && !sel && tab === 'overview';
   const content = !wide ? (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-auto"
+      className="relative flex min-h-0 flex-1 flex-col overflow-auto"
       data-scroll-restoration-id={`${splitId}.${dockHome ? 'dock' : sel ? 'record' : 'only'}`}
     >
       {dockHome ? (

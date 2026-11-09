@@ -140,13 +140,13 @@ export function ChangeView({
       <div className={cn('flex min-h-0 flex-1', className)} style={PAGE_LANE}>
         <section
           aria-label="The change"
-          className="flex min-w-0 flex-[999_1_560px] flex-col overflow-auto px-9 pt-6 pb-12"
+          className="relative flex min-w-0 flex-[999_1_560px] flex-col overflow-auto px-9 pt-6 pb-12"
         >
           {tree}
         </section>
         <aside
           aria-label="The change's sources and timeline"
-          className="flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6"
+          className="relative flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6"
         >
           {sources}
           <div className="my-1.5 h-px bg-line" aria-hidden="true" />

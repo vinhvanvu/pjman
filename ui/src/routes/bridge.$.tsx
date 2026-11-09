@@ -181,7 +181,7 @@ function BridgePage() {
     <AppShell wide={wide} rail={rail} bar={bar} railOpen={railOpen} onCloseRail={() => setRailOpen(false)}>
       {/* the transport stands above the scroll, so it stays in reach while the cards scroll */}
       {productKey && <TransportBar r={rolling} lit={lit} only={only} onHoverEvent={onHoverEvent} />}
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">{content}</div>
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-auto">{content}</div>
       <CommandPalette open={palette} onOpenChange={setPalette} lens="feature" />
     </AppShell>
   );

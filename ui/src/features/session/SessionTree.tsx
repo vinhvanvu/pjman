@@ -186,7 +186,7 @@ export function SessionTree({
         <section
           className={cn(
             'flex min-w-0 flex-col',
-            wide ? 'flex-[999_1_560px] gap-6 overflow-auto px-9 pt-6 pb-9' : 'gap-[22px]',
+            wide ? 'relative flex-[999_1_560px] gap-6 overflow-auto px-9 pt-6 pb-9' : 'gap-[22px]',
           )}
         >
           {barRow}
@@ -201,7 +201,7 @@ export function SessionTree({
           {!wide && rail}
         </section>
         {wide && (
-          <aside className="flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6">
+          <aside className="relative flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6">
             {rail}
           </aside>
         )}
@@ -259,7 +259,7 @@ export function SessionTree({
       <div className={cn('flex min-h-0 flex-1', className)} style={laneStyle(colour)}>
         <section
           aria-label="The session and the change it is on now"
-          className="flex min-w-0 flex-[999_1_560px] flex-col gap-6 overflow-auto px-9 pt-6 pb-9"
+          className="relative flex min-w-0 flex-[999_1_560px] flex-col gap-6 overflow-auto px-9 pt-6 pb-9"
           {...hold.props}
         >
           {barRow}
@@ -268,7 +268,7 @@ export function SessionTree({
         </section>
         <aside
           aria-label="The session's sources and timeline"
-          className="flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6"
+          className="relative flex w-[520px] shrink-0 flex-col gap-3 overflow-auto border-l border-line bg-surface px-[22px] py-6"
         >
           {sources}
           {sources && <div className="my-1.5 h-px bg-line" aria-hidden="true" />}

@@ -111,6 +111,12 @@
   #root {
     height: 100%;
   }
+  /* the app is a fixed-height shell whose panes scroll; the window never does, so nothing that escapes a pane
+     (an absolutely positioned descendant with no positioned ancestor inside it) can stretch the page past the app */
+  html,
+  body {
+    overflow: hidden;
+  }
   body {
     margin: 0;
     background: var(--background);

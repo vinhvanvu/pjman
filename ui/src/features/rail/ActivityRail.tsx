@@ -190,7 +190,7 @@ function Toggle({ rendering, onChange }: { rendering: RailRendering; onChange: (
       aria-pressed={rendering === r}
       title={title}
       onClick={() => onChange(r)}
-      className={cn('rounded-chip p-1 text-ink-faint hover:text-ink', rendering === r && 'bg-raised text-ink')}
+      className={cn('relative rounded-chip p-1 text-ink-faint hover:text-ink', rendering === r && 'bg-raised text-ink')}
     >
       <Icon className="size-3.5" aria-hidden="true" />
       <span className="sr-only">{title}</span>
