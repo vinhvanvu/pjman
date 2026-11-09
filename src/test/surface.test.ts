@@ -81,7 +81,7 @@ test('the error contract: usage exits 2, not found 1 with what was tried, and --
   r = pj(['ls', 'change', '--status', 'bogus']);
   assert.equal(r.code, 2);
   assert.match(r.err, /--status bogus is not a status of a change \(open, planning/);
-  assert.match(pj(['ls', 'change', '--kind', 'nope']).err, /--kind nope is not a kind of change \(work, bug\)/);
+  assert.match(pj(['ls', 'change', '--kind', 'nope']).err, /--kind nope is not a kind of change \(work, bug, milestone\)/);
   assert.match(pj(['ls', 'step']).err, /unknown entity 'step' \(product, feature, aspect, place, project, change, decision, release, source, session, actor\)/);
   r = pj([]);
   assert.equal(r.code, 2);
@@ -198,7 +198,7 @@ test('set and rm over several records land as one commit, one applied event, and
 });
 
 test('ls filters by parent, feature and product; order with no move prints the order', () => {
-  filed('epic');
+  filed('epic', ['--kind', 'milestone']);
   assert.equal(pj(['set', 'signup', 'parent=change:epic', 'features+=adds feature:cards']).code, 0);
   assert.deepEqual(JSON.parse(pj(['ls', 'change', '--parent', 'epic', '--json']).out).map((r: { key: string }) => r.key), ['change:app/signup']);
   assert.deepEqual(JSON.parse(pj(['ls', 'change', '--feature', 'feature:checkout', '--json']).out).map((r: { key: string }) => r.key), ['change:app/signup']);
@@ -230,7 +230,7 @@ test('what a fresh agent tripped on: a slug in a flag or a field, a bare URL as 
   let r = pj(['new', 'feature', 'wallet', '--title', 'Cards kept for next time', '--parent', 'checkout']);
   assert.equal(r.code, 0, r.err);
   assert.equal(record('feature:app/wallet').data.parent, 'feature:app/checkout');
-  filed('epic-two');
+  filed('epic-two', ['--kind', 'milestone']);
   assert.equal(pj(['set', 'signup', 'parent=epic-two']).code, 0);
   assert.equal(record('change:app/signup').data.parent, 'change:app/epic-two');
   assert.equal(pj(['set', 'login', 'links+=https://example.com/pci']).code, 0);

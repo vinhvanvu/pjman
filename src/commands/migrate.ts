@@ -12,11 +12,11 @@ import { IDENTITY_KINDS, writeStoreConfig, type Store } from '../config.js';
 import { emit } from '../events.js';
 import { commitAll, git, gitMv, isTracked, toplevel } from '../git.js';
 import { loadLegacy } from '../legacy.js';
-import { isLegacyLayout, loadStore, type Rec } from '../records.js';
+import { isLegacyLayout, loadStore, resolve, type Rec } from '../records.js';
 import { CliError, localDate, nowIso } from '../util.js';
 import { envelope, render } from '../write.js';
 import { formatProblems, validate } from '../validate.js';
-import { CHANGE_SECTIONS, foundationHash, foundationOf, unmigrated } from '../foundation.js';
+import { CHANGE_SECTIONS, foundationHash, foundationOf, stepsOf, unmigrated } from '../foundation.js';
 import { sections as parseSections } from '../frontmatter.js';
 import { compareVersions, UNSTAMPED_VERSION } from '../version.js';
 import { noteReshaping } from '../store-index.js';
@@ -25,8 +25,10 @@ import { noteReshaping } from '../store-index.js';
  *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
  *  since they predate the stamp and a store from then carries no version; a move from here on checks the stamp
  *  (`compareVersions(storeVersion(store), since) < 0`). */
+export type MigrationName = 'layout' | 'foundation' | 'kinds';
+
 export interface Migration {
-  name: 'layout' | 'foundation';
+  name: MigrationName;
   /** The pjman version that introduced the move; the release that ships a new one is at least a minor. */
   since: string;
   /** Whether the store still needs this move. */
@@ -48,6 +50,12 @@ export const MIGRATIONS: readonly Migration[] = [
     run: (store, opts) => migrateFoundation(store, opts),
     about: 'every change and decision in its shape',
   },
+  {
+    name: 'kinds', since: '0.3.0',
+    pending: (store) => compareVersions(storeVersion(store), '0.3.0') < 0 && parentsToPromote(loadStore(store)).length > 0,
+    run: (store, opts) => migrateKinds(store, opts),
+    about: 'every change named as a parent a milestone by its kind',
+  },
 ];
 
 /** The format this pjman writes: the version of the latest move it knows. A store stamped higher was written by a newer
@@ -58,8 +66,8 @@ export const FORMAT_VERSION: string = MIGRATIONS.reduce((top, m) => (compareVers
 export const storeVersion = (store: Store): string => store.config.version ?? UNSTAMPED_VERSION;
 
 export interface MigrateResult {
-  /** Which move ran: the layout, the foundation, or the stamp (pjman.yaml names the format). */
-  kind: 'layout' | 'foundation' | 'stamp';
+  /** Which move ran: the layout, the foundation, the kinds, or the stamp (pjman.yaml names the format). */
+  kind: MigrationName | 'stamp';
   /** The pjman version that introduced the move. */
   since: string;
   products: number;
@@ -74,13 +82,13 @@ export interface MigrateResult {
 }
 
 /** The one move that still waits, or null: each migration in order, then the stamp. */
-export function pendingMigration(store: Store): 'layout' | 'foundation' | 'stamp' | null {
+export function pendingMigration(store: Store): MigrationName | 'stamp' | null {
   for (const m of MIGRATIONS) if (m.pending(store)) return m.name;
   return compareVersions(storeVersion(store), FORMAT_VERSION) < 0 ? 'stamp' : null;
 }
 
 /** The move a pending migration is, named for a reader: `the layout move (introduced in 0.2.0)`. */
-export function describeMigration(name: 'layout' | 'foundation' | 'stamp'): string {
+export function describeMigration(name: MigrationName | 'stamp'): string {
   if (name === 'stamp') return `the stamp (pjman.yaml names the format, ${FORMAT_VERSION})`;
   const m = MIGRATIONS.find((x) => x.name === name)!;
   return `the ${m.name} move (${m.about}, introduced in ${m.since})`;
@@ -90,7 +98,7 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
   noteReshaping(store);
   const pending = pendingMigration(store);
   if (!pending) {
-    throw new CliError(`nothing to migrate: every record is keyed under its product, every change and decision is in its shape, and the store is in format ${storeVersion(store)}`);
+    throw new CliError(`nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, and the store is in format ${storeVersion(store)}`);
   }
   if (pending === 'stamp') return stamp(store, opts);
   return MIGRATIONS.find((m) => m.name === pending)!.run(store, opts);
@@ -233,6 +241,62 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
   const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate changes and decisions into the foundation', env.session) : null;
   emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${changes} changes`, `${decisions} decisions`], writer: env.writer, session: env.session }], commit);
   return { kind: 'foundation', since: '0.2.0', products: 0, moved: 0, rewritten: changes + decisions, changes, decisions, commit };
+}
+
+/** The valid changes other valid changes name as parent that are not milestones by their kind: what the kinds move
+ *  promotes (decision milestone-kind/kind-not-children). */
+export function parentsToPromote(loaded: ReturnType<typeof loadStore>): Rec[] {
+  const named = new Set<string>();
+  for (const c of loaded.records) {
+    if (c.type !== 'change' || !c.valid || typeof c.data.parent !== 'string') continue;
+    const res = resolve(loaded, c.data.parent, c.productSlug ?? undefined);
+    if (res.status === 'ok' || res.status === 'alias') named.add(res.rec.key);
+  }
+  return loaded.records.filter((r) => r.type === 'change' && r.valid && named.has(r.key) && r.data.kind !== 'milestone');
+}
+
+/** The kinds: every change another change names as parent becomes a milestone by its kind. Steps it carried go to
+ *  its Notes as text, dated, since a milestone's plan is its children; a bug's severity goes the same way. One
+ *  commit, one event; the store must validate afterwards or nothing is written. */
+export function migrateKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  const root = store.root;
+  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  const loaded = loadStore(store);
+  const at = nowIso();
+  const inGit = toplevel(root) !== null;
+  const promoted = parentsToPromote(loaded);
+  for (const r of promoted) {
+    const data: Record<string, unknown> = { ...r.data, kind: 'milestone' };
+    const sections = new Map(r.sections);
+    const notes: string[] = [];
+    const steps = stepsOf(r.data);
+    if (steps.length) {
+      const mark = (s: string) => (s === 'done' ? 'x' : s === 'dropped' ? '-' : s === 'active' ? '>' : ' ');
+      notes.push(noteLine(at, `plan (before the milestone kind; a milestone's plan is its children): ${steps.map((s, i) => `${i + 1}. [${mark(s.state)}] ${s.text}${s.note ? ` (${s.note})` : ''}`).join(' · ')}`));
+    }
+    delete data.plan;
+    if (typeof data.severity === 'string') {
+      notes.push(noteLine(at, `severity (before the milestone kind): ${data.severity}`));
+      delete data.severity;
+    }
+    if (notes.length) sections.set('Notes', [sections.get('Notes')?.trim() ?? '', ...notes].filter(Boolean).join('\n'));
+    const order = [...CHANGE_SECTIONS];
+    const rest = [...sections.keys()].filter((k) => k && !(order as string[]).includes(k));
+    const body = [...order, ...rest].filter((k) => sections.get(k)?.trim()).map((k) => `## ${k}\n\n${sections.get(k)!.trim()}\n`).join('\n');
+    fs.writeFileSync(r.abs, render('change', data, body));
+  }
+  const problems = validate(loadStore(store)).filter((p) => p.level === 'error');
+  if (problems.length) {
+    if (inGit) {
+      git(root, ['reset', '-q', '--hard', 'HEAD']);
+      git(root, ['clean', '-qfd', '--', '.']);
+    }
+    throw new CliError(`refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`);
+  }
+  const env = envelope(opts);
+  const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate parent changes into the milestone kind', env.session) : null;
+  emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${promoted.length} milestones`], writer: env.writer, session: env.session }], commit);
+  return { kind: 'kinds', since: '0.3.0', products: 0, moved: 0, rewritten: promoted.length, changes: promoted.length, commit };
 }
 
 const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

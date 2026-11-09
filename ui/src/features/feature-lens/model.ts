@@ -338,7 +338,7 @@ export const byMotion = (features: ScopeNode[]): ScopeNode[] =>
 export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
   const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
   return changes
-    .filter((r) => r.progress && r.status !== 'done' && r.status !== 'dropped')
+    .filter((r) => r.kind === 'milestone' && r.status !== 'done' && r.status !== 'dropped')
     .toSorted((a, b) => share(b) - share(a) || (a.gist ?? '').localeCompare(b.gist ?? ''));
 };
 

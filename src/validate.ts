@@ -5,7 +5,7 @@ import { FIELD_ORDER, headField, LAYER_OF, resolve, type Loaded, type Problem, t
 import { supersedesOf } from './supersede.js';
 import { parseAspectEffect } from './aspects.js';
 import { isDateString, isTimestamp, localDate } from './util.js';
-import { CHANGE_SECTIONS, ENTRY_TYPES, gistProblem, nameProblem, STEP_STATES, threadOf, decisionState, unmigrated } from './foundation.js';
+import { CHANGE_SECTIONS, ENTRY_TYPES, gistProblem, nameProblem, STEP_STATES, stepsOf, threadOf, decisionState, unmigrated } from './foundation.js';
 
 const REQUIRED: Record<RecordType, string[]> = {
   product: ['title'],
@@ -340,6 +340,19 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
         if (typeof d.parent === 'string') {
           checkRef(r, 'parent', d.parent, ['change']);
           parentCycle('parent');
+          // a parent is a milestone by its kind, never by having children (decision milestone-kind/kind-not-children)
+          const parent = loaded.byKey.get(liveKey(r, d.parent) ?? '')?.[0];
+          if (parent && parent.type === 'change' && parent.valid && parent.data.kind !== 'milestone') {
+            err(r, `parent: ${parent.key} is not a milestone (its kind is '${String(parent.data.kind ?? 'work')}'); pjman set ${parent.key} kind=milestone, or file this change under one`);
+          }
+        }
+        if (d.kind === 'milestone') {
+          const own = stepsOf(d).length;
+          if (own) err(r, `a milestone's plan is its children; this one carries ${own} step${own === 1 ? '' : 's'} of its own: drop them (pjman step <change> drop <n>) before setting kind=milestone`);
+        } else {
+          // the other direction: a change other changes name as parent cannot stop being a milestone
+          const children = loaded.records.filter((c) => c.type === 'change' && c.valid && typeof c.data.parent === 'string' && liveKey(c, c.data.parent) === r.key);
+          if (children.length) err(r, `kind: ${children.length === 1 ? `${children[0].key} names` : `${children.length} changes name`} this change as parent, so it must be a milestone (kind=milestone)`);
         }
         if (listOf(d.depends_on).length) {
           for (const k of listOf(d.depends_on)) {

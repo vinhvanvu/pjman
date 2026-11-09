@@ -68,7 +68,7 @@ way, since the person came to work it.
 ### 2. One deliverable or several?
 
 - **Default: one change.**
-- Several things that ship together become a milestone with children (`--parent change:<milestone>`), or children of
+- Several things that ship together become a milestone (`--kind milestone`) with children (`--parent change:<milestone>` on each), or children of
   a milestone the request names. Name the features the milestone delivers on the milestone itself when it is formed
   before its children.
 

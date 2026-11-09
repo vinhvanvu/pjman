@@ -84,17 +84,17 @@ describe('lanes', () => {
 describe('columns', () => {
   const scope = {
     changes: [
-      row('m1', { children: 2, progress: { done: 1, total: 2 }, position: 0, target: '2026-12-01' }),
+      row('m1', { kind: 'milestone', children: 2, progress: { done: 1, total: 2 }, position: 0, target: '2026-12-01' }),
       row('kid', { parent: 'change:m1', position: 0, status: 'active' }),
       row('done-kid', { parent: 'change:m1', position: 0, status: 'done' }),
       row('solo', { position: 1 }),
       row('loose', {}),
-      row('loose-parent', { children: 1 }),
+      row('loose-parent', { kind: 'milestone', children: 1 }),
       row('loose-kid', { parent: 'change:loose-parent' }),
       row('loose-grandkid', { parent: 'change:loose-kid' }),
       row('bug', { kind: 'bug' }),
       row('orphan', { parent: 'change:done-parent' }),
-      row('done-parent', { children: 1, status: 'done' }),
+      row('done-parent', { kind: 'milestone', children: 1, status: 'done' }),
     ],
     roadmap: {
       product: 'product:shop',
@@ -128,7 +128,7 @@ describe('columns', () => {
   });
   it('a child whose milestone is on the sequence is not later', () => {
     const g = laterGroups([
-      row('m', { children: 1, position: 0 }),
+      row('m', { kind: 'milestone', children: 1, position: 0 }),
       row('kid', { parent: 'change:m', position: 0 }),
       row('free', {}),
     ]);

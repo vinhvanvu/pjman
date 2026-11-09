@@ -123,7 +123,7 @@ export function columns(scope: Scope): Column[] {
   const out: Column[] = scope.roadmap.sequence.map((key, i) => {
     const row = byKey.get(key);
     const beneath = rows.filter((r) => r.key !== key && r.position === i && isWork(r));
-    const milestone = (row?.children ?? 0) > 0 || beneath.length > 0;
+    const milestone = row?.kind === 'milestone' || beneath.length > 0; // by its kind (decision milestone-kind/kind-not-children)
     return {
       kind: milestone ? 'milestone' : 'single',
       key,

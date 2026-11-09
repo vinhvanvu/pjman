@@ -446,7 +446,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
   out.push(heading('#', c.change));
-  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`);
+  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`);
   out.push(...readinessLines(c, 'change'));
   // the foundation in order of depth; the plan sits after Scope, where the work's shape ends and its steps begin
   for (const [k, v] of Object.entries(c.sections)) {

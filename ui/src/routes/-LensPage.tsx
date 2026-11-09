@@ -49,12 +49,12 @@ const LENS_HOME: Partial<Record<Lens, string>> = { feature: 'Product map', roadm
 function kindOf(s: Scope): string {
   const n = s.node;
   if (!n) return 'store';
-  if (n.type === 'change') return s.change?.children.length ? 'milestone' : 'change';
+  if (n.type === 'change') return s.change?.change.data.kind === 'milestone' ? 'milestone' : 'change';
   return n.level ?? n.type;
 }
 
 const isContainer = (s: Scope): boolean =>
-  !!s.node && (s.node.type !== 'change' || (s.change?.children.length ?? 0) > 0);
+  !!s.node && (s.node.type !== 'change' || s.change?.change.data.kind === 'milestone');
 
 /** A change with no children: its own page is the change (decision change-detail/own-route), the lens only selects it. */
 const isChange = (s: Scope | undefined): boolean => !!s?.node && s.node.type === 'change';

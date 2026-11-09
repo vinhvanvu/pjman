@@ -39,7 +39,7 @@ before(() => {
   change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active', next: 'Wire the form.' });
   change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web', status: 'review', next: 'Review it.' });
   // a milestone with its own plan and two children, one done: its card reads the children, not its steps
-  change(store, 'release', { title: 'Release', summary: 's', project: 'project:web', status: 'open', next: 'Ship it.' });
+  change(store, 'release', { title: 'Release', summary: 's', project: 'project:web', status: 'open', kind: 'milestone' });
   change(store, 'kid-done', { title: 'Kid done', summary: 's', project: 'project:web', status: 'done', parent: 'change:shop/release' });
   change(store, 'kid-on', { title: 'Kid on', summary: 's', project: 'project:web', status: 'active', parent: 'change:shop/release', next: 'Do it.' });
   decisionRec(store, 'card-form/later', { title: 'Later', decision: 'd2', why: 'w' });
@@ -131,6 +131,7 @@ test('bridge: the changes in motion, every change touched in the window that is 
   assert.deepEqual(Object.keys(by).sort(), ['change:shop/card-form', 'change:shop/chore', 'change:shop/kid-on', 'change:shop/release', 'change:shop/stuck']); // shipped and kid-done are done: not in motion
   // a milestone's card reads its children done over children and the child in work, not its own plan
   // (change:bridge-card-reads-the-plan)
+  assert.equal(by['change:shop/release'].kind, 'milestone');
   assert.deepEqual(by['change:shop/release'].steps, { done: 1, total: 2, dropped: 0 });
   assert.deepEqual(by['change:shop/release'].step, { n: 2, text: 'Kid on', state: 'open' });
   assert.deepEqual(by['change:shop/kid-on'].steps, { done: 0, total: 1, dropped: 0 });

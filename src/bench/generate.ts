@@ -80,7 +80,8 @@ export function generateStore(root: string, opts: GenerateOpts): Generated {
       const slug = `change-${c}`;
       const key = `change:${p}/${slug}`;
       const status = c < milestones ? pick(['active', 'planning', 'done']) : pick(STATUSES);
-      const parent = c >= milestones && rand() < 0.5 ? `parent: change:${p}/change-${Math.floor(rand() * milestones)}\n` : '';
+      // the first changes are the milestones, by their kind, with no plan of their own; the rest may file under one
+      const parent = c < milestones ? 'kind: milestone\n' : rand() < 0.5 ? `parent: change:${p}/change-${Math.floor(rand() * milestones)}\n` : '';
       const named = Array.from({ length: 1 + Math.floor(rand() * 2) }, () => `${pick(['adds ', '', '', 'removes '])}${pick(features)}`.replace(/^removes /, rand() < 0.9 ? '' : 'removes '));
       const deps = c > 0 && rand() < 0.15 ? [`change:${p}/change-${Math.floor(rand() * c)}`] : [];
       const steps = 2 + Math.floor(rand() * 6);
@@ -89,7 +90,7 @@ export function generateStore(root: string, opts: GenerateOpts): Generated {
         return `  - text: Step ${i + 1} of change ${c}, said as the work it is\n    state: ${state}\n`;
       }).join('');
       const created = at(c / C);
-      write(`products/${p}/changes/${slug}/change.md`, `---\nname: Change ${c}\ngist: What change ${c} does, in one line\nstatus: ${status}\nproject: ${project}\n${parent}${yamlList('depends_on', deps)}${yamlList('features', named)}plan:\n${plan}writer: person:bench\ncreated: ${created.slice(0, 10)}\n---\n\n## Origin\n\n> The request for change ${c}, as it was said.\n\n## Intent\n\nWhat change ${c} is for, at some length so the body weighs what a real one does. ${'The work reads as the work. '.repeat(20)}\n\n## Done when\n\nChange ${c} is done when its steps are.\n`);
+      write(`products/${p}/changes/${slug}/change.md`, `---\nname: Change ${c}\ngist: What change ${c} does, in one line\nstatus: ${status}\nproject: ${project}\n${parent}${yamlList('depends_on', deps)}${yamlList('features', named)}${c < milestones ? '' : `plan:\n${plan}`}writer: person:bench\ncreated: ${created.slice(0, 10)}\n---\n\n## Origin\n\n> The request for change ${c}, as it was said.\n\n## Intent\n\nWhat change ${c} is for, at some length so the body weighs what a real one does. ${'The work reads as the work. '.repeat(20)}\n\n## Done when\n\nChange ${c} is done when its steps are.\n`);
       changes.push(key);
       const t0 = c / C;
       event(t0, { op: 'created', key, type: 'change', path: `products/${p}/changes/${slug}/change.md` });

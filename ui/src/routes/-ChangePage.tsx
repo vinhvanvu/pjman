@@ -77,7 +77,7 @@ export function ChangePage({ changeKey }: { changeKey: string }) {
       lens={LENS}
       crumbs={wide ? data.crumbs.filter((k) => !k.key.startsWith('product:') && k.key !== c.key) : []}
       current={wide ? { key: c.key, title: c.name ?? c.title ?? short(c.key) } : undefined}
-      kind={wide ? (c.data.kind === 'bug' ? 'bug' : ctx.children.length ? 'milestone' : 'change') : undefined}
+      kind={wide ? (c.data.kind === 'bug' ? 'bug' : c.data.kind === 'milestone' ? 'milestone' : 'change') : undefined}
       onOpenPalette={openPalette}
       onOpenRail={wide ? undefined : () => setRailOpenFor(changeKey)}
       trailing={

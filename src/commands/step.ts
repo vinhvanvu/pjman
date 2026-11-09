@@ -51,6 +51,8 @@ function change(store: Store, ref: string): Rec {
   if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, raw);
   if (res.rec.type !== 'change') throw new CliError(`${res.rec.key} is not a change`);
   if (!res.rec.valid) throw new CliError(`${res.rec.path} is invalid; fix it before writing its plan`);
+  // a milestone's plan is its children (decision milestone-kind/kind-not-children): no step of its own
+  if (res.rec.data.kind === 'milestone') throw new CliError(`${res.rec.key} is a milestone: its children are its plan, so it takes no steps of its own (pjman new change <slug> --parent ${res.rec.key} adds one)`);
   return res.rec;
 }
 

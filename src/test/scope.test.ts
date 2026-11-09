@@ -52,10 +52,11 @@ before(() => {
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:shop/checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
   newRecord(store, 'feature', 'fax', { title: 'Fax orders', product: 'product:shop', status: 'retired' });
-  change(store, 'cards', { title: 'Cards milestone', summary: 's', project: 'project:web', status: 'planning' });
-  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards', 'feature:shop/search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
+  change(store, 'cards', { title: 'Cards milestone', summary: 's', project: 'project:web', status: 'planning', kind: 'milestone' });
+  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:shop/cards', kind: 'milestone', features: ['adds feature:shop/saved-cards', 'feature:shop/search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
   change(store, 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards'] });
   change(store, 'card-tests', { title: 'Card tests', summary: 's', project: 'project:web', parent: 'change:shop/card-form' });
+  change(store, 'solo', { title: 'Solo milestone', summary: 's', project: 'project:web', status: 'planning', kind: 'milestone' }); // a milestone with no child yet
   change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
   change(store, 'old', { title: 'Old', summary: 's', project: 'project:web', features: ['feature:shop/search'], status: 'done' });
   decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
@@ -92,7 +93,7 @@ test('feature lens: features nest, a change sits under every feature it names, a
   // the same change again under the second feature it names; its child is not placed twice
   assert.deepEqual(keys(s.tree[1].children), ['change:shop/card-form']);
   assert.deepEqual(s.tree[1].children[0].children, []);
-  assert.deepEqual(keys(s.tree[2].children), ['change:shop/cards', 'change:shop/chore']);
+  assert.deepEqual(keys(s.tree[2].children), ['change:shop/cards', 'change:shop/solo', 'change:shop/chore']);
   assert.deepEqual(s.tree[2].children[0].children, []); // its children live under their features
   // the row
   const r = saved.children[0].row!;
@@ -107,7 +108,7 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.equal(s.health.waiting, 1);
   // the inbox: the proposed decision beneath, with the recommendation and the change it is on
   assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.state.options.find((o) => o.recommended)?.text]), [['decision:shop/card-form/why', 'change:shop/card-form', 'd']]);
-  assert.equal(s.health.created, 6);
+  assert.equal(s.health.created, 7);
   assert.equal(s.health.staleDays, 0);
   // the live sessions beneath, newest first, each with its state by the bridge's rule: a bind after no line is working,
   // a stop line last is stopped
@@ -126,27 +127,28 @@ test('project lens: projects under the product, changes nested by parent within 
   const s = scope(store, loadStore(store), { lens: 'project', node: 'product:shop' });
   assert.deepEqual(keys(s.tree), ['project:api', 'project:web']);
   assert.deepEqual(keys(s.tree[0].children), ['change:shop/card-endpoint']);
-  assert.deepEqual(keys(s.tree[1].children), ['change:shop/cards', 'change:shop/chore']);
+  assert.deepEqual(keys(s.tree[1].children), ['change:shop/cards', 'change:shop/solo', 'change:shop/chore']);
   assert.deepEqual(keys(s.tree[1].children[0].children), ['change:shop/card-form']);
   assert.deepEqual(keys(s.tree[1].children[0].children[0].children), ['change:shop/card-tests']);
-  assert.deepEqual(s.tree[1].progress, { done: 1, total: 6 }); // card-endpoint counts beneath web through its parent milestone
+  assert.deepEqual(s.tree[1].progress, { done: 1, total: 7 }); // card-endpoint counts beneath web through its parent milestone
   const web = scope(store, loadStore(store), { lens: 'project', node: 'project:web' });
-  assert.deepEqual(web.node?.progress, { done: 1, total: 6 }); // the project's own progress on the node, for the header
+  assert.deepEqual(web.node?.progress, { done: 1, total: 7 }); // the project's own progress on the node, for the header
   // a child of a web milestone that lives in api is beneath web; the project lens cannot place it here, so it closes the list
-  assert.deepEqual(keys(web.tree), ['change:shop/cards', 'change:shop/chore', 'unassigned']);
-  assert.equal(web.tree[2].title, 'In other projects');
-  assert.deepEqual(keys(web.tree[2].children), ['change:shop/card-endpoint']);
+  assert.deepEqual(keys(web.tree), ['change:shop/cards', 'change:shop/solo', 'change:shop/chore', 'unassigned']);
+  assert.equal(web.tree[3].title, 'In other projects');
+  assert.deepEqual(keys(web.tree[3].children), ['change:shop/card-endpoint']);
   assert.deepEqual(web.crumbs.map((c) => c.key), ['product:shop']);
-  assert.deepEqual(web.changes.map((c) => c.key), ['change:shop/cards', 'change:shop/card-form', 'change:shop/card-endpoint', 'change:shop/card-tests', 'change:shop/chore']);
+  assert.deepEqual(web.changes.map((c) => c.key), ['change:shop/cards', 'change:shop/card-form', 'change:shop/card-endpoint', 'change:shop/card-tests', 'change:shop/solo', 'change:shop/chore']);
   assert.deepEqual(web.projects, ['project:api', 'project:web']);
 });
 
 test('milestone lens: parent changes nested all the way down, changes without a milestone close the list', () => {
   const s = scope(store, loadStore(store), { lens: 'milestone', node: 'product:shop' });
-  assert.deepEqual(keys(s.tree), ['change:shop/cards', 'unassigned']);
+  assert.deepEqual(keys(s.tree), ['change:shop/cards', 'change:shop/solo', 'unassigned']); // solo: a milestone with no child yet is a root by its kind
   assert.deepEqual(keys(s.tree[0].children), ['change:shop/card-form', 'change:shop/card-endpoint']);
   assert.deepEqual(keys(s.tree[0].children[0].children), ['change:shop/card-tests']);
-  assert.deepEqual(keys(s.tree[1].children), ['change:shop/chore']);
+  assert.deepEqual(s.tree[1].children, []); // solo has no child yet
+  assert.deepEqual(keys(s.tree[2].children), ['change:shop/chore']);
   const m = scope(store, loadStore(store), { lens: 'milestone', node: 'change:shop/cards' });
   assert.equal(m.container, 'change:shop/cards');
   assert.deepEqual(keys(m.tree), ['change:shop/card-form', 'change:shop/card-endpoint']);
@@ -223,7 +225,7 @@ test('bugs: one home at the severity level, counts roll up with the worst named,
   assert.equal(byKey['change:shop/card-form'].position, 0);
   assert.equal(byKey['change:shop/card-tests'].position, 0);
   assert.equal(byKey['change:shop/chore'].position, undefined);
-  assert.deepEqual(s.roadmap.later, ['change:shop/chore']);
+  assert.deepEqual(s.roadmap.later, ['change:shop/solo', 'change:shop/chore']);
   assert.equal(byKey['change:shop/cards'].target, '2026-12-01');
   assert.deepEqual(byKey['change:shop/chore'].dependsOn, ['change:shop/cards']);
   assert.deepEqual(s.roadmap.violations, []);
@@ -246,7 +248,7 @@ test('bugs: one home at the severity level, counts roll up with the worst named,
 });
 
 test('the order reads what is ahead: done entries drop out and stay stored, a done milestone keeps its place for open children, a reopened change is back in its place', () => {
-  change(store, 'phase', { title: 'Phase', summary: 's', project: 'project:web', status: 'done' });
+  change(store, 'phase', { title: 'Phase', summary: 's', project: 'project:web', status: 'done', kind: 'milestone' });
   change(store, 'phase-kid', { title: 'Phase kid', summary: 's', project: 'project:web', parent: 'change:shop/phase' });
   change(store, 'shipped', { title: 'Shipped', summary: 's', project: 'project:web', status: 'done' });
   change(store, 'upcoming', { title: 'Upcoming', summary: 's', project: 'project:web' });

@@ -58,6 +58,8 @@ export interface BridgeMotion {
   name?: string;
   gist?: string;
   status?: string;
+  /** work, bug or milestone (decision milestone-kind/kind-not-children): a milestone's bar and step read its children. */
+  kind?: string;
   /** The feature path the change names, the product left out, top first. */
   path: { key: string; name: string }[];
   /** Steps done of the steps that count, and how many were dropped (not counted). */
@@ -119,14 +121,15 @@ export function changeOfDecision(key: string): string | undefined {
   return parts.length === 3 ? `change:${parts[0]}/${parts[1]}` : undefined;
 }
 
-/** One change as the bridge's card reads it. A milestone's children are its plan (decision
- *  milestone-detail/children-in-order): its bar is children done over children not dropped, and its step the child in
- *  work (active or in review), else the first not done, so the card agrees with the milestone's page and the index. */
+/** One change as the bridge's card reads it. A milestone, by its kind (decision milestone-kind/kind-not-children), has
+ *  its children as its plan (decision milestone-detail/children-in-order): its bar is children done over children not
+ *  dropped, and its step the child in work (active or in review), else the first not done, so the card agrees with the
+ *  milestone's page and the index; a milestone with no child yet is a bar of none. */
 export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[]): BridgeMotion {
-  const kids = childrenOf(loaded, c);
   const blockedOn = c.sections.get('Blocked on')?.trim();
-  const base = { key: c.key, name: str(c.data.name), gist: str(c.data.gist), status: str(c.data.status), path: featurePath(loaded, c), blockedOn: blockedOn || undefined, last, sessions };
-  if (kids.length) {
+  const base = { key: c.key, name: str(c.data.name), gist: str(c.data.gist), status: str(c.data.status), kind: str(c.data.kind), path: featurePath(loaded, c), blockedOn: blockedOn || undefined, last, sessions };
+  if (c.data.kind === 'milestone') {
+    const kids = childrenOf(loaded, c);
     const counted = kids.filter((k) => k.data.status !== 'dropped');
     const open = counted.filter((k) => k.data.status !== 'done');
     const inWork = open.find((k) => k.data.status === 'active' || k.data.status === 'review') ?? open[0];

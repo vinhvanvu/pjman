@@ -82,7 +82,7 @@ test('a sync applies the repository from the project link: sources, changes, par
   assert.equal(c1.data.status, 'open');
   assert.equal(loaded.byKey.get('change:app/app-2')![0].data.parent, 'change:app/app-1');
   assert.equal(loaded.byKey.get('change:app/app-2')![0].data.kind, 'bug');
-  assert.equal(loaded.byKey.get('change:app/app-1')![0].data.kind, undefined);
+  assert.equal(loaded.byKey.get('change:app/app-1')![0].data.kind, 'milestone'); // a parent a ticket names becomes a milestone
   assert.equal(loaded.byKey.get('change:app/app-3')![0].data.status, 'done');
   assert.equal(loaded.byKey.get('change:app/app-4')![0].data.status, 'dropped');
   const s1 = loaded.byKey.get('github-issue:acme/app#1')![0];
@@ -94,13 +94,16 @@ test('a sync applies the repository from the project link: sources, changes, par
   assert.deepEqual(again.created, []);
   assert.equal(again.unchanged.length, 4);
   assert.equal(again.commit, null);
-  next(store, 'change:app/app-1', 'ship it', {});
+  next(store, 'change:app/app-2', 'ship it', {}); // app-1 is a milestone (#2 names it as parent): its children are its plan
   const closed = issues.map((i) => (i.number === 1 ? { ...i, state: 'CLOSED', stateReason: 'COMPLETED' } : i));
   const third = syncGithub(store, { from: closed });
   assert.deepEqual(third.updated, [], 'pjman owns the status: a closed ticket moves nothing on its change');
   const after = loadStore(store).byKey.get('change:app/app-1')![0];
-  assert.equal(after.data.status, 'planning', 'the step lifts it; the ticket closing does not');
-  assert.equal(stepsOf(after.data)[0]?.text, 'ship it');
+  assert.equal(after.data.status, 'open', 'the ticket closing moves nothing on its change');
+  assert.equal(after.data.kind, 'milestone');
+  const child = loadStore(store).byKey.get('change:app/app-2')![0];
+  assert.equal(stepsOf(child.data)[0]?.text, 'ship it');
+  assert.equal(child.data.status, 'planning', 'the step lifts the child');
   const other = syncGithub(store, { from: [{ number: 7, title: 'x', state: 'OPEN', url: 'https://github.com/other/repo/issues/7', labels: [] }] });
   assert.deepEqual(other.skipped, [{ id: 'other/repo#7', reason: 'repository other/repo is not acme/app' }]);
 });

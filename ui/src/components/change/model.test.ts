@@ -96,6 +96,7 @@ describe('one change at three depths', () => {
       waiting: 0,
       decided: 0,
       live: false,
+      kind: 'milestone',
       children: 17,
       progress: { done: 16, total: 17 },
       plan: { done: 0, total: 3 },
@@ -104,7 +105,7 @@ describe('one change at three depths', () => {
     } as unknown as ChangeRow;
     expect(factsOfRow(m, []).steps).toEqual({ done: 16, total: 17, dropped: 0 });
     // a leaf keeps its plan
-    expect(factsOfRow({ ...m, children: 0, progress: undefined }, []).steps).toEqual({ done: 0, total: 3, dropped: 0 });
+    expect(factsOfRow({ ...m, kind: undefined, children: 0, progress: undefined }, []).steps).toEqual({ done: 0, total: 3, dropped: 0 });
   });
 
   it('says where the work stands: blocked on, done waiting for a look, no steps yet', () => {

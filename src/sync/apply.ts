@@ -14,7 +14,7 @@ import { localDate, nowIso } from '../util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../write.js';
 import { newSession, originText } from '../commands/new.js';
 import { sessionLog } from '../commands/session.js';
-import { foundationHash, foundationOf } from '../foundation.js';
+import { foundationHash, foundationOf, stepsOf } from '../foundation.js';
 import { sections as parseSections } from '../frontmatter.js';
 
 /** One observed ticket, already translated to pjman's terms by the tracker's module. */
@@ -149,6 +149,21 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     if (!rec || !parentKey || rec.data.parent === parentKey) {
       if (rec && !parentKey) result.skipped.push({ id: t.id, reason: `parent ${t.parent} is not in the store` });
       continue;
+    }
+    // a parent is a milestone by its kind (decision milestone-kind/kind-not-children): the parent change the ticket
+    // names becomes one, unless it is a bug or carries steps of its own, in which case the parent is not written
+    const parentRec = loaded.byKey.get(parentKey)?.[0];
+    if (parentRec && parentRec.type === 'change' && parentRec.data.kind !== 'milestone') {
+      const why = parentRec.data.kind === 'bug' ? 'is a bug' : stepsOf(parentRec.data).length ? 'carries steps of its own' : null;
+      if (why) {
+        result.skipped.push({ id: t.id, reason: `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone` });
+        continue;
+      }
+      writeFile(store, parentRec.path, render('change', { ...parentRec.data, kind: 'milestone' }, parentRec.body));
+      touched.push(parentRec.path);
+      events.push({ op: 'set', key: parentKey, type: 'change', path: parentRec.path, fields: ['kind'], writer, session });
+      if (!result.updated.includes(parentKey) && !result.created.includes(parentKey)) result.updated.push(parentKey);
+      result.unchanged = result.unchanged.filter((k) => k !== parentKey);
     }
     writeFile(store, rec.path, render('change', { ...rec.data, parent: parentKey }, rec.body));
     touched.push(rec.path);
