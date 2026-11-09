@@ -2,7 +2,7 @@
 // loudest. The chart beside it is the picture; this is the same thing read top to bottom.
 import { cn } from 'cn';
 import { Link } from '@tanstack/react-router';
-import { Bug, ChevronDown, TriangleAlert } from 'lucide-react';
+import { Bug, ChevronDown, CornerDownRight, TriangleAlert } from 'lucide-react';
 import type { Lens, Scope } from '@/data/contract';
 import { useOrder } from '@/data/queries';
 import { useAt } from '@/state/moment';
@@ -19,6 +19,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { Figures } from '@/components/stats/Figures';
+import { Ring } from '@/components/stats/Ring';
 import { columns, loud, SEVERITY_LABEL, violationText } from './model';
 import { TONE } from '@/lib/tones';
 
@@ -69,7 +70,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
       <Figures
         figures={[
           { value: inOrder.length, label: 'in order' },
-          { value: later?.entries.length ?? 0, label: 'later' },
+          { value: later?.groups?.length ?? 0, label: 'later' },
           {
             value: scope.roadmap.violations.length,
             label: scope.roadmap.violations.length === 1 ? 'warning' : 'warnings',
@@ -141,22 +142,50 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
         </div>
       )}
 
-      {later && later.entries.length > 0 && (
+      {later && later.groups && later.groups.length > 0 && (
         <div className="flex flex-col gap-2">
-          <Label>Later · {later.entries.length}</Label>
+          <Label>Later · {later.groups.length}</Label>
           <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
-            {later.entries.slice(0, 8).map((r) => (
-              <li key={r.key} className="flex items-center hover:bg-raised">
-                <NodeLink to={r.key} lens={lens} className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-4">
-                  <span className="min-w-0 flex-1 truncate">{r.gist ?? short(r.key)}</span>
-                  {r.parent && <Chip tone="quiet">↳ {short(r.parent)}</Chip>}
-                  <StatusChip status={r.status} />
-                </NodeLink>
-                <OrderMenu change={r.key} />
-              </li>
-            ))}
-            {later.entries.length > 8 && (
-              <li className="px-4 py-2 text-xs text-ink-faint">and {later.entries.length - 8} more</li>
+            {later.groups.slice(0, 8).map((g) => {
+              const r = g.row;
+              const p = r.progress;
+              return (
+                <li key={r.key} className="flex flex-col">
+                  <div className="flex items-center hover:bg-raised">
+                    <NodeLink to={r.key} lens={lens} className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-4">
+                      {p && <Ring done={p.done} total={p.total} size={14} stroke={2} />}
+                      {r.live && <Pulse className="size-[7px]" />}
+                      <span className={cn('min-w-0 flex-1 truncate', g.children.length > 0 && 'font-medium')}>
+                        {r.gist ?? short(r.key)}
+                      </span>
+                      {r.parent && <Chip tone="quiet">↳ {short(r.parent)}</Chip>}
+                      <StatusChip status={r.status} />
+                    </NodeLink>
+                    <OrderMenu change={r.key} />
+                  </div>
+                  {g.children.length > 0 && (
+                    <ul className="flex flex-col pb-1.5" aria-label={`beneath ${r.gist ?? short(r.key)}`}>
+                      {g.children.map((c) => (
+                        <li key={c.key} className="hover:bg-raised">
+                          <NodeLink
+                            to={c.key}
+                            lens={lens}
+                            className="flex min-w-0 items-center gap-2 py-1 pl-8 pr-4 text-xs text-ink-muted"
+                          >
+                            <CornerDownRight className="size-3 shrink-0 text-ink-faint" aria-hidden="true" />
+                            {c.live && <Pulse className="size-[6px]" />}
+                            <span className="min-w-0 flex-1 truncate">{c.gist ?? short(c.key)}</span>
+                            <StatusChip status={c.status} />
+                          </NodeLink>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
+            {later.groups.length > 8 && (
+              <li className="px-4 py-2 text-xs text-ink-faint">and {later.groups.length - 8} more</li>
             )}
           </ul>
         </div>

@@ -89,6 +89,13 @@ export function laneOf(row: ChangeRow, shown: Set<string>, parents: Map<string, 
   return FOUNDATIONS;
 }
 
+/** One unit of Later (change:later-shows-milestones): a loose change with no loose parent, and the loose changes
+ *  beneath it, however deep. A milestone is found and ordered as one; a loose leaf has no children. */
+export interface LaterGroup {
+  row: ChangeRow;
+  children: ChangeRow[];
+}
+
 export interface Column {
   kind: 'milestone' | 'single' | 'later';
   key: string;
@@ -96,8 +103,10 @@ export interface Column {
   title: string;
   progress?: { done: number; total: number };
   target?: string;
-  /** The open entries drawn in this column, in creation order. */
+  /** The open entries drawn in this column, in creation order; later lists each group's row before its children. */
   entries: ChangeRow[];
+  /** Later only: its units, each a loose change with the loose changes beneath it. */
+  groups?: LaterGroup[];
   violations: Violation[];
 }
 
@@ -105,7 +114,8 @@ const isOpen = (r: ChangeRow) => r.status !== 'done' && r.status !== 'dropped';
 const isWork = (r: ChangeRow) => isOpen(r) && r.kind !== 'bug';
 
 /** The future: one column per entry of the sequence in scope, a milestone holding its open descendants, a loose
- *  change holding itself; then later, everything open and unsequenced, parents left out when their children are in. */
+ *  change holding itself; then later, everything open and unsequenced as units: a loose change with no loose parent,
+ *  its loose descendants nested beneath it, so an unordered milestone is listed by name and ordered as one. */
 export function columns(scope: Scope): Column[] {
   const rows = scope.changes;
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -125,13 +135,41 @@ export function columns(scope: Scope): Column[] {
       violations: violationsOn(key),
     };
   });
-  const loose = rows.filter((r) => r.position === undefined && isWork(r));
-  const looseKeys = new Set(loose.map((r) => r.key));
-  const later = loose.filter((r) => !loose.some((x) => x.parent === r.key && looseKeys.has(x.key)));
-  if (later.length || out.length === 0) {
-    out.push({ kind: 'later', key: LATER, title: 'Later', entries: later, violations: [] });
+  const groups = laterGroups(rows);
+  if (groups.length || out.length === 0) {
+    out.push({
+      kind: 'later',
+      key: LATER,
+      title: 'Later',
+      entries: groups.flatMap((g) => [g.row, ...g.children]),
+      groups,
+      violations: [],
+    });
   }
   return out;
+}
+
+/** Later's units: every open, unsequenced change that has no open unsequenced parent, each with the open unsequenced
+ *  changes beneath it (its nearest loose ancestor is the unit), in creation order. */
+export function laterGroups(rows: ChangeRow[]): LaterGroup[] {
+  const loose = rows.filter((r) => r.position === undefined && isWork(r));
+  const looseByKey = new Map(loose.map((r) => [r.key, r]));
+  const unitOf = (r: ChangeRow): ChangeRow => {
+    let cur = r;
+    const seen = new Set<string>();
+    while (cur.parent && looseByKey.has(cur.parent) && !seen.has(cur.key)) {
+      seen.add(cur.key);
+      cur = looseByKey.get(cur.parent)!;
+    }
+    return cur;
+  };
+  const groups = loose.filter((r) => unitOf(r) === r).map((row) => ({ row, children: [] as ChangeRow[] }));
+  const byRow = new Map(groups.map((g) => [g.row.key, g]));
+  for (const r of loose) {
+    const unit = unitOf(r);
+    if (unit !== r) byRow.get(unit.key)?.children.push(r);
+  }
+  return groups;
 }
 
 /** The past's span: from the earliest beginning or finish on show, no earlier than `maxDays` ago, no shorter than

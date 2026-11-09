@@ -5,6 +5,7 @@ import {
   bars,
   bySeverity,
   columns,
+  laterGroups,
   edgeShape,
   featureParents,
   FOUNDATIONS,
@@ -90,7 +91,10 @@ describe('columns', () => {
       row('loose', {}),
       row('loose-parent', { children: 1 }),
       row('loose-kid', { parent: 'change:loose-parent' }),
+      row('loose-grandkid', { parent: 'change:loose-kid' }),
       row('bug', { kind: 'bug' }),
+      row('orphan', { parent: 'change:done-parent' }),
+      row('done-parent', { children: 1, status: 'done' }),
     ],
     roadmap: {
       product: 'product:shop',
@@ -99,15 +103,36 @@ describe('columns', () => {
       violations: [{ kind: 'overdue', change: 'change:solo' }],
     },
   } as unknown as Scope;
-  it('a milestone holds its open descendants, a loose change itself, later holds the unsequenced leaves', () => {
+  it('a milestone holds its open descendants, a loose change itself, later lists each unit then what is beneath it', () => {
     const c = columns(scope);
     expect(c.map((x) => [x.kind, x.key, x.entries.map((e) => e.key)])).toEqual([
       ['milestone', 'change:m1', ['change:kid']],
       ['single', 'change:solo', ['change:solo']],
-      ['later', LATER, ['change:loose', 'change:loose-kid']],
+      [
+        'later',
+        LATER,
+        ['change:loose', 'change:loose-parent', 'change:loose-kid', 'change:loose-grandkid', 'change:orphan'],
+      ],
     ]);
     expect(c[1]?.violations).toEqual([{ kind: 'overdue', change: 'change:solo' }]);
     expect(c[0]?.target).toBe('2026-12-01');
+  });
+  it('later groups a loose milestone with its loose descendants, however deep; a child of a done parent stands alone', () => {
+    const g = laterGroups(scope.changes);
+    expect(g.map((x) => [x.row.key, x.children.map((e) => e.key)])).toEqual([
+      ['change:loose', []],
+      ['change:loose-parent', ['change:loose-kid', 'change:loose-grandkid']],
+      ['change:orphan', []],
+    ]);
+    expect(columns(scope).at(-1)?.groups).toEqual(g);
+  });
+  it('a child whose milestone is on the sequence is not later', () => {
+    const g = laterGroups([
+      row('m', { children: 1, position: 0 }),
+      row('kid', { parent: 'change:m', position: 0 }),
+      row('free', {}),
+    ]);
+    expect(g.map((x) => x.row.key)).toEqual(['change:free']);
   });
 });
 

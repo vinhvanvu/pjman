@@ -6,7 +6,7 @@
 // uses: the dashboard's first write.
 import { Link } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { Bug, ChevronRight, Diamond, GripVertical, TriangleAlert } from 'lucide-react';
+import { Bug, ChevronRight, CornerDownRight, Diamond, GripVertical, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeRow, Scope } from '@/data/contract';
 import { useOrder } from '@/data/queries';
@@ -453,7 +453,11 @@ export function RoadmapChart({
                   >
                     {cell?.cols.get(c.key)?.map((e) => {
                       const v = scope.roadmap.violations.filter((w) => w.change === e.key);
-                      const loose = c.kind === 'later';
+                      // in Later a unit (a loose change with no loose parent) is dragged to the order; a change
+                      // beneath a loose milestone goes with it, so it reads as beneath and is not dragged alone
+                      const beneath =
+                        c.kind === 'later' && !!e.parent && (c.groups ?? []).some((g) => g.children.includes(e));
+                      const loose = c.kind === 'later' && !beneath;
                       return (
                         <button
                           key={e.key}
@@ -475,7 +479,7 @@ export function RoadmapChart({
                           onMouseLeave={() => setHover(undefined)}
                           onFocus={() => setHover(e.key)}
                           onBlur={() => setHover(undefined)}
-                          title={`${e.gist ?? short(e.key)} · ${e.status ?? 'open'}${e.parent && c.kind === 'later' ? ` · under ${short(e.parent)}` : ''}${v.length ? ` · ${v.map((w) => violationText(w, titles)).join('; ')}` : ''}`}
+                          title={`${e.gist ?? short(e.key)} · ${e.status ?? 'open'}${beneath ? ` · beneath ${titles.get(e.parent!) ?? short(e.parent!)}, ordered with it` : e.parent && c.kind === 'later' ? ` · under ${short(e.parent)}` : ''}${v.length ? ` · ${v.map((w) => violationText(w, titles)).join('; ')}` : ''}`}
                           aria-current={selected === e.key ? 'true' : undefined}
                           className={cn(
                             'flex h-5 min-w-0 items-center gap-1.5 rounded-chip border px-1.5 text-left text-meta outline-none',
@@ -490,6 +494,9 @@ export function RoadmapChart({
                         >
                           {loose && (
                             <GripVertical className="-ml-1 size-3 shrink-0 text-ink-faint" aria-hidden="true" />
+                          )}
+                          {beneath && (
+                            <CornerDownRight className="-ml-0.5 size-3 shrink-0 text-ink-faint" aria-hidden="true" />
                           )}
                           <span
                             className={cn('size-[7px] shrink-0 rounded-full', statusTone(e.status).bg)}
@@ -640,7 +647,7 @@ function ColumnHeader({
       {col.kind === 'later' ? (
         <span className="flex min-w-0 items-baseline gap-1.5">
           <span className="text-xs font-medium text-ink-muted">Later</span>
-          <span className="text-meta text-ink-faint">{col.entries.length}</span>
+          <span className="text-meta text-ink-faint">{col.groups?.length ?? col.entries.length}</span>
         </span>
       ) : (
         <button
