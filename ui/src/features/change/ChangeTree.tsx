@@ -52,6 +52,8 @@ export interface ChangeTreeProps {
   /** On the session page: the person views a change that is not the session's focus, and the session is live. */
   isViewing?: boolean;
   live?: boolean;
+  /** A session is working the change now (change:alive-step-bars): the plan's active segment breathes. */
+  working?: boolean;
   /** The chain above the change, nearest first: the path line names the top when the change has no parent. */
   under?: { key: string; name?: string; title?: string }[];
   /** The feature names the map knows, by key. */
@@ -84,6 +86,7 @@ export function ChangeTree({
   mode,
   isViewing = false,
   live = false,
+  working = false,
   under = NO_UNDER,
   names = NO_NAMES,
   arrivals,
@@ -153,7 +156,11 @@ export function ChangeTree({
       </div>
 
       <div className={cn('flex flex-col', wide ? 'max-w-[760px] gap-8' : 'gap-3')}>
-        {milestone ? <Children ctx={ctx} lens={lens} mode={mode} wide={wide} /> : <PlanPart ctx={ctx} wide={wide} />}
+        {milestone ? (
+          <Children ctx={ctx} lens={lens} mode={mode} wide={wide} />
+        ) : (
+          <PlanPart ctx={ctx} wide={wide} working={working} />
+        )}
 
         <section className="flex flex-col gap-2.5">
           <Head
@@ -274,7 +281,7 @@ function PathLine({
 
 /** The plan: folded, its head and the active row, opening in place; wide, out, with what is behind the work folded to
  *  one line above it that opens in place. */
-function PlanPart({ ctx, wide }: { ctx: ChangeContext; wide: boolean }) {
+function PlanPart({ ctx, wide, working }: { ctx: ChangeContext; wide: boolean; working: boolean }) {
   const [open, setOpen] = useState(false);
   const plan = planView(ctx.plan);
   const fold = planFold(ctx.plan);
@@ -287,7 +294,7 @@ function PlanPart({ ctx, wide }: { ctx: ChangeContext; wide: boolean }) {
         open={wide ? undefined : open}
         onToggle={wide || !ctx.plan.length ? undefined : () => setOpen((v) => !v)}
       />
-      {ctx.plan.length > 0 && <SegmentBar segments={plan.segments} label={`Plan: ${plan.sum}`} />}
+      {ctx.plan.length > 0 && <SegmentBar segments={plan.segments} label={`Plan: ${plan.sum}`} working={working} />}
       <div className="flex flex-col">
         {wide && fold.sum && (
           <button
@@ -425,11 +432,24 @@ export function Head({
   );
 }
 
-/** The bar: a segment a step or a child; done green, the one on in the lane's colour, dropped faint. */
-function SegmentBar({ segments, label }: { segments: readonly string[]; label: string }) {
-  const cls = segmentClass;
+/** The bar: a segment a step or a child; done green, the one on in the lane's colour, dropped faint. While a session
+ *  works the change the one on breathes in the live colour instead (change:alive-step-bars, decision the-motion). */
+function SegmentBar({
+  segments,
+  label,
+  working = false,
+}: {
+  segments: readonly string[];
+  label: string;
+  working?: boolean;
+}) {
+  const cls = (s: string) => (working && (s === 'on' || s === 'active') ? 'working-segment' : segmentClass(s));
   return (
-    <div className="flex items-center gap-1" role="img" aria-label={label}>
+    <div
+      className="flex items-center gap-1"
+      role="img"
+      aria-label={working ? `${label} · a session working now` : label}
+    >
       {segments.map((s, i) => (
         <span key={i} className={cn('h-1 flex-1 rounded-sm transition-colors duration-200', cls(s))} />
       ))}

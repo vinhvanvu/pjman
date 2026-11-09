@@ -39,8 +39,7 @@ export interface ChangeFacts {
 }
 
 /** A session is on the change and working. */
-export const isWorking = (f: Pick<ChangeFacts, 'sessions'>): boolean =>
-  f.sessions.some((s) => s.state === 'working');
+export const isWorking = (f: Pick<ChangeFacts, 'sessions'>): boolean => f.sessions.some((s) => s.state === 'working');
 
 /** The bridge's card, read as facts: its sessions resolved by key. */
 export function factsOfMotion(c: BridgeMotion, byKey: ReadonlyMap<string, BridgeSession>): ChangeFacts {
@@ -60,8 +59,9 @@ export function factsOfMotion(c: BridgeMotion, byKey: ReadonlyMap<string, Bridge
   };
 }
 
-/** A scope's change row, read as facts: the live sessions on it are working; `names` resolves a feature's or a
- *  change's key to what it is called. */
+/** A scope's change row, read as facts: the live sessions on it carry their state by the bridge's rule, so one that
+ *  stopped at a line is not working (change:alive-step-bars); `names` resolves a feature's or a change's key to what it
+ *  is called. */
 export function factsOfRow(
   r: ChangeRow,
   live: readonly LiveSession[],
@@ -79,7 +79,7 @@ export function factsOfRow(
     blockedOn: r.blockedOn,
     sessions: live
       .filter((s) => s.on === r.key)
-      .map((s) => ({ key: s.key, agent: s.agent, state: 'working' as const, last: s.last })),
+      .map((s) => ({ key: s.key, agent: s.agent, state: s.state, last: s.last })),
     path: feature ? [names.get(feature.key) ?? feature.title ?? short(feature.key)] : [],
     waiting: r.waiting,
     parent: r.parent ? { key: r.parent, name: names.get(r.parent) ?? short(r.parent) } : undefined,

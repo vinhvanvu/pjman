@@ -85,7 +85,9 @@ export function MotionCard({
         {c.last && <span className="shrink-0 text-meta text-ink-faint tabular-nums">{agoWords(c.last, now)}</span>}
         {onHold && <HoldButton held={!!held} onHold={onHold} />}
       </div>
-      {c.steps.total > 0 && <Steps done={c.steps.done} total={c.steps.total} active={c.step?.state === 'active'} />}
+      {c.steps.total > 0 && (
+        <Steps done={c.steps.done} total={c.steps.total} active={c.step?.state === 'active'} working={working} />
+      )}
       <span className="line-clamp-2 text-xs">
         <Label className="mr-1.5">{words.lead}</Label>
         {words.text}
@@ -151,14 +153,29 @@ export function MilestoneChip({ name, className }: { name: string; className?: s
   );
 }
 
-/** The plan as a bar: a segment per step that counts, done ones green, the active one the accent. A plan longer than
- *  the bar can show is drawn to scale: the done share in green, the active step the next segment. */
-export function Steps({ done, total, active }: { done: number; total: number; active: boolean }) {
+/** The plan as a bar: a segment per step that counts, done ones green, the active one the accent, breathing in the live
+ *  colour while a session works the change (change:alive-step-bars, decision the-motion). A plan longer than the bar
+ *  can show is drawn to scale: the done share in green, the active step the next segment. */
+export function Steps({
+  done,
+  total,
+  active,
+  working = false,
+}: {
+  done: number;
+  total: number;
+  active: boolean;
+  /** A session is working the change now. */
+  working?: boolean;
+}) {
   const segments = Math.min(total, 24);
   const doneSegments = total > segments ? Math.round((done / total) * segments) : done;
   const activeAt = active && done < total ? Math.min(doneSegments, segments - 1) : -1;
   return (
-    <div className="flex items-center gap-1.5" aria-label={`${done} of ${total} steps done`}>
+    <div
+      className="flex items-center gap-1.5"
+      aria-label={`${done} of ${total} steps done${working && activeAt >= 0 ? ', a session working now' : ''}`}
+    >
       <div className="flex min-w-0 flex-1 gap-[3px]">
         {Array.from({ length: segments }, (_, i) => (
           <span
@@ -166,7 +183,13 @@ export function Steps({ done, total, active }: { done: number; total: number; ac
             aria-hidden="true"
             className={cn(
               'h-[3px] flex-1 rounded-full',
-              i === activeAt ? 'bg-primary' : i < doneSegments ? TONE.done.bg : 'bg-line-strong',
+              i === activeAt
+                ? working
+                  ? 'working-segment'
+                  : 'bg-primary'
+                : i < doneSegments
+                  ? TONE.done.bg
+                  : 'bg-line-strong',
             )}
           />
         ))}

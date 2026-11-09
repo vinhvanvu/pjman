@@ -9,12 +9,12 @@ import type { Store } from './config.js';
 import { readEvents } from './events.js';
 import { productOf } from './commands/order.js';
 import type { Loaded, Rec } from './records.js';
-import { LIVE_MINUTES, proposedDecisions, type WaitingDecision } from './scope.js';
+import { proposedDecisions, type WaitingDecision } from './scope.js';
+import { lastActs, sessionLogOf, sessionState, type SessionState } from './session-state.js';
+export { sessionState, type SessionState, type StateFacts } from './session-state.js';
 import { effectsOf, live, rootProductOf, structuralParent } from './tree.js';
 import { lineOf, nextStep, stepsOf, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
-
-export type SessionState = 'working' | 'waiting' | 'stopped' | 'ended';
 
 export interface BridgeChange {
   key: string;
@@ -95,35 +95,7 @@ export interface BridgeOpts {
   until?: number;
 }
 
-const LOG_LINE = /^-\s*(\S+)\s+—\s+(.*)$/;
-const CLOSING = /^session ended(?:\s*\((.*)\))?$/;
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
-
-/** The facts a state is read from. */
-export interface StateFacts {
-  /** The session wrote its closing line. */
-  ended: boolean;
-  /** When its last line was written. */
-  line?: string;
-  /** The last write stamped with it that is not a line of its own. */
-  act?: string;
-  /** A decision on its change is proposed. */
-  proposed: boolean;
-}
-
-/** A session's state. Ended once it wrote its closing line. Working while something it did reached the stream inside
- *  the live window and its last act was not a stop line: the hook writes a line at every stop, so a session whose
- *  latest act is its own line is stopped, waiting on the person's next prompt. A stopped session with a decision
- *  proposed on its change is waiting; otherwise it is stopped. A session that went quiet mid-turn (nothing for the
- *  live window, no stop line) reads as stopped too. */
-export function sessionState(f: StateFacts, now = Date.now(), liveMinutes = LIVE_MINUTES): SessionState {
-  if (f.ended) return 'ended';
-  const last = [f.line, f.act].filter((x): x is string => !!x).sort().at(-1);
-  const liveSince = new Date(now - liveMinutes * 60_000).toISOString();
-  const stopped = !!f.line && (!f.act || f.act <= f.line);
-  if (!stopped && last && last >= liveSince) return 'working';
-  return f.proposed ? 'waiting' : 'stopped';
-}
 
 /** The feature path above a change: the features from the top of the product down to the first one it names. */
 export function featurePath(loaded: Loaded, change: Rec): BridgeChange['path'] {
@@ -177,19 +149,15 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   const since = new Date(now - days * DAY).toISOString();
   const productKey = opts.product ? (opts.product.startsWith('product:') ? opts.product : `product:${opts.product}`) : null;
 
-  // the last act of each session from the stream: a write stamped with it, its own line excluded (the line's own
-  // instant is read from the log, so a stop reads as a stop and not as an act after it); and the last touch of each
-  // change inside the window: a write to it, or to a decision on it
-  const acts = new Map<string, string>();
+  // the last act of each session from the stream (session-state.ts: a write stamped with it, its own line excluded),
+  // and the last touch of each change inside the window: a write to it, or to a decision on it
+  const events = readEvents(store);
+  const acts = lastActs(events, opts.until);
   const touched = new Map<string, string>();
-  for (const e of readEvents(store)) {
+  for (const e of events) {
     if (opts.until !== undefined && e.seq > opts.until) break;
     const c = e.type === 'change' ? e.key : e.type === 'decision' ? changeOfDecision(e.key) : undefined;
     if (c && e.at >= since && (!touched.has(c) || e.at > touched.get(c)!)) touched.set(c, e.at);
-    const s = e.session ?? (e.type === 'session' ? e.key : undefined);
-    if (!s) continue;
-    if (e.op === 'log' && e.key === s) continue;
-    if (!acts.has(s) || e.at > acts.get(s)!) acts.set(s, e.at);
   }
   // the proposed decisions in the product, by change, oldest first within a change: a session stopped on one waits
   const inProduct = (c: Rec | undefined) => !!c && (!productKey || productOf(loaded, c)?.key === productKey);
@@ -203,14 +171,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   const rows: BridgeSession[] = [];
   for (const rec of loaded.records) {
     if (rec.type !== 'session' || !rec.valid) continue;
-    const log = (rec.sections.get('Log') ?? '')
-      .split('\n')
-      .map((l) => LOG_LINE.exec(l.trim()))
-      .filter((m): m is RegExpExecArray => !!m)
-      .map((m) => ({ at: m[1], text: m[2] }));
-    const closing = log.at(-1) && CLOSING.exec(log.at(-1)!.text) ? log.at(-1) : undefined;
-    const ended = closing ? { at: closing.at, reason: CLOSING.exec(closing.text)![1] ?? 'other' } : undefined;
-    const line = closing ? log.at(-2) : log.at(-1);
+    const { closing, ended, line } = sessionLogOf(rec);
     const act = acts.get(rec.key);
     const last = [closing?.at, line?.at, act].filter((x): x is string => !!x).sort().at(-1);
     if (!last || last < since) continue;

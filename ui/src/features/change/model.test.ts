@@ -9,6 +9,7 @@ import {
   planView,
   shippedWords,
   sourcesView,
+  workingOn,
 } from './model';
 
 describe('the plan and the children', () => {
@@ -101,6 +102,22 @@ describe('the change bar', () => {
       now,
     );
     expect(two.parts).toEqual(['2 sessions on it now', '1 session']);
+  });
+});
+
+describe('a session working the change', () => {
+  const sessions = [
+    { key: 'session:a', on: 'change:p/x', state: 'working' },
+    { key: 'session:b', on: 'change:p/y', state: 'stopped' },
+    { key: 'session:c', on: 'change:p/x/child', state: 'working' },
+  ];
+  it('is one of the live sessions on the change itself whose state is working', () => {
+    expect(workingOn(sessions, 'change:p/x')).toBe(true);
+  });
+  it('is not a stopped session, nor a working one on a child beneath the change', () => {
+    expect(workingOn(sessions, 'change:p/y')).toBe(false);
+    expect(workingOn(sessions, 'change:p/z')).toBe(false);
+    expect(workingOn([], 'change:p/x')).toBe(false);
   });
 });
 

@@ -14,7 +14,7 @@ import { sessionTitle } from '@/features/session/model';
 import type { PageSearch } from '@/routes/-search';
 import { ChangeBar } from './ChangeBar';
 import { ChangeTree, Sources } from './ChangeTree';
-import { featureNames } from './model';
+import { featureNames, workingOn } from './model';
 
 /** The lane's colour on the change page: the step the work is on in the primary, as nothing else is lit. */
 const PAGE_LANE = { '--lane': 'var(--primary)' } as React.CSSProperties;
@@ -59,6 +59,7 @@ export function ChangeView({
   // on the page, links make their key the page; in the side panel they select it on the map
   const mode = page ? 'focus' : 'select';
   const under = scope.crumbs.filter((k) => !k.key.startsWith('product:') && k.key !== c.key).toReversed();
+  const working = workingOn(scope.sessions, c.key);
   const tree = (
     <ChangeTree
       key={c.key}
@@ -68,6 +69,7 @@ export function ChangeView({
       page={page}
       mode={mode}
       wide={wide}
+      working={working}
       under={under}
       names={featureNames(scope.tree)}
       decide={decide}

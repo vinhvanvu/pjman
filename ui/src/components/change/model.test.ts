@@ -58,15 +58,26 @@ describe('one change at three depths', () => {
       moved: '2026-11-08T11:00:00Z',
     } as ChangeRow;
     const live: LiveSession[] = [
-      { key: 'session:a', agent: 'agent:claude-code', last: '2026-11-08T11:58:00Z', on: 'change:p/x' },
-      { key: 'session:b', last: '2026-11-08T11:58:00Z', on: 'change:p/other' },
+      {
+        key: 'session:a',
+        agent: 'agent:claude-code',
+        last: '2026-11-08T11:58:00Z',
+        on: 'change:p/x',
+        state: 'working',
+      },
+      { key: 'session:b', last: '2026-11-08T11:58:00Z', on: 'change:p/other', state: 'working' },
+      { key: 'session:c', last: '2026-11-08T11:50:00Z', on: 'change:p/x', state: 'stopped' },
     ];
     const names = new Map([
       ['feature:p/a', 'A'],
       ['change:p/m', 'Milestone'],
     ]);
     const f = factsOfRow(r, live, names);
-    expect(f.sessions.map((s) => [s.key, s.state])).toEqual([['session:a', 'working']]);
+    // each live session on the change with its own state: the stopped one is on it but not working
+    expect(f.sessions.map((s) => [s.key, s.state])).toEqual([
+      ['session:a', 'working'],
+      ['session:c', 'stopped'],
+    ]);
     expect(f.path).toEqual(['A']);
     expect(f.parent).toEqual({ key: 'change:p/m', name: 'Milestone' });
     expect(f.waiting).toBe(2);

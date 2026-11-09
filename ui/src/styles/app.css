@@ -179,3 +179,26 @@
     box-shadow: 0 0 0 6px color-mix(in srgb, var(--live) 10%, transparent);
   }
 }
+
+/* a step bar's active segment breathes in the live colour while a session works the change (change:alive-step-bars,
+   decision the-motion): its glow swells and settles on the ring's rhythm and the segment dims with it; still under
+   reduced motion, in the live colour, so the meaning stays */
+@utility working-segment {
+  background: var(--live);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--live) 45%, transparent);
+  animation: working-segment 2.4s ease-in-out infinite;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+@keyframes working-segment {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--live) 45%, transparent);
+  }
+  50% {
+    opacity: 0.6;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--live) 30%, transparent);
+  }
+}

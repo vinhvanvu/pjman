@@ -8,7 +8,7 @@ import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
 import { ahead, order } from '../commands/order.js';
 import { rm } from '../commands/rm.js';
-import { sessionBind } from '../commands/session.js';
+import { sessionBind, sessionLog } from '../commands/session.js';
 import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
 import { loadStore } from '../records.js';
@@ -18,6 +18,11 @@ import { change, decisionRec } from './shape.js';
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-scope-'));
 let store: Store;
 const keys = (nodes: ScopeNode[]): string[] => nodes.map((n) => n.key);
+/** A few milliseconds on, so the next write's instant follows the last one's. */
+const tick = () => {
+  const until = Date.now() + 5;
+  while (Date.now() < until) { /* wait */ }
+};
 const find = (nodes: ScopeNode[], key: string): ScopeNode | undefined => {
   for (const n of nodes) {
     if (n.key === key) return n;
@@ -55,8 +60,15 @@ before(() => {
   change(store, 'old', { title: 'Old', summary: 's', project: 'project:web', features: ['feature:shop/search'], status: 'done' });
   decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
   decisionRec(store, 'card-form/how', { title: 'How', decision: 'h', why: 'w', decidedBy: 'person:tester', decidedOn: '2026-01-02' });
+  // working: its last act is a bind, no stop line after it
   newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 'live-1', 'change:shop/card-form');
+  // stopped: bound, then its stop line last; nothing proposed on its change
+  tick();
+  newRecord(store, 'session', 'stopped-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  sessionBind(store, 'stopped-1', 'change:shop/chore');
+  tick();
+  sessionLog(store, 'stopped-1', 'Done for now.');
 });
 
 test('feature lens: features nest, a change sits under every feature it names, a child naming nothing nests under its parent, the unnamed close the list', () => {
@@ -97,7 +109,9 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.deepEqual(s.waitingOn.map((d) => [d.key, d.change, d.state.options.find((o) => o.recommended)?.text]), [['decision:shop/card-form/why', 'change:shop/card-form', 'd']]);
   assert.equal(s.health.created, 6);
   assert.equal(s.health.staleDays, 0);
-  assert.deepEqual(s.sessions.map((x) => [x.key, x.on]), [['session:live-1', 'change:shop/card-form']]);
+  // the live sessions beneath, newest first, each with its state by the bridge's rule: a bind after no line is working,
+  // a stop line last is stopped
+  assert.deepEqual(s.sessions.map((x) => [x.key, x.on, x.state]), [['session:stopped-1', 'change:shop/chore', 'stopped'], ['session:live-1', 'change:shop/card-form', 'working']]);
   assert.deepEqual(s.projects, ['project:api', 'project:web']);
   assert.ok(s.recent.length > 0);
   assert.equal(s.node?.summary, 'A shop.');
