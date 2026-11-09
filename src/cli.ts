@@ -9,7 +9,7 @@ import { withStoreLock } from './lock.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
 import { loadStore, resolve, unresolvedError } from './records.js';
-import { CliError, notFound, plural, usageError } from './util.js';
+import { ambiguous, CliError, notFound, plural, usageError } from './util.js';
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from './validate.js';
 import { findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from './graph.js';
@@ -42,7 +42,7 @@ import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, r
 import { describeMigration, formatMismatch, migrate, pendingMigration } from './commands/migrate.js';
 import { TOOL_VERSION } from './version.js';
 import { formatIdentity, identity } from './identity.js';
-import { shortenText } from './keys.js';
+import { fieldKind, shortenText, typedRef } from './keys.js';
 
 
 const PARSE_OPTIONS = FLAG_TYPES;
@@ -68,8 +68,12 @@ function parse(args: string[]) {
     if (allowed) {
       for (const f of Object.keys(v)) {
         if ((GLOBAL_FLAGS as readonly string[]).includes(f) || allowed.includes(f)) continue;
-        if (RETIRED_FLAGS[f]) throw usageError(`--${f} is retired: ${RETIRED_FLAGS[f]}`);
-        throw usageError(`${label} takes no --${f}; it takes ${allowed.length ? allowed.map((x) => `--${x}`).join(' ') : 'no flags of its own'} (pjman help ${cmd.name})`);
+        const pointer = RETIRED_FLAGS[f] ?? (sub ? cmd.retired?.[sub]?.[f] : undefined);
+        if (pointer) throw usageError(`--${f} is retired here: ${pointer}`);
+        // a near flag it does take (--feature for --features), or where the flag belongs
+        const near = allowed.find((x) => x === `${f}s` || `${x}s` === f || x.replace(/-/g, '') === f.replace(/-/g, ''));
+        const there = cmd.elsewhere?.[f];
+        throw usageError(`${label} takes no --${f}${near ? ` (did you mean --${near}?)` : there ? ` (${there})` : ''}; it takes ${allowed.length ? allowed.map((x) => `--${x}`).join(' ') : 'no flags of its own'} (pjman help ${cmd.name})`);
       }
     }
     const max = argsFor(cmd, sub);
@@ -99,6 +103,15 @@ const out = (s: string) => {
 };
 // JSON keeps the full keys: it is read by programs, and the product segment is part of the key
 const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '\n');
+
+/** An existing decision named by its slug alone: refused when none or several have it (a new decision is keyed
+ *  <change>/<slug>, which says where it lives). */
+function decisionBySlug(loaded: ReturnType<typeof loadStore>, slug: string): string {
+  const hits = loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === slug).map((r) => r.key);
+  if (hits.length === 1) return hits[0];
+  if (hits.length > 1) throw ambiguous(slug, hits);
+  throw notFound(slug, { as: 'decision', hint: 'a new decision is keyed <change>/<slug>' });
+}
 
 /** The same act over several records as one commit and one undo (decision interface-audit/bulk-writes): the lines
  *  held as a batch, each run by `run`; in a store the tool does not commit, one by one. */
@@ -187,6 +200,16 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         tag: v.tag, at: v.at, commit: v.commit, ships: v.ships,
         created: v.created, body: v.body === '-' ? fs.readFileSync(0, 'utf8') : v.body, writer: v.writer, session: v.session,
       };
+      // a value naming a record takes the slug alone, as an argument does; a bare URL in --links is a url: source
+      const typed = (v: string | undefined, field: string) => {
+        const kind = v === undefined ? null : fieldKind(type, field);
+        return kind ? typedRef(v!, kind) : v;
+      };
+      const typedAll = (vs: string[] | undefined, field: string) => vs?.map((x) => typed(x, field)!);
+      Object.assign(flags, {
+        parent: typed(flags.parent, 'parent'), project: typed(flags.project, 'project'), feature: typed(flags.feature, 'feature'),
+        dependsOn: typedAll(flags.dependsOn, 'depends_on'), ships: typedAll(flags.ships, 'ships'), links: typedAll(flags.links, 'links'), binds: typedAll(flags.binds, 'binds'),
+      });
       const r = newRecord(store, type, ident, flags);
       // a change the session creates is the session's work: it binds (decision hydration/binding-follows-writes). Only
       // here, where a person or an agent files it; a sync or a batch that creates changes binds nothing
@@ -220,7 +243,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         gist ??= j.gist;
         entries = [...entries, ...j.entries];
       }
-      const r = decision(store, pos[1], { name, gist, entries, supersedes: v.supersedes, links: v.links, created: v.created, session: v.session, writer: v.writer });
+      // the slug alone names an existing decision, as it names any record; a new one is keyed <change>/<slug>
+      const ref = pos[1].includes('/') || pos[1].includes(':') ? pos[1] : decisionBySlug(loadStore(store), pos[1]);
+      const r = decision(store, ref, { name, gist, entries, supersedes: v.supersedes, links: v.links, created: v.created, session: v.session, writer: v.writer });
       if (v.json) json(r);
       else {
         out(`${r.created ? 'created' : 'wrote'} ${r.key}${r.appended.length ? ` (${r.appended.join(', ')})` : ''}: ${r.status}${r.state.recommendation ? `, recommended ${r.state.recommendation.option}` : ''}${r.state.accepted ? `, accepted ${r.state.accepted.option}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
@@ -231,7 +256,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'step': {
       const store = scoped(requireStore(cwd, v.store));
       const [, ref, verb, ...rest] = pos;
-      if (!ref || !verb) throw usageError('usage: pjman step <change> add <text> | start|done|drop|reopen <n> [--note …] | note <n> <text> | move <n> --before <m>|--after <m>|--first|--last');
+      if (!ref || !verb) throw usageError('usage: pjman step <change> add "<text>"... | start|done|drop|reopen <n>... [--note "…"] | note <n> "<text>" | edit <n> "<text>" | move <n> --before <m>|--after <m>|--first|--last');
       const num = (s: string | undefined) => (s === undefined ? undefined : Number(s));
       const n = verb === 'add' ? undefined : num(rest[0]);
       let texts: string[] | undefined;
@@ -466,7 +491,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const pairs = at < 0 ? [] : pos.slice(at);
       if (!refs.length || !pairs.length) throw usageError('usage: pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...');
       const stray = pairs.find((p) => !/^[a-z_][a-z0-9_.-]*[+-]?=/.test(p));
-      if (stray) throw usageError(`'${stray}' is not field=value; the records come first, then the fields`);
+      if (stray) throw usageError(`'${stray}' is not field=value; the records come first, then the fields (quote a value with spaces: gist="a longer line")`);
       // one value may come from stdin, `field=-`: a multi-line text, such as an aspect's base or a place's fork
       if (pairs.filter((p) => p.endsWith('=-')).length > 1) throw usageError('only one field=- reads stdin');
       if (refs.length > 1 && pairs.some((p) => p.endsWith('=-'))) throw usageError('field=- sets one record; name one');
@@ -562,7 +587,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       const r = undo(store, { commit: pos[1], session: v.session, writer: v.writer });
       if (v.json) json(r);
-      else out(`reverted ${r.reverted} (${r.subject}): ${plural(r.files, 'file')} put back${r.commit ? ` (committed ${r.commit})` : ''}`);
+      else out(`reverted ${r.reverted} (${r.subject}): ${plural(r.files, 'file')} as they were before it${r.commit ? ` (committed ${r.commit})` : ''}`);
       return 0;
     }
     case 'rm': {

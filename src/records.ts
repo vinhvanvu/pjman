@@ -573,7 +573,7 @@ export function unresolved(res: Resolution, raw: string): string {
 /** The refusal for a reference that did not resolve: ambiguous naming the candidates, else not found. */
 export function unresolvedError(res: Resolution, raw: string): CliError {
   if (res.status === 'ambiguous') return ambiguous(raw, res.candidates);
-  if (res.status === 'malformed') return notFound(raw, { hint: 'a key is <kind>:<slug>, or the slug alone inside a project' });
+  if (res.status === 'malformed') return notFound(raw, { hint: 'name it by its key, <kind>:<slug>' });
   return notFound(raw);
 }
 

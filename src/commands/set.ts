@@ -4,6 +4,7 @@ import { replaceSection, sections as parseSections } from '../frontmatter.js';
 import { loadStore, resolve, unresolved, unresolvedError, type RecordType } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersedesOf, unmark, type Marked } from '../supersede.js';
 import { CliError, usageError } from '../util.js';
+import { fieldKind, typedRef } from '../keys.js';
 import { reachOfBase } from '../aspects.js';
 import { CHANGE_FOUNDATION, foundationHash, foundationOf, gistProblem, nameProblem, SECTION_FIELDS } from '../foundation.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo } from '../write.js';
@@ -75,7 +76,8 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     const [, field, op, value] = m as unknown as [string, string, '+' | '-' | undefined, string];
     if (op) {
       if (!allowed.includes(field) || !LISTS.has(field)) throw usageError(`${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f)).join(', ') || 'it has none'}); ${field}=… replaces`);
-      const items = value.split(',').map((x) => x.trim()).filter(Boolean);
+      const kind = fieldKind(rec.type, field);
+      const items = value.split(',').map((x) => x.trim()).filter(Boolean).map((x) => (kind ? typedRef(x, kind) : x));
       if (!items.length) throw usageError(`${field}${op}= needs an item`);
       // the items as the store writes them (full keys), so a short form finds its stored twin
       const given: Record<string, unknown> = { [field]: items };
@@ -145,7 +147,12 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     if (field === 'body') body = value.trim() ? value.trim() + '\n' : '';
     else if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
-    else data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean) : value;
+    else {
+      // a slug alone names a record of the kind the field holds; a bare URL in links is a url: source
+      const kind = fieldKind(rec.type, field);
+      const typed = (x: string) => (kind ? typedRef(x, kind) : x);
+      data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean).map(typed) : typed(value);
+    }
     if (value !== '' && field !== 'body') fullKeys(loaded, rec.type, data, field, rec.productSlug ?? null);
     changed.push(field);
   }

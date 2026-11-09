@@ -11,7 +11,7 @@ import type { EventInput } from '../events.js';
 import { SLUG_RE } from '../keys.js';
 import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersededBy, supersedesOf } from '../supersede.js';
-import { CliError, isDateString, nowIso, today, notFound } from '../util.js';
+import { CliError, isDateString, nowIso, today, notFound, usageError } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, snapshot, validateOrUndo, writeFile } from '../write.js';
 import { dayOf, decisionState, foundationHash, foundationOf, gistProblem, nameProblem, threadOf, type DecisionState, type Entry } from '../foundation.js';
 import { decisionHome } from './new.js';
@@ -202,7 +202,8 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   }
   if (!existing) {
     const missing = [!data.name && '--name', !data.gist && '--gist', !state.question && '--question', !state.options.length && '--option <id>="…"'].filter(Boolean);
-    if (missing.length) throw new CliError(`a new decision needs ${missing.join(', ')}`);
+    // a key that names no decision yet is a new one: say so, so a misspelt key is not mistaken for an add
+    if (missing.length) throw usageError(`${key} does not exist yet, and a new decision needs ${missing.join(', ')} (to add to an existing one, name it by its key: pjman ls decision --parent <change>)`);
   }
   if (appended.length) {
     data.thread = thread.map((e) => ({ ...e }));

@@ -4,7 +4,7 @@ import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SE
 import { branchNameFor, worktreeNameFor } from '../branch.js';
 import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
-import { effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from '../tree.js';
+import { derivedStatus, effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from '../tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
 import { aspectAt, aspectsOfChange, featureOfPlace, formatAspectAt, formatChangeAspects, reachOfBase, type ChangeAspects } from '../aspects.js';
 import { urlOf } from '../refs.js';
@@ -113,6 +113,8 @@ export interface LsOpts {
 
 export function ls(store: Store, opts: LsOpts): Row[] {
   const loaded = loadStore(store);
+  // a feature's status is the one the tree shows: authored, else derived from the changes on it
+  const statusOf = (r: Rec): string | undefined => (r.type === 'feature' ? (typeof r.data.status === 'string' ? r.data.status : derivedStatus(loaded, r.key).status) : typeof r.data.status === 'string' ? r.data.status : undefined);
   let recs = loaded.records;
   let t: RecordType | undefined;
   if (opts.type) {
@@ -125,7 +127,7 @@ export function ls(store: Store, opts: LsOpts): Row[] {
     const known = t ? STATUSES[t] : [...new Set(Object.values(STATUSES).flat())];
     if (t && !known) throw usageError(`a ${t} has no status to filter by`);
     if (known && !known.includes(opts.status)) throw usageError(`--status ${opts.status} is not a status${t ? ` of a ${t}` : ''} (${known.join(', ')})`);
-    recs = recs.filter((r) => r.data.status === opts.status);
+    recs = recs.filter((r) => statusOf(r) === opts.status);
   }
   if (opts.kind) {
     if (!(CHANGE_KINDS as readonly string[]).includes(opts.kind)) throw usageError(`--kind ${opts.kind} is not a kind of change (${CHANGE_KINDS.join(', ')})`);
@@ -163,7 +165,7 @@ export function ls(store: Store, opts: LsOpts): Row[] {
   // a change's row carries its branch and worktree name, computed once for the listing
   const observed = recs.some((r) => r.type === 'change') ? observedBranches(loaded) : null;
   const prefix = readUserConfig().branch_prefix;
-  const withBranch = (r: Rec): Row => (r.type === 'change' && r.valid && observed ? { ...row(r), branch: branchOf(r, observed, prefix) } : row(r));
+  const withBranch = (r: Rec): Row => (r.type === 'change' && r.valid && observed ? { ...row(r), branch: branchOf(r, observed, prefix) } : r.type === 'feature' ? { ...row(r), status: statusOf(r) } : row(r));
   if (opts.kind === 'bug') {
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(withBranch);

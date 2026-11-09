@@ -146,15 +146,18 @@ export function undo(store: Store, opts: { commit?: string; session?: string; wr
       throw new CliError(`${opts.commit} is not a commit of the store`);
     }
   } else {
-    sha = git(root, ['log', '-1', '--format=%H', '--grep=^pjman: apply ']);
-    if (!sha) throw new CliError('no batch to undo (pjman undo <commit> reverts any one write)');
+    // the last batch not already undone: an undo names what it reverted in its Pjman-Undoes trailer
+    const undone = new Set(git(root, ['log', '--format=%(trailers:key=Pjman-Undoes,valueonly)', '--grep=^pjman: undo ']).split('\n').map((l) => l.trim()).filter(Boolean));
+    const batches = git(root, ['log', '--format=%H', '--grep=^pjman: apply ']).split('\n').filter(Boolean);
+    sha = batches.find((b) => !undone.has(b)) ?? '';
+    if (!sha) throw new CliError('no batch left to undo (pjman undo <commit> reverts any one write)');
   }
   const subject = git(root, ['log', '-1', '--format=%s', sha]);
   const forKey = git(root, ['log', '-1', '--format=%(trailers:key=Pjman-For,valueonly)', sha]).trim() || undefined;
   const files = git(root, ['show', '--name-only', '--format=', sha]).split('\n').filter(Boolean);
   const later = git(root, ['log', '--format=%h %s', `${sha}..HEAD`, '--', ...files]).split('\n').filter(Boolean);
   if (later.length) {
-    throw new CliError(`refused: ${later.length} later write${later.length === 1 ? '' : 's'} touched a record of that batch; undo those first, or set the records by hand\n${later.map((l) => `  ${l}`).join('\n')}`);
+    throw new CliError(`refused: ${later.length} later write${later.length === 1 ? '' : 's'} touched a record of ${sha.slice(0, 7)} (${subject}); undo those first, or set the records by hand\n${later.map((l) => `  ${l}`).join('\n')}`);
   }
   try {
     git(root, ['revert', '--no-commit', sha]);

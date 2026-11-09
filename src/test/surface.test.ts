@@ -53,7 +53,7 @@ test('a flag a command does not take is refused naming the ones it does; a retir
   assert.match(r.err, /pjman ls takes no --intent; it takes --status --kind --project --product --parent --feature/);
   r = pj(['new', 'change', 'x', '--plan', 'a plan']);
   assert.equal(r.code, 2);
-  assert.match(r.err, /--plan is retired: the plan is steps/);
+  assert.match(r.err, /--plan is retired here: the plan is steps/);
   r = pj(['decision', 'x/y', '--decided-by', 'person:vinh']);
   assert.match(r.err, /--decided-by is retired/);
   r = pj(['show', 'a', 'b']);
@@ -213,4 +213,46 @@ test('the help reads by entity, every command has a group and its usage, and doc
   assert.equal(new Set(COMMANDS.map((c) => c.name)).size, COMMANDS.length);
   const doc = fs.readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'docs', 'reference.md'), 'utf8');
   assert.ok(doc.includes(referenceMarkdown()), 'docs/reference.md is behind the declaration: npm run docs');
+});
+
+test('what a fresh agent tripped on: a slug in a flag or a field, a bare URL as a link, a near flag named, the slug alone for a decision', () => {
+  let r = pj(['new', 'feature', 'wallet', '--title', 'Cards kept for next time', '--parent', 'checkout']);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(record('feature:app/wallet').data.parent, 'feature:app/checkout');
+  filed('epic-two');
+  assert.equal(pj(['set', 'signup', 'parent=epic-two']).code, 0);
+  assert.equal(record('change:app/signup').data.parent, 'change:app/epic-two');
+  assert.equal(pj(['set', 'login', 'links+=https://example.com/pci']).code, 0);
+  assert.ok((record('change:app/login').data.links as string[]).includes('url:https://example.com/pci'));
+  assert.equal(pj(['set', 'login', 'links-=https://example.com/pci']).code, 0);
+  assert.ok(!((record('change:app/login').data.links as string[] | undefined) ?? []).includes('url:https://example.com/pci'));
+  r = pj(['new', 'change', 'x', '--title', 'X']);
+  assert.equal(r.code, 2);
+  assert.match(r.err, /--title is retired here: a change has no title/);
+  assert.match(pj(['new', 'change', 'x', '--feature', 'feature:cards']).err, /takes no --feature \(did you mean --features\?\)/);
+  assert.doesNotMatch(pj(['new', 'change', 'x', '--feature', 'feature:cards']).err, /--title/);
+  assert.match(pj(['set', 'login', '--step', 'more']).err, /a step is added with pjman step <change> add/);
+  assert.equal(pj(['new', 'change', 'x', '--name', 'X']).code, 2);
+  // a decision by its slug alone; a misspelt key is said not to exist
+  assert.equal(pj(['decision', 'login/storage', '--name', 'Storage', '--gist', 'Where a card is kept', '--question', 'Where?', '--option', 'vault=A vault']).code, 0);
+  r = pj(['decision', 'storage', '--comment', 'a vault is fine']);
+  assert.equal(r.code, 0, r.err);
+  r = pj(['decision', 'login/storag', '--comment', 'hi']);
+  assert.equal(r.code, 2);
+  assert.match(r.err, /decision:app\/login\/storag does not exist yet, and a new decision needs --name/);
+  // a feature lists by the status the tree shows
+  assert.ok(JSON.parse(pj(['ls', 'feature', '--status', 'planned', '--json']).out).some((x: { key: string }) => x.key === 'feature:app/wallet'));
+  assert.match(pj(['help', 'change']).out, /every flag of each, in full: pjman help new · pjman help context/);
+});
+
+test('a bare undo reverts the last batch not yet undone, and a refusal names the batch it meant', () => {
+  filed('keep-a');
+  filed('keep-b');
+  assert.equal(pj(['rm', 'keep-a', 'keep-b']).code, 0);
+  assert.equal(pj(['undo']).code, 0);
+  assert.ok(loadStore(store).byKey.has('change:app/keep-a'));
+  // that batch is undone: the next bare undo looks past it to an earlier one, never at it again
+  const r = pj(['undo']);
+  assert.doesNotMatch(r.out + r.err, /rm change:app\/keep-a/);
+  assert.match(r.err + r.out, /reverted|refused: .* touched a record of [0-9a-f]{7} \(pjman: apply/);
 });

@@ -4,7 +4,7 @@ import type { Store } from '../config.js';
 import { aspectKey, changeKey, decisionKey, featureKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, RECORD_KINDS, releaseKey, SLUG_RE, sourceFileSlug } from '../keys.js';
 import { loadStore, recordOf, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { rootProductOf } from '../tree.js';
-import { CliError, isDateString, isTimestamp, localDate, nowIso, today, notFound } from '../util.js';
+import { CliError, isDateString, isTimestamp, localDate, nowIso, today, notFound, usageError } from '../util.js';
 import { RELEASE_LEVELS } from '../validate.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo, writeFile } from '../write.js';
 import { CHANGE_SECTIONS, foundationHash, foundationOf, gistProblem, nameProblem, type ChangeSection } from '../foundation.js';
@@ -310,9 +310,9 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
   const rest = ident.startsWith('change:') ? ident.slice(7) : ident;
   const s = parseScopedRest(rest);
   if (!s) throw new CliError(`'${rest}' is not a slug (lower-case letters, digits, hyphens), or <product>/<slug>`);
-  if (flags.title !== undefined || flags.summary !== undefined) throw new CliError('a change has no title or summary: its rungs are --name (one to four words) and --gist (one line), its foundation --origin, --intent and --done-when (then --scope, --open-questions, --blocked-on, --notes); the plan is written with pjman step');
+  if (flags.title !== undefined || flags.summary !== undefined) throw usageError('a change has no title or summary: its rungs are --name (one to four words) and --gist (one line), its foundation --origin, --intent and --done-when (then --scope, --open-questions, --blocked-on, --notes); the plan is written with pjman step');
   for (const [flag, value] of [['--name', flags.name], ['--gist', flags.gist], ['--origin', flags.origin], ['--intent', flags.intent], ['--done-when', flags.doneWhen]] as const) {
-    if (!value?.trim()) throw new CliError(`${flag} is required: a change is filed with its name, gist, origin (the request in the person's words, or the key of what it came from), intent and done-when`);
+    if (!value?.trim()) throw usageError(`${flag} is required: a change is filed with its name, gist, origin (the request in the person's words, or the key of what it came from), intent and done-when`);
   }
   const bad = nameProblem(flags.name!) ? `--name: ${nameProblem(flags.name!)}` : gistProblem(flags.gist!) ? `--gist: ${gistProblem(flags.gist!)}` : null;
   if (bad) throw new CliError(bad);
@@ -359,7 +359,7 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
 export function decisionHome(loaded: Loaded, ident: string, date: string): { key: string; rel: string; product: string | null; change?: Rec } {
   const rest = ident.startsWith('decision:') ? ident.slice(9) : ident;
   const parsed = parseDecisionRest(rest);
-  if (!parsed) throw new CliError(`'${ident}' must be <change>/<decision-slug> (<product>/<change>/<slug> in full), <product>/<slug> at product level, or /<slug> at store level`);
+  if (!parsed) throw usageError(`'${ident}' must be <change>/<decision-slug> (<product>/<change>/<slug> in full), <product>/<slug> at product level, or /<slug> at store level`);
   let product: string | null = null;
   let change: Rec | undefined;
   if (parsed.head) {

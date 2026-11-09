@@ -62,9 +62,13 @@ export interface Command {
   args?: number | Record<string, number>;
   /** Where its subcommand stands among the positionals, when not first (step <change> <verb>). */
   subAt?: number;
+  /** Flags another form of the record takes that this one does not, refused with where their job went, by subcommand. */
+  retired?: Record<string, Record<string, string>>;
+  /** What a flag of another command an agent reaches for here is, said where it is refused. */
+  elsewhere?: Record<string, string>;
 }
 
-const CHANGE_NEW = ['name', 'gist', 'origin', 'intent', 'done-when', 'scope', 'open-questions', 'blocked-on', 'notes', 'status', 'project', 'parent', 'features', 'aspects', 'depends-on', 'owners', 'binds', 'links', 'kind', 'severity', 'target', 'step', 'body', 'title', 'summary'];
+const CHANGE_NEW = ['name', 'gist', 'origin', 'intent', 'done-when', 'scope', 'open-questions', 'blocked-on', 'notes', 'status', 'project', 'parent', 'features', 'aspects', 'depends-on', 'owners', 'binds', 'links', 'kind', 'severity', 'target', 'step', 'body'];
 
 export const COMMANDS: Command[] = [
   // ---- records: the generic verbs, over every entity --------------------------------------------------------------
@@ -98,6 +102,8 @@ export const COMMANDS: Command[] = [
       actor: ['name', 'url', 'links', 'body'],
       session: ['agent', 'on-behalf-of', 'parent', 'started', 'project', 'body'],
     },
+    retired: { change: { title: 'a change has no title: --name (one to four words) and --gist (one line)', summary: 'a change has no summary: its --intent opens with the need, its --gist is the line views show' } },
+    elsewhere: { feature: 'a change names a node with --features "adds feature:<slug>"', product: 'a change belongs to the product of its --project' },
     args: 1 },
   { name: 'show', group: 'records', line: 'one record as it is stored', about: 'print one record by its key or slug, as it is stored (an aspect with every place it reaches; a place read through its aspect)',
     usage: ['pjman show <ref> [--json]'], flags: [], args: 1 },
@@ -107,7 +113,8 @@ export const COMMANDS: Command[] = [
     flags: ['status', 'kind', 'project', 'product', 'parent', 'feature'], args: 1 },
   { name: 'set', group: 'records', line: 'change authored fields on one record or several',
     about: "change authored fields on one or several records, one commit (pjman undo reverts it). field=value replaces (an empty value removes the field); on a list field (links, owners, binds, features, aspects, depends_on, levels, sequence) field+=item adds one item when absent and field-=item removes one; field=- reads one value from stdin. A change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole. A decision's supersedes only adds, and marks each named decision superseded. A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten",
-    usage: ['pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...', 'pjman set <ref> <field>=- < file   (one value from stdin)'], flags: [] },
+    usage: ['pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...', 'pjman set <ref> <field>=- < file   (one value from stdin)'], flags: [],
+    elsewhere: { step: 'a step is added with pjman step <change> add "…"', note: 'a note is pjman note <change> "…"; a step\'s note is pjman step <change> note <n> "…"', first: 'the order is moved with pjman order <change> --first' } },
   { name: 'rm', group: 'records', line: 'remove one record or several',
     about: "remove one or several records, one commit (a change takes its decisions with it). Refused while anything refers to one, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped",
     usage: ['pjman rm <ref>... [--detach] [--json]'], flags: ['detach'] },
@@ -118,7 +125,7 @@ export const COMMANDS: Command[] = [
     about: "write a decision at any size, one commit: created when it does not exist (then --name, --gist, --question and one --option are required), added to otherwise. Its foundation is a thread of entries: the question, criteria, options with their case, the recommendation with its reasoning, the person's comments in their words (--on <id> when about one option), rejections, the acceptance (a person's, with their words and when to revisit), a reopening. Status, decider and date follow the thread. --from - takes {name, gist, entries:[{type, text, id, case, option, by, revisit}]} as JSON on stdin",
     usage: [
       'pjman decision <change>/<slug> --name <one to four words> --gist <one line> --question <text> [--criterion <text>]... --option <id>=<text>... [--case <id>=<points, one per line>]... [--recommend <id>[=<why>]] [--supersedes <decision>] [--links <key>]...',
-      'pjman decision <key> [--question <reframed>] [--option <id>=<text>]... [--comment <the person\'s words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]',
+      'pjman decision <ref> [--question <reframed>] [--option <id>=<text>]... [--comment <words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]   (a comment without --by is the writer\'s own)',
       'pjman decision <key> --accept <id>[=<their words>] --by person:<handle> [--revisit <when to look again>]   (the person decides; an agent never does)',
       'pjman decision <key> --reopen [--comment <why>]',
       'pjman decision <key> --from -   (entries as JSON on stdin)',
@@ -275,7 +282,7 @@ export const ENTITIES: Entity[] = [
     ['delete', 'pjman rm <product>'],
   ] },
   { name: 'feature', what: 'what the product does for a person; a capability is a feature beneath one, nesting', ops: [
-    ['create', 'pjman new feature <slug> --title <sentence> --name <one to three words> --product <product> | --parent <feature>'],
+    ['create', 'pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature>'],
     ['read', 'pjman show <feature> · pjman tree <feature> · pjman context <feature> · pjman activity <feature>'],
     ['list', 'pjman ls feature [--product <p>] [--parent <feature>] [--status …]'],
     ['update', 'pjman set <feature>... <field>=… | <list>+=<item> | <list>-=<item>'],
@@ -319,7 +326,7 @@ export const ENTITIES: Entity[] = [
   { name: 'decision', what: 'what was chosen and why: an append-only thread a person decides', ops: [
     ['create', 'pjman decision <change>/<slug> --name … --gist … --question … --option <id>=… --recommend <id>=…'],
     ['read', 'pjman show <decision> · pjman context <change>   (its decisions in full)'],
-    ['list', 'pjman ls decision [--status proposed|decided|superseded|reverted] [--parent <change>]'],
+    ['list', 'pjman ls decision [--status proposed|decided|superseded|reverted] [--parent <change>]   (--status proposed: what waits on a person)'],
     ['update', 'pjman decision <key> --option|--comment|--reject|--recommend … · --accept <id> --by person:<handle> · --reopen · pjman set <decision> name|gist|links|supersedes'],
     ['rename', 'pjman mv decision:<change>/<old> decision:<change>/<new>'],
     ['delete', 'pjman rm <decision>'],
@@ -385,6 +392,9 @@ export function entityHelp(e: Entity): string {
   return [`${e.name} — ${e.what}`, ...wrapOps(e, '  ')].join('\n');
 }
 
+/** The commands an entity's rows use, for the pointer to each in full. */
+const commandsOf = (e: Entity): string[] => [...new Set(e.ops.flatMap(([, how]) => [...how.matchAll(/pjman ([a-z]+)/g)].map((m) => m[1]!)))].filter((c) => commandOf(c));
+
 /** `pjman --help`: the entities with their operations, then every other command one line each. */
 export function overview(): string {
   const width = Math.max(...COMMANDS.map((c) => c.name.length)) + 2;
@@ -420,7 +430,8 @@ export function helpFor(name: string): string | null {
   const e = ENTITIES.find((x) => x.name === name || `${x.name}s` === name);
   const c = commandOf(name);
   if (!e && !c) return null;
-  return [e ? entityHelp(e) : null, c ? commandHelp(c) : null].filter(Boolean).join('\n\n') + `\n\n${GLOBAL_HELP}`;
+  const more = e ? `every flag of each, in full: ${commandsOf(e).filter((x) => x !== c?.name).map((x) => `pjman help ${x}`).join(' · ')}` : null;
+  return [e ? entityHelp(e) : null, c ? commandHelp(c) : null, more].filter(Boolean).join('\n\n') + `\n\n${GLOBAL_HELP}`;
 }
 
 /** The command section of docs/reference.md, generated: the entities as tables, then the other commands. */

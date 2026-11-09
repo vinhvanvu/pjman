@@ -70,7 +70,7 @@ What the product does for a person; a capability is a feature beneath one, nesti
 
 | operation | command |
 |---|---|
-| create | `pjman new feature <slug> --title <sentence> --name <one to three words> --product <product> \| --parent <feature>` |
+| create | `pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> \| --parent <feature>` |
 | read | `pjman show <feature> · pjman tree <feature> · pjman context <feature> · pjman activity <feature>` |
 | list | `pjman ls feature [--product <p>] [--parent <feature>] [--status …]` |
 | update | `pjman set <feature>... <field>=… \| <list>+=<item> \| <list>-=<item>` |
@@ -139,7 +139,7 @@ What was chosen and why: an append-only thread a person decides.
 |---|---|
 | create | `pjman decision <change>/<slug> --name … --gist … --question … --option <id>=… --recommend <id>=…` |
 | read | `pjman show <decision> · pjman context <change>   (its decisions in full)` |
-| list | `pjman ls decision [--status proposed\|decided\|superseded\|reverted] [--parent <change>]` |
+| list | `pjman ls decision [--status proposed\|decided\|superseded\|reverted] [--parent <change>]   (--status proposed: what waits on a person)` |
 | update | `pjman decision <key> --option\|--comment\|--reject\|--recommend … · --accept <id> --by person:<handle> · --reopen · pjman set <decision> name\|gist\|links\|supersedes` |
 | rename | `pjman mv decision:<change>/<old> decision:<change>/<new>` |
 | delete | `pjman rm <decision>` |
@@ -278,7 +278,7 @@ pjman mv <kind>:<old> <kind>:<new>   (product, feature, aspect, place, project, 
     rename a product (every key beneath it follows), a feature or a change (the folder moves, the old slug stays as an alias; <product>/<slug> moves it to another product), an aspect or a place, a project (directories bound to it follow), a decision (within or across changes) or a person (the old handle stays as an alias; the user config follows); every reference is rewritten in the same commit. Sources and sessions keep their keys, which are external; a release keeps its version, which is a fact
 
 pjman decision <change>/<slug> --name <one to four words> --gist <one line> --question <text> [--criterion <text>]... --option <id>=<text>... [--case <id>=<points, one per line>]... [--recommend <id>[=<why>]] [--supersedes <decision>] [--links <key>]...
-pjman decision <key> [--question <reframed>] [--option <id>=<text>]... [--comment <the person's words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]
+pjman decision <ref> [--question <reframed>] [--option <id>=<text>]... [--comment <words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]   (a comment without --by is the writer's own)
 pjman decision <key> --accept <id>[=<their words>] --by person:<handle> [--revisit <when to look again>]   (the person decides; an agent never does)
 pjman decision <key> --reopen [--comment <why>]
 pjman decision <key> --from -   (entries as JSON on stdin)
