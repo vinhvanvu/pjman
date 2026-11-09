@@ -6,7 +6,7 @@ import { git, gitUserEmail, gitUserName, hasGit, toplevel } from '../git.js';
 import { slugify } from '../keys.js';
 import { loadStore } from '../records.js';
 import { personOf } from '../refs.js';
-import { CliError } from '../util.js';
+import { CliError, notFound } from '../util.js';
 import { newActor, newProduct, newProject } from './new.js';
 import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
@@ -230,7 +230,7 @@ export function init(opts: InitOpts): string[] {
       const repo = originRepo(project);
       // the product the repository builds: an existing one named by --product, else one made now with the project's name
       let product = opts.product;
-      if (product && !loaded.byKey.has(product.startsWith('product:') ? product : `product:${product}`)) throw new CliError(`--product ${product} does not exist`);
+      if (product && !loaded.byKey.has(product.startsWith('product:') ? product : `product:${product}`)) throw notFound(`--product ${product}`, { as: 'product' });
       if (!product) {
         if (!loaded.byKey.has(`product:${slug}`)) newProduct(store, slug, { title, name: title.length <= 24 ? title : undefined, writer: actor });
         product = `product:${slug}`;

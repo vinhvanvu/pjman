@@ -118,7 +118,7 @@ export function columns(scope: Scope): Column[] {
       kind: milestone ? 'milestone' : 'single',
       key,
       row,
-      title: row?.title ?? short(key),
+      title: row?.gist ?? short(key),
       progress: row?.progress,
       target: row?.target,
       entries: milestone ? beneath : row && isWork(row) ? [row] : [],

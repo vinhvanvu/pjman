@@ -71,8 +71,9 @@ working it.
    removal, the change's status. Carry that chain out and report it; an approval that repeats one already given
    ties up the person. Ask only for what the agreement did not settle. A change or a decision that spawns new work
    is the new change's Origin.
-3. **Keep the plan true.** The plan is steps written only through commands: `pjman step <change> add "…"`, `start
-   <n>`, `done <n> [--note "…"]`, `drop <n>`, `note <n> "<where the work stands>"`, `move <n> --before <m>`. Before
+3. **Keep the plan true.** The plan is steps written only through commands: `pjman step <change> add "…" "…"` (each
+   quoted text a step, one commit; or `--step "…"` on `pjman new change`), `start <n>`, `done <n>… [--note "…"]`,
+   `drop <n>`, `note <n> "<where the work stands>"`, `edit <n> "…"`, `move <n> --before <m>`. Before
    you stop on a change, leave the plan where the work stands: the step in progress noted, the next one first among
    the open ones, an outside blocker in `blocked-on=…`, and the status if it moved to `blocked` or `dropped`;
    `planning`, `active` and `review` follow the plan by themselves (a step added, a step started, a file written for
@@ -171,23 +172,29 @@ feature it correlates to per change, until "map outgrown" offers a regrouping, w
 ## Commands you will use
 
 ```
+pjman help [<entity|command>]           the surface by entity (product, feature, project, aspect, change, step, decision, source, actor, session, release), each with its create, read, list, update, delete, rename
 pjman context [change:<slug>] [--all]   this project's board (--all: every project), or one change with its decisions, sources and sessions
 pjman get <ref>                          anything in (key, ticket id, URL, file path, slug): the record, its edges, and every change in reach
 pjman sync linear|github --from -        apply tickets observed through the tracker's tools (JSON on stdin)
 pjman refs <text>                        every reference in a text (a change, a ticket in any shape, a URL) and the change it leads to
-pjman ls decision --status proposed      what is waiting on a person
-pjman show <key>                         one record
-pjman new change|source …                create (refused if it would not validate): a change with its name, gist, origin, intent, done-when
+pjman ls <entity> [--status s] [--parent <ref>] [--feature <ref>] [--kind bug]   e.g. ls decision --status proposed: what is waiting on a person
+pjman show <ref>                         one record as stored
+pjman new change|source …                create (refused if it would not validate): a change with its name, gist, origin, intent, done-when [--step "…"]…
 pjman decision <change>/<slug> …         a decision at any size, one commit: created, added to, accepted by the person, reopened
-pjman step <change> add|start|done|drop|note|move|reopen …   the plan, steps as data; every move an event
+pjman step <change> add|start|done|drop|reopen|note|edit|move …   the plan, steps as data; several texts or numbers in one commit
+pjman order [<product>]                  the roadmap's order; with <change> --before|--after|--first|--last|--later, a move in it
 pjman new product|feature …              the product tree: a root, then nested features
-pjman tree [product:<slug>]              the product by features: levels, derived status, owners, backlog by project
-pjman activity <key> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
-pjman set <key> field=value …            authored fields: name, gist, status, links, binds; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes
-pjman rm <key> [--detach]                remove a record you created by mistake; refused while anything refers to it
-pjman mv <key> <new key>                 rename a change or a feature (the old slug stays an alias); every reference follows
+pjman tree [<product>|<feature>]         the product by features: levels, derived status, owners, backlog by project
+pjman activity <ref> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
+pjman set <ref>... field=value | list+=item | list-=item   authored fields: name, gist, status, links, binds; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; several records in one commit
+pjman rm <ref>... [--detach]             remove records created by mistake; refused while anything refers to one
+pjman mv <kind>:<old> <kind>:<new>       rename a change, a feature, an aspect, a decision… (the old slug stays an alias); every reference follows
 pjman whoami [--verify]                  who the person is: handle, record, accounts (the first of a handle kind is primary); --verify asks the apps. A rename (pjman mv person:<old> person:<new>) or a claim of an account is the person's act: offer it, never run it unasked
 pjman apply - --for <key>                many writes as one commit, the commands one per line on stdin; pjman undo reverts it
 pjman note <change|session:<id>> <text>  a note to whoever works a change, or to one session; it arrives in full in the next brief
 pjman validate                           run before committing a store that lives in the project
 ```
+
+A record argument takes a key or the slug alone; a slug two records share is refused naming both, so name one by its
+key. A refusal says what was tried and exits 1; a usage error exits 2; with `--json` an error is
+`{"error":{"code","message","tried"}}` on stdout.

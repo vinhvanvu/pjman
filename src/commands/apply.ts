@@ -7,7 +7,7 @@ import type { Store } from '../config.js';
 import { emit, keyOfPath, typeOfPath, type EventInput } from '../events.js';
 import { commitAll, git } from '../git.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
-import { CliError } from '../util.js';
+import { CliError, notFound } from '../util.js';
 import { beginBatch, endBatch, envelope } from '../write.js';
 
 /** The commands a batch may hold: writes to records, nothing that starts a server, reads, or nests. */
@@ -96,15 +96,19 @@ function requireClean(store: Store): void {
 const forOf = (store: Store, key: string | undefined): { key: string; type: RecordType | 'store' } => {
   if (!key) return { key: 'store', type: 'store' };
   const res = resolve(loadStore(store), key);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`--for ${key} does not resolve to a record`);
+  if (res.status !== 'ok' && res.status !== 'alias') throw notFound(`--for ${key}`);
   return { key: res.rec.key, type: res.rec.type };
 };
 
 /** Run every line through `run` (the CLI's own dispatcher) with commits held; one commit and the events at the end. */
 export function apply(store: Store, text: string, run: (argv: string[]) => void, opts: { for?: string; session?: string; writer?: string } = {}): ApplyResult {
+  return applyLines(store, parseBatch(text), run, opts);
+}
+
+/** A batch already split into argv lists: one commit, as apply makes one. A bulk set or rm builds its lines here. */
+export function applyLines(store: Store, lines: { line: number; argv: string[] }[], run: (argv: string[]) => void, opts: { for?: string; session?: string; writer?: string } = {}): ApplyResult {
   requireStandalone(store, 'apply');
   requireClean(store);
-  const lines = parseBatch(text);
   if (!lines.length) throw new CliError('the batch is empty');
   const target = forOf(store, opts.for);
   const env = envelope(opts);
@@ -142,15 +146,18 @@ export function undo(store: Store, opts: { commit?: string; session?: string; wr
       throw new CliError(`${opts.commit} is not a commit of the store`);
     }
   } else {
-    sha = git(root, ['log', '-1', '--format=%H', '--grep=^pjman: apply ']);
-    if (!sha) throw new CliError('no batch to undo (pjman undo <commit> reverts any one write)');
+    // the last batch not already undone: an undo names what it reverted in its Pjman-Undoes trailer
+    const undone = new Set(git(root, ['log', '--format=%(trailers:key=Pjman-Undoes,valueonly)', '--grep=^pjman: undo ']).split('\n').map((l) => l.trim()).filter(Boolean));
+    const batches = git(root, ['log', '--format=%H', '--grep=^pjman: apply ']).split('\n').filter(Boolean);
+    sha = batches.find((b) => !undone.has(b)) ?? '';
+    if (!sha) throw new CliError('no batch left to undo (pjman undo <commit> reverts any one write)');
   }
   const subject = git(root, ['log', '-1', '--format=%s', sha]);
   const forKey = git(root, ['log', '-1', '--format=%(trailers:key=Pjman-For,valueonly)', sha]).trim() || undefined;
   const files = git(root, ['show', '--name-only', '--format=', sha]).split('\n').filter(Boolean);
   const later = git(root, ['log', '--format=%h %s', `${sha}..HEAD`, '--', ...files]).split('\n').filter(Boolean);
   if (later.length) {
-    throw new CliError(`refused: ${later.length} later write${later.length === 1 ? '' : 's'} touched a record of that batch; undo those first, or set the records by hand\n${later.map((l) => `  ${l}`).join('\n')}`);
+    throw new CliError(`refused: ${later.length} later write${later.length === 1 ? '' : 's'} touched a record of ${sha.slice(0, 7)} (${subject}); undo those first, or set the records by hand\n${later.map((l) => `  ${l}`).join('\n')}`);
   }
   try {
     git(root, ['revert', '--no-commit', sha]);

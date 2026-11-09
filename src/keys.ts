@@ -25,6 +25,27 @@ export interface Key {
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 
+/** A value written where one kind of record is meant, as its key (decision interface-audit/key-arguments): the slug
+ *  alone (or `<a>/<b>`) gains the kind; a bare URL where a source is meant is a `url:` source; a key passes as it is. */
+export function typedRef(value: string, kind: string): string {
+  const v = value.trim();
+  if (/^https?:\/\//i.test(v)) return `url:${v}`;
+  if (v.includes(':')) return v;
+  return /^[a-z0-9][a-z0-9-]*(\/[a-z0-9][a-z0-9.-]*)*$/.test(v) && kind !== 'source' ? `${kind}:${v}` : v;
+}
+
+/** The kind of record a field names, by the record it is on: what a slug alone written into it means. */
+export function fieldKind(type: string, field: string): string | null {
+  if (field === 'links' || field === 'binds') return 'source';
+  if (field === 'depends_on' || field === 'ships' || field === 'sequence') return 'change';
+  if (field === 'project') return 'project';
+  if (field === 'product') return 'product';
+  if (field === 'supersedes') return 'decision';
+  if (field === 'feature') return 'feature';
+  if (field === 'parent') return type === 'feature' || type === 'change' || type === 'aspect' || type === 'project' ? type : type === 'session' ? 'session' : null;
+  return null;
+}
+
 /** `kind:rest`, split at the first colon. Returns null when the string is not a key. */
 export function parseKey(raw: unknown): Key | null {
   if (typeof raw !== 'string') return null;

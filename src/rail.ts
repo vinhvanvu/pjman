@@ -19,7 +19,8 @@ export interface Lane {
   /** The lane's key on its axis; `more` for the folded lane. */
   id: string;
   kind: 'decision' | 'change' | 'more';
-  title?: string;
+  /** What the unit is called: its name, else its line. */
+  label?: string;
   /** The unit's status as it stands now. */
   status?: string;
   /** When the lane was last touched, over the scope's life. */
@@ -46,7 +47,7 @@ export interface Row {
   key: string;
   type: StoreEvent['type'];
   /** The written record's label, as it reads now. */
-  title?: string;
+  label?: string;
   fields?: string[];
   /** What a move was: the status a set left, the change a session went to. */
   value?: string;
@@ -178,7 +179,7 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const foldedIds = new Set(folded.map(([id]) => id));
   const lanes: Lane[] = kept.map(([id, t]) => {
     const rec = live(loaded, id);
-    return { id, kind: rec?.type === 'decision' ? 'decision' : 'change', title: rec ? labelOf(rec.data, rec.key) : undefined, status: rec ? str(rec.data.status) : undefined, last: t.last, count: t.count, writes: t.writes };
+    return { id, kind: rec?.type === 'decision' ? 'decision' : 'change', label: rec ? labelOf(rec.data, rec.key) : undefined, status: rec ? str(rec.data.status) : undefined, last: t.last, count: t.count, writes: t.writes };
   });
   if (folded.length) lanes.push({ id: 'more', kind: 'more', last: folded[0][1].last, count: folded.reduce((n, [, t]) => n + t.count, 0), writes: folded.reduce((n, [, t]) => n + t.writes, 0), folded: folded.length });
   const placed = (lane: string | null): string | null => (lane && foldedIds.has(lane) ? 'more' : lane);
@@ -190,7 +191,7 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
     const lane = laneOfEvent(e);
     const rec = live(loaded, e.key);
     const kind = kindOf(axis, scope, e);
-    const row: Row = { seq: e.seq, at: e.at, lane: placed(lane), kind, op: e.op, key: e.key, type: e.type, title: rec ? labelOf(rec.data, rec.key) : undefined, fields: e.fields, value: e.value, writer: e.writer, session: e.session };
+    const row: Row = { seq: e.seq, at: e.at, lane: placed(lane), kind, op: e.op, key: e.key, type: e.type, label: rec ? labelOf(rec.data, rec.key) : undefined, fields: e.fields, value: e.value, writer: e.writer, session: e.session };
     const drill = axis === 'tree' ? e.session : lane;
     if (drill) row.drill = drill;
     if (kind === 'line' && e.key === scope.key) {

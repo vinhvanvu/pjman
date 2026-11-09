@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../config.js';
 import { aspectKey, changeKey, decisionKey, featureKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, RECORD_KINDS, releaseKey, SLUG_RE, sourceFileSlug } from '../keys.js';
-import { loadStore, recordOf, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
+import { loadStore, recordOf, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { rootProductOf } from '../tree.js';
-import { CliError, isDateString, isTimestamp, localDate, today } from '../util.js';
+import { CliError, isDateString, isTimestamp, localDate, nowIso, today, notFound, usageError } from '../util.js';
 import { RELEASE_LEVELS } from '../validate.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo, writeFile } from '../write.js';
 import { CHANGE_SECTIONS, foundationHash, foundationOf, gistProblem, nameProblem, type ChangeSection } from '../foundation.js';
@@ -12,6 +12,8 @@ import { sections as parseSections } from '../frontmatter.js';
 
 export interface NewFlags {
   title?: string;
+  /** A change filed with its plan: each text a step, open (decision interface-audit/bulk-writes). */
+  steps?: string[];
   project?: string;
   tracker?: string;
   /** A project's answer to the map question: propose (the first session proposes a product map) or skip. */
@@ -148,7 +150,7 @@ const listOrNone = (v?: string[]): string[] | undefined => (v?.length ? v : unde
 function productSlugOf(loaded: Loaded, raw: string, what: string): string {
   const key = raw.startsWith('product:') ? raw : `product:${raw}`;
   const rec = recordOf(loaded, key, null);
-  if (!rec || rec.type !== 'product') throw new CliError(`${what}: ${key} does not exist`);
+  if (!rec || rec.type !== 'product') throw notFound(`${what} ${key}`, { as: 'product' });
   return rec.productSlug!;
 }
 
@@ -239,7 +241,7 @@ export function newPlace(store: Store, ident: string, flags: NewFlags): NewResul
   const [named, aslug, pslug] = a.segments.length === 3 ? a.segments : [null, a.segments[0], a.segments[1]];
   const product = aspectProduct(loaded, named, 'place');
   const aspect = loaded.byKey.get(aspectKey(product, aslug))?.[0];
-  if (!aspect || aspect.type !== 'aspect') throw new CliError(`${aspectKey(product, aslug)} does not exist: pjman new aspect ${aslug} --title …`);
+  if (!aspect || aspect.type !== 'aspect') throw notFound(aspectKey(product, aslug), { hint: `pjman new aspect ${aslug} --title … makes it` });
   const key = aspectKey(product, aslug, pslug);
   const rel = path.join('products', product, 'aspects', aslug, 'places', `${pslug}.md`);
   refuseExisting(store, rel);
@@ -289,19 +291,28 @@ export function newProject(store: Store, ident: string, flags: NewFlags): NewRes
 /** The product a project names, as a slug; refused when it names none. */
 export function productOfProject(loaded: Loaded, projectKey: string): { project: Rec; product: string } {
   const project = recordOf(loaded, projectKey, null);
-  if (!project || project.type !== 'project') throw new CliError(`${projectKey} does not resolve to a project`);
+  if (!project || project.type !== 'project') throw notFound(projectKey, { as: 'project' });
   const product = typeof project.data.product === 'string' ? recordOf(loaded, project.data.product, null) : undefined;
   if (!product || product.type !== 'product') throw new CliError(`${project.key} names no product; a change is keyed under its project's product: pjman set ${project.key} product=product:<slug> (pjman new product <slug> --title … first, when there is none)`);
   return { project, product: product.productSlug! };
+}
+
+/** Steps from their texts, each open and stamped now; an empty text is refused. */
+function stepsFrom(texts: string[]): { text: string; state: 'open'; at: string }[] {
+  const at = nowIso();
+  return texts.map((t) => {
+    if (!t.trim()) throw new CliError('--step: an empty step');
+    return { text: t.trim(), state: 'open' as const, at };
+  });
 }
 
 export function newChange(store: Store, ident: string, flags: NewFlags): NewResult {
   const rest = ident.startsWith('change:') ? ident.slice(7) : ident;
   const s = parseScopedRest(rest);
   if (!s) throw new CliError(`'${rest}' is not a slug (lower-case letters, digits, hyphens), or <product>/<slug>`);
-  if (flags.title !== undefined || flags.summary !== undefined) throw new CliError('a change has no title or summary: its rungs are --name (one to four words) and --gist (one line), its foundation --origin, --intent and --done-when (then --scope, --open-questions, --blocked-on, --notes); the plan is written with pjman step');
+  if (flags.title !== undefined || flags.summary !== undefined) throw usageError('a change has no title or summary: its rungs are --name (one to four words) and --gist (one line), its foundation --origin, --intent and --done-when (then --scope, --open-questions, --blocked-on, --notes); the plan is written with pjman step');
   for (const [flag, value] of [['--name', flags.name], ['--gist', flags.gist], ['--origin', flags.origin], ['--intent', flags.intent], ['--done-when', flags.doneWhen]] as const) {
-    if (!value?.trim()) throw new CliError(`${flag} is required: a change is filed with its name, gist, origin (the request in the person's words, or the key of what it came from), intent and done-when`);
+    if (!value?.trim()) throw usageError(`${flag} is required: a change is filed with its name, gist, origin (the request in the person's words, or the key of what it came from), intent and done-when`);
   }
   const bad = nameProblem(flags.name!) ? `--name: ${nameProblem(flags.name!)}` : gistProblem(flags.gist!) ? `--gist: ${gistProblem(flags.gist!)}` : null;
   if (bad) throw new CliError(bad);
@@ -335,6 +346,7 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     target: flags.target,
     binds: flags.binds?.length ? flags.binds : undefined,
     links: links.length ? links : undefined,
+    plan: flags.steps?.length ? stepsFrom(flags.steps) : undefined,
     rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))),
     ...env,
   };
@@ -347,22 +359,22 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
 export function decisionHome(loaded: Loaded, ident: string, date: string): { key: string; rel: string; product: string | null; change?: Rec } {
   const rest = ident.startsWith('decision:') ? ident.slice(9) : ident;
   const parsed = parseDecisionRest(rest);
-  if (!parsed) throw new CliError(`'${ident}' must be <change>/<decision-slug> (<product>/<change>/<slug> in full), <product>/<slug> at product level, or /<slug> at store level`);
+  if (!parsed) throw usageError(`'${ident}' must be <change>/<decision-slug> (<product>/<change>/<slug> in full), <product>/<slug> at product level, or /<slug> at store level`);
   let product: string | null = null;
   let change: Rec | undefined;
   if (parsed.head) {
     if (parsed.segments === 3) {
       product = productSlugOf(loaded, parsed.head, 'decision');
       change = recordOf(loaded, `change:${product}/${parsed.change}`, null);
-      if (!change) throw new CliError(`change:${product}/${parsed.change} does not exist`);
+      if (!change) throw notFound(`change:${product}/${parsed.change}`);
     } else {
       const res = resolve(loaded, `change:${parsed.head}`);
       if (res.status === 'ok' || res.status === 'alias') {
         change = res.rec;
         product = change.productSlug!;
-      } else if (res.status === 'ambiguous') throw new CliError(unresolved(res, `change:${parsed.head}`));
+      } else if (res.status === 'ambiguous') throw unresolvedError(res, `change:${parsed.head}`);
       else if (loaded.byKey.has(`product:${parsed.head}`)) product = parsed.head; // product level
-      else throw new CliError(`change:${parsed.head} does not exist (nor does product:${parsed.head})`);
+      else throw notFound(parsed.head, { tried: [`change:${parsed.head}`, `product:${parsed.head}`] });
     }
   }
   const key = decisionKey(product, change?.changeSlug ?? null, parsed.slug);

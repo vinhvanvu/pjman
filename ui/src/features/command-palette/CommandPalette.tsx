@@ -89,12 +89,12 @@ export function CommandPalette({
                 {rows.map((r) => (
                   <CommandItem
                     key={r.key}
-                    value={`${r.key} ${r.title ?? ''} ${typeof r.data.name === 'string' ? r.data.name : ''}`}
+                    value={`${r.key} ${r.gist ?? r.title ?? ''} ${typeof r.data.name === 'string' ? r.data.name : ''}`}
                     onSelect={() => go(r.key)}
                     className="gap-2"
                   >
                     <span className="truncate">
-                      {typeof r.data.name === 'string' ? r.data.name : (r.title ?? short(r.key))}
+                      {typeof r.data.name === 'string' ? r.data.name : (r.gist ?? r.title ?? short(r.key))}
                     </span>
                     {r.type === 'change' && <StatusChip status={r.status} className="ml-auto" />}
                     <span className="ml-auto font-mono text-meta text-ink-faint">{short(r.key)}</span>

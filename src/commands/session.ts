@@ -4,8 +4,8 @@ import type { Store } from '../config.js';
 import { parseRecord, sections } from '../frontmatter.js';
 import { findReferences } from '../graph.js';
 import { computeBrief, type Brief } from '../hydrate.js';
-import { findSession, fullKey, loadStore, resolve, unresolved, type Rec } from '../records.js';
-import { CliError, localDate, nowIso } from '../util.js';
+import { findSession, fullKey, loadStore, resolve, unresolved, unresolvedError, type Rec } from '../records.js';
+import { CliError, localDate, nowIso, notFound } from '../util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 import { EDGES } from '../validate.js';
 import { readEvents, type EventInput } from '../events.js';
@@ -13,7 +13,7 @@ import { readEvents, type EventInput } from '../events.js';
 function load(store: Store, id: string) {
   const loaded = loadStore(store);
   const rec = findSession(loaded, id.startsWith('session:') ? id.slice(8) : id);
-  if (!rec) throw new CliError(`session:${id} does not exist; create it with \`pjman new session ${id} --agent … --on-behalf-of …\``);
+  if (!rec) throw notFound(`session:${id}`, { hint: `pjman session start ${id} --agent … --on-behalf-of … makes it` });
   if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before appending`);
   return { loaded, rec };
 }
@@ -165,7 +165,7 @@ export function sessionBind(store: Store, id: string, changeKey: string, reason:
   const { loaded, rec } = load(store, id);
   const raw = changeKey.startsWith('change:') ? changeKey : `change:${changeKey}`;
   const res = resolve(loaded, raw);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
+  if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, raw);
   const key = res.rec.key; // the full key is what the record holds
   const changes = Array.isArray(rec.data.changes) ? [...(rec.data.changes as string[])] : [];
   if (changes.includes(key)) return { path: rec.path, commit: null, added: false };
@@ -179,7 +179,7 @@ export function sessionFocus(store: Store, id: string, changeKey: string): { pat
   const { loaded, rec } = load(store, id);
   const raw = changeKey.startsWith('change:') ? changeKey : `change:${changeKey}`;
   const res = resolve(loaded, raw);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
+  if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, raw);
   const key = res.rec.key;
   // unmoved only when the last read was this change and nothing the session did since (a write, a bind) moved it away
   const prior = rec.data.focus as { change?: string; at?: string } | undefined;
@@ -197,7 +197,7 @@ export function sessionProject(store: Store, id: string, projectKey: string): { 
   const { loaded, rec } = load(store, id);
   const raw = projectKey.includes(':') ? projectKey : `project:${projectKey}`;
   const res = resolve(loaded, raw);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
+  if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, raw);
   if (res.rec.type !== 'project') throw new CliError(`${raw} is not a project`);
   const key = res.rec.key;
   if (rec.data.project === key) return { path: rec.path, project: key, commit: null, moved: false };

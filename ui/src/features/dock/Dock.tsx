@@ -177,7 +177,7 @@ function PickupRow({ pickup: { row, proposed, stackedOn }, lens }: { pickup: Pic
   return (
     <li className="flex flex-col gap-0.5 px-3.5 py-2">
       <NodeLink to={row.key} lens={lens} className="line-clamp-2 text-xs font-medium hover:text-primary">
-        {row.title ?? short(row.key)}
+        {row.gist ?? short(row.key)}
       </NodeLink>
       <span className="flex min-w-0 items-center gap-1.5 text-meta">
         <span
@@ -195,7 +195,7 @@ function PickupRow({ pickup: { row, proposed, stackedOn }, lens }: { pickup: Pic
         {stackedOn.map((d, i) => (
           <span key={d.key} className="flex min-w-0 items-center gap-1.5">
             {i > 0 && <span className="text-ink-faint">·</span>}
-            <NodeLink to={d.key} lens={lens} className="truncate text-ink-muted hover:text-primary" title={d.title}>
+            <NodeLink to={d.key} lens={lens} className="truncate text-ink-muted hover:text-primary" title={d.gist}>
               {short(d.key)}
             </NodeLink>
           </span>

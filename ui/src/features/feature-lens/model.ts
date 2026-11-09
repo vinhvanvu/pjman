@@ -74,11 +74,11 @@ export function namesIn(
   above: readonly { key: string; name?: string; title?: string }[] = [],
 ): Map<string, string> {
   const out = new Map<string, string>();
-  for (const c of changes) if (c.name ?? c.title) out.set(c.key, c.name ?? c.title!);
+  for (const c of changes) if (c.name ?? c.gist) out.set(c.key, c.name ?? c.gist!);
   for (const a of above) if (a.name ?? a.title) out.set(a.key, a.name ?? a.title!);
   const walk = (nodes: readonly ScopeNode[]) => {
     for (const n of nodes) {
-      const name = n.name ?? n.title ?? n.row?.name ?? n.row?.title;
+      const name = n.name ?? n.title ?? n.row?.name ?? n.row?.gist;
       if (name) out.set(n.key, name);
       walk(n.children);
     }
@@ -228,7 +228,7 @@ export function matches(n: ScopeNode, f: MapFilter, places?: Places): boolean {
   if (n.type !== 'feature' && n.type !== 'product') return false;
   if (f.aspect && !places?.has(n.key)) return false;
   const q = f.q?.trim().toLowerCase();
-  if (q && ![n.name, n.title, n.key].some((s) => s?.toLowerCase().includes(q))) return false;
+  if (q && ![n.name, n.title, n.gist, n.key].some((s) => s?.toLowerCase().includes(q))) return false;
   if (f.states?.length && !f.states.includes(n.derived ?? n.status ?? 'planned')) return false;
   if (f.bugs && !(n.bugs?.here ?? 0)) return false;
   return true;
@@ -339,7 +339,7 @@ export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
   const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
   return changes
     .filter((r) => r.progress && r.status !== 'done' && r.status !== 'dropped')
-    .toSorted((a, b) => share(b) - share(a) || (a.title ?? '').localeCompare(b.title ?? ''));
+    .toSorted((a, b) => share(b) - share(a) || (a.gist ?? '').localeCompare(b.gist ?? ''));
 };
 
 /** What a change does to this node, when it names it. */

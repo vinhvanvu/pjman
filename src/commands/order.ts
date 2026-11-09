@@ -5,7 +5,7 @@
 // as the record's links).
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { loadStore, resolve, unresolved, type Loaded, type Rec } from '../records.js';
+import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../records.js';
 import { effectsOf, live, rootProductOf } from '../tree.js';
 import { CliError } from '../util.js';
 import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
@@ -76,11 +76,31 @@ export function ahead(loaded: Loaded, product: Rec): string[] {
   return planned(loaded, product).filter((k) => isAhead(loaded, k));
 }
 
+/** The order as it reads now: what is ahead in the product's sequence, and how many open changes come after it as
+ *  later. `ref` names the product (or a change or feature under it); none, the current project's product. */
+export function sequenceOf(loaded: Loaded, ref: string | null): { product: string; sequence: string[]; later: number } {
+  let product: Rec | undefined;
+  if (ref) {
+    const res = resolve(loaded, ref);
+    if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, ref);
+    product = res.rec.type === 'product' ? res.rec : res.rec.type === 'change' ? productOf(loaded, res.rec) : rootProductOf(loaded, res.rec);
+    if (!product) throw new CliError(`${res.rec.key} is under no product`);
+  } else {
+    // the current project's product, else the store's only one
+    const products = loaded.records.filter((r) => r.type === 'product' && r.valid);
+    product = loaded.scope ? loaded.byKey.get(`product:${loaded.scope}`)?.[0] : products.length === 1 ? products[0] : undefined;
+    if (!product) throw new CliError(`no product here: name one (pjman order <product>; ${products.map((p) => p.key).join(', ')})`);
+  }
+  const sequence = ahead(loaded, product);
+  const later = loaded.records.filter((r) => r.valid && r.type === 'change' && isOpen(r) && !sequence.includes(r.key) && productOf(loaded, r)?.key === product!.key).length;
+  return { product: product.key, sequence, later };
+}
+
 export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): OrderResult {
   const loaded = loadStore(store);
   const changeRef = changeRaw.startsWith('change:') ? changeRaw : `change:${changeRaw}`;
   const changeRes = resolve(loaded, changeRef);
-  if (changeRes.status !== 'ok' && changeRes.status !== 'alias') throw new CliError(unresolved(changeRes, changeRef));
+  if (changeRes.status !== 'ok' && changeRes.status !== 'alias') throw unresolvedError(changeRes, changeRef);
   const change = changeRes.rec;
   const product = productOf(loaded, change);
   if (!product) throw new CliError(`${change.key} belongs to no product: its project has none and it names no feature`);
@@ -91,7 +111,7 @@ export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): Or
   const anchor = (raw: string): number => {
     const ref = raw.startsWith('change:') ? raw : `change:${raw}`;
     const res = resolve(loaded, ref, product.productSlug);
-    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, ref));
+    if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, ref);
     const rec = res.rec;
     const i = seq.indexOf(rec.key);
     if (i < 0) throw new CliError(`${rec.key} is not on ${product.key}'s sequence; place it first`);

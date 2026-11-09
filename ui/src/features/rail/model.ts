@@ -42,7 +42,7 @@ export interface LaneView {
 export function laneViews(rail: Pick<Rail, 'lanes'>, colours = laneColours(rail.lanes)): LaneView[] {
   return rail.lanes.map((l) => ({
     id: l.id,
-    title: l.kind === 'more' ? `${l.folded} more` : (l.title ?? short(l.id)),
+    title: l.kind === 'more' ? `${l.folded} more` : (l.label ?? short(l.id)),
     colour: colours.get(l.id) ?? MORE,
     count: l.count,
     tone: l.kind === 'decision' ? decisionTone(l.status) : l.kind === 'change' ? statusTone(l.status) : undefined,
@@ -86,7 +86,7 @@ export function rowViews(
   colours = laneColours(rail.lanes),
 ): RowView[] {
   const titles = new Map(
-    rail.lanes.map((l) => [l.id, l.kind === 'more' ? `${l.folded} more` : (l.title ?? short(l.id))]),
+    rail.lanes.map((l) => [l.id, l.kind === 'more' ? `${l.folded} more` : (l.label ?? short(l.id))]),
   );
   return rail.rows
     .map((r): RowView => {
@@ -132,7 +132,7 @@ export function rowViews(
                     ? 'reopened'
                     : 'moved';
           // the title is the detail unless the lane is the decision itself
-          const detail = r.lane === r.key ? undefined : r.title;
+          const detail = r.lane === r.key ? undefined : r.label;
           return { ...base, who, what, detail, state: decisionTone(value) };
         }
         default: {

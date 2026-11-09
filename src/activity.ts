@@ -68,8 +68,23 @@ export function formatActivity(a: Activity, formatEvent: (e: StoreEvent) => stri
   if (s.proposedDecisions.length) out.push(`waiting on a person: ${s.proposedDecisions.join(', ')}`);
   if (a.events.length) {
     out.push('');
-    for (const e of a.events.slice(-30)) out.push(formatEvent(e));
-    if (a.events.length > 30) out.push(`… ${a.events.length - 30} earlier in the window`);
+    // a batch (pjman apply, a bulk set or rm) is one commit, so one entry: its writes counted by kind and the records
+    // named, not a line each
+    const entries: StoreEvent[][] = [];
+    for (const e of a.events) {
+      const last = entries.at(-1);
+      if (last && e.commit && last[0].commit === e.commit) last.push(e);
+      else entries.push([e]);
+    }
+    const line = (g: StoreEvent[]): string => {
+      if (g.length === 1) return formatEvent(g[0]);
+      const writes = g.filter((e) => e.op !== 'applied');
+      const ops = Object.entries(writes.reduce<Record<string, number>>((m, e) => ({ ...m, [e.op]: (m[e.op] ?? 0) + 1 }), {})).map(([op, n]) => `${n} ${op}`).join(', ');
+      const keys = [...new Set(writes.map((e) => e.key))];
+      return `#${g[0].seq}-${g.at(-1)!.seq} ${g[0].at.replace('T', ' ').slice(0, 19)} batch     ${ops}: ${keys.slice(0, 4).join(', ')}${keys.length > 4 ? ` and ${keys.length - 4} more` : ''}`;
+    };
+    for (const g of entries.slice(-30)) out.push(line(g));
+    if (entries.length > 30) out.push(`… ${entries.length - 30} earlier in the window`);
   }
   return out.join('\n') + '\n';
 }

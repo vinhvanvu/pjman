@@ -38,7 +38,7 @@ describe('one change at three depths', () => {
   it("reads a scope's row as facts, the live sessions on it working, the names resolved", () => {
     const r = {
       key: 'change:p/x',
-      title: 'the gist',
+      gist: 'the gist',
       status: 'planning',
       features: [
         { effect: 'changes', key: 'feature:p/b', viaPlace: true },

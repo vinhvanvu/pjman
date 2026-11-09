@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { replaceSection, sections as parseSections } from '../frontmatter.js';
-import { loadStore, resolve, unresolved, type RecordType } from '../records.js';
+import { loadStore, resolve, unresolved, unresolvedError, type RecordType } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersedesOf, unmark, type Marked } from '../supersede.js';
-import { CliError } from '../util.js';
+import { CliError, usageError } from '../util.js';
+import { fieldKind, typedRef } from '../keys.js';
 import { reachOfBase } from '../aspects.js';
 import { CHANGE_FOUNDATION, foundationHash, foundationOf, gistProblem, nameProblem, SECTION_FIELDS } from '../foundation.js';
 import { envelope, finishWrite, fullKeys, render, validateOrUndo } from '../write.js';
@@ -50,13 +51,15 @@ export interface SetResult {
   notes: string[];
 }
 
-/** `field=value` pairs; a list field takes comma-separated keys; an empty value removes the field. */
+/** `field=value` pairs; a list field takes comma-separated keys; an empty value removes the field. On a list,
+ *  `field+=item` adds each item not there and `field-=item` takes each out (decision interface-audit/list-field-edits):
+ *  one item changes without the read-then-replace that loses an item another writer added between the two. */
 export function set(store: Store, keyRaw: string, pairs: string[], opts: { session?: string; because?: string }): SetResult {
   const loaded = loadStore(store);
   const res = resolve(loaded, keyRaw);
   if (res.status !== 'ok' && res.status !== 'alias') {
     if (res.status === 'invalid') throw new CliError(`${res.rec.path} is invalid; fix it before setting fields`);
-    throw new CliError(unresolved(res, keyRaw));
+    throw unresolvedError(res, keyRaw);
   }
   const rec = res.rec;
   const allowed = SETTABLE[rec.type];
@@ -66,11 +69,31 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
   const changed: string[] = [];
   const env = envelope(opts);
   let marked: Marked | undefined;
+  const notes: string[] = [];
   for (const pair of pairs) {
-    const i = pair.indexOf('=');
-    if (i <= 0) throw new CliError(`'${pair}' is not field=value`);
-    const field = pair.slice(0, i);
-    const value = pair.slice(i + 1);
+    const m = /^([a-z_][a-z0-9_.-]*?)([+-])?=([\s\S]*)$/.exec(pair);
+    if (!m) throw usageError(`'${pair}' is not field=value, field+=item or field-=item`);
+    const [, field, op, value] = m as unknown as [string, string, '+' | '-' | undefined, string];
+    if (op) {
+      if (!allowed.includes(field) || !LISTS.has(field)) throw usageError(`${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f)).join(', ') || 'it has none'}); ${field}=… replaces`);
+      const kind = fieldKind(rec.type, field);
+      const items = value.split(',').map((x) => x.trim()).filter(Boolean).map((x) => (kind ? typedRef(x, kind) : x));
+      if (!items.length) throw usageError(`${field}${op}= needs an item`);
+      // the items as the store writes them (full keys), so a short form finds its stored twin
+      const given: Record<string, unknown> = { [field]: items };
+      fullKeys(loaded, rec.type, given, field, rec.productSlug ?? null);
+      const want = given[field] as string[];
+      const cur = Array.isArray(data[field]) ? (data[field] as string[]) : [];
+      const next = op === '+' ? [...cur, ...want.filter((x) => !cur.includes(x))] : cur.filter((x) => !want.includes(x));
+      if (next.length === cur.length) {
+        notes.push(op === '+' ? `${field} already holds ${want.join(', ')}` : `${field} holds none of ${want.join(', ')}`);
+        continue;
+      }
+      if (next.length) data[field] = next;
+      else delete data[field];
+      changed.push(field);
+      continue;
+    }
     if (field.startsWith('ext.')) {
       const parts = field.split('.').slice(1);
       if (parts.length < 2 || parts.some((p) => !p)) throw new CliError(`'${field}' must be ext.<owner>.<field>`);
@@ -124,11 +147,16 @@ export function set(store: Store, keyRaw: string, pairs: string[], opts: { sessi
     if (field === 'body') body = value.trim() ? value.trim() + '\n' : '';
     else if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
-    else data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean) : value;
+    else {
+      // a slug alone names a record of the kind the field holds; a bare URL in links is a url: source
+      const kind = fieldKind(rec.type, field);
+      const typed = (x: string) => (kind ? typedRef(x, kind) : x);
+      data[field] = LISTS.has(field) ? value.split(',').map((s) => s.trim()).filter(Boolean).map(typed) : typed(value);
+    }
     if (value !== '' && field !== 'body') fullKeys(loaded, rec.type, data, field, rec.productSlug ?? null);
     changed.push(field);
   }
-  const notes: string[] = [];
+  if (!changed.length) return { key: rec.key, path: rec.path, changed, commit: null, notes };
   if (rec.type === 'change' || rec.type === 'decision') {
     // the rungs record the foundation they were written from (decision projections-stay-fresh): rewritten, they are
     // written from the foundation as it stands now; a foundation written without them leaves them stale, and says so.

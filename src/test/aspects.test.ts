@@ -63,7 +63,7 @@ test('an aspect and its places: keyed under the product, bare and full keys reso
 
 test('one place per feature; a place needs an aspect and a feature that exist', () => {
   assert.throws(() => newRecord(store, 'place', 'text/cart-again', { feature: 'feature:cart' }), /one place per feature/);
-  assert.throws(() => newRecord(store, 'place', 'nothing/cart', { feature: 'feature:cart' }), /does not exist/);
+  assert.throws(() => newRecord(store, 'place', 'nothing/cart', { feature: 'feature:cart' }), /resolves to nothing/);
   assert.throws(() => newRecord(store, 'place', 'text/ghost', { feature: 'feature:ghost' }), /does not resolve/);
   assert.throws(() => newRecord(store, 'place', 'text/no-feature', {}), /--feature is required/);
   assert.deepEqual(errors(), []);
@@ -172,6 +172,22 @@ test('a feature with a place is not removed from under it; a moved feature takes
   rm(store, 'aspect:motion');
   assert.equal(rec('aspect:motion'), undefined);
   assert.equal(rec('aspect:motion/cart'), undefined);
+  assert.deepEqual(errors(), []);
+});
+
+test('an aspect is renamed with its places, a place within its aspect; every reference follows', () => {
+  newRecord(store, 'aspect', 'tone', { title: 'Tone', body: 'Plain.' });
+  newRecord(store, 'place', 'tone/cart', { feature: 'feature:cart', body: 'Warmer.' });
+  change(store, 'tone-pass', { title: 'A tone pass', aspects: ['changes aspect:shop/tone/cart'] });
+  mv(store, 'aspect:tone', 'aspect:voice', {});
+  assert.equal(rec('aspect:tone'), undefined);
+  assert.equal(rec('aspect:voice')?.type, 'aspect');
+  assert.equal(rec('aspect:voice/cart')?.body.trim(), 'Warmer.');
+  assert.deepEqual(rec('change:tone-pass')?.data.aspects, ['changes aspect:shop/voice/cart']);
+  mv(store, 'aspect:voice/cart', 'aspect:voice/basket', {});
+  assert.equal(rec('aspect:voice/basket')?.data.feature, 'feature:shop/cart');
+  assert.deepEqual(rec('change:tone-pass')?.data.aspects, ['changes aspect:shop/voice/basket']);
+  assert.throws(() => mv(store, 'aspect:voice/basket', 'aspect:text/basket', {}), /stays under its aspect/);
   assert.deepEqual(errors(), []);
 });
 

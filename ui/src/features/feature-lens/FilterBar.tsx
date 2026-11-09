@@ -99,7 +99,7 @@ export function FilterBar({ filter, onChange, matched, changes, aspects, classNa
           className="inline-flex h-7 max-w-[260px] items-center gap-1.5 rounded-row border border-primary/50 bg-selection px-2 text-xs text-ink"
         >
           <Flag className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
-          <span className="min-w-0 truncate">{chosen?.title ?? short(filter.milestone)}</span>
+          <span className="min-w-0 truncate">{chosen?.gist ?? short(filter.milestone)}</span>
           {chosen?.progress && (
             <span className="shrink-0 text-ink-faint">
               {chosen.progress.done}/{chosen.progress.total}
@@ -128,7 +128,7 @@ export function FilterBar({ filter, onChange, matched, changes, aspects, classNa
                   onSelect={() => onChange({ ...filter, milestone: m.key })}
                   className="gap-2"
                 >
-                  <span className="min-w-0 flex-1 truncate">{m.title ?? short(m.key)}</span>
+                  <span className="min-w-0 flex-1 truncate">{m.gist ?? short(m.key)}</span>
                   {m.progress && (
                     <span className="shrink-0 text-meta text-ink-faint">{pct(m.progress.done, m.progress.total)}%</span>
                   )}

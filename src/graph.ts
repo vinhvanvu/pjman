@@ -2,13 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } from './keys.js';
+import { ambiguous, notFound } from './util.js';
 import { keyFromUrl, mentions, scopeOf, shortForms, slugFor, trackerOf } from './refs.js';
 export { keyFromUrl, repoOf } from './refs.js';
 import { resolve, type Loaded, type Rec } from './records.js';
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { parseAspectEffect } from './aspects.js';
-import { changeContext, row, type ChangeContext, type Row } from './commands/view.js';
+import { changeContext, lineOfRow, row, type ChangeContext, type Row } from './commands/view.js';
 
 // --- edges ---------------------------------------------------------------------------------------
 
@@ -257,6 +258,42 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
   return { status: 'none', tried };
 }
 
+/** A command's record argument as a key (decision interface-audit/key-arguments): a key passes through for the command
+ *  to resolve; a slug resolves the way get resolves one, except that two records answering to it are refused by name
+ *  rather than one picked; `<change>/<slug>` names a decision; anything else (a ticket id, a URL, a file) goes through
+ *  the getter. Nothing found is refused with what was tried. */
+export function resolveArg(loaded: Loaded, raw: string, opts: GetOpts & { kinds?: string[] } = {}): string {
+  const ref = raw.trim();
+  if (parseKey(ref) && !/^https?:\/\//i.test(ref)) return ref;
+  const live = (k: string): string | null => {
+    const r = resolve(loaded, k);
+    return r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? r.rec.key : null;
+  };
+  // a command that takes one kind (a product, a feature) asks only those: a product and its project often share a name
+  if (opts.kinds && SLUG_RE.test(ref)) {
+    const hits = [...new Set(opts.kinds.map((k) => live(`${k}:${ref}`)).filter((k): k is string => !!k))];
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw ambiguous(ref, hits);
+    throw notFound(ref, { as: opts.kinds.join(' or '), tried: opts.kinds.map((k) => `${k}:${ref}`) });
+  }
+  if (/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(ref)) {
+    const hits = [...new Set([live(`decision:${ref}`), live(`aspect:${ref}`)].filter((k): k is string => !!k))];
+    if (hits.length === 1) return hits[0];
+    if (hits.length > 1) throw ambiguous(ref, hits);
+    throw notFound(ref, { tried: [`decision:${ref}`, `aspect:${ref}`] });
+  }
+  if (SLUG_RE.test(ref)) {
+    const kinds = ['change', 'project', 'feature', 'product', 'aspect'];
+    const hits = new Set(kinds.map((k) => live(`${k}:${ref}`)).filter((k): k is string => !!k));
+    for (const d of loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === ref)) hits.add(d.key);
+    if (hits.size === 1) return [...hits][0];
+    if (hits.size > 1) throw ambiguous(ref, [...hits]);
+  }
+  const res = resolveRef(loaded, ref, opts);
+  if (res.key && res.status !== 'none') return res.key;
+  throw notFound(ref, { tried: SLUG_RE.test(ref) ? ['change, project, feature, product, aspect, decision named so', ...res.tried.filter((t) => !t.startsWith('change:'))] : res.tried });
+}
+
 /** The getter: a reference in, the record and its neighbourhood out. */
 export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbourhood {
   const resolution = resolveRef(loaded, input, opts);
@@ -314,13 +351,13 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
   const how = r.via && r.via !== r.key ? ` via ${r.via}` : '';
   const what = r.status === 'key' ? 'a source key with no record' : r.status === 'invalid' ? 'a record that does not parse' : r.status === 'alias' ? 'a former slug' : n.record?.type ?? 'a record';
   out.push(`${n.input} → ${r.key} (${r.shape}${how}; ${what})`);
-  if (n.record) out.push(`${n.record.type} ${n.record.key}${n.record.title ? ` — ${n.record.title}` : ''}${n.record.status ? ` [${n.record.status}]` : ''}  ${n.record.path}`);
+  if (n.record) out.push(`${n.record.type} ${n.record.key}${lineOfRow(n.record) ? ` — ${lineOfRow(n.record)}` : ''}${n.record.status ? ` [${n.record.status}]` : ''}  ${n.record.path}`);
   const line = (e: Edge, other: string) => `- ${e.edge} ${other}${e.observed ? ` (observed by ${e.on.replace(/^sessions\//, 'session:').replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})` : ''}`;
   const inbound = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   const outbound = n.out.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   if (inbound.length) out.push(`\nreferenced by:\n${inbound.map((e) => line(e, e.from)).join('\n')}`);
   if (outbound.length) out.push(`\nrefers to:\n${outbound.map((e) => line(e, e.to)).join('\n')}`);
-  if (n.members.length) out.push(`\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${m.title ? ` — ${m.title}` : ''}`).join('\n')}`);
+  if (n.members.length) out.push(`\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${lineOfRow(m) ? ` — ${lineOfRow(m)}` : ''}`).join('\n')}`);
   if (!n.record && !inbound.length && !outbound.length) out.push('nothing in the store references it');
   for (const c of n.changes) {
     const v = n.via[c.change.key];

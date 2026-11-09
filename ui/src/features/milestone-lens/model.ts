@@ -85,7 +85,7 @@ export function summarise(scope: Scope): MilestoneSummary {
     const waiting = (m.row?.waiting ?? 0) + beneath.reduce((n, r) => n + r.waiting, 0);
     return {
       key: m.key,
-      title: m.title,
+      title: m.gist,
       status: m.status,
       progress: m.row?.progress,
       waiting,

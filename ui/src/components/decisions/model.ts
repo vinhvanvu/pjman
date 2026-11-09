@@ -34,7 +34,7 @@ export function fromWaiting(d: WaitingDecision): CardDecision {
     key: d.key,
     change: d.change,
     name: d.name,
-    gist: d.title,
+    gist: d.gist,
     status: 'proposed',
     created: d.created,
     state: d.state,
@@ -50,8 +50,7 @@ export function fromRow(d: DecisionRow, change?: string): CardDecision {
     key: d.key,
     change: change ?? changeOfDecision(d.key) ?? '',
     name: d.name,
-    // the row's title is the gist (the-ladder); a record with no name has only its one line
-    gist: d.title,
+    gist: d.gist,
     status: d.status ?? 'proposed',
     created: d.created,
     decidedBy: str(d.data.decided_by),

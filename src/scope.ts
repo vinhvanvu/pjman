@@ -9,7 +9,7 @@ import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row 
 import { ahead, productOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
-import { CliError, localDate } from './util.js';
+import { CliError, localDate, notFound } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
 import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
@@ -41,7 +41,7 @@ export interface Health {
 export interface ChangeRow {
   key: string;
   /** The change's gist: what it is and why, in a line (the-ladder). */
-  title?: string;
+  gist?: string;
   /** The change's name: which one in a crowd, one to four words. */
   name?: string;
   status?: string;
@@ -98,8 +98,11 @@ export interface ChangeRow {
 export interface ScopeNode {
   key: string;
   type: 'product' | 'feature' | 'project' | 'change' | 'unassigned';
+  /** A product's, feature's or project's sentence; a change has its gist instead. */
   title?: string;
-  /** A feature's or a change's short name, what trees and chips show; the title is the sentence (a change's gist). */
+  /** A change's one line. */
+  gist?: string;
+  /** A feature's or a change's short name, what trees and chips show; the title or the gist is the sentence. */
   name?: string;
   level?: string;
   /** A feature's authored status, a change's status. */
@@ -145,8 +148,7 @@ export interface LiveSession {
 export interface WaitingDecision {
   key: string;
   name?: string;
-  /** The gist. */
-  title?: string;
+  gist?: string;
   change: string;
   /** The thread's state: the options, which is recommended and why; what accepting from a card chooses among. */
   state: DecisionState;
@@ -161,7 +163,7 @@ export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = ()
   return loaded.records
     .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && !!d.changeKey && keep(d))
     .map((d) => {
-      return { key: d.key, name: str(d.data.name), title: lineOf(d.data), change: d.changeKey!, state: decisionState(threadOf(d.data)), needs: needsOf(d), stale: rungsOf(d).stale, created: str(d.data.created) };
+      return { key: d.key, name: str(d.data.name), gist: str(d.data.gist), change: d.changeKey!, state: decisionState(threadOf(d.data)), needs: needsOf(d), stale: rungsOf(d).stale, created: str(d.data.created) };
     })
     .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
 }
@@ -173,7 +175,7 @@ export interface Scope {
   node: (Row & { name?: string; level?: string; derived?: string; summary?: string; progress?: { done: number; total: number } }) | null;
   /** The container whose tree is drawn: the node when it is one, else the nearest above it in this lens; null at the root. */
   container: string | null;
-  crumbs: { key: string; title?: string; name?: string }[];
+  crumbs: { key: string; title?: string; gist?: string; name?: string }[];
   products: Row[];
   tree: ScopeNode[];
   /** Every change in the container's scope, creation order: the lanes view draws these. */
@@ -416,7 +418,7 @@ class Index {
     const next = nextStep(steps);
     const blockedOn = c.sections.get('Blocked on')?.trim();
     return {
-      key: c.key, title: lineOf(c.data), name: str(c.data.name), status: str(c.data.status), created: str(c.data.created),
+      key: c.key, gist: str(c.data.gist), name: str(c.data.name), status: str(c.data.status), created: str(c.data.created),
       project: live(this.loaded, c.data.project)?.key, parent: this.parentOf(c), ticket: ticketOf(this.loaded, c),
       next: nextLine(next), plan: planProgress(steps), needs: needsOf(c), stale: rungsOf(c).stale,
       step: next ? { n: next.n, text: next.step.text, state: next.step.state, note: next.step.note } : undefined,
@@ -456,7 +458,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   let node: Rec | undefined;
   if (opts.node) {
     const res = resolve(loaded, opts.node);
-    if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`${opts.node} has no record`);
+    if (res.status !== 'ok' && res.status !== 'alias') throw notFound(opts.node);
     node = res.rec;
     if (!['product', 'feature', 'project', 'change'].includes(node.type)) throw new CliError(`${node.key} is not a node of the tree (product, feature, project or change)`);
   }
@@ -495,7 +497,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     placed.add(c.key);
     const kids = (ix.childrenOf.get(c.key) ?? []).filter((k) => shownKeys.has(k.key) && !placed.has(k.key) && canNest(k));
     const r = ix.row(c);
-    return { key: c.key, type: 'change', title: r.title, name: r.name, status: r.status, owners: [], open: 0, inFlight: 0, projects: [], childCount: 0, row: r, children: kids.map((k) => changeNode(k, canNest)) };
+    return { key: c.key, type: 'change', gist: r.gist, name: r.name, status: r.status, owners: [], open: 0, inFlight: 0, projects: [], childCount: 0, row: r, children: kids.map((k) => changeNode(k, canNest)) };
   };
   /** Rows for the changes `here`, nested by parent among those that `canNest`. A change already placed is not placed
    *  twice, except where `again` says a change belongs under every node that lists it (a change naming two features). */

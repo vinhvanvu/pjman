@@ -46,7 +46,7 @@ export function factsOfMotion(c: BridgeMotion, byKey: ReadonlyMap<string, Bridge
   return {
     key: c.key,
     name: c.name,
-    title: c.title,
+    title: c.gist,
     status: c.status,
     last: c.last,
     steps: c.steps,
@@ -71,7 +71,7 @@ export function factsOfRow(
   return {
     key: r.key,
     name: r.name,
-    title: r.title,
+    title: r.gist,
     status: r.status,
     last: r.moved ?? r.created,
     steps: { done: r.plan?.done ?? 0, total: r.plan?.total ?? 0, dropped: 0 },

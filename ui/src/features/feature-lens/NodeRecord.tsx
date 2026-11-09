@@ -48,7 +48,8 @@ export function NodeRecord({ scope, lens, aspect, held, onHold, onRelease, hover
   const node = scope.node;
   const body = bodyOf(scope);
   const title = node ? (node.name ?? node.title ?? short(node.key)) : 'Everything';
-  const sentence = node?.name && node.title && node.title !== node.name ? node.title : node?.summary;
+  const line = node?.title ?? node?.gist;
+  const sentence = node?.name && line && line !== node.name ? line : node?.summary;
   const open = scope.changes.filter((r) => r.status !== 'done' && r.status !== 'dropped');
   const inFlight = open.filter((r) => r.status === 'active' || r.status === 'review' || r.status === 'blocked');
   const names = useMemo(

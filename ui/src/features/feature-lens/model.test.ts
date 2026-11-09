@@ -38,7 +38,7 @@ const change = (key: string): ScopeNode => ({
   childCount: 0,
   row: {
     key: `change:${key}`,
-    title: key,
+    gist: key,
     features: [],
     waiting: 0,
     decided: 0,

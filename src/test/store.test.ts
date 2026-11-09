@@ -99,7 +99,7 @@ test('the tool refuses what would not validate and undoes the write', () => {
   assert.throws(() => change(store, 'beta', { title: 'Beta', summary: 'b', binds: ['linear:ABC-1'] }), /also bound by change:project\/alpha/);
   assert.ok(!fs.existsSync(path.join(store.root, 'products/project/changes/beta')));
   assert.throws(() => change(store, 'gamma', { title: 'G', status: 'implementing' }), /not in the vocabulary/);
-  assert.throws(() => decisionRec(store, 'nope/x', { title: 'x' }), /does not exist/);
+  assert.throws(() => decisionRec(store, 'nope/x', { title: 'x' }), /resolves to nothing/);
   assert.throws(() => decisionRec(store, 'alpha/agentic', { title: 'x', status: 'decided', writer: 'agent:bot' }), /not the decider/);
   assert.throws(() => change(store, 'nameless', { title: 'x', name: 'one two three four five' }), /one to four/);
   assert.throws(() => change(store, 'twoline', { gist: "a\nb" }), /one line/);
@@ -232,7 +232,7 @@ test('a second repository joins the same global store as its own project; the bo
   assert.equal(loadStore(store).byKey.get('change:project/x2')![0].data.project, 'project:project');
   assert.deepEqual(loadStore(store).byKey.get('change:project/x2')![0].data.aliases, ['other/x2']);
   assert.equal(storeContext(s3, { project: 'project:other' }).changes.length, 0);
-  assert.throws(() => storeContext(store, { project: 'project:nope' }), /does not resolve to a project/);
+  assert.throws(() => storeContext(store, { project: 'project:nope' }), /resolves to no project/);
 });
 
 test('init --in-project never commits; the store resolves by walking up', () => {
@@ -399,7 +399,7 @@ test('the view renders a reference; the session page reads what a session is on'
   const stopped = viewData(store, { session: 'session:sess-v' });
   assert.equal(stopped.session?.state, 'live');
   assert.equal(stopped.session?.working, false);
-  assert.throws(() => viewData(store, { session: 'nope' }), /does not resolve to a session/);
+  assert.throws(() => viewData(store, { session: 'nope' }), /resolves to no session/);
 });
 
 test('every write appends one event per record to the stream; follow delivers new ones; rebuild derives the stream from git', async () => {
@@ -482,7 +482,7 @@ test('rm removes a record; refused while referenced; --detach drops droppable re
   newRecord(store, 'session', 'sess-rm', { agent: 'agent:claude-code', onBehalfOf: 'person:vinh' });
   sessionBind(store, 'sess-rm', 'change:project/doomed');
   sessionObserve(store, 'sess-rm', 'links', 'change:project/doomed', 'file:src/x.ts');
-  assert.throws(() => rm(store, 'change:project/nope'), /does not exist/);
+  assert.throws(() => rm(store, 'change:project/nope'), /resolves to nothing/);
   assert.throws(() => rm(store, 'change:project/doomed'), /referenced by\n  change:project\/orphan  parent\n  session:sess-rm  changes, observed/);
   assert.ok(loadStore(store).byKey.has('change:project/doomed'));
   const r = rm(store, 'change:project/doomed', { detach: true });
@@ -537,7 +537,7 @@ test('crud: set reaches actors and refuses sessions; mv renames a decision, with
   loaded = loadStore(store);
   assert.ok(loaded.byKey.get('decision:project/elsewhere/keys-v1')![0].path.startsWith('products/project/changes/elsewhere/decisions/'));
   assert.deepEqual(loaded.byKey.get('decision:project/contract/keys-and-aliases')![0].data.supersedes, ['decision:project/elsewhere/keys-v1']);
-  assert.throws(() => mv(store, 'decision:project/elsewhere/keys-v1', 'decision:project/nowhere/keys-v1', {}), /change:project\/nowhere does not exist/);
+  assert.throws(() => mv(store, 'decision:project/elsewhere/keys-v1', 'decision:project/nowhere/keys-v1', {}), /change:project\/nowhere resolves to nothing/);
   assert.throws(() => mv(store, 'decision:project/elsewhere/keys-v1', 'change:project/keys-v1', {}), /keeps the kind/);
   assert.deepEqual(errors(store), []);
 
@@ -551,7 +551,7 @@ test('crud: set reaches actors and refuses sessions; mv renames a decision, with
   assert.ok(p.rewritten.length >= 1);
   assert.equal(readUserConfig().stores.flatMap((s) => s.projects).filter((b) => b.project === 'project:renamed').length, bound);
   assert.deepEqual(errors(store), []);
-  assert.throws(() => mv(store, 'linear:ABC-1', 'linear:ABC-2', {}), /not renamed/);
+  assert.throws(() => mv(store, 'linear:ABC-1', 'linear:ABC-2', {}), /keep their keys/);
   const evs = readEvents(store);
   assert.equal(evs.filter((e) => e.op === 'moved').slice(-1)[0].key, 'project:renamed');
 });
@@ -779,7 +779,7 @@ test('a refused write puts the record back: a bind to a missing change leaves th
   const sess = loadStore(store).records.find((r) => r.type === 'session')!;
   const textBefore = fs.readFileSync(sess.abs, 'utf8');
   const head = git(store.root, 'rev-parse', 'HEAD');
-  assert.throws(() => sessionBind(store, sess.key.slice('session:'.length), 'change:never-made'), /does not resolve/);
+  assert.throws(() => sessionBind(store, sess.key.slice('session:'.length), 'change:never-made'), /resolves to nothing/);
   assert.equal(fs.readFileSync(sess.abs, 'utf8'), textBefore);
   assert.equal(git(store.root, 'status', '--porcelain'), '');
   assert.equal(git(store.root, 'rev-parse', 'HEAD'), head);

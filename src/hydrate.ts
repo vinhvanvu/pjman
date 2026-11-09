@@ -14,7 +14,7 @@ import { changeContext, formatChangeContext } from './commands/view.js';
 import { sessionBriefed } from './commands/session.js';
 import { notesOf } from './commands/note.js';
 import { effectsOf, live } from './tree.js';
-import { CliError } from './util.js';
+import { CliError, notFound } from './util.js';
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
@@ -203,7 +203,7 @@ export function computeBrief(store: Store, id: string, opts: { full?: boolean; l
   const loaded = opts.loaded ?? loadStore(store);
   const now = opts.now ?? Date.now();
   const session = findSession(loaded, id.replace(/^session:/, ''));
-  if (!session) throw new CliError(`session:${id.replace(/^session:/, '')} does not exist`);
+  if (!session) throw notFound(`session:${id.replace(/^session:/, '')}`);
   const events = readEvents(store);
   const tail = events.at(-1);
   const base = { session: session.key, seq: tail?.seq ?? 0, at: tail?.at ?? new Date(now).toISOString() };

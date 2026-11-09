@@ -36,7 +36,7 @@ export function chipViews(
     .filter((l) => l.kind === 'change')
     .map((l) => ({
       key: l.id,
-      title: l.title ?? short(l.id),
+      title: l.label ?? short(l.id),
       colour: colours.get(l.id) ?? 'var(--muted-foreground)',
       writes: l.writes,
       count: countWords(l.writes),

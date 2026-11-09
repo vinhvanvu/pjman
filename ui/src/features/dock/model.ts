@@ -65,7 +65,7 @@ export function pickups(scope: PickupScope): PickupGroup[] {
         Number(a.stackedOn.length > 0) - Number(b.stackedOn.length > 0) ||
         a.row.waiting - b.row.waiting ||
         at(a.row) - at(b.row) ||
-        (a.row.title ?? a.row.key).localeCompare(b.row.title ?? b.row.key),
+        (a.row.gist ?? a.row.key).localeCompare(b.row.gist ?? b.row.key),
     );
   }
   const first = (g: PickupGroup) => Math.min(...g.changes.map((p) => at(p.row)));

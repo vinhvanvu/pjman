@@ -2,7 +2,7 @@
 import { CANONICAL_STATUSES, type Store } from '../config.js';
 import { loadStore, resolve } from '../records.js';
 import { repoOf, slugFor } from '../refs.js';
-import { CliError } from '../util.js';
+import { CliError, notFound } from '../util.js';
 import { applyTickets, itemsIn, obj, readObserved, type SyncResult, type Ticket } from './apply.js';
 
 export const WRITER = 'agent:github-sync';
@@ -81,7 +81,7 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
   const projectKey = opts.project ?? store.project;
   if (!projectKey) throw new CliError('no project: run from a registered repository or pass --project project:<slug>');
   const pres = resolve(loaded, projectKey.startsWith('project:') ? projectKey : `project:${projectKey}`);
-  if (pres.status !== 'ok') throw new CliError(`${projectKey} does not resolve to a project`);
+  if (pres.status !== 'ok') throw notFound(projectKey, { as: 'project' });
   const project = pres.rec;
   if (str(project.data.tracker) !== 'github-issue') throw new CliError(`${project.key} does not name github-issue as its tracker: pjman set ${project.key} tracker=github-issue`);
   const repo = opts.repo ?? repoOf(loaded, project.key);

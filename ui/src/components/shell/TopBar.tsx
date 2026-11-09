@@ -10,6 +10,7 @@ import { Presence } from '@/components/presence/Presence';
 export interface Crumb {
   key: string;
   title?: string;
+  gist?: string;
   name?: string;
 }
 
@@ -65,7 +66,7 @@ export function TopBar({
             <NodeLink
               to={c.key}
               lens={lens}
-              title={c.title}
+              title={c.title ?? c.gist}
               className="max-w-[220px] truncate text-ink-muted hover:text-ink"
             >
               {c.name ?? c.title ?? c.key}

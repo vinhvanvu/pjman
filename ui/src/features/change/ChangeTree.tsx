@@ -146,9 +146,9 @@ export function ChangeTree({
           arrival={arrivals?.status?.seq}
           className={cn(statusTone(c.status).wash, '-inset-x-2 -inset-y-1 rounded-card')}
         />
-        <h1 className="text-[18px] leading-[1.3] font-semibold tracking-tight">{c.name ?? c.title ?? short(c.key)}</h1>
-        {c.name && c.title && c.title !== c.name && (
-          <p className="text-body leading-normal text-ink-muted">{c.title}</p>
+        <h1 className="text-[18px] leading-[1.3] font-semibold tracking-tight">{c.name ?? c.gist ?? short(c.key)}</h1>
+        {c.name && c.gist && c.gist !== c.name && (
+          <p className="text-body leading-normal text-ink-muted">{c.gist}</p>
         )}
         <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
         <PathLine ctx={ctx} lens={lens} mode={mode} under={under} names={names} />

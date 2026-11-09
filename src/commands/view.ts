@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { readUserConfig, SEVERITIES } from '../config.js';
+import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
-import { loadStore, resolve, unresolved, type Loaded, type Rec, type RecordType } from '../records.js';
+import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
-import { effectsOf, structuralParent } from '../tree.js';
+import { derivedStatus, effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from '../tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
 import { aspectAt, aspectCuesOf, aspectsOfChange, featureOfPlace, formatAspectAt, formatAspectCues, formatChangeAspects, reachOfBase, type AspectCue, type ChangeAspects } from '../aspects.js';
 import { urlOf } from '../refs.js';
-import { CliError } from '../util.js';
+import { CliError, usageError, notFound } from '../util.js';
 import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from '../foundation.js';
 
 export interface Row {
@@ -16,8 +16,11 @@ export interface Row {
   key: string;
   path: string;
   valid: boolean;
-  /** The record's one line: a title; a change's or a decision's gist (the-ladder). */
+  /** A product's, feature's, project's, aspect's or source's sentence. A change and a decision have none: their line
+   *  is the gist (decision interface-audit/output-follows-model). */
   title?: string;
+  /** A change's or a decision's one line: what it is and why (the-ladder). */
+  gist?: string;
   /** Which one in a crowd: a feature's, a change's or a decision's name, one to four words. */
   name?: string;
   status?: string;
@@ -29,11 +32,15 @@ export interface Row {
   branch?: ChangeBranch;
 }
 
+/** A row's one line: a change's or a decision's gist, anything else's title. */
+export const lineOfRow = (r: Pick<Row, 'gist' | 'title'>): string | undefined => r.gist ?? r.title;
+
 export function row(r: Rec): Row {
   const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
   return {
     type: r.type, key: r.key, path: r.path, valid: r.valid,
-    title: lineOf(r.data), name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
+    ...(r.type === 'change' || r.type === 'decision' ? { gist: s(r.data.gist) } : { title: s(r.data.title) }),
+    name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
     writer: s(r.data.writer), session: s(r.data.session), data: r.data,
   };
 }
@@ -86,21 +93,79 @@ export function bugOrder(a: { severity?: string; created?: string; key: string }
   return rank(a.severity) - rank(b.severity) || (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key);
 }
 
-export function ls(store: Store, opts: { type?: string; status?: string; project?: string; kind?: string }): Row[] {
+const LIST_TYPES: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'actor'];
+
+/** The statuses a listing can filter by, per type that has one. */
+const STATUSES: Partial<Record<RecordType, readonly string[]>> = { change: CANONICAL_STATUSES, decision: DECISION_STATUSES, feature: FEATURE_STATUSES };
+
+export interface LsOpts {
+  type?: string;
+  status?: string;
+  project?: string;
+  kind?: string;
+  /** Anything under this product (a project's records through the project). */
+  product?: string;
+  /** A milestone's children, a feature's nodes, a change's decisions. */
+  parent?: string;
+  /** The changes naming this node or a node beneath it, and the nodes beneath it. */
+  feature?: string;
+}
+
+export function ls(store: Store, opts: LsOpts): Row[] {
   const loaded = loadStore(store);
+  // a feature's status is the one the tree shows: authored, else derived from the changes on it
+  const statusOf = (r: Rec): string | undefined => (r.type === 'feature' ? (typeof r.data.status === 'string' ? r.data.status : derivedStatus(loaded, r.key).status) : typeof r.data.status === 'string' ? r.data.status : undefined);
   let recs = loaded.records;
+  let t: RecordType | undefined;
   if (opts.type) {
-    const t = TYPE_ALIASES[opts.type];
-    if (!t) throw new CliError(`unknown type '${opts.type}' (product, feature, project, change, decision, source, session, actor)`);
+    t = TYPE_ALIASES[opts.type];
+    if (!t) throw usageError(`unknown entity '${opts.type}' (${LIST_TYPES.join(', ')})`);
     recs = recs.filter((r) => r.type === t);
   }
-  if (opts.status) recs = recs.filter((r) => r.data.status === opts.status);
-  if (opts.project) recs = recs.filter((r) => r.type !== 'change' || r.data.project === opts.project);
-  if (opts.kind) recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
+  if (opts.status) {
+    // a status no listed type has is a typo, refused rather than answered with nothing (decision interface-audit/error-contract)
+    const known = t ? STATUSES[t] : [...new Set(Object.values(STATUSES).flat())];
+    if (t && !known) throw usageError(`a ${t} has no status to filter by`);
+    if (known && !known.includes(opts.status)) throw usageError(`--status ${opts.status} is not a status${t ? ` of a ${t}` : ''} (${known.join(', ')})`);
+    recs = recs.filter((r) => statusOf(r) === opts.status);
+  }
+  if (opts.kind) {
+    if (!(CHANGE_KINDS as readonly string[]).includes(opts.kind)) throw usageError(`--kind ${opts.kind} is not a kind of change (${CHANGE_KINDS.join(', ')})`);
+    recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
+  }
+  const node = (flag: string, raw: string): Rec => {
+    const res = resolve(loaded, raw);
+    if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, `${flag} ${raw}`);
+    return res.rec;
+  };
+  if (opts.project) {
+    const p = node('--project', opts.project.includes(':') ? opts.project : `project:${opts.project}`);
+    recs = recs.filter((r) => r.type !== 'change' || r.data.project === p.key);
+  }
+  if (opts.product) {
+    const p = node('--product', opts.product.includes(':') ? opts.product : `product:${opts.product}`);
+    recs = recs.filter((r) => r.type !== 'product' && rootProductOf(loaded, r)?.key === p.key);
+  }
+  if (opts.parent) {
+    const p = node('--parent', opts.parent);
+    recs = recs.filter((r) => (r.type === 'decision' ? r.changeKey === p.key : live(loaded, r.data.parent)?.key === p.key || (r.type === 'feature' && live(loaded, r.data.product)?.key === p.key)));
+  }
+  if (opts.feature) {
+    const f = node('--feature', opts.feature.includes(':') ? opts.feature : `feature:${opts.feature}`);
+    const beneath = (rec: Rec | undefined): boolean => {
+      const seen = new Set<string>();
+      for (let cur = rec; cur && !seen.has(cur.key); cur = structuralParent(loaded, cur)) {
+        if (cur.key === f.key) return true;
+        seen.add(cur.key);
+      }
+      return false;
+    };
+    recs = recs.filter((r) => (r.type === 'change' ? effectsOf(r).some((e) => beneath(live(loaded, e.key))) : r.type === 'feature' ? r.key !== f.key && beneath(r) : false));
+  }
   // a change's row carries its branch and worktree name, computed once for the listing
   const observed = recs.some((r) => r.type === 'change') ? observedBranches(loaded) : null;
   const prefix = readUserConfig().branch_prefix;
-  const withBranch = (r: Rec): Row => (r.type === 'change' && r.valid && observed ? { ...row(r), branch: branchOf(r, observed, prefix) } : row(r));
+  const withBranch = (r: Rec): Row => (r.type === 'change' && r.valid && observed ? { ...row(r), branch: branchOf(r, observed, prefix) } : r.type === 'feature' ? { ...row(r), status: statusOf(r) } : row(r));
   if (opts.kind === 'bug') {
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(withBranch);
@@ -117,7 +182,7 @@ export function formatLs(rows: Row[]): string {
   const w = Math.min(48, Math.max(...rows.map((r) => r.key.length)));
   const dateOf = (r: Row) => r.created ?? (typeof r.data.started === 'string' ? r.data.started.slice(0, 10) : '');
   return rows
-    .map((r) => `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.title ?? (r.valid ? '' : '(invalid)')}`)
+    .map((r) => `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.gist ?? r.title ?? (r.valid ? '' : '(invalid)')}`)
     .join('\n');
 }
 
@@ -137,7 +202,7 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
     return { rec: res.rec, text };
   }
   if (res.status === 'malformed') throw new CliError(`'${key}' is not a key`);
-  throw new CliError(`${key} has no record`);
+  throw notFound(key);
 }
 
 // --- context ---------------------------------------------------------------
@@ -230,7 +295,7 @@ function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
 export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
   const raw = key.startsWith('change:') ? key : `change:${key}`;
   const res = resolve(loaded, raw);
-  if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(unresolved(res, raw));
+  if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, raw);
   const rec = res.rec;
   // the sections in order of depth, the known ones first; anything else the record holds follows
   const sections: Record<string, string> = {};
@@ -343,13 +408,15 @@ export function decisionLine(dec: Row & { supersededBy?: string }): string {
 /** `key — name`, the gist beneath: how a change or a decision heads its context. With no name yet (an ingested or
  *  migrated record), the gist heads it. */
 function heading(level: string, r: Row): string {
-  if (!r.name) return `${level} ${r.key} — ${r.title ?? labelOf(r.data, r.key)}`;
-  return `${level} ${r.key} — ${r.name}${r.title && r.title !== r.name ? `\n${r.title}` : ''}`;
+  const line = lineOfRow(r);
+  if (!r.name) return `${level} ${r.key} — ${line ?? labelOf(r.data, r.key)}`;
+  return `${level} ${r.key} — ${r.name}${line && line !== r.name ? `\n${line}` : ''}`;
 }
 
 /** `name: gist` on one line, the name left out when it is the gist or absent. */
 export function nameAndLine(r: Pick<Row, 'name' | 'title'>): string {
-  return `${r.name && r.name !== r.title ? `${r.name}: ` : ''}${r.title ?? r.name ?? ''}`;
+  const line = lineOfRow(r);
+  return `${r.name && r.name !== line ? `${r.name}: ` : ''}${line ?? r.name ?? ''}`;
 }
 
 export function formatChangeContext(c: ChangeContext): string {
@@ -419,7 +486,7 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
   let project: Row | null = null;
   if (opts.project) {
     const res = resolve(loaded, opts.project.startsWith('project:') ? opts.project : `project:${opts.project}`);
-    if (res.status !== 'ok') throw new CliError(`${opts.project} does not resolve to a project`);
+    if (res.status !== 'ok') throw notFound(opts.project, { as: 'project' });
     project = row(res.rec);
   }
   const changes = loaded.records

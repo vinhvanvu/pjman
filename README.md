@@ -62,7 +62,7 @@ One command reads what main shipped since the last tag, resolves each merge to i
 
 ## Docs
 
-- [Reference](docs/reference.md): the store, every command, the dashboard and the API, trackers, releases.
+- [Reference](docs/reference.md): the store, every command by entity (create, read, list, update, delete, rename), the dashboard and the API, trackers, releases. In the terminal, `pjman help` prints the same by entity and `pjman help <entity>` one of them.
 - [SCHEMA.md](SCHEMA.md): the record contract.
 - [THESIS.md](THESIS.md): why.
 - [The Claude Code adapter](adapters/claude-code/README.md): the hooks and the skills.

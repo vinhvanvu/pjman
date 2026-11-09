@@ -138,7 +138,7 @@ test('bridge: the changes in motion, every change touched in the window that is 
   const card = by['change:shop/card-form'];
   assert.deepEqual(card.sessions, ['session:s-wait']);
   assert.deepEqual(card.path.map((f) => f.name), ['Checkout', 'Saved cards']);
-  assert.equal(card.title, 'Card form');
+  assert.equal(card.gist, 'Card form');
   assert.equal(card.blockedOn, undefined);
   const stuck = by['change:shop/stuck'];
   assert.equal(stuck.status, 'blocked');
@@ -175,8 +175,8 @@ test('timeline: the product\'s events in the window, decisions marked, titles as
   const opened = t.events.find((e) => e.key === 'decision:shop/card-form/why' && e.op === 'created')!;
   assert.equal(opened.decision, true);
   assert.equal(opened.status, 'proposed', 'opened, read from its commit');
-  assert.equal(opened.title, 'Why');
-  assert.equal(t.events.find((e) => e.key === 'session:s-wait' && e.op === 'bind')!.title, 'Card form', 'a session reads by its change');
+  assert.equal(opened.label, 'Why');
+  assert.equal(t.events.find((e) => e.key === 'session:s-wait' && e.op === 'bind')!.label, 'Card form', 'a session reads by its change');
   assert.ok(t.events.every((e) => e.key.startsWith('decision:') || !e.decision));
   assert.deepEqual(t.events.map((e) => e.seq), [...t.events.map((e) => e.seq)].sort((a, b) => a - b), 'in stream order');
   assert.equal(t.last?.seq, Math.max(...t.events.map((e) => e.seq)) + 1, 'the other product\'s write is the store\'s last');

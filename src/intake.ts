@@ -11,7 +11,6 @@ import { lineOf } from './foundation.js';
 
 export interface Candidate {
   key: string;
-  title?: string;
   /** How much of the request's words it shares, 0..1 on the request's side; a referenced key scores 1. */
   score: number;
   /** The words that matched. */
@@ -19,6 +18,7 @@ export interface Candidate {
 }
 
 export interface ChangeCandidate extends Candidate {
+  gist?: string;
   status?: string;
   kind?: string;
   features: string[];
@@ -28,6 +28,7 @@ export interface ChangeCandidate extends Candidate {
 }
 
 export interface NodeCandidate extends Candidate {
+  title?: string;
   name?: string;
   level: string;
   derived: string;
@@ -45,7 +46,7 @@ export interface Intake {
   /** Nodes of the map the request may alter, best first. */
   nodes: NodeCandidate[];
   /** Milestones in flight: parent changes not done, nearest to done first. */
-  milestones: { key: string; title?: string; status?: string; progress?: { done: number; total: number }; target?: string }[];
+  milestones: { key: string; gist?: string; status?: string; progress?: { done: number; total: number }; target?: string }[];
   /** The order's tail: the product, the last entries of its sequence, and how many open changes come after it as later. */
   tail: { product: string | null; sequence: string[]; later: number };
   /** The product has no map yet (decision cold-start-gaps/map-first-at-intake): what the repository holds and how the map
@@ -106,7 +107,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
     const o = overlap(ask, hay);
     const isRef = referenced.has(c.key);
     return {
-      key: c.key, title: lineOf(c.data), score: isRef ? 1 : o.score, words: o.words, status: str(c.data.status), kind: str(c.data.kind),
+      key: c.key, gist: str(c.data.gist), score: isRef ? 1 : o.score, words: o.words, status: str(c.data.status), kind: str(c.data.kind),
       features: effectsOf(c).map((e) => live(loaded, e.key)?.key).filter((k): k is string => !!k), parent: live(loaded, c.data.parent)?.key, referenced: isRef,
     };
   };
@@ -137,7 +138,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   const childrenOf = (key: string) => changes.filter((c) => live(loaded, c.data.parent)?.key === key);
   const milestones = changes
     .filter((c) => isOpen(c) && childrenOf(c.key).length > 0)
-    .map((c) => ({ key: c.key, title: lineOf(c.data), status: str(c.data.status), progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))), target: str(c.data.target) }))
+    .map((c) => ({ key: c.key, gist: str(c.data.gist), status: str(c.data.status), progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))), target: str(c.data.target) }))
     .sort((a, b) => {
       const share = (p?: { done: number; total: number }) => (p?.total ? p.done / p.total : 0);
       return share(b.progress) - share(a.progress) || a.key.localeCompare(b.key);
@@ -169,7 +170,7 @@ export function formatIntake(i: Intake): string {
     out.push(`\n## No map yet (the map comes with this change, in the same breath)`);
     out.push(i.map.prompt);
   }
-  const line = (c: ChangeCandidate) => `- ${c.key} [${c.status ?? '?'}${c.kind === 'bug' ? ', bug' : ''}] — ${c.title ?? ''}${c.referenced ? ' · named in the request' : ` · ${c.words.join(', ')}`}${c.features.length ? ` · ${c.features.join(', ')}` : ''}${c.parent ? ` · under ${c.parent}` : ''}`;
+  const line = (c: ChangeCandidate) => `- ${c.key} [${c.status ?? '?'}${c.kind === 'bug' ? ', bug' : ''}] — ${c.gist ?? ''}${c.referenced ? ' · named in the request' : ` · ${c.words.join(', ')}`}${c.features.length ? ` · ${c.features.join(', ')}` : ''}${c.parent ? ` · under ${c.parent}` : ''}`;
   out.push(`\n## Duplicates (open changes that may already cover it)`);
   out.push(i.duplicates.length ? i.duplicates.map(line).join('\n') : '(none: nothing open shares its words)');
   if (i.done.length) {
@@ -179,7 +180,7 @@ export function formatIntake(i: Intake): string {
   out.push(`\n## Nodes (what on the map it may alter; name the most specific)`);
   out.push(i.nodes.length ? i.nodes.map((n) => `- ${n.key} (${n.level}, ${n.derived}) — ${n.name ?? n.title ?? ''}${n.path.length ? ` · under ${n.path.join(' › ')}` : ''} · ${n.words.join(', ')}`).join('\n') : i.map ? '(none: the product has no map; see above)' : '(none: no feature shares its words; look at the tree for the feature it correlates to before creating a capability beneath it, only when it is a behaviour a user would recognise; a bug that breaks a behaviour no node has creates the live node, under the feature it correlates to)');
   out.push(`\n## Milestones in flight (nearest to done first)`);
-  out.push(i.milestones.length ? i.milestones.map((m) => `- ${m.key} [${m.status ?? '?'}]${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}${m.target ? ` · target ${m.target}` : ''} — ${m.title ?? ''}`).join('\n') : '(none)');
+  out.push(i.milestones.length ? i.milestones.map((m) => `- ${m.key} [${m.status ?? '?'}]${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}${m.target ? ` · target ${m.target}` : ''} — ${m.gist ?? ''}`).join('\n') : '(none)');
   out.push(`\n## The order's tail${i.tail.product ? ` (${i.tail.product})` : ''}`);
   out.push(i.tail.sequence.length ? `… ${i.tail.sequence.join(' → ')}` : '(the sequence is empty)');
   out.push(`${i.tail.later} open change${i.tail.later === 1 ? '' : 's'} after it as later`);

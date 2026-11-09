@@ -88,7 +88,7 @@ export function ChangeCard({ row, lens, selected, moved, dense, className, ...me
       )}
     >
       <div className={cn('font-medium leading-[1.35]', dense ? 'line-clamp-1' : 'line-clamp-2')}>
-        {row.title ?? short(row.key)}
+        {row.gist ?? short(row.key)}
       </div>
       <ChangeMeta row={row} {...meta} />
       {!dense && row.next && <div className="truncate text-xs text-ink-muted">{truncate(row.next, 140)}</div>}
