@@ -119,24 +119,36 @@ export function changeOfDecision(key: string): string | undefined {
   return parts.length === 3 ? `change:${parts[0]}/${parts[1]}` : undefined;
 }
 
-/** One change as the bridge's card reads it. */
+/** One change as the bridge's card reads it. A milestone's children are its plan (decision
+ *  milestone-detail/children-in-order): its bar is children done over children not dropped, and its step the child in
+ *  work (active or in review), else the first not done, so the card agrees with the milestone's page and the index. */
 export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[]): BridgeMotion {
+  const kids = childrenOf(loaded, c);
+  const blockedOn = c.sections.get('Blocked on')?.trim();
+  const base = { key: c.key, name: str(c.data.name), gist: str(c.data.gist), status: str(c.data.status), path: featurePath(loaded, c), blockedOn: blockedOn || undefined, last, sessions };
+  if (kids.length) {
+    const counted = kids.filter((k) => k.data.status !== 'dropped');
+    const open = counted.filter((k) => k.data.status !== 'done');
+    const inWork = open.find((k) => k.data.status === 'active' || k.data.status === 'review') ?? open[0];
+    return {
+      ...base,
+      steps: { done: counted.length - open.length, total: counted.length, dropped: kids.length - counted.length },
+      step: inWork ? { n: counted.indexOf(inWork) + 1, text: str(inWork.data.name) ?? str(inWork.data.gist) ?? inWork.key.slice(inWork.key.lastIndexOf('/') + 1), state: 'open' } : undefined,
+    };
+  }
   const steps = stepsOf(c.data);
   const counted = steps.filter((s) => s.state !== 'dropped');
   const next = nextStep(steps);
-  const blockedOn = c.sections.get('Blocked on')?.trim();
   return {
-    key: c.key,
-    name: str(c.data.name),
-    gist: str(c.data.gist),
-    status: str(c.data.status),
-    path: featurePath(loaded, c),
+    ...base,
     steps: { done: counted.filter((s) => s.state === 'done').length, total: counted.length, dropped: steps.length - counted.length },
     step: next ? { n: next.n, text: next.step.text, state: next.step.state, note: next.step.note } : undefined,
-    blockedOn: blockedOn || undefined,
-    last,
-    sessions,
   };
+}
+
+/** A change's children: the valid changes whose parent resolves to it, in the store's order. */
+function childrenOf(loaded: Loaded, c: Rec): Rec[] {
+  return loaded.records.filter((r) => r.type === 'change' && r.valid && typeof r.data.parent === 'string' && live(loaded, r.data.parent)?.key === c.key);
 }
 
 const DAY = 24 * 60 * 60_000;

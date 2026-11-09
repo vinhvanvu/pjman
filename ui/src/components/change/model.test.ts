@@ -87,6 +87,26 @@ describe('one change at three depths', () => {
     expect(pillWords(f.sessions[0]!, NOW)).toBe('claude-code · working · 2 min ago');
   });
 
+  it("reads a milestone's row by its children, not its own plan (change:bridge-card-reads-the-plan)", () => {
+    const m = {
+      key: 'change:p/m',
+      name: 'Milestone',
+      status: 'active',
+      features: [],
+      waiting: 0,
+      decided: 0,
+      live: false,
+      children: 17,
+      progress: { done: 16, total: 17 },
+      plan: { done: 0, total: 3 },
+      needs: [],
+      stale: false,
+    } as unknown as ChangeRow;
+    expect(factsOfRow(m, []).steps).toEqual({ done: 16, total: 17, dropped: 0 });
+    // a leaf keeps its plan
+    expect(factsOfRow({ ...m, children: 0, progress: undefined }, []).steps).toEqual({ done: 0, total: 3, dropped: 0 });
+  });
+
   it('says where the work stands: blocked on, done waiting for a look, no steps yet', () => {
     const base = { steps: { done: 0, total: 0, dropped: 0 } };
     expect(stepWords({ ...base, status: 'blocked', blockedOn: 'Public' })).toEqual({ lead: 'on', text: 'Public' });
