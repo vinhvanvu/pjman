@@ -352,8 +352,8 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
 });
 
 test('a change may have a parent change: any depth, no cycles, children derived, progress derived, the board nests', () => {
-  change(store, 'epic', { title: 'Epic', summary: 's' });
-  change(store, 'epic-a', { title: 'A', summary: 's', parent: 'change:project/epic' });
+  change(store, 'epic', { title: 'Epic', summary: 's', kind: 'milestone' });
+  change(store, 'epic-a', { title: 'A', summary: 's', parent: 'change:project/epic', kind: 'milestone' });
   change(store, 'epic-a-1', { title: 'A1', summary: 's', parent: 'change:project/epic-a' });
   assert.throws(() => change(store, 'orphan', { title: 'O', summary: 's', parent: 'change:project/nope' }), /parent/);
   assert.throws(() => set(store, 'change:project/epic', ['parent=change:epic-a-1'], {}), /cycles/);
@@ -476,7 +476,7 @@ test('start brings the dashboard up detached and is idempotent; stop takes it do
 });
 
 test('rm removes a record; refused while referenced; --detach drops droppable references; a project with changes and a required reference refuse', () => {
-  change(store, 'doomed', { title: 'Doomed', summary: 'd', binds: ['linear:DOOM-1'] });
+  change(store, 'doomed', { title: 'Doomed', summary: 'd', binds: ['linear:DOOM-1'], kind: 'milestone' });
   decisionRec(store, 'doomed/why', { title: 'Why', decision: 'd', why: 'w' });
   change(store, 'orphan', { title: 'Orphan', summary: 'o', parent: 'change:project/doomed' });
   newRecord(store, 'session', 'sess-rm', { agent: 'agent:claude-code', onBehalfOf: 'person:vinh' });
@@ -617,7 +617,20 @@ test('depends_on, kind, severity, target and the sequence: validated, refused wh
   assert.equal(loadStore(store).byKey.get('change:project/crash')![0].data.severity, 'feature');
   assert.throws(() => set(store, 'change:project/base', ['severity=cosmetic'], {}), /a bug's field/);
   assert.throws(() => set(store, 'change:project/crash', ['severity=huge'], {}), /not one of product, feature/);
-  assert.throws(() => set(store, 'change:project/crash', ['kind=chore'], {}), /not one of work, bug/);
+  assert.throws(() => set(store, 'change:project/crash', ['kind=chore'], {}), /not one of work, bug, milestone/);
+  // a milestone is a change of kind milestone (decision milestone-kind/kind-not-children): a parent must be one, it
+  // takes no steps of its own, and promotion is a plain write once the steps are gone
+  change(store, 'goal', { title: 'Goal', summary: 'g', project, kind: 'milestone' });
+  change(store, 'toward-goal', { title: 'Toward goal', summary: 't', project, parent: 'change:project/goal', next: 'a step on the child is fine' });
+  assert.throws(() => change(store, 'under-work', { title: 'Under work', summary: 'u', project, parent: 'change:project/base' }), /parent: change:project\/base is not a milestone \(its kind is 'work'\); pjman set change:project\/base kind=milestone/);
+  assert.throws(() => step(store, 'change:project/goal', 'add', undefined, { text: 'no' }), /is a milestone: its children are its plan/);
+  assert.throws(() => set(store, 'change:project/goal', ['kind=work'], {}), /change:project\/toward-goal names this change as parent, so it must be a milestone/);
+  assert.throws(() => change(store, 'stepped', { title: 'Stepped', summary: 's', project, kind: 'milestone', steps: ['own step'] }), /a milestone's plan is its children; this one carries 1 step of its own/);
+  assert.equal(loadStore(store).byKey.get('change:project/stepped'), undefined, 'refused whole');
+  set(store, 'change:project/base', ['kind=milestone'], {}); // base has no steps: promoted
+  assert.equal(loadStore(store).byKey.get('change:project/base')![0].data.kind, 'milestone');
+  set(store, 'change:project/base', ['kind=work'], {}); // and back, while nothing names it as parent
+  assert.deepEqual(ls(store, { type: 'change', kind: 'milestone' }).map((r) => r.key), ['change:project/goal']);
   change(store, 'typo', { title: 'Typo', summary: 't', project, kind: 'bug', severity: 'cosmetic', created: '2026-01-01' });
   change(store, 'slow', { title: 'Slow', summary: 's', project, kind: 'bug' });
   assert.deepEqual(ls(store, { type: 'change', kind: 'bug' }).map((r) => r.key), ['change:project/crash', 'change:project/typo', 'change:project/slow']);

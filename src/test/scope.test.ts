@@ -52,8 +52,8 @@ before(() => {
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:shop/checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
   newRecord(store, 'feature', 'fax', { title: 'Fax orders', product: 'product:shop', status: 'retired' });
-  change(store, 'cards', { title: 'Cards milestone', summary: 's', project: 'project:web', status: 'planning' });
-  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards', 'feature:shop/search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
+  change(store, 'cards', { title: 'Cards milestone', summary: 's', project: 'project:web', status: 'planning', kind: 'milestone' });
+  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', parent: 'change:shop/cards', kind: 'milestone', features: ['adds feature:shop/saved-cards', 'feature:shop/search'], status: 'active', binds: ['github-issue:acme/shop#7'] });
   change(store, 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', parent: 'change:shop/cards', features: ['adds feature:shop/saved-cards'] });
   change(store, 'card-tests', { title: 'Card tests', summary: 's', project: 'project:web', parent: 'change:shop/card-form' });
   change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
@@ -246,7 +246,7 @@ test('bugs: one home at the severity level, counts roll up with the worst named,
 });
 
 test('the order reads what is ahead: done entries drop out and stay stored, a done milestone keeps its place for open children, a reopened change is back in its place', () => {
-  change(store, 'phase', { title: 'Phase', summary: 's', project: 'project:web', status: 'done' });
+  change(store, 'phase', { title: 'Phase', summary: 's', project: 'project:web', status: 'done', kind: 'milestone' });
   change(store, 'phase-kid', { title: 'Phase kid', summary: 's', project: 'project:web', parent: 'change:shop/phase' });
   change(store, 'shipped', { title: 'Shipped', summary: 's', project: 'project:web', status: 'done' });
   change(store, 'upcoming', { title: 'Upcoming', summary: 's', project: 'project:web' });

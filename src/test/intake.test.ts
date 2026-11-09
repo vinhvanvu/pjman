@@ -27,7 +27,7 @@ before(() => {
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search the catalogue', product: 'product:shop' });
-  change(store, 'cards', { title: 'Cards milestone', summary: 'Everything cards.', status: 'planning', target: '2026-12-01' });
+  change(store, 'cards', { title: 'Cards milestone', summary: 'Everything cards.', status: 'planning', target: '2026-12-01', kind: 'milestone' });
   change(store, 'card-form', { title: 'Card form', summary: 'Enter and save a card.', parent: 'change:cards', features: ['adds feature:saved-cards'], status: 'active', binds: ['github-issue:acme/shop#7'] });
   change(store, 'old-search', { title: 'Search by colour', summary: 'Colour facets.', features: ['feature:search'], status: 'done' });
   change(store, 'chore', { title: 'Upgrade the build', summary: 'Vite 7.' });

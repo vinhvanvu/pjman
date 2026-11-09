@@ -8,8 +8,10 @@ import { isOwnRepo } from './git.js';
 export const CANONICAL_STATUSES = ['open', 'planning', 'active', 'blocked', 'review', 'done', 'dropped'] as const;
 export const DECISION_STATUSES = ['proposed', 'decided', 'superseded', 'reverted'] as const;
 export const ACTOR_KINDS = ['person', 'agent'] as const;
-/** A change is work unless it says otherwise; a bug is a change against something live. */
-export const CHANGE_KINDS = ['work', 'bug'] as const;
+/** A change is work unless it says otherwise; a bug is a change against something live; a milestone is a change whose
+ *  plan is its children (decision milestone-kind/kind-not-children): it is named so at filing, a change named as a
+ *  parent must be one, and it takes no steps of its own. */
+export const CHANGE_KINDS = ['work', 'bug', 'milestone'] as const;
 /** A bug's severity: where on the tree the behaviour is lost (the first three are levels), else a nuisance with a
  *  workaround, else cosmetic. In order from worst. */
 /** A project's answer to the map question: the first session proposes a product map, or not. */

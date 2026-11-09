@@ -35,7 +35,7 @@ before(() => {
   store = findStore(dir)!;
   change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web' });
   change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
-  change(store, 'platform', { title: 'Platform', summary: 's', project: 'project:web' });
+  change(store, 'platform', { title: 'Platform', summary: 's', project: 'project:web', kind: 'milestone' });
   change(store, 'child-a', { title: 'Child A', summary: 's', project: 'project:web', parent: 'change:platform' });
   change(store, 'child-b', { title: 'Child B', summary: 's', project: 'project:web', parent: 'change:platform' });
   for (const n of [1, 2, 3]) change(store, `extra-${n}`, { title: `Extra ${n}`, summary: 's', project: 'project:web' });

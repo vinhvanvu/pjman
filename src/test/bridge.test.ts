@@ -39,7 +39,7 @@ before(() => {
   change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active', next: 'Wire the form.' });
   change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web', status: 'review', next: 'Review it.' });
   // a milestone with its own plan and two children, one done: its card reads the children, not its steps
-  change(store, 'release', { title: 'Release', summary: 's', project: 'project:web', status: 'open', next: 'Ship it.' });
+  change(store, 'release', { title: 'Release', summary: 's', project: 'project:web', status: 'open', kind: 'milestone' });
   change(store, 'kid-done', { title: 'Kid done', summary: 's', project: 'project:web', status: 'done', parent: 'change:shop/release' });
   change(store, 'kid-on', { title: 'Kid on', summary: 's', project: 'project:web', status: 'active', parent: 'change:shop/release', next: 'Do it.' });
   decisionRec(store, 'card-form/later', { title: 'Later', decision: 'd2', why: 'w' });

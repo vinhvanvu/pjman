@@ -102,7 +102,7 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   assert.equal(again.commit, null);
   assert.ok(readEvents(store).length - events <= 2); // only the run's session record
 
-  next(store, 'change:app/app-1', 'write the tests');
+  next(store, 'change:app/app-2', 'write the tests'); // app-1 is a milestone (APP-2 names it as parent): its children are its plan
   set(store, 'change:app/app-1', ['intent=Our own words.'], {});
   const moved = issues.map((i) => (i.identifier === 'APP-1' ? { ...i, title: 'Login (renamed)', state: { name: 'Done', type: 'completed' } } : i));
   const third = syncLinear(store, { from: JSON.stringify({ issues: moved }) });
@@ -111,7 +111,8 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   assert.equal(after.data.status, 'active');
   assert.equal(after.data.gist, 'Login');
   assert.equal(loadStore(store).byKey.get('linear:APP-1')![0].data.title, 'Login (renamed)');
-  assert.equal(stepsOf(after.data)[0]?.text, 'write the tests');
+  assert.equal(after.data.kind, 'milestone');
+  assert.equal(stepsOf(loadStore(store).byKey.get('change:app/app-2')![0].data)[0]?.text, 'write the tests');
   assert.match(after.sections.get('Intent')!, /Our own words/);
 
   // one ticket, pasted as the tool answered it, from a file

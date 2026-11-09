@@ -105,13 +105,13 @@ What applies across the product (how text reads, a shared component), with a bas
 
 ### change
 
-A unit of work: name, gist, sections, a plan of steps; a parent change is a milestone.
+A unit of work: name, gist, sections, a plan of steps; a milestone is a change of kind milestone, whose plan is its children.
 
 | operation | command |
 |---|---|
 | create | `pjman new change <slug> --name … --gist … --origin … --intent … --done-when … [--step <text>]...` |
 | read | `pjman context <change> (to work it) · pjman show <change> (as stored) · pjman get <ref> (with its neighbourhood) · pjman view <change>` |
-| list | `pjman ls change [--status …] [--kind bug] [--parent <milestone>] [--feature <node>] [--project <p>] · pjman context (the board)` |
+| list | `pjman ls change [--status …] [--kind bug\|milestone] [--parent <milestone>] [--feature <node>] [--project <p>] · pjman context (the board)` |
 | update | `pjman set <change>... <field>=… \| <list>+=<item> \| <list>-=<item>   (sections by name: origin, intent, done-when, scope, …)` |
 | plan | `pjman step <change> add\|start\|done\|drop\|reopen\|note\|edit\|move …   (see step)` |
 | order | `pjman order <change> --before <change> \| --after <change> \| --first \| --last \| --later` |
@@ -254,7 +254,7 @@ pjman new place <aspect>/<place> --feature <feature> [--body <fork>|-] [--links 
 pjman new change <slug> --name <one to four words> --gist <one line> --origin <the request in the person's words, or the key it came from> --intent <the need, for whom> --done-when <the outcome that closes it>
         [--scope …] [--open-questions …] [--blocked-on …] [--notes …] [--status open] [--project <key>] [--parent <change>] [--step <text>]...
         [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...
-        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--target <date>]
+        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--kind milestone] [--target <date>]
 pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]
 pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]... [--body <text>]
 pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...
@@ -264,7 +264,7 @@ pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <sessio
 pjman show <ref> [--json]
     print one record by its key or slug, as it is stored (an aspect with every place it reaches; a place read through its aspect)
 
-pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|actor] [--status <s>] [--kind bug|work] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--json]
+pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|actor] [--status <s>] [--kind work|bug|milestone] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--json]
     list records, by entity, status, kind and where they sit: --project for a change's project, --product for anything under a product, --parent for a milestone's children or a feature's nodes, --feature for the changes naming a node or anything beneath it. A status or kind outside the vocabulary is refused. Bugs come worst first, then oldest
 
 pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...

@@ -36,7 +36,7 @@ before(() => {
   store = findStore(dir)!;
   newRecord(store, 'feature', 'login', { title: 'Signing in', product: 'product:web' });
   newRecord(store, 'feature', 'billing', { title: 'Paying', product: 'product:web' });
-  change(store, 'milestone', { title: 'Launch', summary: 's', project: 'project:web' });
+  change(store, 'milestone', { title: 'Launch', summary: 's', project: 'project:web', kind: 'milestone' });
   change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web', parent: 'change:milestone', features: ['feature:login'] });
   change(store, 'after-auth', { title: 'After auth', summary: 's', project: 'project:web', dependsOn: ['change:auth'] });
   change(store, 'sso', { title: 'SSO', summary: 's', project: 'project:web', features: ['feature:login'] });
@@ -67,7 +67,7 @@ test('the delta: what others wrote on the change, its milestone, its decisions a
   next(store, 'change:auth', 'first', { session: 'session:peer' });
   next(store, 'change:auth', 'second', { session: 'session:peer' });
   set(store, 'change:auth', ['status=active'], { session: 'session:peer' });
-  next(store, 'change:milestone', 'launch soon', { session: 'session:peer' });
+  set(store, 'change:milestone', ['target=2026-12-01'], { session: 'session:peer' }); // a milestone takes no steps of its own
   next(store, 'change:after-auth', 'waiting on auth', { session: 'session:peer' });
   decisionRec(store, 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w', session: 'session:peer' });
   next(store, 'change:invoices', 'unrelated', { session: 'session:peer' });
@@ -76,7 +76,7 @@ test('the delta: what others wrote on the change, its milestone, its decisions a
   assert.equal(b.mode, 'delta');
   assert.deepEqual(b.lines, [
     'set change:web/auth (plan, step add, status → active) (4 writes)',
-    'set change:web/milestone (plan, step add, status → planning) (2 writes)',
+    'set change:web/milestone (target)',
     'set change:web/after-auth (plan, step add, status → planning) (2 writes)',
     'created decision:web/auth/tokens — Tokens',
   ]);
