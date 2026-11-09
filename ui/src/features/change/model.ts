@@ -16,7 +16,14 @@ export function waitsLine(n: number): string {
 type Step = ChangeContext['plan'][number];
 export type Segment = 'done' | 'on' | 'open' | 'dropped';
 
-/** The plan's head and bar: "step 2 of 4", the dropped counted apart; a segment a step; the row docked shows. */
+/** The bar's order (change:step-bar-in-order): done first, then the one on, then open, dropped last and faint, whatever
+ *  order the steps were worked in. */
+const SEGMENT_ORDER: readonly Segment[] = ['done', 'on', 'open', 'dropped'];
+export const sortSegments = (segments: readonly Segment[]): Segment[] =>
+  [...segments].sort((a, b) => SEGMENT_ORDER.indexOf(a) - SEGMENT_ORDER.indexOf(b));
+
+/** The plan's head and bar: "step 2 of 4", the dropped counted apart; a segment a step, in the bar's order; the row
+ *  docked shows. */
 export function planView(plan: readonly Step[]): { sum: string; segments: Segment[]; row?: Step } {
   const counted = plan.filter((s) => s.state !== 'dropped');
   const dropped = plan.length - counted.length;
@@ -30,8 +37,8 @@ export function planView(plan: readonly Step[]): { sum: string; segments: Segmen
       : counted.length
         ? `all ${counted.length} steps done`
         : 'every step dropped';
-  const segments: Segment[] = plan.map((s) =>
-    s.state === 'done' ? 'done' : s === active ? 'on' : s.state === 'dropped' ? 'dropped' : 'open',
+  const segments = sortSegments(
+    plan.map((s) => (s.state === 'done' ? 'done' : s === active ? 'on' : s.state === 'dropped' ? 'dropped' : 'open')),
   );
   return { sum: dropped ? `${sum} · ${dropped} dropped` : sum, segments, row: next ?? counted.at(-1) };
 }
