@@ -169,7 +169,7 @@ for (const group of GROUPS) {
 }
 if (migrations.length) {
   lines.push('### Store', '');
-  for (const m of migrations) lines.push(`- The ${m.name} move: ${m.about}. Run \`pjman migrate\` once after installing.`);
+  for (const m of migrations) lines.push(`- The ${m.name} move: ${m.about}. After installing, run \`pjman migrate\` until it reports nothing to migrate (each run makes one move; the stamp comes last).`);
   lines.push('');
 }
 if (also.length) {

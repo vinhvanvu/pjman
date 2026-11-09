@@ -36,7 +36,7 @@ the tree is a field, never part of a key. Inside a project the slug alone names 
 one product has the slug, and refuses it as ambiguous otherwise. The store writes full keys; text output read inside a
 project drops the product segment, JSON keeps it.
 
-The store names the format it is in (`version:` in `pjman.yaml`, the pjman version that introduced its latest move), stamped by `pjman init` and by `pjman migrate` and never by an ordinary write; a store with no stamp reads as 0.1.0. `pjman migrate` makes the one move the store still waits for, in order: the layout (from the flat layout before keys were paths under the product), the foundation (changes and decisions into their shape), the kinds (every change another change names as parent a milestone by its kind, its own steps kept as a note), then the stamp. A pjman older than the store refuses to write it and names the version to install; one newer says to migrate. Each move names the version that introduced it, and the release that ships a new move is at least a minor. When an installed pjman asks for a migration, run `pjman migrate` once.
+The store names the format it is in (`version:` in `pjman.yaml`, the pjman version that introduced its latest move), stamped by `pjman init` and by `pjman migrate` and never by an ordinary write; a store with no stamp reads as 0.1.0. `pjman migrate` makes the one move the store still waits for, in order: the layout (from the flat layout before keys were paths under the product), the foundation (changes and decisions into their shape), the kinds (every change another change names as parent a milestone by its kind, its own steps kept as a note), then the stamp. A pjman older than the store refuses to write it and names the version to install; one newer says to migrate. Each move names the version that introduced it, and the release that ships a new move is at least a minor. When an installed pjman asks for a migration, run `pjman migrate` until it reports nothing to migrate: each run makes one move and says what still waits, the stamp last.
 
 ## `pjman init` in full
 
@@ -465,7 +465,7 @@ npm run dev                         # this checkout's own server and app at http
 npm run install:local               # install this checkout's build as the pjman on this machine
 ```
 
-`npm run install:local` installs the tool as a copy of a built package, never a link to the checkout: it builds, packs, installs globally, points the Claude Code marketplace at the installed copy and refreshes the plugin, and restarts the dashboard when one was running. Run it again after every merge to main; a session's half-built checkout is then never another session's tool. When the installed tool asks for a store migration, run `pjman migrate` once, after the install.
+`npm run install:local` installs the tool as a copy of a built package, never a link to the checkout: it builds, packs, installs globally, points the Claude Code marketplace at the installed copy and refreshes the plugin, and restarts the dashboard when one was running. Run it again after every merge to main; a session's half-built checkout is then never another session's tool. When the installed tool asks for a store migration, run `pjman migrate` after the install until it reports nothing to migrate.
 
 Work on a change happens in a git worktree named for it, which the Claude Code adapter creates; pjman itself is built with pjman, and its own record is the first store.
 

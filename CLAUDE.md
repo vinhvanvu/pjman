@@ -4,7 +4,7 @@ This project's record lives in the global pjman store (`pjman where` names it) a
 
 Example keys in docs and tests use `ABC-1234`.
 
-The installed `pjman` is a copy, never a link to this checkout. After a merge to main run `npm run install:local` (builds, packs, installs, refreshes the plugin, restarts the dashboard); when the installed tool then asks for a store migration, run `pjman migrate` once. Never `npm link` this checkout.
+The installed `pjman` is a copy, never a link to this checkout. After a merge to main run `npm run install:local` (builds, packs, installs, refreshes the plugin, restarts the dashboard); when the installed tool then asks for a store migration, run `pjman migrate` until it reports nothing to migrate (one move per run, the stamp last). Never `npm link` this checkout.
 
 To see a change running, `npm run dev` from the worktree's root: it serves the worktree's own API and app at `http://<branch>.pjman.localhost:1355` (the main checkout at `http://pjman.localhost:1355`). Name that URL to the person; never pick a port. The installed dashboard on 7331 is the person's and stays as it is.
 
