@@ -8,6 +8,7 @@ import { useArrivals } from '@/state/arrivals';
 import { BASE } from './client';
 import type { StoreEvent } from './contract';
 import { queryKeys } from './queries';
+import { productOfKey, reaches } from './reach';
 import { type Frame, openStream, type Request } from './stream';
 
 export interface LiveState {
@@ -53,22 +54,6 @@ function subscribe(url: string, onFrame: (f: Frame) => void): () => void {
   };
 }
 
-/** The product a record's key sits under (`change:<product>/…`, `product:<product>`), or null for a record under none
- *  (a session, a project, an actor, a source), whose write can reach any page. */
-export function productOfKey(key: string): string | null {
-  const m = /^(?:product:([^/]+)$|(?:change|feature|decision|aspect|place|release):([^/]+)\/)/.exec(key);
-  return m ? (m[1] ?? m[2]) : null;
-}
-
-/** Whether a query can show a write to one of `products`: one that names a product names it in its key (a node, a
- *  product, a record); one that names none (the store, the records, a session) reads every product. */
-export function reaches(queryKey: readonly unknown[], products: Set<string>): boolean {
-  const text = JSON.stringify(queryKey);
-  const named = [...text.matchAll(/(?:product|change|feature|decision|aspect|place|release):([^/"]+)/g)].map((m) => m[1]);
-  if (!named.length) return true;
-  return named.some((p) => products.has(p));
-}
-
 export function useLiveInvalidation(): LiveState {
   const client = useQueryClient();
   const [state, setState] = useState<LiveState>({ connected: false });
@@ -84,7 +69,10 @@ export function useLiveInvalidation(): LiveState {
       last = Date.now();
       const products = reached;
       reached = new Set();
-      void client.invalidateQueries({ queryKey: queryKeys.all, predicate: (q) => products === null || reaches(q.queryKey, products) });
+      void client.invalidateQueries({
+        queryKey: queryKeys.all,
+        predicate: (q) => products === null || reaches(q.queryKey, products),
+      });
     };
     const invalidate = (e: StoreEvent) => {
       const p = productOfKey(e.key);
