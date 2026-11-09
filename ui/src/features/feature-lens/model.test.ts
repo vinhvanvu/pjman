@@ -222,6 +222,7 @@ describe('the overview', () => {
       ...change(key).row!,
       status,
       progress: { done, total },
+      kind: 'milestone',
     });
     expect(
       inFlight([m('far', 1, 4), m('near', 3, 4), m('over', 4, 4, 'done'), change('plain').row!]).map((r) => r.key),

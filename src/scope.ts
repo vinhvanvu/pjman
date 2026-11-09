@@ -63,7 +63,7 @@ export interface ChangeRow {
   needs: string[];
   /** The name and gist were written from an earlier foundation. */
   stale: boolean;
-  /** A parent change is a milestone: done children over children not dropped. */
+  /** A milestone's progress: done children over children not dropped; none on a change of another kind. */
   progress?: { done: number; total: number };
   /** The features it names, then the features of the places it names (`viaPlace`), where the dashboard files it too. */
   features: { effect: EffectName; key: string; title?: string; viaPlace?: boolean }[];
@@ -76,7 +76,8 @@ export interface ChangeRow {
   children: number;
   /** When the change itself last moved: its last event, under any of its keys. */
   moved?: string;
-  /** `bug` for a reported fault against something live; absent for work. */
+  /** `bug` for a reported fault against something live; `milestone` for a change whose plan is its children (decision
+   *  milestone-kind/kind-not-children); absent for work. */
   kind?: string;
   /** A bug's severity: where on the tree the behaviour is lost. */
   severity?: string;
@@ -423,7 +424,8 @@ class Index {
       next: nextLine(next), plan: planProgress(steps), needs: needsOf(c), stale: rungsOf(c).stale,
       step: next ? { n: next.n, text: next.step.text, state: next.step.state, note: next.step.note } : undefined,
       blockedOn: blockedOn || undefined,
-      progress: progressOf(kids.map((k) => ({ status: str(k.data.status) }))),
+      // a milestone's bar, by its kind: a milestone with no child yet is a bar of none; a change of another kind has none
+      progress: c.data.kind === 'milestone' ? progressOf(kids.map((k) => ({ status: str(k.data.status) }))) ?? { done: 0, total: 0 } : undefined,
       features: [
         ...effectsOf(c).map((e) => ({ effect: e.effect, key: e.key, title: str(live(this.loaded, e.key)?.data.title) })),
         ...this.placeFeatures(c).map((f) => ({ effect: 'changes' as const, key: f.key, title: str(f.data.title), viaPlace: true })),

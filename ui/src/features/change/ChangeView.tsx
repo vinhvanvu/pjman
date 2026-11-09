@@ -43,7 +43,7 @@ export function ChangeView({
   className?: string;
 }) {
   const c = ctx.change;
-  const milestone = ctx.children.length > 0;
+  const milestone = c.data.kind === 'milestone'; // by its kind, never by child count (decision milestone-kind/kind-not-children)
   const search = useSearch({ strict: false }) as PageSearch;
   const navigate = useNavigate();
   const onLink = (decision: string | undefined) =>

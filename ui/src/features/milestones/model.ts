@@ -58,7 +58,7 @@ export function childrenInOrder(
         live: on.has(c.key) || !!r?.live,
         waits: waiting.filter((d) => d.change === c.key).length || (r?.waiting ?? 0),
         blockedOn: r?.blockedOn ?? str(c.data?.['blocked-on']),
-        milestone: r && r.children > 0 ? r.progress : undefined,
+        milestone: r?.kind === 'milestone' ? r.progress : undefined,
         plan: r?.plan,
         step: r?.step,
         moved: r?.moved,
@@ -211,12 +211,12 @@ export function milestoneBar(
 export function frameOf(
   binds: readonly string[],
   shown: string | undefined,
-  rows: ReadonlyMap<string, Pick<ChangeRow, 'key' | 'parent' | 'children'>>,
+  rows: ReadonlyMap<string, Pick<ChangeRow, 'key' | 'parent' | 'kind'>>,
 ): string | undefined {
   if (!shown) return undefined;
   for (const b of binds.toReversed()) {
     const r = rows.get(b);
-    if (!r || r.children === 0) continue;
+    if (r?.kind !== 'milestone') continue;
     if (b === shown) return b;
     for (let k: string | undefined = rows.get(shown)?.parent; k; k = rows.get(k)?.parent) if (k === b) return b;
   }
@@ -250,7 +250,7 @@ export function milestonesIndex(scope: {
   const rows = new Map(scope.changes.map((r) => [r.key, r]));
   const on = new Set(scope.sessions.map((s) => s.on));
   const list = scope.changes
-    .filter((r) => r.children > 0 && r.status !== 'dropped')
+    .filter((r) => r.kind === 'milestone' && r.status !== 'dropped')
     .map((r): MilestoneIndexRow => {
       const kids = scope.changes
         .filter((c) => c.parent === r.key && c.status !== 'dropped')

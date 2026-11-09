@@ -76,7 +76,7 @@ export function factsOfRow(
     last: r.moved ?? r.created,
     // a milestone's children are its plan (decision milestone-detail/children-in-order), as the bridge reads it too
     steps:
-      r.children > 0 && r.progress
+      r.kind === 'milestone' && r.progress
         ? { done: r.progress.done, total: r.progress.total, dropped: 0 }
         : { done: r.plan?.done ?? 0, total: r.plan?.total ?? 0, dropped: 0 },
     step: r.step,

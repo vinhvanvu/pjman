@@ -110,7 +110,7 @@ export function ChangeTree({
   waitingBeneath = NO_WAITING,
 }: ChangeTreeProps) {
   const c = ctx.change;
-  const milestone = ctx.children.length > 0;
+  const milestone = c.data.kind === 'milestone'; // by its kind, never by child count (decision milestone-kind/kind-not-children)
   const beneath = waitingBeneath.filter((d) => d.change !== c.key).map(fromWaiting);
   const decisions = [...ctx.decisions.map((d) => fromRow(d, c.key)), ...beneath];
   const waiting = decisions.filter((d) => d.status === 'proposed').length;
@@ -239,7 +239,7 @@ function PathLine({
   return (
     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-ink-muted">
       <span className={cn('font-medium', statusTone(c.status).text)}>{c.status ?? 'open'}</span>
-      {ctx.children.length > 0 && <Part>milestone · {ctx.children.length} children</Part>}
+      {c.data.kind === 'milestone' && <Part>milestone · {ctx.children.length} children</Part>}
       {effectsOf(c.data.features).map((e) => (
         <Part key={e.key}>
           {e.effect} {link(e.key, names.get(e.key) ?? short(e.key))}
