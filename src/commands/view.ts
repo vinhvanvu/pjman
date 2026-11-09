@@ -115,8 +115,7 @@ export interface LsOpts {
   feature?: string;
 }
 
-export function ls(store: Store, opts: LsOpts): Row[] {
-  const loaded = loadStore(store);
+export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)): Row[] {
   // a feature's status is the one the tree shows: authored, else derived from the changes on it
   const statusOf = (r: Rec): string | undefined => (r.type === 'feature' ? (typeof r.data.status === 'string' ? r.data.status : derivedStatus(loaded, r.key).status) : typeof r.data.status === 'string' ? r.data.status : undefined);
   let recs = loaded.records;
@@ -502,8 +501,7 @@ export function formatChangeContext(c: ChangeContext): string {
 }
 
 /** The board: the open changes of one project (`opts.project`), or of the whole store. */
-export function storeContext(store: Store, opts: { project?: string | null } = {}): StoreContext {
-  const loaded = loadStore(store);
+export function storeContext(store: Store, opts: { project?: string | null } = {}, loaded: Loaded = loadStore(store)): StoreContext {
   const counts: Record<string, number> = {};
   for (const r of loaded.records) counts[r.type] = (counts[r.type] ?? 0) + 1;
   const projects = loaded.records.filter((r) => r.type === 'project').map(row);

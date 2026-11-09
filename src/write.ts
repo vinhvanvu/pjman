@@ -38,7 +38,7 @@ export function errorsAt(store: Store, rels: string[]): Problem[] {
   notePending(store, rels);
   const loaded = loadStore(store);
   const set = new Set(rels);
-  return validate(loaded).filter((p) => p.level === 'error' && set.has(p.path));
+  return validate(loaded, { only: set }).filter((p) => p.level === 'error');
 }
 
 /** The text of each existing path, taken before a write so a refusal can put it back. */

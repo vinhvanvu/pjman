@@ -214,10 +214,10 @@ export function viewData(store: Store, opts: ViewOpts, loaded: Loaded = loadStor
       return { showing, neighbourhood: n, session };
     }
     showing.board = opts.project ?? null;
-    return { showing, board: storeContext(store, { project: opts.project ?? null }), session };
+    return { showing, board: storeContext(store, { project: opts.project ?? null }, loaded), session };
   }
   showing.board = opts.project ?? null;
-  return { showing, board: storeContext(store, { project: opts.project ?? null }) };
+  return { showing, board: storeContext(store, { project: opts.project ?? null }, loaded) };
 }
 
 /** Render the view as a Markdown document. */

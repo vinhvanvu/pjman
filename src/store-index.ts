@@ -24,13 +24,23 @@ import { parseRecord, type Parsed } from './frontmatter.js';
 import { TOOL_VERSION } from './version.js';
 
 /** One file or folder of the store as the index holds it. */
+/** The fields a load reads from every record, kept apart so a load parses no record whole. */
+/** The fields of a record read across the whole store: a load's keys, and the checks one record's validation makes
+ *  against every other (one binding per source, one holder per old key, one place per feature, a supersession). */
+export const HEAD_FIELDS = ['kind', 'key', 'aliases', 'binds', 'links', 'supersedes', 'status', 'feature'] as const;
+export type HeadField = (typeof HEAD_FIELDS)[number];
+export type Head = { valid: boolean } & Partial<Record<HeadField, unknown>>;
+
 export interface Entry {
   path: string;
   dir: boolean;
   size: number;
   mtime: number;
-  /** A record file's parse; null for a folder or a file that is not a record. */
-  parsed: Parsed | null;
+  /** A record file's parse, as JSON text, read into objects only when a record's fields are; null for a folder or a
+   *  file that is not a record. */
+  parsed: string | null;
+  /** What a load reads of every record: whether it is valid, and the fields keys are made from. */
+  head: Head | null;
 }
 
 /** Where the index has read to. */
@@ -53,7 +63,9 @@ export interface IndexBackend {
   close(): void;
 }
 
-const FORMAT = `1:${TOOL_VERSION}`;
+/** The tables' shape; tables of another are dropped and filled again. */
+const TABLES = 3;
+const FORMAT = `${TABLES}:${TOOL_VERSION}`;
 
 /** Where a store's index lives: in the person's pjman folder, one file per store folder, never in the store, so it is
  *  never committed with it and every worktree of a store in a project has its own. */
@@ -78,8 +90,11 @@ export class SqliteIndex implements IndexBackend {
     sqlite ??= createRequire(import.meta.url)('node:sqlite') as Sqlite;
     this.db = new sqlite.DatabaseSync(file);
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;');
+    // tables of another shape are dropped, not altered: what they held is read again from the files
+    const shape = (this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
+    if (shape !== TABLES) this.db.exec(`DROP TABLE IF EXISTS entries; DROP TABLE IF EXISTS cursor; PRAGMA user_version = ${TABLES};`);
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS entries (path TEXT PRIMARY KEY, dir INTEGER NOT NULL, size INTEGER NOT NULL, mtime REAL NOT NULL, parsed TEXT);
+      CREATE TABLE IF NOT EXISTS entries (path TEXT PRIMARY KEY, dir INTEGER NOT NULL, size INTEGER NOT NULL, mtime REAL NOT NULL, parsed TEXT, head TEXT);
       CREATE TABLE IF NOT EXISTS cursor (id INTEGER PRIMARY KEY CHECK (id = 1), format TEXT NOT NULL, stream_ino INTEGER NOT NULL, stream_bytes INTEGER NOT NULL, head TEXT);
     `);
   }
@@ -90,18 +105,18 @@ export class SqliteIndex implements IndexBackend {
   }
 
   entries(): Entry[] {
-    const rows = this.db.prepare('SELECT path, dir, size, mtime, parsed FROM entries').all() as { path: string; dir: number; size: number; mtime: number; parsed: string | null }[];
-    return rows.map((r) => ({ path: r.path, dir: r.dir === 1, size: r.size, mtime: r.mtime, parsed: r.parsed === null ? null : (JSON.parse(r.parsed) as Parsed) }));
+    const rows = this.db.prepare('SELECT path, dir, size, mtime, parsed, head FROM entries').all() as { path: string; dir: number; size: number; mtime: number; parsed: string | null; head: string | null }[];
+    return rows.map((r) => ({ path: r.path, dir: r.dir === 1, size: r.size, mtime: r.mtime, parsed: r.parsed, head: r.head === null ? null : (JSON.parse(r.head) as Head) }));
   }
 
   apply(put: Entry[], drop: string[], cursor: Cursor, replaceAll = false): void {
-    const ins = this.db.prepare('INSERT OR REPLACE INTO entries (path, dir, size, mtime, parsed) VALUES (?, ?, ?, ?, ?)');
+    const ins = this.db.prepare('INSERT OR REPLACE INTO entries (path, dir, size, mtime, parsed, head) VALUES (?, ?, ?, ?, ?, ?)');
     const del = this.db.prepare('DELETE FROM entries WHERE path = ?');
     this.db.exec('BEGIN IMMEDIATE');
     try {
       if (replaceAll) this.db.exec('DELETE FROM entries');
       for (const p of drop) del.run(p);
-      for (const e of put) ins.run(e.path, e.dir ? 1 : 0, e.size, e.mtime, e.parsed === null ? null : JSON.stringify(e.parsed));
+      for (const e of put) ins.run(e.path, e.dir ? 1 : 0, e.size, e.mtime, e.parsed, e.head === null ? null : JSON.stringify(e.head));
       this.db
         .prepare('INSERT OR REPLACE INTO cursor (id, format, stream_ino, stream_bytes, head) VALUES (1, ?, ?, ?, ?)')
         .run(cursor.format, cursor.streamIno, cursor.streamBytes, cursor.head);
@@ -118,6 +133,10 @@ export class SqliteIndex implements IndexBackend {
 }
 
 // --- what changed ----------------------------------------------------------------------------------
+
+/** The entries this process last read of each store, with the cursor they stand at: a load in the same process reads
+ *  them, not the index's rows, while the index has not moved. */
+const lastRead = new Map<string, { cursor: Cursor; entries: Map<string, Entry> }>();
 
 /** Files written by this process whose events may not have landed yet, by store root. */
 const pending = new Map<string, Set<string>>();
@@ -225,6 +244,19 @@ function diffSince(root: string, from: string, to: string): string[] | null {
   }
 }
 
+/** What says the store moved: the stream's identity and length and the repository's commit. Equal stamps mean a load
+ *  would read what the last one read; a process that holds a loaded store reuses it until its stamp changes. */
+export function stampOf(store: Store): string {
+  let stream = '';
+  try {
+    const st = fs.statSync(path.join(store.root, 'events.jsonl'));
+    stream = `${st.ino}:${st.size}`;
+  } catch {
+    // no stream yet
+  }
+  return `${stream}|${headOf(store.root) ?? ''}`;
+}
+
 // --- reading the store ---------------------------------------------------------------------------
 
 /** What the index never holds: the stream, the indexes, anything dotted. The store's root files are read live. */
@@ -238,9 +270,12 @@ function readEntry(root: string, rel: string): Entry | null {
   } catch {
     return null;
   }
-  if (st.isDirectory()) return { path: rel, dir: true, size: 0, mtime: 0, parsed: null };
-  const parsed = rel.endsWith('.md') ? parseRecord(fs.readFileSync(path.join(root, rel), 'utf8')) : null;
-  return { path: rel, dir: false, size: st.size, mtime: st.mtimeMs, parsed };
+  if (st.isDirectory()) return { path: rel, dir: true, size: 0, mtime: 0, parsed: null, head: null };
+  if (!rel.endsWith('.md')) return { path: rel, dir: false, size: st.size, mtime: st.mtimeMs, parsed: null, head: null };
+  const p = parseRecord(fs.readFileSync(path.join(root, rel), 'utf8'));
+  const head: Head = { valid: p.hasFrontmatter && p.isMapping && p.errors.length === 0 };
+  for (const f of HEAD_FIELDS) if (p.data[f] !== undefined) head[f] = p.data[f];
+  return { path: rel, dir: false, size: st.size, mtime: st.mtimeMs, parsed: JSON.stringify(p), head };
 }
 
 /** Every file and folder below the root's folders, as size and time only. */
@@ -290,12 +325,17 @@ export function indexedEntries(store: Store): Map<string, Entry> {
     // no index, or one an older tool wrote: read every file
     if (!cursor || cursor.format !== FORMAT) {
       const entries = new Map<string, Entry>();
-      for (const [rel, w] of walk(root)) entries.set(rel, w.dir ? { path: rel, ...w, parsed: null } : readEntry(root, rel)!);
-      db.apply([...entries.values()], [], next(stream?.size ?? 0), true);
+      for (const [rel, w] of walk(root)) entries.set(rel, w.dir ? { path: rel, ...w, parsed: null, head: null } : readEntry(root, rel)!);
+      const built = next(stream?.size ?? 0);
+      db.apply([...entries.values()], [], built, true);
+      lastRead.set(root, { cursor: built, entries: new Map(entries) });
       return entries;
     }
 
-    const entries = new Map(db.entries().map((e) => [e.path, e]));
+    // what this process read last, when the index has not moved since; else the index's rows
+    const mine = lastRead.get(root);
+    const same = mine && JSON.stringify(mine.cursor) === JSON.stringify(cursor);
+    const entries = same ? new Map(mine.entries) : new Map(db.entries().map((e) => [e.path, e]));
     const named = new Set<string>(pending.get(root) ?? []);
     let compareAll = reshaping.has(root);
     let bytes = cursor.streamBytes;
@@ -355,7 +395,9 @@ export function indexedEntries(store: Store): Map<string, Entry> {
         if (!st) for (const k of [...entries.keys()]) if (k.startsWith(`${rel}/`)) refresh(k);
       }
     }
-    if (put.length || drop.length || bytes !== cursor.streamBytes || head !== cursor.head || (stream?.ino ?? 0) !== cursor.streamIno) db.apply(put, drop, next(bytes));
+    const moved = put.length || drop.length || bytes !== cursor.streamBytes || head !== cursor.head || (stream?.ino ?? 0) !== cursor.streamIno;
+    if (moved) db.apply(put, drop, next(bytes));
+    lastRead.set(root, { cursor: moved ? next(bytes) : cursor, entries: new Map(entries) });
     return entries;
   } finally {
     db.close();

@@ -8,7 +8,7 @@ import { openPage, openUrl } from './commands/open.js';
 import { withStoreLock } from './lock.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
-import { loadStore, resolve, unresolvedError } from './records.js';
+import { loadStore, resolve, storeScope, unresolvedError } from './records.js';
 import { ambiguous, CliError, notFound, plural, usageError } from './util.js';
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from './validate.js';
@@ -91,7 +91,7 @@ function parse(args: string[]) {
 let scopeProduct: string | null = null;
 const scoped = (store: ReturnType<typeof requireStore>) => {
   try {
-    scopeProduct = loadStore(store).scope;
+    scopeProduct = storeScope(store);
   } catch {
     scopeProduct = null;
   }

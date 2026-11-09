@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { openStore } from '../config.js';
 import { loadStore } from '../records.js';
+import { set } from '../commands/set.js';
 import { createServer } from '../server.js';
 import { generateStore, type Generated } from './generate.js';
 
@@ -70,6 +71,11 @@ export async function benchServer(g: Generated): Promise<Timing[]> {
       out.push({ name, ms: await get(port, route) });
       out.push({ name: `${name} again`, ms: await get(port, route) });
     }
+    // a write, as a session or an accept makes one, then each page as it is asked again after it
+    const t = performance.now();
+    set(store, g.sample.change, [`gist=Written at ${new Date().toISOString()}`], {});
+    out.push({ name: 'a write', ms: performance.now() - t });
+    for (const [name, route] of routes(g)) out.push({ name: `${name} after a write`, ms: await get(port, route) });
   } finally {
     server.close();
   }
@@ -94,6 +100,7 @@ export function benchCli(g: Generated): Timing[] {
 export async function bench(root: string, scale: number, opts: { cli?: boolean } = {}): Promise<BenchResult> {
   // the bench's indexes live beside its stores, never in the person's pjman folder
   process.env.PJMAN_HOME = `${root}.home`;
+  process.env.PJMAN_WRITER = 'person:bench';
   fs.rmSync(process.env.PJMAN_HOME, { recursive: true, force: true });
   const g = generateStore(root, { scale });
   const timings: Timing[] = [];

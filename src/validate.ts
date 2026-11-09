@@ -1,7 +1,7 @@
 import { ACTOR_KINDS, CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, HOLDS, MAP_ANSWERS, SEVERITIES } from './config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
 import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug, VERSION_RE } from './keys.js';
-import { FIELD_ORDER, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
+import { FIELD_ORDER, headField, LAYER_OF, resolve, type Loaded, type Problem, type Rec, type RecordType, type Resolution } from './records.js';
 import { supersedesOf } from './supersede.js';
 import { parseAspectEffect } from './aspects.js';
 import { isDateString, isTimestamp, localDate } from './util.js';
@@ -85,8 +85,12 @@ export const EDGES: Record<string, [string[], string[]]> = {
 /** A slug alias, or `<product>/<slug>` for a key the record had in another product. */
 const ALIAS_RE = /^[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?$/;
 
-export function validate(loaded: Loaded): Problem[] {
-  const problems: Problem[] = [...loaded.problems];
+/** Every problem in the store; with `only`, the problems of the records at those paths, checked against the rest (a
+ *  write's own validation: what it wrote, without reading every other record whole). */
+export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Problem[] {
+  const only = opts.only;
+  const problems: Problem[] = only ? loaded.problems.filter((p) => only.has(p.path)) : [...loaded.problems];
+  const h = headField;
   const { store } = loaded;
   const sourceKinds = new Set(store.config.source_kinds.map((k) => k.toLowerCase()));
   const layers = new Set(store.config.layers);
@@ -151,6 +155,7 @@ export function validate(loaded: Loaded): Problem[] {
 
   // --- per record -----------------------------------------------------------
   for (const r of loaded.records) {
+    if (only && !only.has(r.path)) continue;
     for (const e of r.parsed.errors) err(r, e);
     for (const u of r.parsed.unquoted) err(r, u);
     if (!r.valid) continue;
@@ -559,16 +564,16 @@ export function validate(loaded: Loaded): Problem[] {
   const placeAt = new Map<string, Rec[]>();
   for (const r of loaded.records) {
     if (r.type !== 'place' || !r.valid) continue;
-    const f = liveKey(r, r.data.feature);
+    const f = liveKey(r, h(r, 'feature'));
     if (f) placeAt.set(`${r.aspectKey} ${f}`, [...(placeAt.get(`${r.aspectKey} ${f}`) ?? []), r]);
   }
   for (const [, recs] of placeAt) {
-    if (recs.length > 1) for (const r of recs) err(r, `${r.aspectKey} already applies at ${String(r.data.feature)} through ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}; one place per feature`);
+    if (recs.length > 1) for (const r of recs) err(r, `${r.aspectKey} already applies at ${String(h(r, 'feature'))} through ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}; one place per feature`);
   }
   const boundBy = new Map<string, Rec[]>();
   for (const r of loaded.records) {
     if (r.type !== 'change' || !r.valid) continue;
-    for (const k of listOf(r.data.binds)) {
+    for (const k of listOf(h(r, 'binds'))) {
       const key = parseKey(k);
       if (!key) continue;
       const canon = key.kind === 'url' ? `url:${key.rest}` : key.raw;
@@ -584,7 +589,7 @@ export function validate(loaded: Loaded): Problem[] {
   const flatHolders = new Map<string, Rec[]>();
   for (const r of loaded.records) {
     if (!r.valid || !r.productSlug || (r.type !== 'change' && r.type !== 'feature')) continue;
-    for (const a of listOf(r.data.aliases)) if (!a.includes('/')) flatHolders.set(`${r.type}:${a}`, [...(flatHolders.get(`${r.type}:${a}`) ?? []), r]);
+    for (const a of listOf(h(r, 'aliases'))) if (!a.includes('/')) flatHolders.set(`${r.type}:${a}`, [...(flatHolders.get(`${r.type}:${a}`) ?? []), r]);
   }
   for (const [flat, recs] of flatHolders) {
     if (recs.length > 1) for (const r of recs) err(r, `aliases: '${flat}' was also held by ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}; one record keeps the old key`);
@@ -592,8 +597,8 @@ export function validate(loaded: Loaded): Problem[] {
   // an account is one person's: two people claiming the same account is an error on both
   const claimedBy = new Map<string, Rec[]>();
   for (const r of loaded.records) {
-    if (r.type !== 'actor' || !r.valid || r.data.kind !== 'person') continue;
-    for (const k of listOf(r.data.links)) claimedBy.set(k, [...(claimedBy.get(k) ?? []), r]);
+    if (r.type !== 'actor' || !r.valid || h(r, 'kind') !== 'person') continue;
+    for (const k of listOf(h(r, 'links'))) claimedBy.set(k, [...(claimedBy.get(k) ?? []), r]);
   }
   for (const [account, recs] of claimedBy) {
     if (recs.length > 1) for (const r of recs) err(r, `links '${account}', an account also claimed by ${recs.filter((x) => x !== r).map((x) => x.key).join(', ')}`);
@@ -601,7 +606,7 @@ export function validate(loaded: Loaded): Problem[] {
   const supersededBy = new Map<string, Rec[]>();
   for (const r of loaded.records) {
     if (r.type !== 'decision' || !r.valid) continue;
-    for (const sup of supersedesOf(r.data)) {
+    for (const sup of supersedesOf({ supersedes: h(r, 'supersedes') })) {
       const x = res(r, sup);
       if (x.status === 'ok' || x.status === 'alias' || x.status === 'invalid') {
         const list = supersededBy.get(x.rec.key) ?? [];
@@ -611,11 +616,11 @@ export function validate(loaded: Loaded): Problem[] {
     }
   }
   for (const r of loaded.records) {
-    if (r.type === 'decision' && r.valid && r.data.status === 'superseded' && !supersededBy.has(r.key)) {
+    if (r.type === 'decision' && r.valid && h(r, 'status') === 'superseded' && !supersededBy.has(r.key)) {
       err(r, `status is 'superseded' but no decision's 'supersedes' points at it`);
     }
   }
-  return problems;
+  return only ? problems.filter((p) => only.has(p.path)) : problems;
 }
 
 function listOf(v: unknown): string[] {

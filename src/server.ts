@@ -8,12 +8,13 @@ import { follow, lastSeq, readEvents } from './events.js';
 import { eventsBetween, loadAt, type Moment } from './moment.js';
 import { timeline } from './timeline.js';
 import { findReferences, get } from './graph.js';
-import { rootProductOf, tree } from './tree.js';
+import { rootProductOf, tree, treeIndex } from './tree.js';
 import { activity } from './activity.js';
 import { rail, type RowKind } from './rail.js';
 import { bridge } from './bridge.js';
 import { scope } from './scope.js';
-import { loadStore, resolve } from './records.js';
+import { loadStore, ofType, resolve, type Loaded } from './records.js';
+import { stampOf } from './store-index.js';
 import { viewData } from './commands/pane.js';
 import { ls, row, storeContext } from './commands/view.js';
 import { order } from './commands/order.js';
@@ -151,6 +152,22 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     res.end(text);
   };
   const sendAll = send;
+
+  /** The store as it stands, held between requests and loaded again only once it moved (stampOf): a page that asks
+   *  again, or another page, reads what is held and every lookup already built on it (change:dashboard-reads-slow).
+   *  Nothing a request does changes it; a request scoped to a product reads a view of it kept per product. */
+  let held: { stamp: string; loaded: Loaded; views: Map<string, Loaded> } | undefined;
+  const current = (): Loaded => {
+    const stamp = stampOf(store);
+    if (!held || held.stamp !== stamp) held = { stamp, loaded: loadStore(store), views: new Map() };
+    return held.loaded;
+  };
+  const scoped = (base: Loaded, product: string): Loaded => {
+    if (!held || held.loaded !== base || base.scope === product) return base;
+    let view = held.views.get(product);
+    if (!view) held.views.set(product, (view = { ...base, scope: product }));
+    return view;
+  };
   const fail = (res: http.ServerResponse, e: unknown) => {
     if (e instanceof HttpError) return send(res, e.status, { error: { code: e.code, message: e.message, tried: e.tried } });
     // a refusal from the library answers with the CLI's code: not found 404, ambiguous 409, anything else 400
@@ -196,9 +213,9 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     // as of a moment (at=<event seq|instant>): the records at its commit, the stream cut after it, the clock set to it
     const atParam = url.searchParams.get('at');
     let moment: Moment | undefined;
-    let loaded;
+    let loaded: Loaded;
     if (atParam) ({ moment, loaded } = loadAt(store, atParam));
-    else loaded = loadStore(store);
+    else loaded = current();
     const asOf = moment ? { now: Date.parse(moment.at), until: moment.seq } : {};
     const send = (r: http.ServerResponse, status: number, body: unknown) => sendAll(r, status, moment ? { moment, ...(body as object) } : body);
     // a bare key on a request resolves in the product the page is in (the record it is about), else the current project's
@@ -207,7 +224,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const res = resolve(loaded, at);
       const rec = res.status === 'ok' || res.status === 'alias' ? res.rec : undefined;
       const p = rec ? (rec.type === 'product' ? rec.productSlug : rec.productSlug ?? rootProductOf(loaded, rec)?.productSlug) : undefined;
-      if (p) loaded.scope = p;
+      if (p) loaded = moment ? { ...loaded, scope: p } : scoped(loaded, p);
     }
     const getOpts = { cwd: store.projectDir ?? process.cwd(), projectDir: store.projectDir, project: store.project };
     let m: RegExpExecArray | null;
@@ -217,10 +234,10 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       return send(res, 200, { data: {
         root: store.root, mode: store.mode, name: cfg.name, project: store.project ?? null, actor: readUserConfig().actor ?? null,
         source_kinds: cfg.source_kinds, vocabulary: cfg.vocabulary,
-        projects: loaded.records.filter((r) => r.type === 'project').map(row),
-        products: loaded.records.filter((r) => r.type === 'product').map((p) => {
-          const projects = new Set(loaded.records.filter((r) => r.type === 'project' && r.data.product === p.key).map((r) => r.key));
-          const changes = loaded.records.filter((r) => r.type === 'change' && projects.has(String(r.data.project)) && r.data.status !== 'done' && r.data.status !== 'dropped');
+        projects: ofType(loaded, 'project').map(row),
+        products: ofType(loaded, 'product').map((p) => {
+          const projects = ofType(loaded, 'project').filter((r) => r.data.product === p.key).map((r) => r.key);
+          const changes = projects.flatMap((k) => treeIndex(loaded).inProject.get(k) ?? []).filter((r) => r.data.status !== 'done' && r.data.status !== 'dropped');
           return {
             ...row(p),
             name: typeof p.data.name === 'string' ? p.data.name : undefined,
@@ -234,7 +251,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if (route === '/records') {
       const q = url.searchParams;
       const opt = (name: string) => q.get(name) ?? undefined;
-      return send(res, 200, { data: ls(store, { type: opt('type'), status: opt('status'), kind: opt('kind'), project: opt('project'), product: opt('product'), parent: opt('parent'), feature: opt('feature') }) });
+      return send(res, 200, { data: ls(store, { type: opt('type'), status: opt('status'), kind: opt('kind'), project: opt('project'), product: opt('product'), parent: opt('parent'), feature: opt('feature') }, loaded) });
     }
     if ((m = /^\/records\/([a-z][a-z0-9-]*)\/(.+?)(\/neighbourhood)?$/.exec(route))) {
       const key = `${m[1]}:${decodeURIComponent(m[2])}`;
@@ -305,7 +322,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       return send(res, 200, { data: viewData(store, { session: id, ...getOpts }, loaded) });
     }
     if ((m = /^\/projects\/([a-z0-9][a-z0-9-]*)\/board$/.exec(route))) {
-      return send(res, 200, { data: storeContext(store, { project: `project:${m[1]}` }) });
+      return send(res, 200, { data: storeContext(store, { project: `project:${m[1]}` }, loaded) });
     }
     if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/bridge$/.exec(route))) {
       const days = url.searchParams.get('days');
@@ -315,7 +332,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/timeline$/.exec(route))) {
       // the axis a moment is placed on: always as of now, whatever at= says
       const q = url.searchParams;
-      return send(res, 200, { data: timeline(store, moment ? loadStore(store) : loaded, { product: `product:${m[1]}`, from: q.get('from') ?? undefined, to: q.get('to') ?? undefined, after: q.get('after') ? Number(q.get('after')) : undefined }) });
+      return send(res, 200, { data: timeline(store, moment ? current() : loaded, { product: `product:${m[1]}`, from: q.get('from') ?? undefined, to: q.get('to') ?? undefined, after: q.get('after') ? Number(q.get('after')) : undefined }) });
     }
     if (route === '/events') {
       const sinceParam = url.searchParams.get('since') ?? req.headers['last-event-id'];

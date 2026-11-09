@@ -53,15 +53,45 @@ function subscribe(url: string, onFrame: (f: Frame) => void): () => void {
   };
 }
 
+/** The product a record's key sits under (`change:<product>/…`, `product:<product>`), or null for a record under none
+ *  (a session, a project, an actor, a source), whose write can reach any page. */
+export function productOfKey(key: string): string | null {
+  const m = /^(?:product:([^/]+)$|(?:change|feature|decision|aspect|place|release):([^/]+)\/)/.exec(key);
+  return m ? (m[1] ?? m[2]) : null;
+}
+
+/** Whether a query can show a write to one of `products`: one that names a product names it in its key (a node, a
+ *  product, a record); one that names none (the store, the records, a session) reads every product. */
+export function reaches(queryKey: readonly unknown[], products: Set<string>): boolean {
+  const text = JSON.stringify(queryKey);
+  const named = [...text.matchAll(/(?:product|change|feature|decision|aspect|place|release):([^/"]+)/g)].map((m) => m[1]);
+  if (!named.length) return true;
+  return named.some((p) => products.has(p));
+}
+
 export function useLiveInvalidation(): LiveState {
   const client = useQueryClient();
   const [state, setState] = useState<LiveState>({ connected: false });
 
   useEffect(() => {
+    // the products the events since the last refetch were in; null once one was in none (a session, a project), which
+    // reaches every page
+    let reached: Set<string> | null = new Set();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const invalidate = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void client.invalidateQueries({ queryKey: queryKeys.all }), 150);
+    let last = 0;
+    const flush = () => {
+      timer = undefined;
+      last = Date.now();
+      const products = reached;
+      reached = new Set();
+      void client.invalidateQueries({ queryKey: queryKeys.all, predicate: (q) => products === null || reaches(q.queryKey, products) });
+    };
+    const invalidate = (e: StoreEvent) => {
+      const p = productOfKey(e.key);
+      if (p === null) reached = null;
+      else reached?.add(p);
+      // the first event of a burst refetches after a beat, the rest at most once a second (change:dashboard-reads-slow)
+      timer ??= setTimeout(flush, Math.max(150, last + 1000 - Date.now()));
     };
     const unsubscribe = subscribe(`${BASE}/events`, (f) => {
       if (f.kind === 'open') setState((s) => ({ ...s, connected: true }));
@@ -70,7 +100,7 @@ export function useLiveInvalidation(): LiveState {
         const e = JSON.parse(f.data) as StoreEvent;
         setState({ connected: true, last: e });
         useArrivals.getState().arrive(e);
-        invalidate();
+        invalidate(e);
       }
     });
     return () => {
