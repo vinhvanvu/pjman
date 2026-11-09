@@ -392,6 +392,13 @@ test('the view renders a reference; the session page reads what a session is on'
   const followed = viewData(store, { session: 'session:sess-v' });
   assert.equal(followed.showing.key, 'change:project/contract');
   assert.equal(followed.session?.on, 'change:project/contract');
+  // working by the bridge's rule: the bind is its last act; once its stop line is last it is live but not working
+  assert.equal(followed.session?.state, 'live');
+  assert.equal(followed.session?.working, true);
+  sessionLog(store, 'sess-v', 'Done for now.');
+  const stopped = viewData(store, { session: 'session:sess-v' });
+  assert.equal(stopped.session?.state, 'live');
+  assert.equal(stopped.session?.working, false);
   assert.throws(() => viewData(store, { session: 'nope' }), /does not resolve to a session/);
 });
 

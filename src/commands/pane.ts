@@ -2,7 +2,7 @@ import type { Store } from '../config.js';
 import { follow, lastSeq, readEvents } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
-import { LIVE_MINUTES } from '../scope.js';
+import { lastActs, LIVE_MINUTES, sessionLogOf, sessionState } from '../session-state.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
 import { CliError } from '../util.js';
@@ -40,6 +40,9 @@ export interface SessionFacts {
   /** live: something it did reached the stream inside the live window; ended: its closing line was written; quiet
    *  otherwise. */
   state: 'live' | 'quiet' | 'ended';
+  /** Working, by the rule the bridge reads a session by: its last act reached the stream inside the live window and
+   *  was not a stop line. A live session that stopped at a line is not working. */
+  working: boolean;
   /** The last instant it reached the stream. */
   last?: string;
 }
@@ -75,7 +78,9 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   const ended = log.length > 0 && log[log.length - 1].text.startsWith('session ended');
   const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
   const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, product: product?.key, state, last };
+  const read = sessionLogOf(rec);
+  const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false }, now) === 'working';
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, product: product?.key, state, working, last };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };

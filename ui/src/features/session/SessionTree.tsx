@@ -198,6 +198,7 @@ export function SessionTree({
       wide={wide}
       isViewing={isViewing}
       live={session.state === 'live'}
+      working={session.working && !isViewing}
       under={parentOf}
       names={names}
       arrivals={arrivals}

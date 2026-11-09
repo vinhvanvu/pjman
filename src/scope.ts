@@ -13,13 +13,14 @@ import { CliError, localDate } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
 import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState } from './foundation.js';
 import { nextLine } from './commands/view.js';
+import { lastActs, sessionLogOf, sessionState, type SessionState } from './session-state.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
 export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
 export type Lens = (typeof LENSES)[number];
 export const IN_FLIGHT = ['active', 'review', 'blocked'];
-/** A session is live while something it did reached the stream inside this window. */
-export const LIVE_MINUTES = 30;
+export { LIVE_MINUTES } from './session-state.js';
+import { LIVE_MINUTES } from './session-state.js';
 const DAY = 86_400_000;
 
 export interface Health {
@@ -128,6 +129,10 @@ export interface LiveSession {
   /** The change it was last bound to. */
   on?: string;
   lastLine?: string;
+  /** Its state by the rule the bridge reads a session by: working while its last act reached the stream inside the
+   *  window and was not a stop line; waiting when it stopped and a decision is proposed on its change; stopped
+   *  otherwise; ended once its closing line was written inside the window. */
+  state: SessionState;
 }
 
 /** A proposed decision beneath a node: what waits on a person, read in the order they want it (the-ladder,
@@ -239,6 +244,8 @@ class Index {
   readonly events: StoreEvent[];
   readonly now: number;
   readonly liveSessions = new Map<string, string>();
+  /** The last act of each session: a write stamped with it, its own log lines excluded. */
+  readonly acts: Map<string, string>;
 
   constructor(readonly store: Store, readonly loaded: Loaded, now: number, until?: number) {
     this.now = now;
@@ -269,6 +276,7 @@ class Index {
       const s = e.session ?? (e.type === 'session' ? e.key : undefined);
       if (s && e.at >= liveSince) this.liveSessions.set(s, e.at);
     }
+    this.acts = lastActs(this.events);
   }
 
   parentOf(c: Rec): string | undefined {
@@ -578,7 +586,9 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       const bound = list(s.data.changes).map((k) => live(loaded, k)?.key).filter((k): k is string => !!k);
       const on = bound[bound.length - 1];
       const log = (s.sections.get('Log') ?? '').split('\n').filter((l) => l.trim());
-      return { key: s.key, agent: str(s.data.agent), onBehalfOf: str(s.data.on_behalf_of), started: str(s.data.started), last: ix.liveSessions.get(s.key)!, on, lastLine: log.length ? log[log.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined };
+      const { ended, line } = sessionLogOf(s);
+      const state = sessionState({ ended: !!ended, line: line?.at, act: ix.acts.get(s.key), proposed: !!on && (ix.waiting.get(on) ?? 0) > 0 }, ix.now);
+      return { key: s.key, agent: str(s.data.agent), onBehalfOf: str(s.data.on_behalf_of), started: str(s.data.started), last: ix.liveSessions.get(s.key)!, on, lastLine: log.length ? log[log.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined, state };
     })
     .filter((s) => !node || (s.on && nodeKeys.has(s.on)))
     .sort((a, b) => b.last.localeCompare(a.last));

@@ -123,6 +123,11 @@ export function sourcesView(ctx: Pick<ChangeContext, 'sources' | 'branch'>): {
 export const identityLabel = (isViewing: boolean, kind: 'change' | 'bug' = 'change'): string =>
   `${isViewing ? 'viewing' : 'on now'} · ${kind}`;
 
+/** A session is working the change now (change:alive-step-bars): one of the scope's live sessions is on this change
+ *  itself, not a child beneath it, and works by the bridge's rule; a stopped or waiting session leaves the bar still. */
+export const workingOn = (sessions: readonly { on?: string; state: string }[], key: string): boolean =>
+  sessions.some((s) => s.on === key && s.state === 'working');
+
 interface LiveOne {
   key: string;
   agent?: string;
