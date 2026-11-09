@@ -548,7 +548,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'rest': {
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw usageError('usage: pjman rest <change> [--json]');
-      const r = restOf(loadStore(store), pos[1]);
+      // the argument resolves as every command's does: the slug alone names the project's change (change:rest-takes-the-slug)
+      const loaded = loadStore(store);
+      const r = restOf(loaded, resolveArg(loaded, pos[1], { kinds: ['change'] }));
       v.json ? json(r) : out(formatRest(r));
       return r.rests ? 0 : 1;
     }

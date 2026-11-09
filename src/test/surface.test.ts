@@ -102,6 +102,17 @@ test('a record argument resolves as get resolves it: the slug alone, ambiguity r
   // the product and its project share the name app; tree asks only for products and features
   assert.match(pj(['tree', 'app']).out, /product:app/);
   assert.match(pj(['show', 'app']).err, /app is ambiguous/);
+  // rest takes the slug alone as the others do, and asks only for changes, so the feature's slug does not make it ambiguous
+  r = pj(['rest', 'login']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^change:login rests/);
+  r = pj(['rest', 'checkout']);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^change:checkout rests/);
+  r = pj(['rest', 'nowhere']);
+  assert.equal(r.code, 1);
+  assert.match(r.err, /nowhere/);
+  assert.ok(!/at restOf|\n    at /.test(r.err), 'a refusal, not a stack trace');
   // show --json is the listing's row with the body
   const row = JSON.parse(pj(['show', 'login', '--json']).out) as { type: string; key: string; body: string };
   assert.equal(row.type, 'change');
