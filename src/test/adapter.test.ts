@@ -163,6 +163,76 @@ test('run to the end: a turn that wrote code may stop only where the change rest
   passes(hook('SubagentStop', { agent_id: 'sub-run', last_assistant_message: 'Wrote some.' }), 'a subagent');
 });
 
+test('questions become decisions: a reply that asks the person to choose is sent back once unless a decision was written', () => {
+  change(store, 'ask-it', { title: 'Ask it', summary: 's', writer: 'person:tester' });
+  const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-ask', ...input });
+  const passes = (out: string, what: string) => assert.ok(!/"decision":"block"/.test(out), `${what}: ${out}`);
+  const refused = (out: string, what: string) => {
+    assert.match(out, /"decision":"block"/, what);
+    return (JSON.parse(out) as { reason: string }).reason;
+  };
+  at('SessionStart', { source: 'startup' });
+  at('UserPromptSubmit', { prompt: 'design change:ask-it' });
+  // a proposal that ends on open questions laid out as chat: the stop is refused once, the questions named, the way to record them given
+  const proposal = [
+    '## The change page',
+    '',
+    'The page shows the ladder, then the plan. Here is how I would build it.',
+    '',
+    '```',
+    'is this code? yes?',
+    '```',
+    '',
+    '> you asked: can the plan go first?',
+    '',
+    '**Open questions**',
+    '1. Does the plan sit above or below the decisions?',
+    '2. Is a done step hidden, or shown struck through?',
+    '3. Who sees the sessions list?',
+  ].join('\n');
+  let reason = refused(at('Stop', { last_assistant_message: proposal }), 'open questions in chat');
+  assert.match(reason, /^pjman: this reply asks the person to choose and no decision was opened or added to this turn:\n- Does the plan sit above or below the decisions\?\n- Is a done step hidden, or shown struck through\?\n- Who sees the sessions list\?\n/);
+  assert.match(reason, /pjman decision change:ask-it\/<slug>/);
+  assert.ok(!/is this code/.test(reason), 'a question inside a code block is not one');
+  assert.ok(!/can the plan go first/.test(reason), 'the person\'s quoted words are not one');
+  assert.ok(!/not at a resting point/.test(reason), 'a turn that wrote no code is not judged on the plan');
+  // the marked retry passes
+  passes(at('Stop', { last_assistant_message: proposal, stop_hook_active: true }), 'the marked retry');
+  // one question with alternatives in it, or one followed by options, is a choice; a lone question with none is not
+  at('UserPromptSubmit', { prompt: 'go on' });
+  reason = refused(at('Stop', { last_assistant_message: 'Do we keep the hook in the plugin or move the check into the tool?' }), 'alternatives in the question');
+  assert.match(reason, /- Do we keep the hook in the plugin or move the check into the tool\?/);
+  at('UserPromptSubmit', { prompt: 'go on' });
+  reason = refused(at('Stop', { last_assistant_message: 'Which shape?\n- A: one hook\n- B: two hooks\n\nI lean A.' }), 'options listed under the question');
+  assert.match(reason, /- Which shape\?/);
+  at('UserPromptSubmit', { prompt: 'go on' });
+  passes(at('Stop', { last_assistant_message: 'Wrote the first part. Shall I go on?' }), 'a lone question with no options');
+  passes(at('Stop', { last_assistant_message: 'Done; committed for review.' }), 'no question');
+  // a decision written this turn answers the questions: the stop passes
+  at('UserPromptSubmit', { prompt: 'go on' });
+  at('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'pjman decision ask-it/plan-place --name "Plan place" --gist "g" --question "q" --option above="a" --option below="b" --recommend above="why"' } });
+  passes(at('Stop', { last_assistant_message: 'A decision is open: above or below the decisions?\n- above\n- below' }), 'a decision written this turn');
+  // the next turn starts clean: the same reply with no decision written is refused again
+  at('UserPromptSubmit', { prompt: 'go on' });
+  refused(at('Stop', { last_assistant_message: 'Above or below?\n- above\n- below' }), 'a new turn with no decision written');
+  // the harness's own question prompt is a question put to the person: recorded as a decision, or sent back once
+  at('UserPromptSubmit', { prompt: 'go on' });
+  at('PostToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: 'Above or below?' }] } });
+  reason = refused(at('Stop', { last_assistant_message: 'Placing the plan above, as you chose.' }), 'the question prompt with no decision');
+  assert.match(reason, /put a question to the person through the prompt and no decision was opened or added to record it/);
+  assert.match(reason, /--accept <id>="…" --by person:<handle>/);
+  passes(at('Stop', { last_assistant_message: 'Placing the plan above, as you chose.', stop_hook_active: true }), 'the marked retry');
+  at('UserPromptSubmit', { prompt: 'go on' });
+  at('PostToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: 'Above or below?' }] } });
+  at('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'pjman decision ask-it/plan-place --accept above="above" --by person:tester' } });
+  passes(at('Stop', { last_assistant_message: 'Recorded: the plan sits above.' }), 'the question prompt, then the decision recorded');
+  // a session bound to no change, and a subagent, are left alone
+  passes(hook('Stop', { session_id: 'sess-unbound', last_assistant_message: 'One or two?\n- one\n- two' }), 'no change bound');
+  hook('SubagentStart', { agent_id: 'sub-ask', agent_type: 'general-purpose' });
+  hook('UserPromptSubmit', { agent_id: 'sub-ask', prompt: 'work change:ask-it' });
+  passes(hook('SubagentStop', { agent_id: 'sub-ask', last_assistant_message: 'One or two?\n- one\n- two' }), 'a subagent');
+});
+
 test('a subagent is a child session with parent', () => {
   hook('SubagentStart', { agent_id: 'agent-x', agent_type: 'Explore' });
   hook('PostToolUse', { agent_id: 'agent-x', tool_name: 'Bash', tool_input: { command: 'pjman session log agent-x "looked"' } });

@@ -16,11 +16,14 @@
 //                     through the sync (gh for GitHub), or the agent is told to; then the brief (pjman brief --session): the bound change's
 //                     context in full when the binding moved, else what changed on it since the last brief
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write in the project records an
-//                     observed `links` edge from the bound change and marks the turn as having written code;
+//                     observed `links` edge from the bound change and marks the turn as having written code; a shell call that writes a
+//                     decision marks the turn as having recorded one, and the harness's own question prompt marks it as having asked the person;
 //                     a shell call that may bind (filing a change, `pjman session bind`) reads the session's binding, and a moved one is taken up as a prompt's bind is
 //   Stop              a turn that wrote code for the bound change may end only where the change rests (pjman rest: a decision proposed, a
 //                     blocker recorded, a status a person set, the plan run to its end); elsewhere the stop is refused once, with the open
-//                     steps and the ways out, and the turn goes on (change:run-to-the-end). Then a turn that acted appends one log line,
+//                     steps and the ways out, and the turn goes on (change:run-to-the-end). A reply on a bound change that asks the person
+//                     to choose (questions laid out with options, or the harness's question prompt used this turn) while no decision was opened or
+//                     added this turn is sent back once to record them as decisions (change:questions-become-decisions). Then a turn that acted appends one log line,
 //                     from the harness's last message; the size of each brief given this turn and the receipt of what the store received
 //                     since the last turn are shown to the person
 //   SubagentStart     a child session with `parent`
@@ -481,17 +484,71 @@ function restVerdict(key, cwd) {
   }
 }
 
+/** A key as the project prints it: the product segment of the project's own product dropped. */
+function shortKey(k, store) {
+  const product = store.product ? String(store.product).replace(/^product:/, '') : null;
+  return product ? k.replace(new RegExp(`^(feature|change|decision):${product}/`), '$1:') : k;
+}
+
 /** Why the stop is refused, for the agent: the change, the open steps, and the three ways the record lets it stop. */
 function restRefusal(r, store) {
-  const product = store.product ? String(store.product).replace(/^product:/, '') : null;
-  const short = (k) => (product ? k.replace(new RegExp(`^(feature|change|decision):${product}/`), '$1:') : k);
-  const key = short(r.key);
+  const key = shortKey(r.key, store);
   const steps = r.open.map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`).join('\n');
   return [
     `pjman: ${key} is not at a resting point. This turn wrote code for it and its plan still has ${r.open.length === 1 ? 'a step' : `${r.open.length} steps`} open:`,
     steps,
     `Carry on until the plan runs to its end; mark each step as it lands (pjman step ${key} done <n>). Stop only where the record lets you: a choice that forecloses options opened as a decision, proposed (pjman decision ${key}/<slug> …); an outside blocker recorded (pjman set ${key} blocked-on="…"); or every step done and the work committed on the worktree for review. If the person asked you to stop here, leave the plan where it stands (pjman step ${key} note <n> "…") and end the turn again.`,
   ].join('\n');
+}
+
+/** The questions a reply lays out for the person to choose on, outside code and quotes: a question with alternatives in it
+ *  ("x or y?"), one followed by a list of options, one under an "open questions" line, or two or more questions put together.
+ *  A lone question with no options (a fact only the person knows, "shall I go on?") is not a choice and is left alone. */
+function choiceQuestions(text) {
+  const lines = String(text ?? '').split('\n');
+  const out = [];
+  let inCode = false;
+  let underHeading = false;
+  const isItem = (l) => /^\s*(?:[-*+•]|\d+[.)]|[a-z][.)])\s+\S/i.test(l);
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    if (/^\s*(```|~~~)/.test(raw)) { inCode = !inCode; continue; }
+    if (inCode) continue;
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^>/.test(line)) continue; // the person's words, quoted
+    if (/^#/.test(line)) { underHeading = /open questions?/i.test(line); continue; }
+    if (/^(?:\*\*)?open questions?(?:\*\*)?:?$/i.test(line)) { underHeading = true; continue; }
+    const plain = line.replace(/^[>*\-+•\d.)\s]+/, '').replace(/\*\*/g, '').trim();
+    if (!/\?\s*$/.test(plain)) continue;
+    let options = 0;
+    for (let j = i + 1; j < lines.length && j <= i + 6; j++) {
+      const l = lines[j];
+      if (/^\s*(```|~~~)/.test(l)) break;
+      if (!l.trim()) { if (options) break; continue; }
+      if (isItem(l)) options += 1; else break;
+    }
+    const alternatives = /\b(?:or|either|versus|vs\.?)\b/i.test(plain);
+    out.push({ text: plain, choice: alternatives || options >= 2 || underHeading });
+  }
+  const questions = out.filter((q) => q.choice).map((q) => q.text);
+  if (questions.length) return questions;
+  return out.length >= 2 ? out.map((q) => q.text) : [];
+}
+
+/** Why the stop is refused when the reply asked the person to choose and nothing was recorded: the questions, and the way to record them. */
+function questionsRefusal(key, questions, asked) {
+  const short = (q) => (q.length > 160 ? q.slice(0, 159) + '…' : q);
+  const parts = [];
+  if (questions.length) {
+    parts.push(`pjman: this reply asks the person to choose and no decision was opened or added to this turn:`);
+    parts.push(questions.map((q) => `- ${short(q)}`).join('\n'));
+  }
+  if (asked) parts.push(`pjman: this turn put a question to the person through the prompt and no decision was opened or added to record it.`);
+  parts.push(
+    `A question laid out with options is a decision: record each as proposed, with its options and one recommended (pjman decision ${key}/<slug> --name "…" --gist "…" --question "…" --option <id>="…" --option <id>="…" --recommend <id>="why"), and where the person already chose, add their words (--accept <id>="…" --by person:<handle>). Then end the turn again, saying which decisions are open. A question that is not a choice (a fact only the person knows) is asked as it is; end the turn again.`,
+  );
+  return parts.join('\n');
 }
 
 function firstLine(text, max = 200) {
@@ -705,6 +762,8 @@ async function main() {
     case 'UserPromptSubmit': {
       const prompt = String(input.prompt ?? '');
       st.edited = 0; // a new turn: what the last one wrote has been judged
+      st.decided = 0;
+      st.asked = 0;
       const found = promptChange(prompt, { cwd, env });
       const parts = [];
       if (found?.hint) parts.push(found.hint);
@@ -728,6 +787,11 @@ async function main() {
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
       const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|note|session|mv|rm|fmt|sync|order|apply|undo|migrate)\b/;
       if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
+      // a decision written this turn answers the questions the reply may end on (Stop); the harness's own question prompt is a
+      // question put to the person, to be recorded the same way
+      const decisionWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:decision|apply)\b/;
+      if (input.tool_name === 'Bash' && decisionWrite.test(String(input.tool_input?.command ?? ''))) st.decided = (st.decided ?? 0) + 1;
+      if (input.tool_name === 'AskUserQuestion') st.asked = (st.asked ?? 0) + 1;
       // the agent's own bind (filing a change binds the run to it, or `pjman session bind`) gives the session its subject as a
       // prompt's does: the sidebar names it and a parked pane follows (change:bind-moves-the-dock)
       const bindingWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:new|session|apply)\b/;
@@ -773,15 +837,27 @@ async function main() {
       // The verdict is the tool's (pjman rest); the hook refuses the stop once per turn (the harness marks the retry with
       // stop_hook_active, which passes), so a refusal is a push back into the plan, never a wall. A turn that only talked,
       // or wrote nothing for the change, passes untouched; so does a subagent.
-      if (EVENT === 'Stop' && !input.agent_id && (st.edited ?? 0) > 0 && st.bound && !input.stop_hook_active) {
-        const r = restVerdict(st.bound, cwd);
-        if (r && !r.rests) {
-          process.stdout.write(JSON.stringify({ decision: 'block', reason: restRefusal(r, store) }));
-          saveState(sid, st); // edited stays: the retry passes on stop_hook_active and resets it
+      // Questions become decisions (change:questions-become-decisions): a reply that asks the person to choose, or a turn that put a
+      // question through the harness's prompt, while no decision was opened or added this turn, is sent back once to record them.
+      if (EVENT === 'Stop' && !input.agent_id && st.bound && !input.stop_hook_active) {
+        const reasons = [];
+        if ((st.edited ?? 0) > 0) {
+          const r = restVerdict(st.bound, cwd);
+          if (r && !r.rests) reasons.push(restRefusal(r, store));
+        }
+        if (!(st.decided ?? 0)) {
+          const questions = choiceQuestions(input.last_assistant_message);
+          if (questions.length || st.asked) reasons.push(questionsRefusal(shortKey(st.bound, store), questions, (st.asked ?? 0) > 0));
+        }
+        if (reasons.length) {
+          process.stdout.write(JSON.stringify({ decision: 'block', reason: reasons.join('\n\n') }));
+          saveState(sid, st); // edited, decided and asked stay: the retry passes on stop_hook_active and resets them
           return;
         }
       }
       st.edited = 0;
+      st.asked = 0;
+      st.decided = 0;
       if (st.acted > 0) {
         const line = firstLine(input.last_assistant_message);
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });
