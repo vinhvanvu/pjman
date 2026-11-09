@@ -577,6 +577,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         const undo = r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : '';
         if (r.kind === 'stamp') out(`stamped: the store is in format ${r.version}${undo}`);
         else if (r.kind === 'foundation') out(`migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.decisions ?? 0, 'decision')} mapped into the foundation (introduced in ${r.since}), each marked migrated until it is next written${undo}`);
+        else if (r.kind === 'kinds') out(`migrated: ${plural(r.changes ?? 0, 'parent change')} now a milestone by kind (introduced in ${r.since}); steps one carried are in its Notes, since a milestone's plan is its children${undo}`);
         else out(`migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product (introduced in ${r.since})${undo}`);
         const next = pendingMigration(store);
         if (next) out(`the store still waits for ${describeMigration(next)}: run pjman migrate again`);
