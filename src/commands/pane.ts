@@ -35,6 +35,9 @@ export interface SessionFacts {
   on?: string;
   /** What it is credited with working on: its last bound change that still resolves. */
   bound?: string;
+  /** Every change it bound that still resolves, in the order it bound them: the dock reads a milestone among them as
+   *  the frame the session works inside (decision milestone-detail/milestone-leads-the-dock). */
+  binds: string[];
   /** The product that change is in, else the current project's; absent when neither is known. */
   product?: string;
   /** live: something it did reached the stream inside the live window; ended: its closing line was written; quiet
@@ -80,7 +83,7 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
   const read = sessionLogOf(rec);
   const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false }, now) === 'working';
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, product: product?.key, state, working, last };
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };

@@ -50,21 +50,6 @@ export function planFold(plan: readonly Step[], keep = 3): { folded: Step[]; sho
   return { folded, shown: plan.filter((s) => !folded.includes(s)), sum };
 }
 
-type Child = ChangeContext['children'][number];
-
-/** A milestone's head and bar, by its children: "4 of 7 done · 1 active"; a segment a child; the next child not done. */
-export function childrenView(children: readonly Child[]): { sum: string; segments: string[]; row?: Child } {
-  const counted = children.filter((c) => c.status !== 'dropped');
-  const done = counted.filter((c) => c.status === 'done').length;
-  const active = counted.filter((c) => c.status === 'active' || c.status === 'review').length;
-  const sum = `${done} of ${counted.length} done${active ? ` · ${active} in flight` : ''}`;
-  return {
-    sum,
-    segments: children.map((c) => c.status ?? 'open'),
-    row: counted.find((c) => c.status !== 'done'),
-  };
-}
-
 /** A feature effect as written: "adds feature:x" → adds x; a bare key changes it. */
 export function effectsOf(features: unknown): { effect: string; key: string }[] {
   if (!Array.isArray(features)) return [];
@@ -120,7 +105,7 @@ export function sourcesView(ctx: Pick<ChangeContext, 'sources' | 'branch'>): {
 }
 
 /** The identity row's label: where the session is now, or what the person is viewing instead. */
-export const identityLabel = (isViewing: boolean, kind: 'change' | 'bug' = 'change'): string =>
+export const identityLabel = (isViewing: boolean, kind: 'change' | 'bug' | 'milestone' = 'change'): string =>
   `${isViewing ? 'viewing' : 'on now'} · ${kind}`;
 
 /** A session is working the change now (change:alive-step-bars): one of the scope's live sessions is on this change

@@ -6,15 +6,17 @@
 // so only what waits is a card (the decided are on the session's rail) and the record's sections are one drill away;
 // where the change is the subject its decided rows and history stay (decision detail-pages/decision-card) and its
 // sections follow the decisions. The identity row says where the session is on the session page, the change's kind
-// elsewhere; its right end is the way to the change's page, or on that page the key to copy.
+// elsewhere; its right end is the way to the change's page, or on that page the key to copy. A milestone's children
+// stand where a change has its plan (decision milestone-detail/children-in-order), drawn by the caller into the
+// milestone slot with the frame they are read against, and the decisions waiting beneath join its own as cards.
 import { cn } from 'cn';
 import { Check, ChevronRight, Diamond } from 'lucide-react';
 import { m } from 'motion/react';
 import { useState } from 'react';
-import type { ChangeAspects, ChangeContext, Lens } from '@/data/contract';
+import type { ChangeAspects, ChangeContext, Lens, WaitingDecision } from '@/data/contract';
 import type { useDecideAction } from '@/data/queries';
 import { Chip, KeyText, Label } from '@/components/chips/Chip';
-import { fromRow, groupHead } from '@/components/decisions/model';
+import { fromRow, fromWaiting, groupHead } from '@/components/decisions/model';
 import { DecisionGroup } from '@/components/decisions/DecisionGroup';
 import { CopyKey } from '@/components/links/CopyKey';
 import { NodeLink } from '@/components/links/NodeLink';
@@ -26,7 +28,7 @@ import { agoWords } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Wash } from '@/lib/motion';
 import { statusTone, TONE } from '@/lib/tones';
-import { childrenView, effectsOf, identityLabel, planFold, planView, shippedWords, sourcesView } from './model';
+import { effectsOf, identityLabel, planFold, planView, shippedWords, sourcesView } from './model';
 
 /** The body rises in: 4 px and a fade, 180 ms ease-out; reduced motion keeps the fade. */
 export const RISE = {
@@ -68,7 +70,13 @@ export interface ChangeTreeProps {
   onLink: (key: string | undefined) => void;
   /** Drawn above the identity row: the change bar, where the change is the subject. */
   bar?: React.ReactNode;
+  /** On a milestone: its children where a change has its plan (features/milestones), drawn by the caller. */
+  milestoneSlot?: React.ReactNode;
+  /** On a milestone: the decisions waiting beneath it, each a card naming its change. */
+  waitingBeneath?: readonly WaitingDecision[];
 }
+
+const NO_WAITING: readonly WaitingDecision[] = [];
 
 const NO_NAMES = new Map<string, string>();
 const NO_UNDER: { key: string; name?: string; title?: string }[] = [];
@@ -98,13 +106,16 @@ export function ChangeTree({
   linked,
   onLink,
   bar,
+  milestoneSlot,
+  waitingBeneath = NO_WAITING,
 }: ChangeTreeProps) {
   const c = ctx.change;
   const milestone = ctx.children.length > 0;
-  const decisions = ctx.decisions.map((d) => fromRow(d, c.key));
+  const beneath = waitingBeneath.filter((d) => d.change !== c.key).map(fromWaiting);
+  const decisions = [...ctx.decisions.map((d) => fromRow(d, c.key)), ...beneath];
   const waiting = decisions.filter((d) => d.status === 'proposed').length;
   const decided = decisions.length - waiting;
-  const kind = c.data.kind === 'bug' ? 'bug' : 'change';
+  const kind = c.data.kind === 'bug' ? 'bug' : milestone ? 'milestone' : 'change';
   const onSession = where === 'session';
   const onNow = onSession && !isViewing && live;
   return (
@@ -147,24 +158,18 @@ export function ChangeTree({
           className={cn(statusTone(c.status).wash, '-inset-x-2 -inset-y-1 rounded-card')}
         />
         <h1 className="text-[18px] leading-[1.3] font-semibold tracking-tight">{c.name ?? c.gist ?? short(c.key)}</h1>
-        {c.name && c.gist && c.gist !== c.name && (
-          <p className="text-body leading-normal text-ink-muted">{c.gist}</p>
-        )}
+        {c.name && c.gist && c.gist !== c.name && <p className="text-body leading-normal text-ink-muted">{c.gist}</p>}
         <Readiness needs={ctx.needs} stale={ctx.stale} migrated={ctx.migrated} />
         <PathLine ctx={ctx} lens={lens} mode={mode} under={under} names={names} />
         {ctx.aspects && <AspectChips aspects={ctx.aspects} lens={lens} />}
       </div>
 
       <div className={cn('flex flex-col', wide ? 'max-w-[760px] gap-8' : 'gap-3')}>
-        {milestone ? (
-          <Children ctx={ctx} lens={lens} mode={mode} wide={wide} />
-        ) : (
-          <PlanPart ctx={ctx} wide={wide} working={working} />
-        )}
+        {milestone ? milestoneSlot : <PlanPart ctx={ctx} wide={wide} working={working} />}
 
         <section className="flex flex-col gap-2.5">
           <Head
-            label="Decisions"
+            label={beneath.length ? 'Decisions beneath' : 'Decisions'}
             sum={decisions.length || onSession ? groupHead(waiting, decided, where) : 'none yet'}
           />
           {(onSession ? waiting > 0 : decisions.length > 0) && (
@@ -181,6 +186,7 @@ export function ChangeTree({
               opened={arrivals?.opened}
               moment={moment}
               held={held}
+              showChange={beneath.length > 0}
             />
           )}
         </section>
@@ -318,37 +324,6 @@ function PlanPart({ ctx, wide, working }: { ctx: ChangeContext; wide: boolean; w
   );
 }
 
-/** A milestone's children in place of a plan: folded the next child not done, wide every child. */
-function Children({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: Lens; mode: Mode; wide: boolean }) {
-  const [open, setOpen] = useState(false);
-  const children = childrenView(ctx.children);
-  return (
-    <section className="flex flex-col gap-2.5">
-      <Head
-        label="Children"
-        sum={children.sum}
-        open={wide ? undefined : open}
-        onToggle={wide ? undefined : () => setOpen((v) => !v)}
-      />
-      <SegmentBar segments={children.segments} label={`Children: ${children.sum}`} />
-      {(wide || open ? ctx.children : children.row ? [children.row] : []).map((k) => (
-        <div key={k.key} className="flex items-center gap-2 py-1 text-body">
-          <span aria-hidden="true" className={cn('size-[7px] shrink-0 rounded-full', statusTone(k.status).bg)} />
-          <NodeLink
-            to={k.key}
-            lens={lens}
-            mode={mode}
-            className="min-w-0 flex-1 truncate font-medium hover:text-primary"
-          >
-            {k.name ?? k.title ?? short(k.key)}
-          </NodeLink>
-          <span className={cn('text-meta', statusTone(k.status).text)}>{k.status ?? 'open'}</span>
-        </div>
-      ))}
-    </section>
-  );
-}
-
 /** The sections in order of depth, as written: wide each out, folded each its head with its first line, opening in
  *  place. */
 function SectionsPart({ sections, wide }: { sections: Record<string, string>; wide: boolean }) {
@@ -434,7 +409,7 @@ export function Head({
 
 /** The bar: a segment a step or a child; done green, the one on in the lane's colour, dropped faint. While a session
  *  works the change the one on breathes in the live colour instead (change:alive-step-bars, decision the-motion). */
-function SegmentBar({
+export function SegmentBar({
   segments,
   label,
   working = false,

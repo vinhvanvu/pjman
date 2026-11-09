@@ -8,23 +8,19 @@ import { Diamond, Flag, User } from 'lucide-react';
 import { EmptyState } from '@/components/EmptyState';
 import { Pending } from '@/components/Pending';
 import { SelectionBadge } from '@/components/SelectionBadge';
-import { DecisionGroup } from '@/components/decisions/DecisionGroup';
-import { fromRow, groupHead } from '@/components/decisions/model';
-import { changePath, focusSearch, NodeLink, selectSearch } from '@/components/links/NodeLink';
+import { changePath, focusSearch, selectSearch } from '@/components/links/NodeLink';
 import { RecordHeader } from '@/components/record/RecordHeader';
 import { AppShell } from '@/components/shell/AppShell';
 import { Rail, railItem, type RailProduct } from '@/components/shell/Rail';
 import { SplitPane } from '@/components/shell/SplitPane';
 import { TopBar } from '@/components/shell/TopBar';
 import { StructureTree } from '@/components/tree/StructureTree';
-import type { ChangeContext, Lens, ProductRow, Scope, SessionView, Tab } from '@/data/contract';
-import { useDecideAction, usePrefetchDestinations, useScope, useStore } from '@/data/queries';
-import { ActivityView } from '@/features/activity';
+import type { Lens, ProductRow, Scope, SessionView, Tab } from '@/data/contract';
+import { usePrefetchDestinations, useScope, useStore } from '@/data/queries';
 import { CommandPalette, useCommandPaletteHotkey } from '@/features/command-palette';
 import { Dock } from '@/features/dock';
 import { AspectPane } from '@/features/aspects';
 import { AspectPicker, NodeRecord, pathTo, ProductMap, type MapFilter } from '@/features/feature-lens';
-import { MilestonePage } from '@/features/milestone-lens';
 import { RoadmapChart, RoadmapHome } from '@/features/roadmap-lens';
 import { narrowToAspect, narrowToMilestone } from '@/lib/narrow';
 import { ChangeView } from '@/features/change';
@@ -61,7 +57,7 @@ const isContainer = (s: Scope): boolean =>
   !!s.node && (s.node.type !== 'change' || (s.change?.children.length ?? 0) > 0);
 
 /** A change with no children: its own page is the change (decision change-detail/own-route), the lens only selects it. */
-const isLeafChange = (s: Scope | undefined): boolean => !!s?.node && s.node.type === 'change' && !isContainer(s);
+const isChange = (s: Scope | undefined): boolean => !!s?.node && s.node.type === 'change';
 
 const narrowScope = (s: Scope | undefined, milestone?: string, aspect?: string): Scope | undefined => {
   const m = s && milestone ? narrowToMilestone(s, milestone) : s;
@@ -304,27 +300,15 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     const path = isScope
       ? []
       : shown.crumbs.slice(at + 1).map((c) => ({ key: c.key, label: c.name ?? c.title ?? short(c.key) }));
-    // a leaf change is read whole in the tree (its decisions and its rail with it); a milestone keeps its tabs
-    const leaf = isLeafChange(shown);
-    // a milestone keeps its tabs; a node is read whole, its timeline in the record (decision one-node-record)
-    const tabs: readonly Tab[] = !leaf && shown.change ? ['overview', 'activity', 'decisions'] : ['overview'];
-    const shownTab: Tab = tabs.includes(tab) ? tab : 'overview';
+    // a change, leaf or milestone, is read whole in its tree (its decisions and its rail with it); a node is read
+    // whole too, its timeline in the record (decision one-node-record): no tabs anywhere
+    const tabs: readonly Tab[] = ['overview'];
+    const shownTab: Tab = 'overview';
     let body: React.ReactNode;
-    if (leaf && shown.change) {
-      // the change tree folded, the change bar on top and the rail beneath (decision change-detail/docked-is-folded)
+    if (shown.change) {
+      // the change tree folded, the change bar on top and the rail beneath (decision change-detail/docked-is-folded;
+      // a milestone the same, its children where the plan is, decision milestone-detail/milestone-is-a-page)
       body = <ChangeView ctx={shown.change} scope={shown} lens={lens} wide={false} />;
-    } else if (shownTab === 'activity') {
-      // the rail beneath the node, whatever it is (change:activity-timeline): a change, a milestone, a feature, the product
-      const beneath = shown.node?.key ?? node;
-      body = beneath ? (
-        <ActivityView node={beneath} sessions={shown.sessions} lens={lens} />
-      ) : (
-        <EmptyState title="Nothing has happened here yet." className="m-5" />
-      );
-    } else if (shownTab === 'decisions' && shown.change) {
-      body = <DecisionsTab ctx={shown.change} lens={lens} />;
-    } else if (shown.node?.type === 'change' && shown.change) {
-      body = <MilestonePage scope={shown} ctx={shown.change} lens={lens} />;
     } else if (isScope && chosenAspect) {
       // the map narrowed to an aspect and nothing selected: the aspect, read whole
       body = <AspectPane aspect={chosenAspect} lens={lens} />;
@@ -502,20 +486,10 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     />
   );
 
-  // a milestone stood on in the feature lens is the roadmap's (decision feature-detail/one-rollup-every-scope): its
-  // children sit at their features on the map, the milestone itself is read where milestones live
-  if (!following && lens === 'feature' && fresh?.node?.type === 'change' && isContainer(fresh))
-    return (
-      <Navigate
-        to="/$lens/$"
-        params={{ lens: 'roadmap', _splat: fresh.node.key }}
-        search={{ decision: search.decision, tab: search.tab }}
-        replace
-      />
-    );
-  // a leaf change stood on is its own page (decision change-detail/own-route): an old link moves there, the decision
-  // it named open; the docked session page stands on its change and stays
-  if (!following && fresh && isLeafChange(fresh) && fresh.node)
+  // a change stood on, leaf or milestone, is its own page (decisions change-detail/own-route,
+  // milestone-detail/milestone-is-a-page): an old link moves there, the decision it named open; the docked session
+  // page stands on its change and stays
+  if (!following && fresh && isChange(fresh) && fresh.node)
     return (
       <Navigate
         to="/change/$"
@@ -530,45 +504,5 @@ export function LensPage({ lens, node, following }: LensPageProps) {
       {content}
       <CommandPalette open={palette} onOpenChange={setPalette} lens={lens} />
     </AppShell>
-  );
-}
-
-/** The decisions tab (decision detail-pages/decision-card): the decision card at three depths, the proposed first and
- *  oldest first, the decided as rows whose thread opens read-only with Reopen, the superseded under history; the
- *  decision in the URL open. */
-function DecisionsTab({ ctx, lens }: { ctx: ChangeContext; lens: Lens }) {
-  const decide = useDecideAction('decide');
-  const reopen = useDecideAction('reopen');
-  const search = useSearch({ strict: false }) as PageSearch;
-  const navigate = useNavigate();
-  const wide = useWide();
-  const link = (decision: string | undefined) =>
-    void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, decision }), replace: true });
-  if (ctx.decisions.length === 0) return <EmptyState title="No decisions on this change yet." className="m-5" />;
-  const decisions = ctx.decisions.map((d) => fromRow(d, ctx.change.key));
-  const waiting = decisions.filter((d) => d.status === 'proposed').length;
-  return (
-    <div className="flex flex-col gap-3 p-5 md:px-6">
-      <div className="flex items-center gap-2">
-        <span className="text-[13.5px] font-semibold">Decisions</span>
-        <span className="text-xs text-ink-faint">{groupHead(waiting, decisions.length - waiting, 'change')}</span>
-      </div>
-      <DecisionGroup
-        decisions={decisions}
-        lens={lens}
-        where="change"
-        wide={wide}
-        linked={search.decision}
-        onLink={link}
-        onDecide={decide}
-        onReopen={reopen}
-      />
-      <p className="text-xs text-ink-faint">
-        Accepting decides it as you and wakes the sessions working this change; the dock shows what waits on you.{' '}
-        <NodeLink to={ctx.change.key} lens={lens} className="hover:text-primary">
-          Back to the change
-        </NodeLink>
-      </p>
-    </div>
   );
 }

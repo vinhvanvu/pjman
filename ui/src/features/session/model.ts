@@ -84,15 +84,7 @@ export function sessionTitle(session: Pick<SessionFacts, 'key' | 'agent' | 'star
 }
 
 // the change tree's derivations live with the change tree (change:change-detail); the session page reads them there
-export {
-  childrenView,
-  effectsOf,
-  identityLabel,
-  planView,
-  sourcesView,
-  waitsLine,
-  type Segment,
-} from '@/features/change/model';
+export { effectsOf, identityLabel, planView, sourcesView, waitsLine, type Segment } from '@/features/change/model';
 
 /** How long a session the store does not hold is taken to be one about to start, before the page says there is none:
  *  the docked pane is pointed at the page before the record is written, and the write lands within a few seconds. */
