@@ -28,6 +28,7 @@ before(() => {
   newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:checkout' });
   newRecord(store, 'feature', 'search', { title: 'Search the catalogue', product: 'product:shop' });
   change(store, 'cards', { title: 'Cards milestone', summary: 'Everything cards.', status: 'planning', target: '2026-12-01', kind: 'milestone' });
+  change(store, 'launch', { title: 'Launch milestone', summary: 'Out the door.', status: 'planning', kind: 'milestone' }); // no child yet
   change(store, 'card-form', { title: 'Card form', summary: 'Enter and save a card.', parent: 'change:cards', features: ['adds feature:saved-cards'], status: 'active', binds: ['github-issue:acme/shop#7'] });
   change(store, 'old-search', { title: 'Search by colour', summary: 'Colour facets.', features: ['feature:search'], status: 'done' });
   change(store, 'chore', { title: 'Upgrade the build', summary: 'Vite 7.' });
@@ -48,8 +49,8 @@ test('intake: duplicates by words and by reference, done ones apart, nodes with 
   assert.deepEqual(i.nodes.map((n) => n.key), ['feature:shop/saved-cards']);
   assert.deepEqual(i.nodes[0].path, ['product:shop', 'feature:shop/checkout']);
   assert.equal(i.nodes[0].level, 'capability');
-  assert.deepEqual(i.milestones.map((m) => [m.key, m.target]), [['change:shop/cards', '2026-12-01']]);
-  assert.deepEqual(i.tail, { product: 'product:shop', sequence: ['change:shop/cards'], later: 1 });
+  assert.deepEqual(i.milestones.map((m) => [m.key, m.target]), [['change:shop/cards', '2026-12-01'], ['change:shop/launch', undefined]]); // by kind: a milestone with no child yet is one
+  assert.deepEqual(i.tail, { product: 'product:shop', sequence: ['change:shop/cards'], later: 2 });
   // a ticket named in the request is the duplicate, whatever the words
   const r = intake(store, loadStore(store), 'look at acme/shop#7 again');
   assert.equal(r.duplicates[0]?.key, 'change:shop/card-form');
@@ -63,7 +64,7 @@ test('intake: duplicates by words and by reference, done ones apart, nodes with 
   const text = formatIntake(i);
   assert.match(text, /## Duplicates[\s\S]*change:shop\/card-form \[active\]/);
   assert.match(text, /feature:shop\/saved-cards \(capability, building\)/);
-  assert.match(text, /1 open change after it as later/);
+  assert.match(text, /2 open changes after it as later/);
   // nothing shared: empty sections say so
   const none = intake(store, loadStore(store), 'zebra');
   assert.deepEqual(none.duplicates, []);

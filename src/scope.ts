@@ -464,7 +464,8 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   }
 
   // the container: the node when it holds things, else the nearest holder above it in this lens
-  const hasChildren = (c: Rec) => (ix.childrenOf.get(c.key) ?? []).length > 0;
+  // a milestone is a container by its kind, never by having children (decision milestone-kind/kind-not-children)
+  const isMilestone = (c: Rec) => c.data.kind === 'milestone';
   /** The first feature a change names, else the first its nearest parent names: where the feature lens files it. */
   const nearestFeature = (c: Rec): Rec | undefined => {
     const seen = new Set<string>();
@@ -476,7 +477,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     return undefined;
   };
   let container: Rec | undefined = node;
-  if (node?.type === 'change' && !hasChildren(node)) {
+  if (node?.type === 'change' && !isMilestone(node)) {
     const project = live(loaded, node.data.project);
     const parent = live(loaded, node.data.parent);
     const top = project && (rootProductOf(loaded, project) ?? project);
@@ -573,10 +574,10 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     else if (container.type === 'project') tree = [...projectChildren(container.key).map(projectNode), ...rows(shown.filter((c) => live(loaded, c.data.project)?.key === container!.key), (k) => live(loaded, k.data.project)?.key === container!.key)];
     else tree = flat(shown.map((c) => live(loaded, c.data.project)).filter((p): p is Rec => !!p), projectNode);
   } else {
-    // milestones: the parent changes in scope whose parent is not, nested all the way down
+    // milestones: the milestones in scope whose parent is not, nested all the way down
     if (container?.type === 'change') tree = rows(shown.filter((c) => ix.parentOf(c) === container!.key), () => true);
     else {
-      const roots = shown.filter((c) => (ix.childrenOf.get(c.key) ?? []).some((k) => shownKeys.has(k.key)) && !(ix.parentOf(c) && shownKeys.has(ix.parentOf(c)!)));
+      const roots = shown.filter((c) => isMilestone(c) && !(ix.parentOf(c) && shownKeys.has(ix.parentOf(c)!)));
       tree = roots.map((c) => changeNode(c, () => true));
     }
   }

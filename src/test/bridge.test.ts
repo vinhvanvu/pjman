@@ -131,6 +131,7 @@ test('bridge: the changes in motion, every change touched in the window that is 
   assert.deepEqual(Object.keys(by).sort(), ['change:shop/card-form', 'change:shop/chore', 'change:shop/kid-on', 'change:shop/release', 'change:shop/stuck']); // shipped and kid-done are done: not in motion
   // a milestone's card reads its children done over children and the child in work, not its own plan
   // (change:bridge-card-reads-the-plan)
+  assert.equal(by['change:shop/release'].kind, 'milestone');
   assert.deepEqual(by['change:shop/release'].steps, { done: 1, total: 2, dropped: 0 });
   assert.deepEqual(by['change:shop/release'].step, { n: 2, text: 'Kid on', state: 'open' });
   assert.deepEqual(by['change:shop/kid-on'].steps, { done: 0, total: 1, dropped: 0 });

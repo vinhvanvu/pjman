@@ -45,7 +45,7 @@ export interface Intake {
   done: ChangeCandidate[];
   /** Nodes of the map the request may alter, best first. */
   nodes: NodeCandidate[];
-  /** Milestones in flight: parent changes not done, nearest to done first. */
+  /** Milestones in flight: the changes of kind milestone not done, nearest to done first. */
   milestones: { key: string; gist?: string; status?: string; progress?: { done: number; total: number }; target?: string }[];
   /** The order's tail: the product, the last entries of its sequence, and how many open changes come after it as later. */
   tail: { product: string | null; sequence: string[]; later: number };
@@ -137,7 +137,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
 
   const childrenOf = (key: string) => changes.filter((c) => live(loaded, c.data.parent)?.key === key);
   const milestones = changes
-    .filter((c) => isOpen(c) && childrenOf(c.key).length > 0)
+    .filter((c) => isOpen(c) && c.data.kind === 'milestone')
     .map((c) => ({ key: c.key, gist: str(c.data.gist), status: str(c.data.status), progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))), target: str(c.data.target) }))
     .sort((a, b) => {
       const share = (p?: { done: number; total: number }) => (p?.total ? p.done / p.total : 0);
