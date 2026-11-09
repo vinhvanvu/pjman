@@ -28,7 +28,8 @@ describe('the shell never scrolls the window', () => {
       const text = readFileSync(file, 'utf8');
       // every class string that scrolls (overflow-auto) must also position (relative)
       for (const m of text.matchAll(/(["'`])([^"'`\n]*\boverflow-auto\b[^"'`\n]*)\1/g)) {
-        if (!/\brelative\b/.test(m[2])) offenders.push(`${file.slice(SRC.length + 1)}: ${m[2].trim()}`);
+        const classes = m[2] ?? '';
+        if (!/\brelative\b/.test(classes)) offenders.push(`${file.slice(SRC.length + 1)}: ${classes.trim()}`);
       }
     }
     expect(offenders).toEqual([]);
