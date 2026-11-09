@@ -5,7 +5,7 @@ import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } fro
 import { ambiguous, notFound } from './util.js';
 import { keyFromUrl, mentions, scopeOf, shortForms, slugFor, trackerOf } from './refs.js';
 export { keyFromUrl, repoOf } from './refs.js';
-import { resolve, type Loaded, type Rec } from './records.js';
+import { memo, ofType, push, resolve, type Loaded, type Rec } from './records.js';
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { parseAspectEffect } from './aspects.js';
@@ -35,6 +35,23 @@ function list(v: unknown): string[] {
 
 /** Every edge the records declare, plus every edge a session observed. Targets that resolve through an alias are rewritten to the live key. */
 export function allEdges(loaded: Loaded): Edge[] {
+  return memo(loaded, 'edges', () => edgesOnce(loaded));
+}
+
+/** The edges by the key they leave and the key they reach. */
+export function edgesAt(loaded: Loaded): { from: Map<string, Edge[]>; to: Map<string, Edge[]> } {
+  return memo(loaded, 'edges-at', () => {
+    const from = new Map<string, Edge[]>();
+    const to = new Map<string, Edge[]>();
+    for (const e of allEdges(loaded)) {
+      push(from, e.from, e);
+      push(to, e.to, e);
+    }
+    return { from, to };
+  });
+}
+
+function edgesOnce(loaded: Loaded): Edge[] {
   const out: Edge[] = [];
   const edge = (name: string, from: string, to: string, on: Rec) => out.push({ edge: name, from, to: canon(to), on: on.path, observed: false, at: null });
   const live = (raw: string, scope?: string | null): string => {
@@ -177,7 +194,7 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
   const ref = input.trim();
   const tried: string[] = [];
   const kinds = store.config.source_kinds.map((k) => k.toLowerCase());
-  const referenced = (key: string): boolean => allEdges(loaded).some((e) => e.to === key || e.from === key);
+  const referenced = (key: string): boolean => edgesAt(loaded).to.has(key) || edgesAt(loaded).from.has(key);
   const fromRecord = (raw: string, shape: Shape): Resolution | null => {
     const res = resolve(loaded, raw);
     if (res.status === 'ok') return { status: 'record', key: res.rec.key, shape, tried };
@@ -302,9 +319,8 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
   const key = resolution.key;
   const rec = loaded.byKey.get(key)?.[0];
   if (rec) result.record = row(rec);
-  const edges = allEdges(loaded);
-  result.in = edges.filter((e) => e.to === key);
-  result.out = edges.filter((e) => e.from === key);
+  result.in = [...(edgesAt(loaded).to.get(key) ?? [])];
+  result.out = [...(edgesAt(loaded).from.get(key) ?? [])];
 
   const reach = new Map<string, string>();
   const changeOf = (k: string): string | null => {

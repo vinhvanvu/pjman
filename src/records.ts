@@ -4,6 +4,7 @@ import type { Store } from './config.js';
 import { parseRecord, sections, type Parsed } from './frontmatter.js';
 import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, releaseKey, SCOPED_KINDS, VERSION_RE, type Key } from './keys.js';
 import { ambiguous, CliError, notFound } from './util.js';
+import { indexedEntries, type Entry, type Head, type HeadField } from './store-index.js';
 
 export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'release' | 'source' | 'session' | 'actor';
 
@@ -96,6 +97,45 @@ export interface Source {
   isDir(rel: string): boolean;
   exists(rel: string): boolean;
   read(rel: string): string;
+  /** A record file already parsed, when the source holds its parse (the store index): the parse as JSON text, read
+   *  into objects only when the record's fields are, and the few fields every load reads. */
+  held?(rel: string): { parsed: string; head: Head } | undefined;
+}
+
+/** The store as it stands on disk, read through its index (store-index.ts): the files' parses as held, brought up to
+ *  date with what moved since. The store's root files are read live. Falls back to the disk when the index cannot be
+ *  opened, and is not used when PJMAN_INDEX=0. */
+let indexWarned = false;
+
+export function indexedSource(store: Store): Source {
+  const disk = diskSource(store.root);
+  if (process.env.PJMAN_INDEX === '0') return disk;
+  let entries: Map<string, Entry>;
+  try {
+    entries = indexedEntries(store);
+  } catch (e) {
+    // the files are the truth, so a load still answers; said once, since every load would be slow without the index
+    if (!indexWarned) process.stderr.write(`pjman: the store index could not be used (${(e as Error).message}); reading the files\n`);
+    indexWarned = true;
+    return disk;
+  }
+  const children = new Map<string, string[]>();
+  for (const rel of entries.keys()) {
+    const at = rel.lastIndexOf('/');
+    push(children, at < 0 ? '' : rel.slice(0, at), at < 0 ? rel : rel.slice(at + 1));
+  }
+  for (const names of children.values()) names.sort();
+  const top = (rel: string) => !rel.includes('/');
+  return {
+    list: (rel) => (rel === '' ? disk.list('') : [...(children.get(rel) ?? [])]),
+    isDir: (rel) => (rel === '' ? true : entries.has(rel) ? entries.get(rel)!.dir : top(rel) && disk.isDir(rel)),
+    exists: (rel) => (rel === '' || entries.has(rel) || (top(rel) && disk.exists(rel))),
+    read: (rel) => disk.read(rel),
+    held: (rel) => {
+      const e = entries.get(rel);
+      return e?.parsed && e.head ? { parsed: e.parsed, head: e.head } : undefined;
+    },
+  };
 }
 
 /** The store as it stands on disk. */
@@ -125,10 +165,33 @@ export function diskSource(root: string): Source {
   };
 }
 
+/** The fields a load reads from a record the index held, so the load parses none of it whole. */
+const heads = new WeakMap<Rec, Head>();
+/** A field of the record, read from its head when the index held it, so reading it parses nothing. */
+export const headField = (r: Rec, name: HeadField): unknown => {
+  const h = heads.get(r);
+  return h ? h[name] : r.data[name];
+};
+
 function readRec(src: Source, store: Store, rel: string, type: RecordType, key: string): Rec {
-  const abs = path.join(store.root, rel);
-  const text = src.read(rel);
-  const parsed = parseRecord(text);
+  const abs = `${store.root}${path.sep}${rel}`;
+  const held = src.held?.(rel);
+  if (held) {
+    // the parse is read the first time a field is, and kept: every reader of the record sees the same objects
+    let parsed: Parsed | undefined;
+    let secs: Map<string, string> | undefined;
+    const parse = () => (parsed ??= JSON.parse(held.parsed) as Parsed);
+    const rec = { type, key, path: rel, abs, valid: held.head.valid } as Rec;
+    Object.defineProperties(rec, {
+      parsed: { get: parse, enumerable: true, configurable: true },
+      data: { get: () => parse().data, enumerable: true, configurable: true },
+      body: { get: () => parse().body, enumerable: true, configurable: true },
+      sections: { get: () => (secs ??= sections(parse().body)), enumerable: true, configurable: true },
+    });
+    heads.set(rec, held.head);
+    return rec;
+  }
+  const parsed = parseRecord(src.read(rel));
   const valid = parsed.hasFrontmatter && parsed.isMapping && parsed.errors.length === 0;
   return { type, key, path: rel, abs, data: parsed.data, body: parsed.body, sections: sections(parsed.body), parsed, valid };
 }
@@ -145,7 +208,7 @@ export function isLegacyLayout(root: string | Source): boolean {
 
 const STORE_FILES = ['products', 'projects', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'events.jsonl', 'README.md'];
 
-export function loadStore(store: Store, src: Source = diskSource(store.root)): Loaded {
+export function loadStore(store: Store, src: Source = indexedSource(store)): Loaded {
   const records: Rec[] = [];
   const problems: Problem[] = [];
   const listDir = (rel: string) => src.list(rel);
@@ -332,8 +395,8 @@ export function loadStore(store: Store, src: Source = diskSource(store.root)): L
       }
       const r = readRec(src, store, rel, 'source', `${kind}:?${f.slice(0, -3)}`);
       r.fileSlug = f.slice(0, -3);
-      const k = r.data.kind;
-      const key = r.data.key;
+      const k = headField(r, 'kind');
+      const key = headField(r, 'key');
       if (typeof k === 'string' && typeof key === 'string') r.key = canonicalSourceKey(k, key);
       records.push(r);
     }
@@ -363,7 +426,7 @@ export function loadStore(store: Store, src: Source = diskSource(store.root)): L
     const handle = f.slice(0, -3);
     const r = readRec(src, store, rel, 'actor', `?:${handle}`);
     r.handle = handle;
-    const k = r.data.kind;
+    const k = headField(r, 'kind');
     if (k === 'person' || k === 'agent') r.key = `${k}:${handle}`;
     records.push(r);
   }
@@ -384,9 +447,10 @@ export function loadStore(store: Store, src: Source = diskSource(store.root)): L
   const aliases = new Map<string, string[]>();
   const alias = (form: string, key: string) => aliases.set(form, [...(aliases.get(form) ?? []), key]);
   for (const r of records) {
-    if (!Array.isArray(r.data.aliases)) continue;
+    const aliases = headField(r, 'aliases');
+    if (!Array.isArray(aliases)) continue;
     const kind = r.key.slice(0, r.key.indexOf(':'));
-    for (const a of r.data.aliases) {
+    for (const a of aliases) {
       if (typeof a !== 'string') continue;
       if (SCOPED_KINDS.has(r.type)) {
         // `old` names the slug it had in this product; `other/old` the full rest it had in another
@@ -398,6 +462,21 @@ export function loadStore(store: Store, src: Source = diskSource(store.root)): L
   }
   const scope = scopeOf(store, byKey);
   return { store, records, byKey, aliases, scope, problems };
+}
+
+/** The product the current project names, as a slug, or null, read from the project's file alone: what loadStore's
+ *  scope is, for a caller that needs nothing else of the store. */
+export function storeScope(store: Store): string | null {
+  if (!store.project?.startsWith('project:')) return null;
+  try {
+    const project = parseRecord(fs.readFileSync(path.join(store.root, 'projects', `${store.project.slice('project:'.length)}.md`), 'utf8'));
+    const product = project.data.product;
+    if (typeof product !== 'string' || !product.startsWith('product:')) return null;
+    const slug = product.slice('product:'.length);
+    return fs.existsSync(path.join(store.root, 'products', slug, 'product.md')) ? slug : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The product the current project names, as a slug, or null. */
@@ -420,11 +499,66 @@ export type Resolution =
 
 const found = (rec: Rec): Resolution => (rec.valid ? { status: 'ok', rec } : { status: 'invalid', rec });
 
+/** What is derived from a loaded store (lookups, resolutions), built on first use and kept with it, so a read costs
+ *  what it asks and not a scan of the store per node (change:dashboard-reads-slow). A Loaded is read-only once loaded:
+ *  whatever changes one in place calls forget() so nothing derived from its old state is read again. */
+const derived = new WeakMap<Loaded, Map<string, unknown>>();
+
+export function memo<T>(loaded: Loaded, name: string, build: () => T): T {
+  let bag = derived.get(loaded);
+  if (!bag) derived.set(loaded, (bag = new Map()));
+  if (!bag.has(name)) bag.set(name, build());
+  return bag.get(name) as T;
+}
+
+export function forget(loaded: Loaded): void {
+  derived.delete(loaded);
+}
+
+/** Add `v` to the list at `k`. */
+export function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {
+  const at = m.get(k);
+  if (at) at.push(v);
+  else m.set(k, [v]);
+}
+
+/** The records of one type, in the store's order. */
+export function ofType(loaded: Loaded, type: RecordType): Rec[] {
+  return memo(loaded, 'of-type', () => {
+    const out = new Map<string, Rec[]>();
+    for (const r of loaded.records) push(out, r.type, r);
+    return out;
+  }).get(type) ?? [];
+}
+
+/** `<kind>:<rest>` → the records keyed `<kind>:<their product>/<rest>`: a bare key's store-wide candidates. */
+const scopedByRest = (loaded: Loaded) =>
+  memo(loaded, 'scoped-by-rest', () => {
+    const out = new Map<string, Rec[]>();
+    for (const r of loaded.records) {
+      if (!r.productSlug) continue;
+      const prefix = `${r.type}:${r.productSlug}/`;
+      if (!r.key.startsWith(prefix)) continue;
+      const k = `${r.type}:${r.key.slice(prefix.length)}`;
+      push(out, k, r);
+    }
+    return out;
+  });
+
 /** Resolve a reference. Sources and actors need no record; the rest do. A bare feature, change or decision key
  *  resolves through `scope` (a product slug; undefined means the loaded default, null means no scope): first inside
  *  that product, else store-wide when exactly one product has the slug, else ambiguous. A former key resolves through
  *  its alias; a renamed product's old segment resolves too. */
 export function resolve(loaded: Loaded, raw: unknown, scope: string | null | undefined = loaded.scope): Resolution {
+  if (typeof raw !== 'string') return resolveOnce(loaded, raw, scope);
+  const seen = memo(loaded, 'resolve', () => new Map<string, Resolution>());
+  const k = `${scope}\u0000${raw}`;
+  let r = seen.get(k);
+  if (!r) seen.set(k, (r = resolveOnce(loaded, raw, scope)));
+  return r;
+}
+
+function resolveOnce(loaded: Loaded, raw: unknown, scope: string | null | undefined): Resolution {
   const key = parseKey(raw);
   if (!key) return { status: 'malformed' };
   const direct = loaded.byKey.get(key.raw)?.[0];
@@ -448,7 +582,7 @@ export function resolve(loaded: Loaded, raw: unknown, scope: string | null | und
     return viaAlias(`${kind}:${p}/${rest}`);
   };
   const storeWide = (kind: string, rest: string): Resolution => {
-    const hits = loaded.records.filter((r) => r.type === kind && r.key === `${kind}:${r.productSlug}/${rest}`);
+    const hits = scopedByRest(loaded).get(`${kind}:${rest}`) ?? [];
     if (hits.length === 1) return found(hits[0]);
     if (hits.length > 1) {
       // two products share the slug: the bare form belongs to the record that held it as a flat key, when one did

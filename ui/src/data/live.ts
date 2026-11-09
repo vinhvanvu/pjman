@@ -8,6 +8,7 @@ import { useArrivals } from '@/state/arrivals';
 import { BASE } from './client';
 import type { StoreEvent } from './contract';
 import { queryKeys } from './queries';
+import { productOfKey, reaches } from './reach';
 import { type Frame, openStream, type Request } from './stream';
 
 export interface LiveState {
@@ -58,10 +59,27 @@ export function useLiveInvalidation(): LiveState {
   const [state, setState] = useState<LiveState>({ connected: false });
 
   useEffect(() => {
+    // the products the events since the last refetch were in; null once one was in none (a session, a project), which
+    // reaches every page
+    let reached: Set<string> | null = new Set();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const invalidate = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void client.invalidateQueries({ queryKey: queryKeys.all }), 150);
+    let last = 0;
+    const flush = () => {
+      timer = undefined;
+      last = Date.now();
+      const products = reached;
+      reached = new Set();
+      void client.invalidateQueries({
+        queryKey: queryKeys.all,
+        predicate: (q) => products === null || reaches(q.queryKey, products),
+      });
+    };
+    const invalidate = (e: StoreEvent) => {
+      const p = productOfKey(e.key);
+      if (p === null) reached = null;
+      else reached?.add(p);
+      // the first event of a burst refetches after a beat, the rest at most once a second (change:dashboard-reads-slow)
+      timer ??= setTimeout(flush, Math.max(150, last + 1000 - Date.now()));
     };
     const unsubscribe = subscribe(`${BASE}/events`, (f) => {
       if (f.kind === 'open') setState((s) => ({ ...s, connected: true }));
@@ -70,7 +88,7 @@ export function useLiveInvalidation(): LiveState {
         const e = JSON.parse(f.data) as StoreEvent;
         setState({ connected: true, last: e });
         useArrivals.getState().arrive(e);
-        invalidate();
+        invalidate(e);
       }
     });
     return () => {

@@ -1,5 +1,5 @@
 import type { Store } from '../config.js';
-import { follow, lastSeq, readEvents } from '../events.js';
+import { eventsBySession, follow, lastSeq, readEvents } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
 import { lastActs, LIVE_MINUTES, sessionLogOf, sessionState } from '../session-state.js';
@@ -77,7 +77,7 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   // the last instant the session itself wrote: its own log lines and the writes stamped with it. A write that merely
   // touched its file (a migration, a format) is not the session acting
   let last = log.length ? log[log.length - 1].at : undefined;
-  for (const e of events) if (e.session === rec.key && (!last || e.at > last)) last = e.at;
+  for (const e of eventsBySession(events).get(rec.key) ?? []) if (!last || e.at > last) last = e.at;
   const ended = log.length > 0 && log[log.length - 1].text.startsWith('session ended');
   const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
   const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
@@ -214,10 +214,10 @@ export function viewData(store: Store, opts: ViewOpts, loaded: Loaded = loadStor
       return { showing, neighbourhood: n, session };
     }
     showing.board = opts.project ?? null;
-    return { showing, board: storeContext(store, { project: opts.project ?? null }), session };
+    return { showing, board: storeContext(store, { project: opts.project ?? null }, loaded), session };
   }
   showing.board = opts.project ?? null;
-  return { showing, board: storeContext(store, { project: opts.project ?? null }) };
+  return { showing, board: storeContext(store, { project: opts.project ?? null }, loaded) };
 }
 
 /** Render the view as a Markdown document. */

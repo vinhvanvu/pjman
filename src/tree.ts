@@ -3,7 +3,7 @@
 // derived from the records; nothing is stored.
 import type { Store } from './config.js';
 import { parseKey } from './keys.js';
-import { resolve, type Loaded, type Rec } from './records.js';
+import { memo, ofType, push, resolve, type Loaded, type Rec } from './records.js';
 
 export const FEATURE_STATUSES = ['planned', 'building', 'live', 'retired'] as const;
 export const EFFECTS = ['adds', 'changes', 'removes'] as const;
@@ -33,6 +33,46 @@ export function effectsOf(rec: Rec): Effect[] {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+
+/** The tree's lookups over a loaded store, built once and kept with it (change:dashboard-reads-slow): a node's
+ *  children by each rule the tree reads them, the changes naming each feature, the changes in each project. */
+interface TreeIndex {
+  /** Features under a node by structuralParent: the parent, else the product. */
+  features: Map<string, Rec[]>;
+  /** Features under a node as the tree draws them: the parent; the product only when no parent is written. */
+  drawn: Map<string, Rec[]>;
+  /** Features under a feature by their parent alone. */
+  parented: Map<string, Rec[]>;
+  projects: Map<string, Rec[]>;
+  /** A feature's live key → the valid changes whose effects name it, once each, in the store's order. */
+  naming: Map<string, Rec[]>;
+  inProject: Map<string, Rec[]>;
+}
+
+export function treeIndex(loaded: Loaded): TreeIndex {
+  return memo(loaded, 'tree', () => {
+    const ix: TreeIndex = { features: new Map(), drawn: new Map(), parented: new Map(), projects: new Map(), naming: new Map(), inProject: new Map() };
+    for (const f of ofType(loaded, 'feature')) {
+      if (!f.valid) continue;
+      const parent = live(loaded, f.data.parent);
+      const up = parent ?? live(loaded, f.data.product);
+      if (up) push(ix.features, up.key, f);
+      const drawn = parent ?? (f.data.parent ? undefined : live(loaded, f.data.product));
+      if (drawn) push(ix.drawn, drawn.key, f);
+      if (parent) push(ix.parented, parent.key, f);
+    }
+    for (const p of ofType(loaded, 'project')) {
+      const up = p.valid ? structuralParent(loaded, p) : undefined;
+      if (up) push(ix.projects, up.key, p);
+    }
+    for (const c of ofType(loaded, 'change')) {
+      if (!c.valid) continue;
+      for (const k of new Set(effectsOf(c).map((e) => live(loaded, e.key)?.key).filter((k): k is string => !!k))) push(ix.naming, k, c);
+      if (typeof c.data.project === 'string') push(ix.inProject, c.data.project, c);
+    }
+    return ix;
+  });
+}
 
 /** The record a reference resolves to, through aliases, or undefined. */
 export function live(loaded: Loaded, raw: unknown): Rec | undefined {
@@ -67,6 +107,13 @@ export function rootProductOf(loaded: Loaded, rec: Rec): Rec | undefined {
 /** Every key above a record, across every chain: a change climbs its parents, its project's chain and each feature's
  *  chain; a decision climbs through its change; a feature or project climbs to its product. Cycles stop. */
 export function ancestorsOf(loaded: Loaded, key: string): string[] {
+  const seen = memo(loaded, 'ancestors', () => new Map<string, string[]>());
+  let out = seen.get(key);
+  if (!out) seen.set(key, (out = ancestorsOnce(loaded, key)));
+  return out;
+}
+
+function ancestorsOnce(loaded: Loaded, key: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>([key]);
   const push = (k: string | undefined) => {
@@ -135,13 +182,20 @@ export function ancestorsOf(loaded: Loaded, key: string): string[] {
 
 /** Every key whose ancestors include `key`: the subtree, across every chain. */
 export function descendantsOf(loaded: Loaded, key: string): Set<string> {
-  const out = new Set<string>();
-  for (const r of loaded.records) {
-    if (!r.valid || r.key === key) continue;
-    if (r.type === 'source' || r.type === 'session' || r.type === 'actor') continue;
-    if (ancestorsOf(loaded, r.key).includes(key)) out.add(r.key);
-  }
-  return out;
+  const below = memo(loaded, 'descendants', () => {
+    const m = new Map<string, Set<string>>();
+    for (const r of loaded.records) {
+      if (!r.valid || r.type === 'source' || r.type === 'session' || r.type === 'actor') continue;
+      for (const a of ancestorsOf(loaded, r.key)) {
+        if (a === r.key) continue;
+        let s = m.get(a);
+        if (!s) m.set(a, (s = new Set()));
+        s.add(r.key);
+      }
+    }
+    return m;
+  });
+  return new Set(below.get(key));
 }
 
 /** The owners a node answers to: its own, else the nearest ancestor's. */
@@ -198,7 +252,15 @@ export interface DerivedStatus {
  *  change is done, building while any change that affects it is in flight (active, review, blocked; planning and open are not). A child's state lifts a parent to at
  *  least building or live. When nothing decides it, the authored status stands, else planned. */
 export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
-  const affecting = loaded.records.filter((r) => r.type === 'change' && r.valid && effectsOf(r).some((e) => live(loaded, e.key)?.key === key));
+  const seen = memo(loaded, 'derived-status', () => new Map<string, DerivedStatus>());
+  let out = seen.get(key);
+  if (!out) seen.set(key, (out = derivedStatusOnce(loaded, key)));
+  return out;
+}
+
+function derivedStatusOnce(loaded: Loaded, key: string): DerivedStatus {
+  const ix = treeIndex(loaded);
+  const affecting = ix.naming.get(key) ?? [];
   const done = (e: EffectName) => affecting.filter((r) => r.data.status === 'done' && effectsOf(r).some((x) => x.effect === e && live(loaded, x.key)?.key === key));
   const removed = done('removes');
   if (removed.length) return { status: 'retired', because: `${removed[removed.length - 1].key} (removes) is done` };
@@ -210,7 +272,7 @@ export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
   // in flight means someone is building: active, review or blocked. planning is thinking; open is a backlog line.
   const inFlight = affecting.filter((r) => ['active', 'review', 'blocked'].includes(String(r.data.status)));
   if (inFlight.length) return { status: 'building', because: `${inFlight.map((r) => r.key).join(', ')} in flight` };
-  const children = loaded.records.filter((r) => r.type === 'feature' && r.valid && live(loaded, r.data.parent)?.key === key);
+  const children = ix.parented.get(key) ?? [];
   const childStates = children.map((c) => derivedStatus(loaded, c.key).status);
   if (childStates.includes('live')) return { status: 'live', because: 'a child is live' };
   if (childStates.includes('building')) return { status: 'building', because: 'a child is building' };
@@ -241,13 +303,12 @@ export interface TreeNode {
 
 /** The tree below a product or a feature (every product when no root is given), with roll-ups. */
 export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
-  const features = loaded.records.filter((r) => r.type === 'feature' && r.valid);
-  const changes = loaded.records.filter((r) => r.type === 'change' && r.valid);
-  const childrenOf = (key: string) => features.filter((f) => (live(loaded, f.data.parent) ?? (f.data.parent ? undefined : live(loaded, f.data.product)))?.key === key);
+  const ix = treeIndex(loaded);
+  const order = memo(loaded, 'record-order', () => new Map(loaded.records.map((r, i) => [r, i])));
   const node = (rec: Rec): TreeNode => {
-    const children = childrenOf(rec.key).map(node);
+    const children = (ix.drawn.get(rec.key) ?? []).map(node);
     const subtree = new Set<string>([rec.key, ...children.flatMap(function all(n: TreeNode): string[] { return [n.key, ...n.children.flatMap(all)]; })]);
-    const inSubtree = changes.filter((c) => effectsOf(c).some((e) => { const f = live(loaded, e.key); return f && subtree.has(f.key); }));
+    const inSubtree = [...new Set([...subtree].flatMap((k) => ix.naming.get(k) ?? []))].sort((a, b) => order.get(a)! - order.get(b)!);
     const backlog: Record<string, number> = {};
     for (const c of inSubtree) backlog[String(c.data.status ?? '?')] = (backlog[String(c.data.status ?? '?')] ?? 0) + 1;
     const projects = [...new Set(inSubtree.map((c) => str(c.data.project)).filter((p): p is string => !!p))].sort();
@@ -258,8 +319,8 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
       owners: eo.owners, ownersFrom: eo.from, children, backlog, projects,
     };
     if (rec.type === 'product') {
-      const projectKeys = new Set(loaded.records.filter((p) => p.type === 'project' && p.valid && rootProductOf(loaded, p)?.key === rec.key).map((p) => p.key));
-      n.unassigned = changes.filter((c) => projectKeys.has(String(c.data.project)) && effectsOf(c).length === 0 && c.data.status !== 'done' && c.data.status !== 'dropped').length;
+      const projectKeys = ofType(loaded, 'project').filter((p) => p.valid && rootProductOf(loaded, p)?.key === rec.key).map((p) => p.key);
+      n.unassigned = projectKeys.flatMap((p) => ix.inProject.get(p) ?? []).filter((c) => effectsOf(c).length === 0 && c.data.status !== 'done' && c.data.status !== 'dropped').length;
     }
     return n;
   };
@@ -268,7 +329,7 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
     if (!rec || (rec.type !== 'product' && rec.type !== 'feature')) return [];
     return [node(rec)];
   }
-  return loaded.records.filter((r) => r.type === 'product' && r.valid).map(node);
+  return ofType(loaded, 'product').filter((r) => r.valid).map(node);
 }
 
 export function formatTree(nodes: TreeNode[], depth = 0): string {

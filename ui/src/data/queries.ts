@@ -4,6 +4,7 @@ import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClie
 import { useEffect } from 'react';
 import { useAt } from '@/state/moment';
 import { api, ApiError } from './client';
+import { productOfKey, reaches } from './reach';
 import type { DecideAction, DecideBody, OrderBody, Rail, RailQuery, ScopeQuery } from './contract';
 
 /** Every key ends with the moment it reads as of ('now' when none), so a page at a moment never shares a cache
@@ -81,12 +82,19 @@ export function useOrder() {
 }
 
 /** Deciding a decision in place, or reopening one. The stream invalidates too; this makes the refetch immediate, and
- *  the write settles only once the views have it, so a control never shows its decision as it was before. */
+ *  the write settles once the views of its product have it, so a control never shows its decision as it was before
+ *  and never waits on another product's pages (change:dashboard-reads-slow). */
 export function useDecide(kind: 'decide' | 'reopen') {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: DecideBody) => (kind === 'decide' ? api.decide(body) : api.reopen({ decision: body.decision })),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.all }),
+    onSuccess: (_r, body) => {
+      const product = productOfKey(body.decision);
+      return client.invalidateQueries({
+        queryKey: queryKeys.all,
+        predicate: (q) => product === null || reaches(q.queryKey, new Set([product])),
+      });
+    },
   });
 }
 

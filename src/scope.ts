@@ -3,12 +3,12 @@
 // one tree of structure nodes with change rows, the flat list of the same changes for lanes, and the health, owners,
 // live sessions and activity of the node stood on. Everything here is derived from the records and the event stream.
 import type { Store } from './config.js';
-import { readEvents, type StoreEvent } from './events.js';
-import { eventKeysOf, resolve, type Loaded, type Rec } from './records.js';
+import { eventsByKey, readEvents, type StoreEvent } from './events.js';
+import { eventKeysOf, memo, ofType, push, resolve, type Loaded, type Rec } from './records.js';
 import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row } from './commands/view.js';
 import { ahead, productOf } from './commands/order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
-import { ancestorsOf, depthOf, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
+import { ancestorsOf, depthOf, descendantsOf, treeIndex, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate, notFound } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
 import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type StepState } from './foundation.js';
@@ -160,8 +160,8 @@ export interface WaitingDecision {
 /** The proposed decisions that pass `keep`, oldest first: what waits on a person. One derivation for the inbox, the
  *  scope and the bridge. */
 export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = () => true): WaitingDecision[] {
-  return loaded.records
-    .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && !!d.changeKey && keep(d))
+  return ofType(loaded, 'decision')
+    .filter((d) => d.valid && d.data.status === 'proposed' && !!d.changeKey && keep(d))
     .map((d) => {
       return { key: d.key, name: str(d.data.name), gist: str(d.data.gist), change: d.changeKey!, state: decisionState(threadOf(d.data)), needs: needsOf(d), stale: rungsOf(d).stale, created: str(d.data.created) };
     })
@@ -241,49 +241,110 @@ function ticketOf(loaded: Loaded, rec: Rec): ChangeRow['ticket'] {
   return undefined;
 }
 
-/** Everything computed once per request and shared by every node. */
+/** What the scope reads of a store and its stream that no page changes: built once per store and stream read, kept
+ *  with the store, so a page costs what it shows (change:dashboard-reads-slow). */
+interface Base {
+  changes: Rec[];
+  childrenOf: Map<string, Rec[]>;
+  waiting: Map<string, number>;
+  decided: Map<string, number>;
+  acts: Map<string, string>;
+  byKey: Map<string, StoreEvent[]>;
+  /** A change's live key → the sessions that list it. */
+  sessionsOn: Map<string, Rec[]>;
+  /** Each valid change's place in `changes`. */
+  position: Map<Rec, number>;
+}
+
+function baseOf(loaded: Loaded, events: readonly StoreEvent[]): Base {
+  const held = memo(loaded, 'scope-base', () => new WeakMap<readonly StoreEvent[], Base>());
+  let base = held.get(events);
+  if (base) return base;
+  // creation order: the day the record names, then its place in the stream (a renamed change keeps its first place)
+  const firstSeq = new Map<string, number>();
+  for (const e of events) if (e.op === 'created' && !firstSeq.has(e.key)) firstSeq.set(e.key, e.seq);
+  const seq = new Map<Rec, number>();
+  const seqOf = (c: Rec) => {
+    let s = seq.get(c);
+    if (s === undefined) seq.set(c, (s = Math.min(...eventKeysOf(c).map((k) => firstSeq.get(k) ?? Infinity))));
+    return s;
+  };
+  const changes = ofType(loaded, 'change')
+    .filter((r) => r.valid)
+    .sort((a, b) => (str(a.data.created) ?? '').localeCompare(str(b.data.created) ?? '') || seqOf(a) - seqOf(b) || a.key.localeCompare(b.key));
+  const childrenOf = new Map<string, Rec[]>();
+  for (const c of changes) {
+    const p = live(loaded, c.data.parent);
+    if (p) push(childrenOf, p.key, c);
+  }
+  const waiting = new Map<string, number>();
+  const decided = new Map<string, number>();
+  for (const d of ofType(loaded, 'decision')) {
+    if (!d.valid || !d.changeKey) continue;
+    const tally = d.data.status === 'proposed' ? waiting : d.data.status === 'decided' ? decided : undefined;
+    const c = tally && live(loaded, d.changeKey);
+    if (c) tally.set(c.key, (tally.get(c.key) ?? 0) + 1);
+  }
+  const sessionsOn = new Map<string, Rec[]>();
+  for (const s of ofType(loaded, 'session')) {
+    for (const k of new Set(list(s.data.changes).map((k) => live(loaded, k)?.key).filter((k): k is string => !!k))) push(sessionsOn, k, s);
+  }
+  base = { changes, childrenOf, waiting, decided, acts: lastActs(events), byKey: eventsByKey(events), sessionsOn, position: new Map(changes.map((c, i) => [c, i])) };
+  held.set(events, base);
+  return base;
+}
+
+/** Everything a request shares across its nodes: the base, and what depends on the clock. */
 class Index {
   readonly changes: Rec[];
-  readonly ancestors = new Map<string, string[]>();
-  readonly childrenOf = new Map<string, Rec[]>();
-  readonly waiting = new Map<string, number>();
-  readonly decided = new Map<string, number>();
-  readonly events: StoreEvent[];
+  readonly childrenOf: Map<string, Rec[]>;
+  readonly waiting: Map<string, number>;
+  readonly decided: Map<string, number>;
+  readonly events: readonly StoreEvent[];
   readonly now: number;
   readonly liveSessions = new Map<string, string>();
   /** The last act of each session: a write stamped with it, its own log lines excluded. */
   readonly acts: Map<string, string>;
+  private readonly base: Base;
 
   constructor(readonly store: Store, readonly loaded: Loaded, now: number, until?: number) {
     this.now = now;
     this.events = until === undefined ? readEvents(store) : readEvents(store).filter((e) => e.seq <= until);
-    // creation order: the day the record names, then its place in the stream (a renamed change keeps its first place)
-    const firstSeq = new Map<string, number>();
-    for (const e of this.events) if (e.op === 'created' && !firstSeq.has(e.key)) firstSeq.set(e.key, e.seq);
-    const seqOf = (c: Rec) => Math.min(...eventKeysOf(c).map((k) => firstSeq.get(k) ?? Infinity));
-    this.changes = loaded.records
-      .filter((r) => r.type === 'change' && r.valid)
-      .sort((a, b) => (str(a.data.created) ?? '').localeCompare(str(b.data.created) ?? '') || seqOf(a) - seqOf(b) || a.key.localeCompare(b.key));
-    for (const r of loaded.records) {
-      if (!r.valid || r.type === 'source' || r.type === 'session' || r.type === 'actor') continue;
-      this.ancestors.set(r.key, ancestorsOf(loaded, r.key));
-    }
-    for (const c of this.changes) {
-      const p = live(loaded, c.data.parent);
-      if (p) this.childrenOf.set(p.key, [...(this.childrenOf.get(p.key) ?? []), c]);
-    }
-    for (const d of loaded.records) {
-      if (d.type !== 'decision' || !d.valid || !d.changeKey) continue;
-      const tally = d.data.status === 'proposed' ? this.waiting : d.data.status === 'decided' ? this.decided : undefined;
-      const c = tally && live(loaded, d.changeKey);
-      if (c) tally.set(c.key, (tally.get(c.key) ?? 0) + 1);
-    }
+    this.base = baseOf(loaded, this.events);
+    ({ changes: this.changes, childrenOf: this.childrenOf, waiting: this.waiting, decided: this.decided, acts: this.acts } = this.base);
+    // the stream runs forward in time, so the live window is its tail; read back until well before it
     const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
-    for (const e of this.events) {
+    const stop = new Date(now - (LIVE_MINUTES + 60) * 60_000).toISOString();
+    for (let i = this.events.length - 1; i >= 0; i--) {
+      const e = this.events[i];
+      if (e.at < stop) break;
       const s = e.session ?? (e.type === 'session' ? e.key : undefined);
-      if (s && e.at >= liveSince) this.liveSessions.set(s, e.at);
+      if (s && e.at >= liveSince && !this.liveSessions.has(s)) this.liveSessions.set(s, e.at);
     }
-    this.acts = lastActs(this.events);
+  }
+
+  /** The changes among `keys`, in the scope's order. */
+  changesAmong(keys: Set<string>): Rec[] {
+    const out: Rec[] = [];
+    for (const k of keys) {
+      const r = this.loaded.byKey.get(k)?.[0];
+      if (r && this.base.position.has(r)) out.push(r);
+    }
+    return out.sort((a, b) => this.base.position.get(a)! - this.base.position.get(b)!);
+  }
+
+  /** The events under a record's key and every alias it had, in the stream's order. */
+  eventsOf(keys: Iterable<string>): StoreEvent[] {
+    const out: StoreEvent[] = [];
+    let groups = 0;
+    for (const k of keys) {
+      const es = this.base.byKey.get(k);
+      if (es) {
+        out.push(...es);
+        groups++;
+      }
+    }
+    return groups > 1 ? out.sort((a, b) => a.seq - b.seq) : out;
   }
 
   parentOf(c: Rec): string | undefined {
@@ -343,11 +404,10 @@ class Index {
 
   /** The first status change (when it began) and, for a done change, the last one (when it finished). */
   span(c: Rec): { began?: string; finished?: string } {
-    const keys = new Set<string>(eventKeysOf(c));
     let began: string | undefined;
     let last: string | undefined;
-    for (const e of this.events) {
-      if (!keys.has(e.key) || e.op !== 'set' || !e.fields?.includes('status')) continue;
+    for (const e of this.eventsOf(new Set(eventKeysOf(c)))) {
+      if (e.op !== 'set' || !e.fields?.includes('status')) continue;
       began ??= e.at;
       last = e.at;
     }
@@ -375,15 +435,15 @@ class Index {
   /** The changes filed beneath a feature through a place: the place's feature is the feature or below it. */
   placedBeneath(key: string): string[] {
     return this.changes
-      .filter((c) => this.placeFeatures(c).some((f) => f.key === key || (this.ancestors.get(f.key) ?? []).includes(key)))
+      .filter((c) => this.placeFeatures(c).some((f) => f.key === key || ancestorsOf(this.loaded, f.key).includes(key)))
       .map((c) => c.key);
   }
 
-  /** The keys beneath a node, the node included; every key when the node is the root. */
+  /** The keys beneath a node, the node included; every key of the tree when the node is the root. */
   beneath(key: string | null): Set<string> {
-    if (key === null) return new Set(this.ancestors.keys());
-    const out = new Set<string>([key]);
-    for (const [k, anc] of this.ancestors) if (anc.includes(key)) out.add(k);
+    if (key === null) return new Set(this.loaded.records.filter((r) => r.valid && r.type !== 'source' && r.type !== 'session' && r.type !== 'actor').map((r) => r.key));
+    const out = descendantsOf(this.loaded, key);
+    out.add(key);
     return out;
   }
 
@@ -395,7 +455,7 @@ class Index {
       if (r?.type === 'change') for (const k of eventKeysOf(r)) all.add(k);
     }
     const since = new Date(this.now - days * DAY).toISOString();
-    const mine = this.events.filter((e) => all.has(e.key));
+    const mine = this.eventsOf(all);
     const inWindow = mine.filter((e) => e.at >= since);
     const last = mine.length ? mine[mine.length - 1].at : null;
     const isDone = (k: string) => live(loaded, k)?.data.status === 'done';
@@ -413,7 +473,7 @@ class Index {
 
   row(c: Rec): ChangeRow {
     const kids = this.childrenOf.get(c.key) ?? [];
-    const sessions = this.loaded.records.filter((s) => s.type === 'session' && this.liveSessions.has(s.key) && list(s.data.changes).some((k) => live(this.loaded, k)?.key === c.key));
+    const sessions = (this.base.sessionsOn.get(c.key) ?? []).filter((s) => this.liveSessions.has(s.key));
     const steps = stepsOf(c.data);
     const next = nextStep(steps);
     const blockedOn = c.sections.get('Blocked on')?.trim();
@@ -440,9 +500,7 @@ class Index {
 
   /** The instant of the change's last event, under its key or any alias; undefined when it never moved. */
   lastMoved(c: Rec): string | undefined {
-    const keys = new Set<string>(eventKeysOf(c));
-    for (let i = this.events.length - 1; i >= 0; i--) if (keys.has(this.events[i].key)) return this.events[i].at;
-    return undefined;
+    return this.eventsOf(new Set(eventKeysOf(c))).at(-1)?.at;
   }
 }
 
@@ -509,7 +567,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const openBugs = ix.changes.filter((c) => isOpen(c) && c.data.kind === 'bug');
   const facts = (rec: Rec): Pick<ScopeNode, 'owners' | 'ownersFrom' | 'open' | 'inFlight' | 'projects' | 'health' | 'progress' | 'bugs'> => {
     const keys = ix.beneath(rec.key);
-    const mine = ix.changes.filter((c) => keys.has(c.key) && c.key !== rec.key);
+    const mine = ix.changesAmong(keys).filter((c) => c.key !== rec.key);
     const open = mine.filter(isOpen);
     const eo = effectiveOwners(loaded, rec.key);
     const counted = mine.filter((c) => c.data.status !== 'dropped');
@@ -529,7 +587,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const names = (c: Rec, key: string) =>
     effectsOf(c).some((e) => live(loaded, e.key)?.key === key) || ix.placeFeatures(c).some((f) => f.key === key);
   const namesNothing = (c: Rec) => effectsOf(c).length === 0 && ix.placeFeatures(c).length === 0;
-  const featureChildren = (key: string) => loaded.records.filter((f) => f.type === 'feature' && f.valid && structuralParent(loaded, f)?.key === key);
+  const featureChildren = (key: string) => treeIndex(loaded).features.get(key) ?? [];
   const featureNode = (f: Rec): ScopeNode | null => {
     const d = derivedStatus(loaded, f.key);
     const state = str(f.data.status) ?? d.status;
@@ -542,7 +600,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     const kids = rows(here, (k) => names(k, f.key) || namesNothing(k), true);
     return { key: f.key, type: 'feature', title: str(f.data.title), name: str(f.data.name), level: levelOf(loaded, f), status: str(f.data.status), derived: d.status, childCount: children.length, ...facts(f), children: [...children, ...kids] };
   };
-  const projectChildren = (key: string) => loaded.records.filter((p) => p.type === 'project' && p.valid && structuralParent(loaded, p)?.key === key);
+  const projectChildren = (key: string) => treeIndex(loaded).projects.get(key) ?? [];
   const projectNode = (p: Rec): ScopeNode => {
     const children = projectChildren(p.key).map(projectNode);
     const here = shown.filter((c) => live(loaded, c.data.project)?.key === p.key);
@@ -557,7 +615,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     [...new Map(recs.map((r) => [r.key, r])).values()].sort((a, b) => a.key.localeCompare(b.key)).map(node).filter((n): n is ScopeNode => n !== null);
 
   let tree: ScopeNode[] = [];
-  const products = loaded.records.filter((r) => r.type === 'product' && r.valid);
+  const products = ofType(loaded, 'product').filter((r) => r.valid);
   if (lens === 'feature' || lens === 'roadmap') {
     if (!container) tree = products.map((p) => productNode(p, 'feature'));
     else if (container.type === 'product' || container.type === 'feature') {
@@ -568,7 +626,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       tree = flat(shown.flatMap((c) => [...effectsOf(c).map((e) => live(loaded, e.key)).filter((f): f is Rec => !!f), ...ix.placeFeatures(c)]), featureNode);
     }
   } else if (lens === 'project') {
-    if (!container) tree = [...products.map((p) => productNode(p, 'project')), ...loaded.records.filter((p) => p.type === 'project' && p.valid && !structuralParent(loaded, p)).map(projectNode)];
+    if (!container) tree = [...products.map((p) => productNode(p, 'project')), ...ofType(loaded, 'project').filter((p) => p.valid && !structuralParent(loaded, p)).map(projectNode)];
     else if (container.type === 'product') tree = projectChildren(container.key).map(projectNode);
     else if (container.type === 'project') tree = [...projectChildren(container.key).map(projectNode), ...rows(shown.filter((c) => live(loaded, c.data.project)?.key === container!.key), (k) => live(loaded, k.data.project)?.key === container!.key)];
     else tree = flat(shown.map((c) => live(loaded, c.data.project)).filter((p): p is Rec => !!p), projectNode);
@@ -591,8 +649,8 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const nodeKeys = ix.beneath(node?.key ?? null);
   const health = ix.health(nodeKeys, days);
   const owners = node ? effectiveOwners(loaded, node.key) : { owners: [] as string[] };
-  const sessions: LiveSession[] = loaded.records
-    .filter((s) => s.type === 'session' && s.valid && ix.liveSessions.has(s.key))
+  const sessions: LiveSession[] = ofType(loaded, 'session')
+    .filter((s) => s.valid && ix.liveSessions.has(s.key))
     .map((s) => {
       const bound = list(s.data.changes).map((k) => live(loaded, k)?.key).filter((k): k is string => !!k);
       const on = bound[bound.length - 1];
@@ -605,7 +663,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     .sort((a, b) => b.last.localeCompare(a.last));
   const aliasKeys = new Set(nodeKeys);
   for (const k of nodeKeys) { const r = live(loaded, k); if (r) for (const e of eventKeysOf(r)) aliasKeys.add(e); }
-  const recent = ix.events.filter((e) => aliasKeys.has(e.key) && e.op !== 'write' && e.op !== 'formatted').slice(-60);
+  const recent = ix.eventsOf(aliasKeys).filter((e) => e.op !== 'write' && e.op !== 'formatted').slice(-60);
   const waitingOn = proposedDecisions(loaded, (d) => nodeKeys.has(d.key));
 
   // crumbs: the chain above the node in this lens, product first
@@ -656,8 +714,8 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const roadmap = { product: product?.key ?? null, sequence, later, violations: violations(roadmapRows, localDate(new Date(ix.now))) };
 
   // the aspects: the product's, whole; and on a feature, those that apply there, read there
-  const aspects: ScopeAspect[] = loaded.records
-    .filter((a) => a.type === 'aspect' && a.valid && (!product || a.productSlug === product.productSlug))
+  const aspects: ScopeAspect[] = ofType(loaded, 'aspect')
+    .filter((a) => a.valid && (!product || a.productSlug === product.productSlug))
     .sort((a, b) => a.key.localeCompare(b.key))
     .map((a) => ({ ...aspectWhole(loaded, a), name: str(a.data.name), parent: live(loaded, a.data.parent)?.key }));
   const aspectsHere = node?.type === 'feature' ? aspectsForFeatures(loaded, [node]).at : [];

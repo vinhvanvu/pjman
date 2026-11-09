@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
-import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
+import { loadStore, memo, ofType, push, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
 import { derivedStatus, effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from '../tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
@@ -55,9 +55,13 @@ export interface ChangeBranch {
 
 /** The latest branch a session was observed on, per change key, from every session's observed edges in one pass. */
 export function observedBranches(loaded: Loaded): Map<string, { to: string; at: string }> {
+  return memo(loaded, 'observed-branches', () => observedBranchesOnce(loaded));
+}
+
+function observedBranchesOnce(loaded: Loaded): Map<string, { to: string; at: string }> {
   const latest = new Map<string, { to: string; at: string }>();
-  for (const s of loaded.records) {
-    if (s.type !== 'session' || !s.valid || !Array.isArray(s.data.observed)) continue;
+  for (const s of ofType(loaded, 'session')) {
+    if (!s.valid || !Array.isArray(s.data.observed)) continue;
     for (const o of s.data.observed as unknown[]) {
       if (!o || typeof o !== 'object') continue;
       const e = o as Record<string, unknown>;
@@ -111,8 +115,7 @@ export interface LsOpts {
   feature?: string;
 }
 
-export function ls(store: Store, opts: LsOpts): Row[] {
-  const loaded = loadStore(store);
+export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)): Row[] {
   // a feature's status is the one the tree shows: authored, else derived from the changes on it
   const statusOf = (r: Rec): string | undefined => (r.type === 'feature' ? (typeof r.data.status === 'string' ? r.data.status : derivedStatus(loaded, r.key).status) : typeof r.data.status === 'string' ? r.data.status : undefined);
   let recs = loaded.records;
@@ -283,13 +286,57 @@ export function progressOf(children: { status?: string }[]): { done: number; tot
 }
 
 function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
-  return loaded.records
-    .filter((r) => r.type === 'session' && r.valid && Array.isArray(r.data.changes))
-    .filter((r) => (r.data.changes as unknown[]).some((k) => {
-      const res = typeof k === 'string' ? resolve(loaded, k) : null;
-      return res && (res.status === 'ok' || res.status === 'alias') && res.rec.key === changeKey;
-    }))
-    .sort((a, b) => String(a.data.started).localeCompare(String(b.data.started)));
+  return contextIndex(loaded).sessions.get(changeKey) ?? [];
+}
+
+/** What a change's context reads of the rest of the store, by the change's live key, built once per loaded store
+ *  (change:dashboard-reads-slow): its decisions, sessions, what sessions observed from it, its children, what needs it. */
+interface ContextIndex {
+  supersededBy: Map<string, string>;
+  decisions: Map<string, Rec[]>;
+  sessions: Map<string, Rec[]>;
+  observed: Map<string, ChangeContext['observed']>;
+  children: Map<string, Rec[]>;
+  neededBy: Map<string, Rec[]>;
+}
+
+function contextIndex(loaded: Loaded): ContextIndex {
+  return memo(loaded, 'change-context', () => {
+    const liveKey = (k: unknown, scope?: string): string | undefined => {
+      const r = typeof k === 'string' ? resolve(loaded, k, scope) : null;
+      return r && (r.status === 'ok' || r.status === 'alias') ? r.rec.key : undefined;
+    };
+    const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+    const cx: ContextIndex = { supersededBy: new Map(), decisions: new Map(), sessions: new Map(), observed: new Map(), children: new Map(), neededBy: new Map() };
+    for (const r of ofType(loaded, 'decision')) {
+      for (const sup of supersedesOf(r.data)) {
+        const t = liveKey(sup, r.productSlug ? `product:${r.productSlug}` : undefined);
+        if (t) cx.supersededBy.set(t, r.key);
+      }
+      if (r.changeKey) push(cx.decisions, r.changeKey, r);
+    }
+    for (const ds of cx.decisions.values()) ds.sort((a, b) => (a.fileDate! + a.path).localeCompare(b.fileDate! + b.path));
+    for (const s of ofType(loaded, 'session')) {
+      if (!s.valid) continue;
+      if (Array.isArray(s.data.changes)) for (const k of new Set((s.data.changes as unknown[]).map((k) => liveKey(k)))) if (k) push(cx.sessions, k, s);
+      if (!Array.isArray(s.data.observed)) continue;
+      for (const o of s.data.observed as unknown[]) {
+        if (!o || typeof o !== 'object') continue;
+        const e = o as Record<string, unknown>;
+        if (typeof e.edge !== 'string' || typeof e.from !== 'string' || typeof e.to !== 'string') continue;
+        const from = liveKey(e.from);
+        if (from) push(cx.observed, from, { edge: e.edge, to: e.to, session: s.key, at: typeof e.at === 'string' ? e.at : undefined });
+      }
+    }
+    for (const ss of cx.sessions.values()) ss.sort((a, b) => String(a.data.started).localeCompare(String(b.data.started)));
+    for (const c of ofType(loaded, 'change')) {
+      if (!c.valid) continue;
+      const p = typeof c.data.parent === 'string' ? liveKey(c.data.parent) : undefined;
+      if (p) push(cx.children, p, c);
+      for (const d of new Set(list(c.data.depends_on).map((k) => liveKey(k)))) if (d) push(cx.neededBy, d, c);
+    }
+    return cx;
+  });
 }
 
 export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
@@ -304,18 +351,8 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const plan = stepsOf(rec.data);
   const rungs = rungsOf(rec);
 
-  const supersededBy = new Map<string, string>();
-  for (const r of loaded.records) {
-    if (r.type !== 'decision') continue;
-    for (const sup of supersedesOf(r.data)) {
-      const t = resolve(loaded, sup, r.productSlug ? `product:${r.productSlug}` : undefined);
-      if (t.status === 'ok' || t.status === 'alias') supersededBy.set(t.rec.key, r.key);
-    }
-  }
-  const decisions = loaded.records
-    .filter((r) => r.type === 'decision' && r.changeKey === rec.key)
-    .sort((a, b) => (a.fileDate! + a.path).localeCompare(b.fileDate! + b.path))
-    .map((r) => decisionRow(r, supersededBy.get(r.key)));
+  const cx = contextIndex(loaded);
+  const decisions = (cx.decisions.get(rec.key) ?? []).map((r) => decisionRow(r, cx.supersededBy.get(r.key)));
 
   const sources: ChangeContext['sources'] = [];
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -334,41 +371,27 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   });
   const observed: ChangeContext['observed'] = [];
   const seen = new Set<string>();
-  for (const s of loaded.records) {
-    if (s.type !== 'session' || !s.valid || !Array.isArray(s.data.observed)) continue;
-    for (const o of s.data.observed as unknown[]) {
-      if (!o || typeof o !== 'object') continue;
-      const e = o as Record<string, unknown>;
-      if (typeof e.edge !== 'string' || typeof e.from !== 'string' || typeof e.to !== 'string') continue;
-      const from = resolve(loaded, e.from);
-      if (!(from.status === 'ok' || from.status === 'alias') || from.rec.key !== rec.key) continue;
-      if (seen.has(`${e.edge} ${e.to}`)) continue;
-      seen.add(`${e.edge} ${e.to}`);
-      observed.push({ edge: e.edge, to: e.to, session: s.key, at: typeof e.at === 'string' ? e.at : undefined });
-    }
+  for (const o of cx.observed.get(rec.key) ?? []) {
+    if (seen.has(`${o.edge} ${o.to}`)) continue;
+    seen.add(`${o.edge} ${o.to}`);
+    observed.push(o);
   }
   const parentRes = typeof rec.data.parent === 'string' ? resolve(loaded, rec.data.parent) : null;
   const parent = parentRes && (parentRes.status === 'ok' || parentRes.status === 'alias') ? row(parentRes.rec) : undefined;
-  const children = loaded.records
-    .filter((r) => r.type === 'change' && r.valid && typeof r.data.parent === 'string')
-    .filter((r) => {
-      const p = resolve(loaded, r.data.parent);
-      return (p.status === 'ok' || p.status === 'alias') && p.rec.key === rec.key;
-    })
-    .map(row);
+  const children = (cx.children.get(rec.key) ?? []).map(row);
   const liveKey = (k: unknown): string | undefined => {
     const r = typeof k === 'string' ? resolve(loaded, k) : null;
     return r && (r.status === 'ok' || r.status === 'alias') ? r.rec.key : undefined;
   };
   const dependsOn = list(rec.data.depends_on).map((k) => liveKey(k)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => !!r).map(row);
-  const neededBy = loaded.records.filter((r) => r.type === 'change' && r.valid && list(r.data.depends_on).some((k) => liveKey(k) === rec.key)).map(row);
+  const neededBy = (cx.neededBy.get(rec.key) ?? []).map(row);
   // the branch: one seen by a session (the latest) or linked from the change, else the recommended name
   const branch = branchOf(rec, observedBranches(loaded));
   const features = effectsOf(rec).map((e) => liveKey(e.key)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => r?.type === 'feature');
   const aspects = aspectsOfChange(loaded, rec, features);
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
-  const releases = loaded.records
-    .filter((r) => r.type === 'release' && r.valid && list(r.data.ships).some((k) => liveKey(k) === rec.key))
+  const releases = ofType(loaded, 'release')
+    .filter((r) => r.valid && list(r.data.ships).some((k) => liveKey(k) === rec.key))
     .map((r) => ({ key: r.key, version: str(r.data.version) ?? r.releaseVersion ?? r.key, at: str(r.data.at), url: str(r.data.url) }))
     .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
   return {
@@ -478,8 +501,7 @@ export function formatChangeContext(c: ChangeContext): string {
 }
 
 /** The board: the open changes of one project (`opts.project`), or of the whole store. */
-export function storeContext(store: Store, opts: { project?: string | null } = {}): StoreContext {
-  const loaded = loadStore(store);
+export function storeContext(store: Store, opts: { project?: string | null } = {}, loaded: Loaded = loadStore(store)): StoreContext {
   const counts: Record<string, number> = {};
   for (const r of loaded.records) counts[r.type] = (counts[r.type] ?? 0) + 1;
   const projects = loaded.records.filter((r) => r.type === 'project').map(row);

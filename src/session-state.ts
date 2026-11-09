@@ -3,7 +3,7 @@
 // by the rule the session dot uses. The facts are what the store already holds: the session's log lines (the hook
 // writes one at every stop and a closing one at the end), the writes stamped with the session, and whether a
 // decision is proposed on its change. Nothing is stored.
-import type { StoreEvent } from './events.js';
+import { streamMemo, type StoreEvent } from './events.js';
 import type { Rec } from './records.js';
 
 /** A session is live while something it did reached the stream inside this window. */
@@ -54,7 +54,16 @@ export interface SessionLog {
   line?: LogLine;
 }
 
+/** Read once per record: a loaded record does not change (change:dashboard-reads-slow). */
+const logs = new WeakMap<Rec, SessionLog>();
+
 export function sessionLogOf(rec: Rec): SessionLog {
+  let read = logs.get(rec);
+  if (!read) logs.set(rec, (read = sessionLogOnce(rec)));
+  return read;
+}
+
+function sessionLogOnce(rec: Rec): SessionLog {
   const log = (rec.sections.get('Log') ?? '')
     .split('\n')
     .map((l) => LOG_LINE.exec(l.trim()))
@@ -68,7 +77,11 @@ export function sessionLogOf(rec: Rec): SessionLog {
 
 /** The last act of each session from the stream: a write stamped with it, its own log lines excluded (the line's own
  *  instant is read from the log, so a stop reads as a stop and not as an act after it). */
-export function lastActs(events: Iterable<StoreEvent>, until?: number): Map<string, string> {
+export function lastActs(events: readonly StoreEvent[], until?: number): Map<string, string> {
+  return until === undefined ? streamMemo(events, 'last-acts', () => lastActsOnce(events)) : lastActsOnce(events, until);
+}
+
+function lastActsOnce(events: Iterable<StoreEvent>, until?: number): Map<string, string> {
   const acts = new Map<string, string>();
   for (const e of events) {
     if (until !== undefined && e.seq > until) break;

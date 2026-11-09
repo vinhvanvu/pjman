@@ -1,7 +1,7 @@
 // The receipt: what the store received, one line per record, for a person. Deterministic: the same events always
 // read the same way, so an adapter can show it after every turn and a person learns to trust it.
 import type { Store } from './config.js';
-import { readEvents, type StoreEvent } from './events.js';
+import { lastSeq, readEvents, type StoreEvent } from './events.js';
 import { loadStore, resolve, type Loaded } from './records.js';
 
 export interface Receipt {
@@ -17,7 +17,7 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
  *  their conversation landed, and a child's creation and log are bookkeeping, not a write to report. */
 export function receipt(store: Store, opts: { since?: number; session?: string; loaded?: Loaded } = {}): Receipt {
   const all = readEvents(store, opts.since ?? 0);
-  const last = readEvents(store).at(-1)?.seq ?? 0;
+  const last = lastSeq(store);
   const loaded = opts.loaded ?? loadStore(store);
   if (!opts.session) return { seq: last, lines: receiptLines(all, loaded) };
   const family = sessionFamily(loaded, opts.session);

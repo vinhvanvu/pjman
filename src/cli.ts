@@ -8,13 +8,13 @@ import { openPage, openUrl } from './commands/open.js';
 import { withStoreLock } from './lock.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
-import { loadStore, resolve, unresolvedError } from './records.js';
+import { loadStore, resolve, storeScope, unresolvedError } from './records.js';
 import { ambiguous, CliError, notFound, plural, usageError } from './util.js';
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from './validate.js';
 import { findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from './graph.js';
 import { renderView, watchStore } from './commands/pane.js';
-import { follow, formatEvent, readEvents, rebuildEvents } from './events.js';
+import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from './events.js';
 import { installedTool, readServeAddress, startServer } from './server.js';
 import { syncLinear } from './sync/linear.js';
 import { syncGithub } from './sync/github.js';
@@ -91,7 +91,7 @@ function parse(args: string[]) {
 let scopeProduct: string | null = null;
 const scoped = (store: ReturnType<typeof requireStore>) => {
   try {
-    scopeProduct = loadStore(store).scope;
+    scopeProduct = storeScope(store);
   } catch {
     scopeProduct = null;
   }
@@ -328,7 +328,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'wakes': {
       if (!v.session) throw usageError('usage: pjman wakes --session <id> [--since <seq>] [--follow] [--json]');
       const store = scoped(requireStore(cwd, v.store));
-      const tail = readEvents(store).at(-1)?.seq ?? 0;
+      const tail = lastSeq(store);
       const print = (w: Wake) => out(v.json ? JSON.stringify(w) : `#${w.seq} ${w.why}`);
       if (!v.follow) {
         const stop = followWakes(store, v.session, v.since !== undefined ? Number(v.since) : 0, print);
@@ -627,7 +627,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'follow': {
       const store = scoped(requireStore(cwd, v.store));
-      const since = v.since !== undefined ? Number(v.since) : readEvents(store).at(-1)?.seq ?? 0;
+      const since = v.since !== undefined ? Number(v.since) : lastSeq(store);
       follow(store, since, (e) => out(v.json ? JSON.stringify(e) : formatEvent(e)));
       return 0; // the watcher keeps the process alive until it is interrupted
     }
