@@ -116,6 +116,8 @@ function stream(store: Store): readonly StoreEvent[] {
 
 /** Every event after `since`. Read-only: the whole stream is shared by every reader in the process. */
 export function readEvents(store: Store, since = 0): StoreEvent[] {
+  // after a point, in a process that has not read the whole stream: only the tail past it
+  if (since > 0 && !streams.has(eventsPath(store))) return tailEvents(store, { seq: since + 1 });
   const all = stream(store) as StoreEvent[];
   if (since <= 0) return all;
   // seq rises through the file; the first past `since` is found by halving
@@ -127,6 +129,59 @@ export function readEvents(store: Store, since = 0): StoreEvent[] {
     else lo = mid + 1;
   }
   return all.slice(lo);
+}
+
+/** The stream's tail: every event after the last one that is both before `seq` and before `at` (either may be
+ *  absent), read back from the end of the file, so a process that needs only what is recent never reads the whole
+ *  stream (change:dashboard-reads-slow). With the whole stream already read in this process, cut from that. */
+export function tailEvents(store: Store, back: { seq?: number; at?: string }): StoreEvent[] {
+  const before = (e: StoreEvent) => (back.seq === undefined || e.seq < back.seq) && (back.at === undefined || e.at < back.at);
+  const file = eventsPath(store);
+  const whole = streams.get(file);
+  const cut = (all: readonly StoreEvent[]) => {
+    let i = all.length;
+    while (i > 0 && !before(all[i - 1])) i--;
+    return all.slice(i);
+  };
+  if (whole) return cut(stream(store));
+  let fd: number;
+  try {
+    fd = fs.openSync(file, 'r');
+  } catch {
+    return [];
+  }
+  try {
+    const size = fs.fstatSync(fd).size;
+    const out: StoreEvent[] = [];
+    let end = size;
+    let carry = Buffer.alloc(0);
+    const CHUNK = 1 << 16;
+    while (end > 0) {
+      const start = Math.max(0, end - CHUNK);
+      const buf = Buffer.alloc(end - start);
+      fs.readSync(fd, buf, 0, buf.length, start);
+      const text = Buffer.concat([buf, carry]);
+      // the first line of the chunk may be cut; it is read with the chunk before it
+      const nl = start === 0 ? -1 : text.indexOf(0x0a);
+      end = start;
+      if (start > 0 && nl < 0) {
+        // a line longer than the chunk: read on back until its start
+        carry = text;
+        continue;
+      }
+      carry = start === 0 ? Buffer.alloc(0) : text.subarray(0, nl + 1);
+      const lines = text.subarray(nl + 1).toString('utf8').split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const e = lines[i].trim() ? parseLine(lines[i]) : null;
+        if (!e) continue;
+        if (before(e)) return out.reverse();
+        out.push(e);
+      }
+    }
+    return out.reverse();
+  } finally {
+    fs.closeSync(fd);
+  }
 }
 
 /** What is derived from one read of the stream, built on first use and kept with it: a read that changes nothing

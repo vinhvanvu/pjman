@@ -3,7 +3,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
 import { CliError } from './util.js';
-import { isOwnRepo } from './git.js';
 
 export const CANONICAL_STATUSES = ['open', 'planning', 'active', 'blocked', 'review', 'done', 'dropped'] as const;
 export const DECISION_STATUSES = ['proposed', 'decided', 'superseded', 'reverted'] as const;
@@ -126,8 +125,10 @@ export function writeStoreConfig(root: string, cfg: StoreConfig): void {
   fs.writeFileSync(path.join(root, 'pjman.yaml'), stringify(cfg, { lineWidth: 0 }));
 }
 
+/** Standalone when the store's folder is the top of its own repository: its .git is there (a folder, or a worktree's
+ *  file). Read from the folder, so naming a store spawns nothing. */
 export function modeOf(root: string): StoreMode {
-  return isOwnRepo(root) ? 'standalone' : 'in-project';
+  return fs.existsSync(path.join(root, '.git')) ? 'standalone' : 'in-project';
 }
 
 export function openStore(root: string): Store {

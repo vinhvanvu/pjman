@@ -6,7 +6,7 @@
 // working on (`changes`, the last one bound); it drives the brief. Focus is what it is looking at: the change whose
 // context it last read, or the change it last wrote; the dock follows it.
 import type { Store } from './config.js';
-import { eventsBySession, follow, readEvents, streamMemo, type StoreEvent } from './events.js';
+import { eventsBySession, follow, lastSeq, readEvents, streamMemo, tailEvents, type StoreEvent } from './events.js';
 import { eventKeysOf, findSession, loadStore, type Loaded, type Rec } from './records.js';
 import { receiptLines } from './receipt.js';
 import { LIVE_MINUTES } from './scope.js';
@@ -203,11 +203,16 @@ export function computeBrief(store: Store, id: string, opts: { full?: boolean; l
   const now = opts.now ?? Date.now();
   const session = findSession(loaded, id.replace(/^session:/, ''));
   if (!session) throw notFound(`session:${id.replace(/^session:/, '')}`);
-  const events = readEvents(store);
-  const tail = events.at(-1);
+  const mark = session.data.briefed as { change?: string; seq?: number; at?: string } | undefined;
+  // what the brief reads: the stream since its last brief and the live window, from the end of the stream; the whole
+  // stream only for a session never briefed
+  const hour = 3_600_000;
+  const window = new Date(now - LIVE_MINUTES * 60_000 - hour).toISOString();
+  const markAt = typeof mark?.at === 'string' ? new Date(Date.parse(mark.at) - hour).toISOString() : undefined;
+  const events = markAt ? tailEvents(store, { seq: typeof mark?.seq === 'number' ? mark.seq : undefined, at: markAt < window ? markAt : window }) : readEvents(store);
+  const tail = events.at(-1) ?? (markAt ? tailEvents(store, { seq: lastSeq(store) }).at(-1) : undefined);
   const base = { session: session.key, seq: tail?.seq ?? 0, at: tail?.at ?? new Date(now).toISOString() };
   const change = boundOf(loaded, session);
-  const mark = session.data.briefed as { change?: string; seq?: number; at?: string } | undefined;
   if (!change) {
     // an unbound session has no brief but the notes addressed to it
     const notes = notesFor(session, undefined, events, since(events, mark));
