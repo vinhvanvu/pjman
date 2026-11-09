@@ -8,6 +8,7 @@ import { FIELD_ORDER, fullKey, loadStore, type Loaded, type Problem, type Record
 import { CliError } from './util.js';
 import { formatProblems, validate } from './validate.js';
 import { liftAfter } from './lift.js';
+import { notePending } from './store-index.js';
 
 export interface Envelope {
   writer?: string;
@@ -33,6 +34,8 @@ export function writeFile(store: Store, rel: string, text: string): void {
 
 /** Validate the whole store and return the errors that touch the given paths. */
 export function errorsAt(store: Store, rels: string[]): Problem[] {
+  // written and not yet in the stream: the index reads them again whatever it holds
+  notePending(store, rels);
   const loaded = loadStore(store);
   const set = new Set(rels);
   return validate(loaded).filter((p) => p.level === 'error' && set.has(p.path));
@@ -93,6 +96,7 @@ export function commitIfStandalone(store: Store, message: string, session?: stri
  *  lift those events call for. */
 export function finishWrite(store: Store, message: string, session: string | undefined, events: EventInput[]): string | null {
   if (batch) {
+    notePending(store, events.map((e) => e.path));
     batch.push(...events.map((e) => ({ ...e, session: e.session ?? session })));
     liftAfter(store, events, session);
     return null;

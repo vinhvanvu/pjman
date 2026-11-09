@@ -19,6 +19,7 @@ import { formatProblems, validate } from '../validate.js';
 import { CHANGE_SECTIONS, foundationHash, foundationOf, unmigrated } from '../foundation.js';
 import { sections as parseSections } from '../frontmatter.js';
 import { compareVersions, UNSTAMPED_VERSION } from '../version.js';
+import { noteReshaping } from '../store-index.js';
 
 /** A move the store's format has made, with the pjman version that introduced it. In order: the first whose check says
  *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
@@ -86,6 +87,7 @@ export function describeMigration(name: 'layout' | 'foundation' | 'stamp'): stri
 }
 
 export function migrate(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  noteReshaping(store);
   const pending = pendingMigration(store);
   if (!pending) {
     throw new CliError(`nothing to migrate: every record is keyed under its product, every change and decision is in its shape, and the store is in format ${storeVersion(store)}`);
@@ -136,6 +138,7 @@ const noteLine = (at: string, text: string): string => `- ${at} — ${text.repla
  *  a decision's Decision and Why become one option with its case, accepted by whoever decided it, or recommended while
  *  proposed. Each record is marked migrated until it is next written through the tool. One commit; pjman undo reverts it. */
 export function migrateFoundation(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  noteReshaping(store);
   const root = store.root;
   if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
   const loaded = loadStore(store);
@@ -242,6 +245,7 @@ const rewriteDecisions = (text: string, change: string, product: string): string
   text.replace(new RegExp(`(^|[^A-Za-z0-9_/:-])decision:${esc(change)}/`, 'g'), `$1decision:${product}/${change}/`);
 
 export function migrateLayout(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  noteReshaping(store);
   const root = store.root;
   if (!isLegacyLayout(root)) throw new CliError('nothing to migrate: every record is already keyed under its product');
   if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');

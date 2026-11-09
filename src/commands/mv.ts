@@ -10,6 +10,7 @@ import { aspectKey, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE } from
 import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { CliError, usageError, notFound } from '../util.js';
 import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
+import { noteReshaping } from '../store-index.js';
 
 export interface MvResult {
   from: string;
@@ -249,6 +250,7 @@ function mvAspect(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, 
 }
 
 export function mv(store: Store, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
+  noteReshaping(store);
   const from = parseKey(fromRaw);
   const to = parseKey(toRaw);
   if (!from || !to) throw usageError('usage: pjman mv <kind>:<old> <kind>:<new>  (product, feature, aspect, place, project, change, decision, person, agent)');

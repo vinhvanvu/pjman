@@ -11,6 +11,7 @@ import { parseKey } from '../keys.js';
 import { eventKeysOf, loadStore, resolve, unresolved, unresolvedError, type Rec } from '../records.js';
 import { CliError } from '../util.js';
 import { envelope, errorsAt, finishWrite, render } from '../write.js';
+import { noteReshaping } from '../store-index.js';
 
 export interface Detached {
   key: string;
@@ -78,6 +79,7 @@ function referrers(records: Rec[], removedPaths: Set<string>, keys: Set<string>)
 }
 
 export function rm(store: Store, raw: string, opts: { detach?: boolean; session?: string; writer?: string } = {}): RmResult {
+  noteReshaping(store);
   const key = parseKey(raw);
   if (!key) throw new CliError(`'${raw}' is not a key (kind:rest)`);
   const loaded = loadStore(store);

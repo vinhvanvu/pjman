@@ -4,6 +4,7 @@ import type { Store } from './config.js';
 import { parseRecord, sections, type Parsed } from './frontmatter.js';
 import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, releaseKey, SCOPED_KINDS, VERSION_RE, type Key } from './keys.js';
 import { ambiguous, CliError, notFound } from './util.js';
+import { indexedEntries, type Entry } from './store-index.js';
 
 export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'release' | 'source' | 'session' | 'actor';
 
@@ -96,6 +97,36 @@ export interface Source {
   isDir(rel: string): boolean;
   exists(rel: string): boolean;
   read(rel: string): string;
+  /** A record file already parsed, when the source holds its parse (the store index). */
+  parsed?(rel: string): Parsed | undefined;
+}
+
+/** The store as it stands on disk, read through its index (store-index.ts): the files' parses as held, brought up to
+ *  date with what moved since. The store's root files are read live. Falls back to the disk when the index cannot be
+ *  opened, and is not used when PJMAN_INDEX=0. */
+export function indexedSource(store: Store): Source {
+  const disk = diskSource(store.root);
+  if (process.env.PJMAN_INDEX === '0') return disk;
+  let entries: Map<string, Entry>;
+  try {
+    entries = indexedEntries(store);
+  } catch {
+    return disk;
+  }
+  const children = new Map<string, string[]>();
+  for (const rel of entries.keys()) {
+    const at = rel.lastIndexOf('/');
+    push(children, at < 0 ? '' : rel.slice(0, at), at < 0 ? rel : rel.slice(at + 1));
+  }
+  for (const names of children.values()) names.sort();
+  const top = (rel: string) => !rel.includes('/');
+  return {
+    list: (rel) => (rel === '' ? disk.list('') : [...(children.get(rel) ?? [])]),
+    isDir: (rel) => (rel === '' ? true : entries.has(rel) ? entries.get(rel)!.dir : top(rel) && disk.isDir(rel)),
+    exists: (rel) => (rel === '' || entries.has(rel) || (top(rel) && disk.exists(rel))),
+    read: (rel) => disk.read(rel),
+    parsed: (rel) => entries.get(rel)?.parsed ?? undefined,
+  };
 }
 
 /** The store as it stands on disk. */
@@ -127,8 +158,7 @@ export function diskSource(root: string): Source {
 
 function readRec(src: Source, store: Store, rel: string, type: RecordType, key: string): Rec {
   const abs = path.join(store.root, rel);
-  const text = src.read(rel);
-  const parsed = parseRecord(text);
+  const parsed = src.parsed?.(rel) ?? parseRecord(src.read(rel));
   const valid = parsed.hasFrontmatter && parsed.isMapping && parsed.errors.length === 0;
   return { type, key, path: rel, abs, data: parsed.data, body: parsed.body, sections: sections(parsed.body), parsed, valid };
 }
@@ -145,7 +175,7 @@ export function isLegacyLayout(root: string | Source): boolean {
 
 const STORE_FILES = ['products', 'projects', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'events.jsonl', 'README.md'];
 
-export function loadStore(store: Store, src: Source = diskSource(store.root)): Loaded {
+export function loadStore(store: Store, src: Source = indexedSource(store)): Loaded {
   const records: Rec[] = [];
   const problems: Problem[] = [];
   const listDir = (rel: string) => src.list(rel);

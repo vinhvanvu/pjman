@@ -1,11 +1,13 @@
 // The scale bench (change:dashboard-reads-slow): a generated store at each scale, every read route asked through the
 // server as the dashboard asks it (first and again), and the CLI's cold calls as a hook makes them.
 import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { openStore } from '../config.js';
+import { loadStore } from '../records.js';
 import { createServer } from '../server.js';
 import { generateStore, type Generated } from './generate.js';
 
@@ -90,8 +92,20 @@ export function benchCli(g: Generated): Timing[] {
 }
 
 export async function bench(root: string, scale: number, opts: { cli?: boolean } = {}): Promise<BenchResult> {
+  // the bench's indexes live beside its stores, never in the person's pjman folder
+  process.env.PJMAN_HOME = `${root}.home`;
+  fs.rmSync(process.env.PJMAN_HOME, { recursive: true, force: true });
   const g = generateStore(root, { scale });
-  const timings = await benchServer(g);
+  const timings: Timing[] = [];
+  // the first read builds the index, as the first command after an install does
+  const store = openStore(g.root);
+  let t = performance.now();
+  loadStore(store);
+  timings.push({ name: 'index built', ms: performance.now() - t });
+  t = performance.now();
+  loadStore(store);
+  timings.push({ name: 'load from index', ms: performance.now() - t });
+  timings.push(...(await benchServer(g)));
   if (opts.cli !== false) timings.push(...benchCli(g));
   return { scale, records: g.records, events: g.events, timings };
 }

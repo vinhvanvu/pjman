@@ -9,6 +9,7 @@ import { commitAll, git } from '../git.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
 import { CliError, notFound } from '../util.js';
 import { beginBatch, endBatch, envelope } from '../write.js';
+import { noteReshaping } from '../store-index.js';
 
 /** The commands a batch may hold: writes to records, nothing that starts a server, reads, or nests. */
 export const BATCH_COMMANDS = ['new', 'set', 'decision', 'step', 'mv', 'rm', 'order', 'session', 'note'] as const;
@@ -107,6 +108,7 @@ export function apply(store: Store, text: string, run: (argv: string[]) => void,
 
 /** A batch already split into argv lists: one commit, as apply makes one. A bulk set or rm builds its lines here. */
 export function applyLines(store: Store, lines: { line: number; argv: string[] }[], run: (argv: string[]) => void, opts: { for?: string; session?: string; writer?: string } = {}): ApplyResult {
+  noteReshaping(store);
   requireStandalone(store, 'apply');
   requireClean(store);
   if (!lines.length) throw new CliError('the batch is empty');
@@ -135,6 +137,7 @@ export function applyLines(store: Store, lines: { line: number; argv: string[] }
 
 /** Revert one batch (the last, or the commit named) as one commit; refused while a later commit touched its records. */
 export function undo(store: Store, opts: { commit?: string; session?: string; writer?: string } = {}): UndoResult {
+  noteReshaping(store);
   requireStandalone(store, 'undo');
   requireClean(store);
   const root = store.root;
