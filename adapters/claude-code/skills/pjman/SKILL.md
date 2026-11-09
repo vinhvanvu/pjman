@@ -160,8 +160,9 @@ capability beneath it, not a new feature; a thing a user would name on its own i
 or removes: `--features "adds feature:<slug>"`, `"feature:<slug>"` (changes), `"removes feature:<slug>"`. Name the most
 specific node, the capability rather than the feature above it; state rolls up. A feature's state is derived from those
 changes (live once an adding change is done, retired once a removing one is), so prefer the verb to writing a status.
-A parent change is a milestone: its progress is its children done; goals such as a release or a second user are
-milestones, not features. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
+A milestone is a change of kind milestone (`--kind milestone`), named so at filing: its children (`--parent` on each) are its plan, its
+progress is its children done, it takes no steps of its own, and a change named as a parent must be one; goals such as a release or a
+second user are milestones, not features. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
 beneath any node. Create a feature only when the person names a capability; a ticket label is not a feature. Give it `--name`, one to
 three words: the label trees and chips show (the title stays the sentence). When `pjman context` opens with "no product
 map", the map comes with the first change filed, through intake and by what the repository holds: docs or code, and the
