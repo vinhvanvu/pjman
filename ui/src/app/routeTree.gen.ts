@@ -14,6 +14,7 @@ import { Route as LensSplatRouteImport } from './../routes/$lens.$'
 import { Route as BridgeSplatRouteImport } from './../routes/bridge.$'
 import { Route as ChangeSplatRouteImport } from './../routes/change.$'
 import { Route as GetSplatRouteImport } from './../routes/get.$'
+import { Route as MilestonesSplatRouteImport } from './../routes/milestones.$'
 import { Route as SessionIdRouteImport } from './../routes/session.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +42,11 @@ const GetSplatRoute = GetSplatRouteImport.update({
   path: '/get/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MilestonesSplatRoute = MilestonesSplatRouteImport.update({
+  id: '/milestones/$',
+  path: '/milestones/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SessionIdRoute = SessionIdRouteImport.update({
   id: '/session/$id',
   path: '/session/$id',
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/bridge/$': typeof BridgeSplatRoute
   '/change/$': typeof ChangeSplatRoute
   '/get/$': typeof GetSplatRoute
+  '/milestones/$': typeof MilestonesSplatRoute
   '/session/$id': typeof SessionIdRoute
 }
 export interface FileRoutesByTo {
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/bridge/$': typeof BridgeSplatRoute
   '/change/$': typeof ChangeSplatRoute
   '/get/$': typeof GetSplatRoute
+  '/milestones/$': typeof MilestonesSplatRoute
   '/session/$id': typeof SessionIdRoute
 }
 export interface FileRoutesById {
@@ -70,14 +78,28 @@ export interface FileRoutesById {
   '/bridge/$': typeof BridgeSplatRoute
   '/change/$': typeof ChangeSplatRoute
   '/get/$': typeof GetSplatRoute
+  '/milestones/$': typeof MilestonesSplatRoute
   '/session/$id': typeof SessionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/$lens/$' | '/bridge/$' | '/change/$' | '/get/$' | '/session/$id'
+    | '/'
+    | '/$lens/$'
+    | '/bridge/$'
+    | '/change/$'
+    | '/get/$'
+    | '/milestones/$'
+    | '/session/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$lens/$' | '/bridge/$' | '/change/$' | '/get/$' | '/session/$id'
+  to:
+    | '/'
+    | '/$lens/$'
+    | '/bridge/$'
+    | '/change/$'
+    | '/get/$'
+    | '/milestones/$'
+    | '/session/$id'
   id:
     | '__root__'
     | '/'
@@ -85,6 +107,7 @@ export interface FileRouteTypes {
     | '/bridge/$'
     | '/change/$'
     | '/get/$'
+    | '/milestones/$'
     | '/session/$id'
   fileRoutesById: FileRoutesById
 }
@@ -94,6 +117,7 @@ export interface RootRouteChildren {
   BridgeSplatRoute: typeof BridgeSplatRoute
   ChangeSplatRoute: typeof ChangeSplatRoute
   GetSplatRoute: typeof GetSplatRoute
+  MilestonesSplatRoute: typeof MilestonesSplatRoute
   SessionIdRoute: typeof SessionIdRoute
 }
 
@@ -134,6 +158,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof GetSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/milestones/$': {
+      id: '/milestones/$'
+      path: '/milestones/$'
+      fullPath: '/milestones/$'
+      preLoaderRoute: typeof MilestonesSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/session/$id': {
       id: '/session/$id'
       path: '/session/$id'
@@ -150,6 +181,7 @@ const rootRouteChildren: RootRouteChildren = {
   BridgeSplatRoute: BridgeSplatRoute,
   ChangeSplatRoute: ChangeSplatRoute,
   GetSplatRoute: GetSplatRoute,
+  MilestonesSplatRoute: MilestonesSplatRoute,
   SessionIdRoute: SessionIdRoute,
 }
 export const routeTree = rootRouteImport

@@ -3,15 +3,19 @@
 // Width forks two things, as on the session page: how far the tree opens, and where the sources and the rail sit
 // (wide, in the panel beside the body; folded, beneath it, the sources one line). The change's own page mounts it at
 // either width, the map's side panel folded. The rail runs by session (decision rail-unfiltered): every session that
-// touched the change, a head at each hand-off, the live ones breathing, and no filter of its own.
+// touched the change, a head at each hand-off, the live ones breathing, and no filter of its own. A milestone is the
+// same view read over its children (decisions milestone-is-a-page, children-in-order): the milestone bar on top, the
+// children where the plan is, the decisions waiting beneath as cards, the sources folded to a line, and the rail at
+// the milestone's key, whose lanes are the children.
 import { cn } from 'cn';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import type { ChangeContext, Lens, RailSession, Scope } from '@/data/contract';
-import { useDecideAction, useRail, useStore } from '@/data/queries';
+import { useDecideAction, useRail, useScope, useStore } from '@/data/queries';
 import { ActivityRail } from '@/features/rail/ActivityRail';
 import type { RunSession } from '@/features/rail/model';
 import { sessionTitle } from '@/features/session/model';
 import type { PageSearch } from '@/routes/-search';
+import { beneathOf, figuresOf, MilestoneBar, MilestoneChildren } from '@/features/milestones';
 import { ChangeBar } from './ChangeBar';
 import { ChangeTree, Sources } from './ChangeTree';
 import { featureNames, workingOn } from './model';
@@ -39,6 +43,7 @@ export function ChangeView({
   className?: string;
 }) {
   const c = ctx.change;
+  const milestone = ctx.children.length > 0;
   const search = useSearch({ strict: false }) as PageSearch;
   const navigate = useNavigate();
   const onLink = (decision: string | undefined) =>
@@ -60,6 +65,16 @@ export function ChangeView({
   const mode = page ? 'focus' : 'select';
   const under = scope.crumbs.filter((k) => !k.key.startsWith('product:') && k.key !== c.key).toReversed();
   const working = workingOn(scope.sessions, c.key);
+  // a milestone's children are read against the product's rows (the roadmap's scope with the done shown), the
+  // sessions beneath it and the decisions waiting beneath it; the child a session is on is the one in work
+  const productKey = scope.crumbs.find((k) => k.key.startsWith('product:'))?.key;
+  const product = useScope({ lens: 'roadmap', node: productKey, done: true }, milestone && !!productKey);
+  const rows = new Map((product.data?.changes ?? []).map((r) => [r.key, r]));
+  const beneath = beneathOf(c.key, rows.values());
+  const waitingBeneath = (product.data?.waitingOn ?? scope.waitingOn).filter((d) => beneath.has(d.change));
+  const open = scope.sessions.find((s) => s.on && beneath.has(s.on))?.on;
+  const frame = { rows, sessions: scope.sessions, waiting: waitingBeneath, open };
+  const figures = figuresOf(c.key, rows, scope.sessions, waitingBeneath);
   const tree = (
     <ChangeTree
       key={c.key}
@@ -77,18 +92,46 @@ export function ChangeView({
       actor={store?.actor ?? undefined}
       linked={search.decision}
       onLink={onLink}
-      bar={<ChangeBar sessions={touched} live={scope.sessions} last={last} waits={waits} />}
+      bar={
+        milestone ? (
+          <MilestoneBar figures={{ ...figures, moved: figures.moved ?? last }} />
+        ) : (
+          <ChangeBar sessions={touched} live={scope.sessions} last={last} waits={waits} />
+        )
+      }
+      milestoneSlot={
+        milestone ? (
+          <MilestoneChildren
+            ctx={ctx}
+            lens={lens}
+            mode={mode}
+            wide={wide}
+            frame={frame}
+            working={scope.sessions.some((s) => s.on === open && s.state === 'working')}
+            decide={decide}
+            actor={store?.actor ?? undefined}
+            linked={search.decision}
+            onLink={onLink}
+          />
+        ) : undefined
+      }
+      waitingBeneath={milestone ? waitingBeneath : undefined}
     />
   );
-  const sources = <Sources ctx={ctx} lens={lens} mode={mode} wide={wide} />;
+  // a milestone has few sources of its own: they fold to one line at either width (decision milestone-body)
+  const sources = <Sources ctx={ctx} lens={lens} mode={mode} wide={wide && !milestone} />;
   const rail = (
     <ActivityRail
       scope={c.key}
       lens={lens}
       limit={wide ? 20 : 8}
-      sessions={sessions}
+      sessions={milestone ? undefined : sessions}
       label="Timeline"
-      note={<span className="text-meta text-ink-faint">newest first · a head where the session changes</span>}
+      note={
+        <span className="text-meta text-ink-faint">
+          {milestone ? 'newest first · a lane per child' : 'newest first · a head where the session changes'}
+        </span>
+      }
     />
   );
 

@@ -12,6 +12,9 @@
 // sources one line, each opening in place; wide the plan is out and the sources sit in the panel above the rail), and
 // where the rail sits (beneath the body docked, in the panel wide). Cardinality forks one: the chip row exists only
 // with several changes. Everything else is one component.
+// A session bound to a milestone works inside it (decision milestone-detail/milestone-leads-the-dock): the body is
+// the milestone's tree, the child the session is on (or the person looks at) opened in place among its children,
+// and the page stays while the focus moves beneath the milestone; a tap on a child's row is a look at it, the pick.
 // Motion (decision one-shown-change): the chosen chip's fill slides to the picked chip, the body rises in and the
 // rail's rows with it; when the focus moves and nothing is held, the ring moves to the new chip and the chips reorder
 // in place; held, only the ring moves. Reduced motion keeps the fades and drops the rise and the slide.
@@ -25,6 +28,7 @@ import { Label } from '@/components/chips/Chip';
 import { Pulse } from '@/components/presence/Presence';
 import { ChangeTree, featureNames, RISE, Sources } from '@/features/change';
 import { dockArrivals } from '@/features/dock/model';
+import { beneathOf, frameOf, MilestoneChildren } from '@/features/milestones';
 import { ActivityRail } from '@/features/rail/ActivityRail';
 import { UNFOLDED } from '@/features/rail/model';
 import { useHeldList, useHold } from '@/lib/hold';
@@ -85,11 +89,28 @@ export function SessionTree({
   // held: while the person holds a pick the chips keep their places; only the ring moves (decision one-shown-change).
   // The hold begins once the lanes are read, so a page opened on a pick does not hold an empty row
   const { shown: chips } = useHeldList(live, isViewing && lanes.isSuccess, chipKey);
-  const scope = useScope({ lens: 'feature', node: shown }, !!shown);
+  // the frame (decision milestone-leads-the-dock): the last milestone the session bound that stands over the shown
+  // change; the body is then the milestone's tree with the shown child open, read against the product's rows
+  const roadmap = useScope({ lens: 'roadmap', node: session.product, done: true }, !!session.product);
+  const rows = new Map((roadmap.data?.changes ?? []).map((r) => [r.key, r]));
+  const frameKey = frameOf(session.binds, shown, rows);
+  const subject = frameKey ?? shown;
+  const scope = useScope({ lens: 'feature', node: subject }, !!subject);
   // the shown change's record, never the one before it while this one loads
   const read = scope.data;
-  const ctx = read?.change && read.change.change.key === shown ? read.change : undefined;
+  const ctx = read?.change && read.change.change.key === subject ? read.change : undefined;
   const parentOf = read?.crumbs.filter((k) => !k.key.startsWith('product:')).toReversed() ?? [];
+  const beneath = frameKey ? beneathOf(frameKey, rows.values()) : undefined;
+  const waitingBeneath = beneath ? waitingOn.filter((d) => beneath.has(d.change)) : [];
+  const frame = frameKey
+    ? {
+        rows,
+        sessions: product.data?.sessions ?? [],
+        waiting: waitingBeneath,
+        open: shown === frameKey ? undefined : shown,
+        onPick: setPick,
+      }
+    : undefined;
   const names = featureNames(product.data?.tree ?? []);
   // the session bar sums the waits across the chips (decision decision-card)
   const waits = waitingOn.filter((d) => live.some((c) => c.key === d.change)).length;
@@ -190,7 +211,7 @@ export function SessionTree({
 
   const body = ctx ? (
     <ChangeTree
-      key={shown}
+      key={subject}
       ctx={ctx}
       lens={lens}
       where="session"
@@ -208,6 +229,25 @@ export function SessionTree({
       held={hold.held}
       linked={decision}
       onLink={setDecision}
+      milestoneSlot={
+        frame ? (
+          <MilestoneChildren
+            ctx={ctx}
+            lens={lens}
+            mode={mode}
+            wide={wide}
+            frame={frame}
+            working={session.working}
+            decide={decide}
+            actor={actor}
+            linked={decision}
+            onLink={setDecision}
+            moment={at}
+            held={hold.held}
+          />
+        ) : undefined
+      }
+      waitingBeneath={frame ? waitingBeneath : undefined}
     />
   ) : (
     <Pending />

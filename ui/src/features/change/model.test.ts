@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeContext } from '@/data/contract';
-import {
-  changeBar,
-  childrenView,
-  effectsOf,
-  identityLabel,
-  planFold,
-  planView,
-  shippedWords,
-  sourcesView,
-  workingOn,
-} from './model';
+import { changeBar, effectsOf, identityLabel, planFold, planView, shippedWords, sourcesView, workingOn } from './model';
 
 describe('the plan and the children', () => {
   const step = (state: ChangeContext['plan'][number]['state'], text: string = state) => ({ text, state });
@@ -24,12 +14,6 @@ describe('the plan and the children', () => {
     expect(planView([step('done'), step('done')]).sum).toBe('all 2 steps done');
     expect(planView([]).sum).toBe('no steps yet');
     expect(planView([step('open', 'a'), step('open', 'b')]).row?.text).toBe('a');
-  });
-  it('heads a milestone by its children', () => {
-    const child = (key: string, status: string) => ({ key, status }) as ChangeContext['children'][number];
-    const v = childrenView([child('a', 'done'), child('b', 'active'), child('c', 'open'), child('d', 'dropped')]);
-    expect(v.sum).toBe('1 of 3 done · 1 in flight');
-    expect(v.row?.key).toBe('b');
   });
 });
 

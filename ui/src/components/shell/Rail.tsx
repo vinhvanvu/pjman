@@ -1,11 +1,11 @@
-// The rail: the product, then three destinations with no headings (decision rail-destinations/three-destinations),
-// the bridge first as where a person lands, the product map and the roadmap as the structures everything derives from;
-// at the bottom the session this tab follows (change:session-detail), the theme and the person. Links to the lenses
+// The rail: the product, then four destinations with no headings (decision milestone-detail/milestones-on-the-rail,
+// superseding three-destinations): the bridge first as where a person lands, the product map, the milestones as the
+// goals the work is driven by, and the roadmap as the order; at the bottom the session this tab follows (change:session-detail), the theme and the person. Links to the lenses
 // carry the node across. Slots take what a feature owns.
 import { Link, useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { Check, ChevronDown, Layers, Radar, Route, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Check, ChevronDown, Layers, Milestone, Radar, Route, type LucideIcon } from 'lucide-react';
+import { Fragment, type ReactNode } from 'react';
 import type { Lens } from '@/data/contract';
 import { plural } from '@/lib/format';
 import {
@@ -36,14 +36,14 @@ const healthLine = (p: RailProduct): string =>
     .filter(Boolean)
     .join(' · ') || 'nothing open';
 
-/** Where the page is: the bridge, or one of the two lenses. */
-export type Destination = 'bridge' | Lens;
+/** Where the page is: the bridge, the milestones, or one of the two lenses. */
+export type Destination = 'bridge' | 'milestones' | Lens;
 
 export interface RailProps {
   product?: RailProduct;
   /** Every product in the store: with more than one, the header is a switcher. */
   products?: RailProduct[];
-  /** The destination this page is; nothing is marked when it is none of the three. */
+  /** The destination this page is; nothing is marked when it is none of the four. */
   current?: Destination;
   /** The node the lens links carry across, when the page stands on one. */
   node?: string;
@@ -60,6 +60,8 @@ const LENS_ITEMS: { lens: Lens; label: string; icon: LucideIcon }[] = [
   { lens: 'feature', label: 'Product map', icon: Layers },
   { lens: 'roadmap', label: 'Roadmap', icon: Route },
 ];
+/** The milestones sit between the map and the roadmap (Vinh, 2026-11-08). */
+const MILESTONES_AFTER: Lens = 'feature';
 
 export function Rail({
   product,
@@ -76,7 +78,7 @@ export function Rail({
   const several = (products?.length ?? 0) > 1;
   const headerClass =
     'flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-[13.5px] font-semibold hover:bg-raised';
-  const lensOf = (d: Destination | undefined): Lens => (d && d !== 'bridge' ? d : lens);
+  const lensOf = (d: Destination | undefined): Lens => (d && d !== 'bridge' && d !== 'milestones' ? d : lens);
   return (
     <nav
       aria-label="Rail"
@@ -144,17 +146,30 @@ export function Rail({
           </Link>
         )}
         {LENS_ITEMS.map(({ lens: l, label, icon: Icon }) => (
-          <Link
-            key={l}
-            to="/$lens/$"
-            params={{ lens: l, _splat: node ?? product?.key ?? '' }}
-            search={{}}
-            className={cn(railItem, current === l && railItemOn)}
-            aria-current={current === l ? 'page' : undefined}
-          >
-            <Icon className="size-[15px] shrink-0" />
-            {label}
-          </Link>
+          <Fragment key={l}>
+            <Link
+              to="/$lens/$"
+              params={{ lens: l, _splat: node ?? product?.key ?? '' }}
+              search={{}}
+              className={cn(railItem, current === l && railItemOn)}
+              aria-current={current === l ? 'page' : undefined}
+            >
+              <Icon className="size-[15px] shrink-0" />
+              {label}
+            </Link>
+            {l === MILESTONES_AFTER && product && (
+              <Link
+                to="/milestones/$"
+                params={{ _splat: product.key }}
+                search={{}}
+                className={cn(railItem, current === 'milestones' && railItemOn)}
+                aria-current={current === 'milestones' ? 'page' : undefined}
+              >
+                <Milestone className="size-[15px] shrink-0" />
+                Milestones
+              </Link>
+            )}
+          </Fragment>
         ))}
       </div>
 

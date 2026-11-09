@@ -108,13 +108,14 @@ test('the getter: a neighbourhood by key, and resolve for anything', async () =>
 });
 
 test("a session's view and a project's board", async () => {
-  type SessionView = { showing: { key?: string; board?: string }; session: { key: string; on?: string; product?: string; state: string; log: { at: string; text: string }[] } };
+  type SessionView = { showing: { key?: string; board?: string }; session: { key: string; on?: string; binds: string[]; product?: string; state: string; log: { at: string; text: string }[] } };
   sessionLog(store, 'sess-1', 'session started');
   const before = await getJson('/api/v1/sessions/sess-1/view');
   const fresh = before.body.data as SessionView;
   assert.equal(fresh.showing.board, 'project:app');
   // the session's facts ride along: no change yet, the project's product, live since it just wrote, its log
   assert.equal(fresh.session.on, undefined);
+  assert.deepEqual(fresh.session.binds, []);
   assert.equal(fresh.session.product, 'product:app');
   assert.equal(fresh.session.state, 'live');
   assert.deepEqual(fresh.session.log.map((l) => l.text), ['session started']);
@@ -125,6 +126,8 @@ test("a session's view and a project's board", async () => {
   const bound = after.body.data as SessionView;
   assert.equal(bound.showing.key, 'change:app/login');
   assert.equal(bound.session.on, 'change:app/login');
+  // every change it bound, in order: the dock reads a milestone among them as its frame
+  assert.deepEqual(bound.session.binds, ['change:app/login']);
   // on a change the session keeps its product: the change's key sits under it (change:bridge-lost-on-session-page)
   assert.equal(bound.session.product, 'product:app');
   assert.equal(bound.session.state, 'ended');
