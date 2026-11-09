@@ -31,7 +31,7 @@ export function SplitPane({
   if (!wide || !secondary) {
     return (
       <div
-        className={cn('flex min-h-0 flex-1 flex-col overflow-auto', className)}
+        className={cn('relative flex min-h-0 flex-1 flex-col overflow-auto', className)}
         data-scroll-restoration-id={id ? `${id}.stack` : undefined}
       >
         {/* shrink-0: a flex item shrinks to the column's height by default and its content overflows the one below */}
@@ -52,7 +52,7 @@ export function SplitPane({
         id="primary"
         defaultSize={`${primarySize}`}
         minSize="30"
-        className="flex min-h-0 flex-col overflow-auto"
+        className="relative flex min-h-0 flex-col overflow-auto"
         data-scroll-restoration-id={id ? `${id}.primary` : undefined}
       >
         {primary}
@@ -62,7 +62,7 @@ export function SplitPane({
         id="secondary"
         defaultSize={`${100 - primarySize}`}
         minSize="25"
-        className="flex min-h-0 flex-col overflow-auto"
+        className="relative flex min-h-0 flex-col overflow-auto"
         data-scroll-restoration-id={id ? `${id}.secondary` : undefined}
       >
         {secondary}

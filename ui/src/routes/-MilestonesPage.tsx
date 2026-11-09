@@ -92,7 +92,7 @@ export function MilestonesPage({ productKey }: { productKey?: string }) {
   const data = scope.data && !scope.isPlaceholderData ? scope.data : undefined;
   return (
     <AppShell wide={wide} rail={rail} bar={bar} railOpen={railOpen} onCloseRail={() => setRailOpen(false)}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-auto">
         {scope.error ? (
           <EmptyState title={`Nothing at ${product}.`} hint={scope.error.message} className="m-6" />
         ) : data ? (
