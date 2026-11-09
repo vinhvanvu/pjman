@@ -77,20 +77,97 @@ export function emit(store: Store, inputs: EventInput[], commit: string | null =
   return events;
 }
 
-/** Every event after `since`. */
-export function readEvents(store: Store, since = 0): StoreEvent[] {
-  let text: string;
+/** The stream as last read, per file: the events and how far into the file they reach. The stream only grows, so a
+ *  later read parses only what was appended; a file that shrank or was replaced (a rebuild renumbers) is read whole
+ *  again (change:dashboard-reads-slow). */
+const streams = new Map<string, { ino: number; bytes: number; events: readonly StoreEvent[] }>();
+
+function stream(store: Store): readonly StoreEvent[] {
+  const file = eventsPath(store);
+  let fd: number;
   try {
-    text = fs.readFileSync(eventsPath(store), 'utf8');
+    fd = fs.openSync(file, 'r');
   } catch {
+    streams.delete(file);
     return [];
   }
-  const out: StoreEvent[] = [];
-  for (const line of text.split('\n')) {
-    const e = line.trim() ? parseLine(line) : null;
-    if (e && e.seq > since) out.push(e);
+  try {
+    const st = fs.fstatSync(fd);
+    let held = streams.get(file);
+    if (held && (held.ino !== st.ino || st.size < held.bytes)) held = undefined;
+    if (held && st.size === held.bytes) return held.events;
+    const from = held?.bytes ?? 0;
+    const buf = Buffer.alloc(st.size - from);
+    fs.readSync(fd, buf, 0, buf.length, from);
+    // only whole lines: a write caught halfway is read with the rest of it next time
+    const end = buf.lastIndexOf(0x0a) + 1;
+    const fresh: StoreEvent[] = [];
+    for (const line of buf.subarray(0, end).toString('utf8').split('\n')) {
+      const e = line.trim() ? parseLine(line) : null;
+      if (e) fresh.push(e);
+    }
+    const events = Object.freeze(held ? [...held.events, ...fresh] : fresh);
+    streams.set(file, { ino: st.ino, bytes: from + end, events });
+    return events;
+  } finally {
+    fs.closeSync(fd);
   }
-  return out;
+}
+
+/** Every event after `since`. Read-only: the whole stream is shared by every reader in the process. */
+export function readEvents(store: Store, since = 0): StoreEvent[] {
+  const all = stream(store) as StoreEvent[];
+  if (since <= 0) return all;
+  // seq rises through the file; the first past `since` is found by halving
+  let lo = 0;
+  let hi = all.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (all[mid].seq > since) hi = mid;
+    else lo = mid + 1;
+  }
+  return all.slice(lo);
+}
+
+/** What is derived from one read of the stream, built on first use and kept with it: a read that changes nothing
+ *  reuses it, and the next append is a new read (change:dashboard-reads-slow). */
+const derived = new WeakMap<readonly StoreEvent[], Map<string, unknown>>();
+export function streamMemo<T>(events: readonly StoreEvent[], name: string, build: () => T): T {
+  let bag = derived.get(events);
+  if (!bag) derived.set(events, (bag = new Map()));
+  if (!bag.has(name)) bag.set(name, build());
+  return bag.get(name) as T;
+}
+
+const group = (events: readonly StoreEvent[], by: (e: StoreEvent) => string | undefined): Map<string, StoreEvent[]> => {
+  const m = new Map<string, StoreEvent[]>();
+  for (const e of events) {
+    const k = by(e);
+    if (k === undefined) continue;
+    const at = m.get(k);
+    if (at) at.push(e);
+    else m.set(k, [e]);
+  }
+  return m;
+};
+
+/** Each key's events in the stream's order. */
+export function eventsByKey(events: readonly StoreEvent[]): Map<string, StoreEvent[]> {
+  return streamMemo(events, 'by-key', () => group(events, (e) => e.key));
+}
+
+/** Each session's events (those stamped with it), in the stream's order. */
+export function eventsBySession(events: readonly StoreEvent[]): Map<string, StoreEvent[]> {
+  return streamMemo(events, 'by-session', () => group(events, (e) => e.session));
+}
+
+/** The events at or after `since` (an instant): the stream's tail, read back from its end. The stream runs forward in
+ *  time; a write stamped a little early (a clock, a batch) is still caught by reading an hour past the cut. */
+export function eventsSince(events: readonly StoreEvent[], since: string): StoreEvent[] {
+  const slack = new Date(Date.parse(since) - 3_600_000).toISOString();
+  let i = events.length;
+  while (i > 0 && events[i - 1].at >= slack) i--;
+  return events.slice(i).filter((e) => e.at >= since);
 }
 
 /** Deliver every event after `since`, then each new one as it is appended. Returns a stop function. */

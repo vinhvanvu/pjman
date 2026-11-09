@@ -6,7 +6,7 @@
 // working on (`changes`, the last one bound); it drives the brief. Focus is what it is looking at: the change whose
 // context it last read, or the change it last wrote; the dock follows it.
 import type { Store } from './config.js';
-import { follow, readEvents, type StoreEvent } from './events.js';
+import { eventsBySession, follow, readEvents, streamMemo, type StoreEvent } from './events.js';
 import { eventKeysOf, findSession, loadStore, type Loaded, type Rec } from './records.js';
 import { receiptLines } from './receipt.js';
 import { LIVE_MINUTES } from './scope.js';
@@ -45,9 +45,8 @@ export function focusOf(loaded: Loaded, session: Rec, events: StoreEvent[]): { c
   };
   const read = session.data.focus as { change?: string; at?: string } | undefined;
   if (read) consider(live(loaded, read.change), read.at);
-  const batches = new Set(events.filter((e) => e.op === 'applied' && e.commit).map((e) => e.commit));
-  for (const e of events) {
-    if (e.session !== session.key) continue;
+  const batches = streamMemo(events, 'batches', () => new Set(events.filter((e) => e.op === 'applied' && e.commit).map((e) => e.commit)));
+  for (const e of eventsBySession(events).get(session.key) ?? []) {
     if (e.op === 'applied') consider(live(loaded, e.key), e.at);
     else if (e.commit && batches.has(e.commit)) continue;
     else if (e.key === session.key && e.op === 'bind') consider(boundOf(loaded, session), e.at);

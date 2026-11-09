@@ -6,9 +6,9 @@
 // bound to, the change's plan and the decisions proposed on it. Nothing is stored. No decision is listed: the bridge
 // shows none.
 import type { Store } from './config.js';
-import { readEvents } from './events.js';
+import { eventsSince, readEvents } from './events.js';
 import { productOf } from './commands/order.js';
-import type { Loaded, Rec } from './records.js';
+import { memo, ofType, push, type Loaded, type Rec } from './records.js';
 import { proposedDecisions, type WaitingDecision } from './scope.js';
 import { lastActs, sessionLogOf, sessionState, type SessionState } from './session-state.js';
 export { sessionState, type SessionState, type StateFacts } from './session-state.js';
@@ -148,7 +148,14 @@ export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[
 
 /** A change's children: the valid changes whose parent resolves to it, in the store's order. */
 function childrenOf(loaded: Loaded, c: Rec): Rec[] {
-  return loaded.records.filter((r) => r.type === 'change' && r.valid && typeof r.data.parent === 'string' && live(loaded, r.data.parent)?.key === c.key);
+  return memo(loaded, 'bridge-children', () => {
+    const m = new Map<string, Rec[]>();
+    for (const r of ofType(loaded, 'change')) {
+      const p = r.valid && typeof r.data.parent === 'string' ? live(loaded, r.data.parent) : undefined;
+      if (p) push(m, p.key, r);
+    }
+    return m;
+  }).get(c.key) ?? [];
 }
 
 const DAY = 24 * 60 * 60_000;
@@ -164,7 +171,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   const events = readEvents(store);
   const acts = lastActs(events, opts.until);
   const touched = new Map<string, string>();
-  for (const e of events) {
+  for (const e of eventsSince(events, since)) {
     if (opts.until !== undefined && e.seq > opts.until) break;
     const c = e.type === 'change' ? e.key : e.type === 'decision' ? changeOfDecision(e.key) : undefined;
     if (c && e.at >= since && (!touched.has(c) || e.at > touched.get(c)!)) touched.set(c, e.at);
@@ -179,8 +186,8 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   const asChange = (c: Rec): BridgeChange => ({ key: c.key, gist: str(c.data.gist), name: str(c.data.name), status: str(c.data.status), next: nextLine(nextStep(stepsOf(c.data))), path: featurePath(loaded, c) });
 
   const rows: BridgeSession[] = [];
-  for (const rec of loaded.records) {
-    if (rec.type !== 'session' || !rec.valid) continue;
+  for (const rec of ofType(loaded, 'session')) {
+    if (!rec.valid) continue;
     const { closing, ended, line } = sessionLogOf(rec);
     const act = acts.get(rec.key);
     const last = [closing?.at, line?.at, act].filter((x): x is string => !!x).sort().at(-1);

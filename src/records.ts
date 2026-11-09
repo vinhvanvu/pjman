@@ -420,11 +420,66 @@ export type Resolution =
 
 const found = (rec: Rec): Resolution => (rec.valid ? { status: 'ok', rec } : { status: 'invalid', rec });
 
+/** What is derived from a loaded store (lookups, resolutions), built on first use and kept with it, so a read costs
+ *  what it asks and not a scan of the store per node (change:dashboard-reads-slow). A Loaded is read-only once loaded:
+ *  whatever changes one in place calls forget() so nothing derived from its old state is read again. */
+const derived = new WeakMap<Loaded, Map<string, unknown>>();
+
+export function memo<T>(loaded: Loaded, name: string, build: () => T): T {
+  let bag = derived.get(loaded);
+  if (!bag) derived.set(loaded, (bag = new Map()));
+  if (!bag.has(name)) bag.set(name, build());
+  return bag.get(name) as T;
+}
+
+export function forget(loaded: Loaded): void {
+  derived.delete(loaded);
+}
+
+/** Add `v` to the list at `k`. */
+export function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {
+  const at = m.get(k);
+  if (at) at.push(v);
+  else m.set(k, [v]);
+}
+
+/** The records of one type, in the store's order. */
+export function ofType(loaded: Loaded, type: RecordType): Rec[] {
+  return memo(loaded, 'of-type', () => {
+    const out = new Map<string, Rec[]>();
+    for (const r of loaded.records) push(out, r.type, r);
+    return out;
+  }).get(type) ?? [];
+}
+
+/** `<kind>:<rest>` → the records keyed `<kind>:<their product>/<rest>`: a bare key's store-wide candidates. */
+const scopedByRest = (loaded: Loaded) =>
+  memo(loaded, 'scoped-by-rest', () => {
+    const out = new Map<string, Rec[]>();
+    for (const r of loaded.records) {
+      if (!r.productSlug) continue;
+      const prefix = `${r.type}:${r.productSlug}/`;
+      if (!r.key.startsWith(prefix)) continue;
+      const k = `${r.type}:${r.key.slice(prefix.length)}`;
+      push(out, k, r);
+    }
+    return out;
+  });
+
 /** Resolve a reference. Sources and actors need no record; the rest do. A bare feature, change or decision key
  *  resolves through `scope` (a product slug; undefined means the loaded default, null means no scope): first inside
  *  that product, else store-wide when exactly one product has the slug, else ambiguous. A former key resolves through
  *  its alias; a renamed product's old segment resolves too. */
 export function resolve(loaded: Loaded, raw: unknown, scope: string | null | undefined = loaded.scope): Resolution {
+  if (typeof raw !== 'string') return resolveOnce(loaded, raw, scope);
+  const seen = memo(loaded, 'resolve', () => new Map<string, Resolution>());
+  const k = `${scope}\u0000${raw}`;
+  let r = seen.get(k);
+  if (!r) seen.set(k, (r = resolveOnce(loaded, raw, scope)));
+  return r;
+}
+
+function resolveOnce(loaded: Loaded, raw: unknown, scope: string | null | undefined): Resolution {
   const key = parseKey(raw);
   if (!key) return { status: 'malformed' };
   const direct = loaded.byKey.get(key.raw)?.[0];
@@ -448,7 +503,7 @@ export function resolve(loaded: Loaded, raw: unknown, scope: string | null | und
     return viaAlias(`${kind}:${p}/${rest}`);
   };
   const storeWide = (kind: string, rest: string): Resolution => {
-    const hits = loaded.records.filter((r) => r.type === kind && r.key === `${kind}:${r.productSlug}/${rest}`);
+    const hits = scopedByRest(loaded).get(`${kind}:${rest}`) ?? [];
     if (hits.length === 1) return found(hits[0]);
     if (hits.length > 1) {
       // two products share the slug: the bare form belongs to the record that held it as a flat key, when one did

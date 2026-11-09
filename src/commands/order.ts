@@ -5,7 +5,7 @@
 // as the record's links).
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../records.js';
+import { loadStore, memo, ofType, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../records.js';
 import { effectsOf, live, rootProductOf } from '../tree.js';
 import { CliError } from '../util.js';
 import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
@@ -59,16 +59,23 @@ const isOpen = (r: Rec) => r.data.status !== 'done' && r.data.status !== 'droppe
 function isAhead(loaded: Loaded, key: string): boolean {
   const rec = loaded.byKey.get(key)?.[0];
   if (!rec || isOpen(rec)) return true;
-  return loaded.records.some((r) => {
-    if (!r.valid || r.type !== 'change' || !isOpen(r)) return false;
-    const seen = new Set<string>();
-    for (let cur = live(loaded, r.data.parent); cur && !seen.has(cur.key); cur = live(loaded, cur.data.parent)) {
-      if (cur.key === key) return true;
-      seen.add(cur.key);
-    }
-    return false;
-  });
+  return openBeneath(loaded).has(key);
 }
+
+/** The keys above an open change on its chain of parents. */
+const openBeneath = (loaded: Loaded): Set<string> =>
+  memo(loaded, 'open-beneath', () => {
+    const out = new Set<string>();
+    for (const r of ofType(loaded, 'change')) {
+      if (!r.valid || !isOpen(r)) continue;
+      const seen = new Set<string>();
+      for (let cur = live(loaded, r.data.parent); cur && !seen.has(cur.key); cur = live(loaded, cur.data.parent)) {
+        out.add(cur.key);
+        seen.add(cur.key);
+      }
+    }
+    return out;
+  });
 
 /** What is ahead in the product's order: the sequence without the entries done or dropped with nothing open beneath
  *  them. The stored list keeps those, so a change reopened is back in its place. */
