@@ -47,10 +47,17 @@ pjman runs in any terminal. In a terminal it knows, the session and the dashboar
 
 ![A real session in cmux: the agent at work on the left, the dashboard docked beside it on the session's page](assets/docked.png)
 
-- **Docked beside the session** (cmux). At session start a pane opens on the bridge. Once the session takes up a change the pane follows it: what the session is on, the decisions waiting on you, its log, the handoff. It closes with the session.
-- **Labelled.** The session's block (Rex) or sidebar pill (cmux) says which change it is on and where the work stands.
-- **Live state** (Rex). The dashboard reads working, waiting on you, or stopped from the terminal itself, as it happens.
+### The dock follows the session
+
+In cmux a pane opens beside the terminal when the session starts, on the bridge. Once the session takes up a change, the pane moves to the session's page and stays with it, live: what the session is on, the decisions waiting on you, its log lines, the handoff. Browse anywhere in the app from there; the pill in the top bar names the change and brings you back. `/clear` keeps the pane, and it closes when the session ends.
+
+### Several sessions at once
+
+- **Each one labelled.** The session's sidebar pill (cmux) or block (Rex) says which change it is on and where the work stands, so a row of terminals reads as a row of changes.
+- **One place to see them all.** The bridge groups every live session's change by what it needs from you: working now, waiting on you, stopped with its next step set, in review, blocked.
+- **Live state** (Rex). Working, waiting on you or stopped is read from the terminal itself, as it happens.
 - **Open and launch from the dashboard.** A session's row brings its terminal to the front; a change can start a session in a worktree named for it.
+- **Sessions know of each other.** Each is told of the other live sessions on the same change or the same part of the map. A decision you accept on the dashboard wakes the session that waits on it.
 
 Elsewhere the dashboard opens in your browser and reads a session's state from the record. What each terminal gives is in [`adapters/hosts.md`](adapters/hosts.md).
 
@@ -93,7 +100,15 @@ The agent checks for a duplicate, finds the node on the map the request alters, 
 
 ![A change's page: name, gist, the plan as steps, its decisions, then the origin in your words, the intent and done when](assets/change.png)
 
-### Name a ticket and get its change
+### Name a ticket or a doc and the session starts from everything around it
+
+```text
+you    pick up vinhvanvu/pjman#11
+```
+
+Before the agent reads a word of that prompt, pjman resolves what it names (a ticket id, an issue's URL, a doc's URL, a change) and puts the change it leads to in front of the agent in full: the origin in your words, the intent, what done means, the plan and where it stands, the decisions made and open, the ticket, branch, pull request, files and docs linked to it, and what earlier sessions left. A ticket the store has never seen is read from the tracker and filed first. The session is bound to that change, and the dock moves to it.
+
+The same lookup from the terminal:
 
 ```console
 $ pjman get vinhvanvu/pjman#11
@@ -112,7 +127,7 @@ kind: bug · severity nuisance
 …
 ```
 
-Issues from GitHub and Linear are read with the tracker's own tools and handed to `pjman sync`. Each becomes a source in the store and, when no change has it yet, a change with the ticket in its origin. From then on the ticket's id is a way in: `pjman get` with an id, a URL, a file or a key answers with the record and every change in reach, and a session whose prompt names a ticket starts on its change.
+Issues come in from GitHub and Linear through `pjman sync`: each becomes a source in the store and, when no change has it yet, a change with the ticket in its origin.
 
 ### Decisions you make, not the agent
 
