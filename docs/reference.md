@@ -214,6 +214,7 @@ A version the product shipped.
 
 - `pjman session`: a session's record: start it, log to it, bind it to a change, observe an edge
 - `pjman brief`: what an agent needs in front of it, every session or since its last brief
+- `pjman host`: the host a session runs in, asked for something: a label, text typed in, its block to the front, its program's status
 - `pjman wakes`: the events that wake a session
 
 ### Batches and history
@@ -350,6 +351,13 @@ pjman session project <id> <project>   (a session that started outside any proje
 pjman brief
 pjman brief --session <id> [--full] [--json]
     print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md); with --session, what the store has for that session since its last brief: the bound change's context in full when the binding moved (or --full), else what changed on it, its milestone, its decisions and its dependency edges, without the session's own writes, one line per record, and the other live sessions near it; the brief records how far it reached and ends with its size
+
+pjman host [--json]
+pjman host label [<session-id>] [--clear]
+pjman host send [<session-id>] <text>
+pjman host open [<session-id>]
+pjman host status [<session-id>] [--json]
+    where a session runs (a terminal multiplexer: Rex, cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports. With no verb: the host this machine runs, its version, and whether the adapter validated that version
 
 pjman wakes --session <id> [--since <seq>] [--follow] [--json]
     the events that wake a session: a decision on its bound change set decided, a note on that change or on the session, by anyone but the session; --follow keeps printing them as they land, from the stream's tail (or --since), until the session's process ends

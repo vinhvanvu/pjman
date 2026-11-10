@@ -446,9 +446,13 @@ async function undockView(st, sid, reason, store) {
 }
 /** Whether a pane's url is the page at `base`, with or without a query, a hash or a deeper path beneath it. */
 const onPage = (at, base) => at === base || ['?', '#', '/'].some((c) => at.startsWith(base + c));
-function sidebarStatus(key) {
-  if (key) cmux(['set-status', 'pjman', key, '--icon', 'point.3.connected.trianglepath.dotted']);
-  else cmux(['clear-status', 'pjman']);
+/** The session's block labelled with the change and where the work stands, by the tool through the host's adapter
+ *  (change:rex-adapter): at a bind, at the end of a turn that wrote the store, and cleared at the session's end. Only
+ *  inside a host the tool knows; elsewhere nothing is asked. */
+const inHost = () => Boolean(process.env.REX_SESSION || process.env.CMUX_WORKSPACE_ID);
+function hostLabel(sid, cwd, env, { clear = false } = {}) {
+  if (!inHost()) return;
+  tryPjman(['host', 'label', sid, ...(clear ? ['--clear'] : [])], { cwd, env });
 }
 
 // --- helpers ------------------------------------------------------------------------------------
@@ -696,7 +700,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
     await docking;
     if (st.bound) await followView(sid, cwd); // the session has its subject (the branch's change, or one bound before): the parked pane follows it
-    sidebarStatus(st.bound);
+    if (st.bound) hostLabel(sid, cwd, env);
     saveState(sid, st);
   }
 }
@@ -770,7 +774,7 @@ async function main() {
       else if (found?.key && st.bound !== found.key) {
         if (tryPjman(['session', 'bind', sid, found.key, '--reason', 'prompt'], { cwd, env }) !== null) {
           st.bound = taken(st, found.key);
-          sidebarStatus(found.key);
+          hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);
           if (!input.agent_id) await followView(sid, cwd); // the first subject: a pane parked by a clear follows now
         }
@@ -802,7 +806,7 @@ async function main() {
         const last = Array.isArray(changes) ? changes.at(-1) : null;
         if (last && last !== st.bound && !st.taken?.includes(last)) {
           st.bound = taken(st, last);
-          sidebarStatus(last);
+          hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);
           if (!input.agent_id) await followView(sid, cwd);
         }
@@ -862,6 +866,8 @@ async function main() {
         const line = firstLine(input.last_assistant_message);
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });
         st.acted = 0;
+        // the turn wrote the store: the plan or a decision may have moved, so the block's label is written again
+        if (EVENT === 'Stop' && st.bound) hostLabel(sid, cwd, env);
       }
       // the receipt: what this session and the sessions it spawned wrote since the last turn, composed by the tool, shown to the person
       if (EVENT === 'Stop') {
@@ -895,7 +901,7 @@ async function main() {
       tryPjman(['session', 'log', sid, `session ended (${input.reason || 'other'})`], { cwd, env });
       stopLegacyWatcher(st);
       await undockView(st, sid, input.reason, store);
-      sidebarStatus(null);
+      hostLabel(sid, cwd, env, { clear: true });
       saveState(sid, st);
       return;
     }

@@ -12,6 +12,9 @@ import { findStore, type Store } from '../config.js';
 import { cmux, detectHost, hostOfRecord, hostPresent, inRange, rex, rexEvent, rootStatus, sessionHost, statusOf, versionIn } from '../host.js';
 import { findSession, loadStore } from '../records.js';
 import { validate } from '../validate.js';
+import { sessionBind } from '../commands/session.js';
+import { step } from '../commands/step.js';
+import { change, decisionRec } from './shape.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(here, '..', '..', 'bin', 'pjman.js');
@@ -210,4 +213,32 @@ test('a host whose version the adapter has not validated is recorded as such, an
   assert.deepEqual(rec.data.host, { name: 'rex', session: 'session:s1', block: 'block:b1', version: '1.4.0', validated: false });
   assert.match(rec.body, /runs in rex 1\.4\.0 \(a version the adapter has not validated\)/);
   assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error'), []);
+});
+
+test('the label: the change and where the work stands, written onto the block through the host (pjman host label)', () => {
+  const run = (...args: string[]) => execFileSync(process.execPath, [BIN, ...args], { cwd: store.projectDir, encoding: 'utf8', env: { ...withRex, PJMAN_HOME: process.env.PJMAN_HOME } }).trim();
+  change(store, 'rex-adapter', { title: 'Rex adapter', summary: 'A host interface.' });
+  step(store, 'change:rex-adapter', 'add', undefined, { texts: ['The interface', 'Bind', 'State'] });
+  step(store, 'change:rex-adapter', 'done', 1);
+  fs.writeFileSync(calls, '');
+  // a session on no change carries the tool's name
+  assert.equal(run('host', 'label', 'in-rex'), 'rex: labelled "pjman"');
+  sessionBind(store, 'in-rex', 'change:rex-adapter', 'by hand');
+  assert.equal(run('host', 'label', 'in-rex'), 'rex: labelled "Rex adapter · 2/3"');
+  // a decision proposed on the change comes first: it waits on the person
+  decisionRec(store, 'rex-adapter/adapter-versioning', { title: 'How adapters are versioned', name: 'Adapter versioning' });
+  assert.equal(run('host', 'label', 'in-rex'), 'rex: labelled "Rex adapter · waits: Adapter versioning"');
+  assert.equal(run('host', 'label', 'in-rex', '--clear'), 'rex: label cleared');
+  assert.deepEqual(seen().filter((l) => l.startsWith('rex block rename')), [
+    'rex block rename -s session:s1 block:b1 pjman',
+    'rex block rename -s session:s1 block:b1 Rex adapter · 2/3',
+    'rex block rename -s session:s1 block:b1 Rex adapter · waits: Adapter versioning',
+    'rex block rename -s session:s1 block:b1 pjman',
+  ]);
+  // the other verbs, and a session in no host
+  assert.equal(run('host', 'send', 'in-rex', 'carry on'), 'rex: sent');
+  assert.equal(run('host', 'open', 'in-rex'), 'rex: opened');
+  assert.equal(run('host', 'status', 'in-rex'), 'rex: blocked (question) — Q');
+  assert.equal(run('host'), 'rex 0.3.1: validated; interface 1');
+  assert.throws(() => run('host', 'label', 'outside'), /runs in no host the tool knows/);
 });

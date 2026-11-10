@@ -171,7 +171,8 @@ export const rex: HostAdapter = {
     if (!id.block) return null;
     return rootStatus(runJson('rex', ['block', 'call', '-s', id.session, '-b', id.block, 'program_status'], env));
   },
-  label: (id, text, env) => (id.block ? run('rex', ['block', 'rename', '-s', id.session, id.block, text], env) !== null : false),
+  // an empty label clears nothing on Rex: a block keeps a label, so the tool's name stands in
+  label: (id, text, env) => (id.block ? run('rex', ['block', 'rename', '-s', id.session, id.block, text || 'pjman'], env) !== null : false),
   // text as typed, then the carriage return a terminal reads as Enter
   send: (id, text, env) => run('rex', ['send', '-s', id.session, ...(id.block ? ['-b', id.block] : []), `${text}\r`], env) !== null,
   open: (id, env) => run('rex', ['focus', '-s', id.session, ...(id.block ? [id.block] : [])], env) !== null,
@@ -228,7 +229,7 @@ export const cmux: HostAdapter = {
   identify: (env) => (env.CMUX_WORKSPACE_ID ? { session: env.CMUX_WORKSPACE_ID, block: env.CMUX_SURFACE_ID || env.CMUX_PANEL_ID || undefined } : null),
   version: (env) => versionIn(run('cmux', ['--version'], env)),
   status: () => null,
-  label: (id, text, env) => run('cmux', ['set-status', 'pjman', text, '--icon', 'point.3.connected.trianglepath.dotted', '--workspace', id.session], env) !== null,
+  label: (id, text, env) => run('cmux', text ? ['set-status', 'pjman', text, '--icon', 'point.3.connected.trianglepath.dotted', '--workspace', id.session] : ['clear-status', 'pjman', '--workspace', id.session], env) !== null,
   send: (id, text, env) => run('cmux', ['send', '--workspace', id.session, ...(id.block ? ['--surface', id.block] : []), '--', `${text}\n`], env) !== null,
   open: (id, env) => run('cmux', ['select-workspace', '--workspace', id.session], env) !== null,
   launch: (opts, env) => {

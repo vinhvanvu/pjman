@@ -445,6 +445,18 @@ test('a start inside Rex records the host on the session, through the environmen
   // the bridge and the session page carry it
   const row = bridge(store, loadStore(store), { days: 1 }).sessions.find((s) => s.key === 'session:sess-rex');
   assert.deepEqual(row?.host, { name: 'rex', version: '0.3.1', validated: true });
+  // a prompt that binds labels the block with the change; the session's end clears it (the tool's name stands in on Rex)
+  const rcalls = path.join(tmp, 'rex-calls');
+  fs.writeFileSync(rcalls, '');
+  fs.writeFileSync(path.join(rbin, 'rex'), `#!/bin/sh\necho "$*" >> '${rcalls}'\ncase "$1 $2" in "version --json") echo '{"version":"0.3.1"}';; "block rename") echo ok;; *) exit 1;; esac\n`, { mode: 0o755 });
+  const inRex = (event: string, input: Record<string, unknown>) =>
+    execFileSync(process.execPath, [HOOK, event], { input: JSON.stringify({ cwd: project, session_id: 'sess-rex', ...input }), encoding: 'utf8', env: { ...env, PATH: `${rbin}:${(env as Record<string, string>).PATH}`, REX_SESSION: 'session:r1', REX_BLOCK: 'block:r1' } });
+  inRex('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
+  inRex('SessionEnd', { reason: 'other' });
+  const labels = fs.readFileSync(rcalls, 'utf8').split('\n').filter((l) => l.startsWith('block rename'));
+  assert.equal(labels.length, 2);
+  assert.match(labels[0], /^block rename -s session:r1 block:r1 The test( · waits: .+)?$/); // an earlier test may have left a decision proposed on it
+  assert.equal(labels[1], 'block rename -s session:r1 block:r1 pjman');
 });
 
 test('in cmux the pane belongs to the terminal: a start opens it on the bridge and the session takes it once it binds a change; a clear parks it again; another terminal keeps its own', () => {
