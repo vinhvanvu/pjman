@@ -283,7 +283,8 @@ const step = (what, fn) => {
   try {
     return fn();
   } catch (e) {
-    process.stderr.write(`release: ${what} failed: ${String(e.stderr || e.message).trim().split('\n')[0]}\n`);
+    const lines = String(e.stderr || e.message).trim().split('\n').filter((l) => !/^npm notice/.test(l));
+    process.stderr.write(`release: ${what} failed: ${lines.find((l) => /err|fail|refus|denied|forbidden/i.test(l)) ?? lines[0] ?? 'no output'}\n`);
     process.stderr.write(`the commit and the tag ${tag} are pushed; what is left, in order:\n${remaining.map((r) => `  ${r}`).join('\n')}\n`);
     process.exit(1);
   }
@@ -295,7 +296,8 @@ remaining.shift();
 remaining[2] = remaining[2].replace('<the release URL>', url);
 
 // the same bits on npm: npm install -g pjman is the install, and the Homebrew formula reads the registry's tarball
-step('the npm publish', () => run('npm', ['publish', tarball, '--access', 'public']));
+// npm's two-factor step (a one-time code, or its browser flow) talks to the terminal, so this one runs in the open
+step('the npm publish', () => run('npm', ['publish', tarball, '--access', 'public'], { stdio: 'inherit' }));
 say(`published pjman@${next} to npm`);
 remaining.shift();
 
