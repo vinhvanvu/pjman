@@ -9,13 +9,13 @@ import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
-import { sessionStart } from '../commands/session.js';
+import { sessionBind, sessionStart } from '../commands/session.js';
 import { findStore, type Store } from '../config.js';
 import { HostWatch } from '../host-watch.js';
 import type { HostAdapter, HostEvent, HostStatus } from '../host.js';
 import { startServer } from '../server.js';
 import { sessionState } from '../session-state.js';
-import { change } from './shape.js';
+import { change, decisionRec } from './shape.js';
 
 const at = (m: number) => new Date(Date.UTC(2026, 10, 10, 12, m)).toISOString();
 const NOW = Date.UTC(2026, 10, 10, 12, 40);
@@ -110,6 +110,8 @@ const savedPath = process.env.PATH;
 
 before(async () => {
   process.env.PJMAN_HOME = path.join(tmp, 'home');
+  fs.mkdirSync(process.env.PJMAN_HOME, { recursive: true });
+  fs.writeFileSync(path.join(process.env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
   delete process.env.PJMAN_SESSION;
   delete process.env.PJMAN_STORE;
   fs.mkdirSync(fakes, { recursive: true });
@@ -119,6 +121,7 @@ case "$1 $2" in
   "version --json") echo '{"version":"0.3.1"}';;
   "block call") echo '[{"state":"blocked","kind":"question","app":"claude-code"}]';;
   "focus -s") echo "focused $*" >> '${tmp}/rex-focus';;
+  "send -s") printf '%s\n' "sent $*" >> '${tmp}/rex-send';;
   "new login") echo "launched $*" >> '${tmp}/rex-new'; echo '{"session_id":"session:new9"}';;
   "block ls") echo '[{"block_id":"block:b9"}]';;
   "events -s") echo '{"type":"session_event","payload":{"session_id":"session:s1","event":{"type":"block_event","payload":{"block_id":"block:b1","creator_name":"com.superlogical.terminal","name":"program_status_changed","payload":{"record":{"state":"blocked","kind":"question"}}}}}}'; sleep 5;;
@@ -218,4 +221,20 @@ test('POST /launch opens a session for a change on the host this machine runs; t
   assert.deepEqual(r.data.command, ['claude', '--worktree', 'login']);
   assert.match(fs.readFileSync(path.join(tmp, 'rex-new'), 'utf8'), new RegExp(`launched new login -c ${store.projectDir} --json -- claude --worktree login`));
   assert.equal((await fetch(`${base}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) })).status, 400);
+});
+
+test('an acceptance is delivered through the host to the sessions on the change whose agent has no waking adapter; a Claude Code session hears it from its wake module instead', async () => {
+  // a Codex session in Rex on the change, beside the Claude Code one already there (in-rex, bound to nothing yet)
+  sessionStart(store, 'codex-in-rex', { agent: 'agent:codex', onBehalfOf: 'person:tester', log: 'session started', host: { name: 'rex', session: 'session:s2', block: 'block:b2' } });
+  sessionBind(store, 'codex-in-rex', 'change:login', 'by hand');
+  sessionBind(store, 'in-rex', 'change:login', 'by hand');
+  decisionRec(store, 'login/passwordless', { title: 'Passwordless or not', name: 'Passwordless' });
+  const res = await fetch(`${base}/decide`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'decision:login/passwordless', words: 'yes, links' }) });
+  assert.equal(res.status, 200);
+  const r = (await res.json()) as { data: { status: string; delivered?: { session: string; host: string; ok: boolean }[] } };
+  assert.equal(r.data.status, 'decided');
+  assert.deepEqual(r.data.delivered, [{ session: 'session:codex-in-rex', host: 'rex', ok: true }]);
+  const sent = fs.readFileSync(path.join(tmp, 'rex-send'), 'utf8');
+  assert.match(sent, /^sent send -s session:s2 -b block:b2 pjman: decision:[^ ]*login\/passwordless decided by person:\S+: it — yes, links\. Read pjman context change:[^ ]*login and act on it as the record now says\.\r$/m);
+  assert.ok(!/session:s1/.test(sent), 'the Claude Code session is left to its wake module');
 });

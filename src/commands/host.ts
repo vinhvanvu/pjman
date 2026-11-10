@@ -7,6 +7,7 @@ import { hostOfRecord, hostPresent, inRange, type HostId, type HostStatus, type 
 import { worktreeNameFor } from '../branch.js';
 import { resolve } from '../records.js';
 import { changeOfDecision } from '../bridge.js';
+import { sessionLogOf } from '../session-state.js';
 import { findSession, loadStore, type Loaded, type Rec } from '../records.js';
 import { proposedDecisions } from '../scope.js';
 import { live } from '../tree.js';
@@ -86,6 +87,46 @@ export function hostOpen(store: Store, ident: string): HostResult {
 export function hostStatus(store: Store, ident: string): { session: string; host: SessionHost; status: HostStatus | null } {
   const { rec, adapter, id, host } = hosted(store, ident);
   return { session: rec.key, host, status: adapter.status(id) };
+}
+
+/** The agents whose harness adapter wakes a session itself (the Claude Code plugin's wake module submits a turn for a
+ *  decision decided on its bound change): the host does not deliver to them, so no session hears an acceptance twice
+ *  (decision rex-adapter/delivery-through-the-host, by-agent). A harness adapter with a wake module adds its agent here. */
+export const WAKING_AGENTS: ReadonlySet<string> = new Set(['agent:claude-code']);
+
+/** How long after its last line a session is still delivered to. */
+const DELIVER_HOURS = 12;
+
+export interface Delivery {
+  session: string;
+  host: string;
+  ok: boolean;
+}
+
+/** An accepted decision delivered into the sessions working its change through their hosts: every session bound to
+ *  the change that runs in a host, has not ended, spoke inside the window, and whose agent has no waking adapter.
+ *  The text names the decision, the option and the person's words, and says where to read on. */
+export function deliverDecision(loaded: Loaded, decisionKey: string, option: string, words: string | undefined, by: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()): Delivery[] {
+  const change = changeOfDecision(decisionKey);
+  if (!change) return [];
+  const since = new Date(now - DELIVER_HOURS * 3_600_000).toISOString();
+  const text = `pjman: ${decisionKey} decided by ${by}: ${option}${words ? ` — ${words}` : ''}. Read pjman context ${change} and act on it as the record now says.`;
+  const out: Delivery[] = [];
+  for (const rec of loaded.records) {
+    if (rec.type !== 'session' || !rec.valid) continue;
+    const agent = typeof rec.data.agent === 'string' ? rec.data.agent : '';
+    if (WAKING_AGENTS.has(agent)) continue;
+    const bound = Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : [];
+    if (!bound.some((k) => live(loaded, k)?.key === change)) continue;
+    const h = hostOfRecord(rec.data);
+    if (!h) continue;
+    const { ended, line } = sessionLogOf(rec);
+    if (ended) continue;
+    const started = typeof rec.data.started === 'string' ? rec.data.started : '';
+    if ((line?.at ?? started) < since) continue;
+    out.push({ session: rec.key, host: h.adapter.manifest.environment, ok: h.adapter.send(h.id, text, env) });
+  }
+  return out;
 }
 
 /** The command a launched session runs: the harness opened in the change's worktree, as the pjman skill has it

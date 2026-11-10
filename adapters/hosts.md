@@ -72,9 +72,16 @@ it does for a write; nothing is stored.
 - `POST /api/v1/open {session}` and `POST /api/v1/launch {change}` — the same, from the dashboard: the button on the
   session bar, the button on the change bar; `GET /api/v1/store` says which host the server's machine runs.
 
-Delivery of an acceptance into the session through the host (`send`, on `POST /decide`) waits on decision
-rex-adapter/delivery-through-the-host: the harness's wake module already tells a Claude Code session, and one voice
-per session is the rule to keep.
+## Delivery
+
+An accepted decision reaches the sessions working its change (decision rex-adapter/delivery-through-the-host,
+by-agent): one voice per session. A session whose agent's harness adapter wakes it itself (Claude Code: the plugin's
+wake module submits a turn that the prompt hook briefs) hears it from there. Every other session on the change that
+runs in a host, has not ended and spoke inside the window is told through the host's `send`, wherever the acceptance
+came from (the dashboard, `pjman decision --accept`): one line naming the decision, the option and the person's words,
+and where to read on. The agents with a waking adapter are listed in `src/commands/host.ts` (`WAKING_AGENTS`); a
+harness adapter that gains a wake module adds its agent there. The decision's result lists each delivery and whether
+the host took it.
 
 ## Adding a host
 
