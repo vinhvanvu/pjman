@@ -295,10 +295,11 @@ say(`released ${tag}: ${url}`);
 remaining.shift();
 remaining[2] = remaining[2].replace('<the release URL>', url);
 
-// the same bits on npm: npm install -g pjman is the install, and the Homebrew formula reads the registry's tarball
+// the same bits on npm: npm install -g @vinhvanvu/pjman is the install (npm refused the bare name as too close to p-map,
+// decision public/npm-name), and the Homebrew formula reads the registry's tarball
 // npm's two-factor step (a one-time code, or its browser flow) talks to the terminal, so this one runs in the open
 step('the npm publish', () => run('npm', ['publish', tarball, '--access', 'public'], { stdio: 'inherit' }));
-say(`published pjman@${next} to npm`);
+say(`published ${pkg.name}@${next} to npm`);
 remaining.shift();
 
 // the formula: the same package by its registry URL and checksum, so brew install and brew upgrade follow the release

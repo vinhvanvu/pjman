@@ -4,7 +4,7 @@
 class Pjman < Formula
   desc "Context graph for product development: changes, decisions, the product tree and agent sessions in git"
   homepage "https://github.com/vinhvanvu/pjman"
-  url "https://registry.npmjs.org/pjman/-/pjman-__VERSION__.tgz"
+  url "https://registry.npmjs.org/@vinhvanvu/pjman/-/pjman-__VERSION__.tgz"
   sha256 "__SHA256__"
   license "Apache-2.0"
 
