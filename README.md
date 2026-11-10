@@ -2,7 +2,7 @@
 
 The record of a software product, kept in git by the agents that build it.
 
-![The dashboard: every running session, grouped by what each needs from you](assets/hero.png)
+![The bridge: the day's writes on one timeline, and the changes in motion grouped by what each needs from you](assets/hero.png)
 
 A change, a decision, a feature, a session and a release are records in one git store, under one schema. Coding agents read the record at the start of every session and write back through one command. You read it on a dashboard and make the decisions.
 
@@ -19,39 +19,39 @@ Node 22.13 or newer and git; Homebrew brings its own Node. With Claude Code on t
 
 ### Sessions that start from the record
 
-![A session's first screen: the board, the bound change, the rules the agent works by](assets/session-start.png)
+![A session's first screen: what pjman is, the rules the agent works by, then the board of what is in flight](assets/session-start.png)
 
-The agent opens with what is in flight, the change it is on, and the rules. Say what you want done; it files the work as a change.
+The agent opens with what pjman is, the rules it works by, and what is in flight. Say what you want done; it files the work as a change.
 
 ### A change with its plan
 
-![pjman context change:<slug>: name, gist, origin in your words, intent, done when, the steps](assets/change.png)
+![A change's page: name, gist, the plan as steps, its decisions, then the origin in your words, the intent and done when](assets/change.png)
 
 Where it came from in your words, what it is for, what done means, and the steps. Status and progress are derived, never written.
 
 ### Decisions you make, not the agent
 
-![A proposed decision on the dashboard: the options, the recommendation, Accept](assets/decision.png)
+![A proposed decision: the question, the options with the recommended one marked and its why, Accept with a line in your words](assets/decision.png)
 
-The agent lays out the options and recommends one. You accept it, in your words, and the session working the change is told.
+The agent lays out the options and recommends one. You accept, in your words, and the session working the change is told.
 
 ### The product map
 
-![The product map: features and the capabilities beneath them, state as a dot](assets/map.png)
+![The product map: features, the capabilities beneath them and the open work at the leaves, state as a dot; the product's record beside it](assets/map.png)
 
-What the product is. A change names the node it adds, changes or removes, and a feature's state follows from the changes that built it.
+What the product is. A change names the node it adds, changes or removes, and a node's state follows from the changes that built it.
 
 ### The roadmap
 
-![The roadmap: the past by time on the left, the order on the right, milestones holding their children](assets/roadmap.png)
+![The roadmap: done by the day and in flight on the left, what is in order and what comes later on the right](assets/roadmap.png)
 
-In what order it comes. Drag to reorder; dependencies and dates that contradict the order are flagged.
+In what order it comes. Drag a column to reorder; dependencies and dates are checked against the order and never move it.
 
 ### Releases from the record
 
-![npm run release: the version level and the changelog derived from the changes shipped](assets/release.png)
+![npm run release -- --dry-run: the level each change implies, the version it adds up to, and the changelog written from the changes' own names and gists](assets/release.png)
 
-One command reads what main shipped since the last tag, resolves each merge to its change, derives the version level, writes the changelog, and records the release.
+One command reads what main shipped since the last tag, resolves each merge to its change, derives the version level, writes the changelog, publishes to npm and the Homebrew tap, and records the release.
 
 ## How it works
 
