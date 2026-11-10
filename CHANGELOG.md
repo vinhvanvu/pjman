@@ -2,6 +2,13 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.3.1 — 2026-11-10
+
+### Changed
+
+- **Releases and Homebrew**: pjman is versioned and released by tag, and installed and updated with Homebrew (change:releases-homebrew)
+- **Public**: The repository public, the package on npm and the tap ordinary, with a README a newcomer can follow (change:public)
+
 ## 0.3.0 — 2026-11-10
 
 ### Added
