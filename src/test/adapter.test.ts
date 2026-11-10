@@ -12,6 +12,7 @@ import { set } from '../commands/set.js';
 import { step } from '../commands/step.js';
 import { loadStore } from '../records.js';
 import { validate } from '../validate.js';
+import { bridge } from '../bridge.js';
 import { accept, change, decisionRec } from './shape.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -21,7 +22,7 @@ const project = path.join(tmp, 'project');
 const env = { ...process.env, PJMAN_HOME: path.join(tmp, 'home'), CLAUDE_PLUGIN_DATA: path.join(tmp, 'data'), CLAUDE_PROJECT_DIR: project };
 delete (env as Record<string, unknown>).PJMAN_SESSION;
 delete (env as Record<string, unknown>).PJMAN_STORE;
-for (const k of Object.keys(env)) if (k.startsWith('CMUX_')) delete (env as Record<string, unknown>)[k];
+for (const k of Object.keys(env)) if (k.startsWith('CMUX_') || k.startsWith('REX_')) delete (env as Record<string, unknown>)[k];
 
 function hook(event: string, input: Record<string, unknown>): string {
   return execFileSync(process.execPath, [HOOK, event], { input: JSON.stringify({ cwd: project, session_id: 'sess-a', ...input }), encoding: 'utf8', env });
@@ -426,6 +427,24 @@ test('SessionStart exports the session and the agent as writer to the agent\'s s
   assert.equal(rec.data.session, 'session:sess-env');
   run({ agent_id: 'sub-env' });
   assert.equal(fs.readFileSync(file, 'utf8'), text, 'a subagent shares its parent\'s');
+});
+
+test('a start inside Rex records the host on the session, through the environment the hook hands the tool (change:rex-adapter)', () => {
+  // a rex that answers its version; the hook needs nothing else of it at a start
+  const rbin = path.join(tmp, 'rex-bin');
+  fs.mkdirSync(rbin, { recursive: true });
+  fs.writeFileSync(path.join(rbin, 'rex'), `#!/bin/sh\ncase "$1 $2" in "version --json") echo '{"version":"0.3.1"}';; *) exit 1;; esac\n`, { mode: 0o755 });
+  execFileSync(process.execPath, [HOOK, 'SessionStart'], {
+    input: JSON.stringify({ cwd: project, session_id: 'sess-rex', source: 'startup' }),
+    encoding: 'utf8',
+    env: { ...env, PATH: `${rbin}:${(env as Record<string, string>).PATH}`, REX_SESSION: 'session:r1', REX_BLOCK: 'block:r1' },
+  });
+  const rec = loadStore(store).byKey.get('session:sess-rex')![0];
+  assert.deepEqual(rec.data.host, { name: 'rex', session: 'session:r1', block: 'block:r1', version: '0.3.1', validated: true });
+  assert.match(rec.body, /runs in rex 0\.3\.1/);
+  // the bridge and the session page carry it
+  const row = bridge(store, loadStore(store), { days: 1 }).sessions.find((s) => s.key === 'session:sess-rex');
+  assert.deepEqual(row?.host, { name: 'rex', version: '0.3.1', validated: true });
 });
 
 test('in cmux the pane belongs to the terminal: a start opens it on the bridge and the session takes it once it binds a change; a clear parks it again; another terminal keeps its own', () => {

@@ -58,6 +58,14 @@ describe('the session bar', () => {
     expect(ended.waits).toBe('nothing waits on you');
     expect(waitsLine(1)).toBe('1 waits on you');
   });
+  it('says where the session runs when a host holds it, and that the version is unvalidated when it is', () => {
+    const inRex = sessionBar({ ...base, state: 'live', last: '2026-11-06T15:10:00Z', host: { name: 'rex', version: '0.3.1', validated: true } }, 0, now);
+    expect(inRex.parts[0]).toBe('claude-code for vinhvanvu in rex 0.3.1');
+    expect(sessionBar({ ...base, state: 'live', host: { name: 'rex', version: '1.4.0', validated: false } }, 0, now).parts[0]).toBe(
+      'claude-code for vinhvanvu in rex 1.4.0 (unvalidated)',
+    );
+    expect(sessionBar({ ...base, state: 'live', host: { name: 'cmux' } }, 0, now).parts[0]).toBe('claude-code for vinhvanvu in cmux');
+  });
   it('names the session for the crumb', () => {
     expect(sessionTitle({ key: 'session:abc', ...base })).toBe('claude-code · 2026-11-06, for vinhvanvu');
     expect(sessionTitle({ key: 'session:abcdefghijk' })).toBe('abcdefgh');

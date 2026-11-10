@@ -53,16 +53,24 @@ export const shownOf = (pick: string | undefined, focus: string | undefined): st
 /** Viewing: the person holds a pick that is not where the session is. */
 export const viewing = (pick: string | undefined, focus: string | undefined): boolean => !!pick && pick !== focus;
 
-/** The session bar's parts, in order: who for whom; working for how long, or quiet or ended since when; when it last
- *  acted; what waits. The last part is the one that reads in the waits colour when something does. */
+/** Where the session runs, as the bar says it: the host and its version, and a word when the adapter has not validated
+ *  that version; nothing when no host holds it. */
+export function hostWords(host: SessionFacts['host'] | undefined): string {
+  if (!host) return '';
+  return `in ${host.name}${host.version ? ` ${host.version}` : ''}${host.validated === false ? ' (unvalidated)' : ''}`;
+}
+
+/** The session bar's parts, in order: who for whom, and where it runs; working for how long, or quiet or ended since
+ *  when; when it last acted; what waits. The last part is the one that reads in the waits colour when something does. */
 export function sessionBar(
-  session: Pick<SessionFacts, 'agent' | 'onBehalfOf' | 'started' | 'last' | 'state'>,
+  session: Pick<SessionFacts, 'agent' | 'onBehalfOf' | 'started' | 'last' | 'state' | 'host'>,
   waits: number,
   now = Date.now(),
 ): { parts: string[]; waits: string; alarm: boolean } {
   const who = [
     session.agent ? short(session.agent) : 'session',
     session.onBehalfOf ? `for ${short(session.onBehalfOf)}` : '',
+    hostWords(session.host),
   ]
     .filter(Boolean)
     .join(' ');

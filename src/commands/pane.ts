@@ -2,7 +2,7 @@ import type { Store } from '../config.js';
 import { eventsBySession, follow, lastSeq, readEvents } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
-import { lastActs, LIVE_MINUTES, sessionLogOf, sessionState } from '../session-state.js';
+import { hostFactsOf, lastActs, LIVE_MINUTES, sessionLogOf, sessionState, type SessionHostFacts } from '../session-state.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
 import { CliError, notFound } from '../util.js';
@@ -48,6 +48,8 @@ export interface SessionFacts {
   working: boolean;
   /** The last instant it reached the stream. */
   last?: string;
+  /** Where it runs, when a host holds it: the host's name and version, and whether the adapter validated that version. */
+  host?: SessionHostFacts;
 }
 
 /** What a view shows, as data: a neighbourhood, or a board; the session followed, when one is. */
@@ -83,7 +85,7 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
   const read = sessionLogOf(rec);
   const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false }, now) === 'working';
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last };
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last, host: hostFactsOf(rec.data) };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };

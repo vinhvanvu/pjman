@@ -11,6 +11,22 @@ export const LIVE_MINUTES = 30;
 
 export type SessionState = 'working' | 'waiting' | 'stopped' | 'ended';
 
+/** Where a session runs, as the views read it off the record (change:rex-adapter): the host's name and version, and
+ *  whether the adapter validated that version. */
+export interface SessionHostFacts {
+  name: string;
+  version?: string;
+  validated?: boolean;
+}
+
+/** The host facts of a session record; absent when the session runs in none. */
+export function hostFactsOf(data: Record<string, unknown>): SessionHostFacts | undefined {
+  const h = data.host;
+  if (!h || typeof h !== 'object' || typeof (h as { name?: unknown }).name !== 'string') return undefined;
+  const r = h as { name: string; version?: unknown; validated?: unknown };
+  return { name: r.name, version: typeof r.version === 'string' ? r.version : undefined, validated: typeof r.validated === 'boolean' ? r.validated : undefined };
+}
+
 /** The facts a state is read from. */
 export interface StateFacts {
   /** The session wrote its closing line. */
