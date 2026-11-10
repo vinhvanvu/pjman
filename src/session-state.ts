@@ -4,6 +4,7 @@
 // writes one at every stop and a closing one at the end), the writes stamped with the session, and whether a
 // decision is proposed on its change. Nothing is stored.
 import { streamMemo, type StoreEvent } from './events.js';
+import type { HostStatus } from './host.js';
 import type { Rec } from './records.js';
 
 /** A session is live while something it did reached the stream inside this window. */
@@ -17,14 +18,21 @@ export interface SessionHostFacts {
   name: string;
   version?: string;
   validated?: boolean;
+  /** What the host says the program is doing, when the server follows it. */
+  status?: { state: HostStatus['state']; kind?: HostStatus['kind']; at: string };
 }
 
-/** The host facts of a session record; absent when the session runs in none. */
-export function hostFactsOf(data: Record<string, unknown>): SessionHostFacts | undefined {
+/** The host facts of a session record, with the host's word when the server has it; absent when the session runs in
+ *  no host. */
+export function hostFactsOf(data: Record<string, unknown>, status?: HostStatus): SessionHostFacts | undefined {
   const h = data.host;
   if (!h || typeof h !== 'object' || typeof (h as { name?: unknown }).name !== 'string') return undefined;
   const r = h as { name: string; version?: unknown; validated?: unknown };
-  return { name: r.name, version: typeof r.version === 'string' ? r.version : undefined, validated: typeof r.validated === 'boolean' ? r.validated : undefined };
+  const facts: SessionHostFacts = { name: r.name };
+  if (typeof r.version === 'string') facts.version = r.version;
+  if (typeof r.validated === 'boolean') facts.validated = r.validated;
+  if (status) facts.status = { state: status.state, kind: status.kind, at: status.at };
+  return facts;
 }
 
 /** The facts a state is read from. */
@@ -37,6 +45,9 @@ export interface StateFacts {
   act?: string;
   /** A decision on its change is proposed. */
   proposed: boolean;
+  /** What the host says the program is doing, when a host holds the session and the server follows it
+   *  (change:rex-adapter): first-hand, so it decides over the silence window. */
+  host?: HostStatus;
 }
 
 /** A session's state. Ended once it wrote its closing line. Working while something it did reached the stream inside
@@ -46,6 +57,13 @@ export interface StateFacts {
  *  live window, no stop line) reads as stopped too. */
 export function sessionState(f: StateFacts, now = Date.now(), liveMinutes = LIVE_MINUTES): SessionState {
   if (f.ended) return 'ended';
+  // the host's word is first-hand: blocked is waiting on the person (a question, a permission, a login), working is
+  // working, and a program at rest (idle, done, failed) waits only when a decision is proposed on its change
+  if (f.host) {
+    if (f.host.state === 'blocked') return 'waiting';
+    if (f.host.state === 'working') return 'working';
+    return f.proposed ? 'waiting' : 'stopped';
+  }
   const last = [f.line, f.act].filter((x): x is string => !!x).sort().at(-1);
   const liveSince = new Date(now - liveMinutes * 60_000).toISOString();
   const stopped = !!f.line && (!f.act || f.act <= f.line);

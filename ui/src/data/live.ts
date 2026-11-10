@@ -84,7 +84,11 @@ export function useLiveInvalidation(): LiveState {
     const unsubscribe = subscribe(`${BASE}/events`, (f) => {
       if (f.kind === 'open') setState((s) => ({ ...s, connected: true }));
       else if (f.kind === 'error') setState((s) => ({ ...s, connected: false }));
-      else {
+      else if (f.kind === 'host') {
+        // a session's host spoke: no record moved, every page that shows the session reads it again
+        reached = null;
+        timer ??= setTimeout(flush, Math.max(150, last + 1000 - Date.now()));
+      } else {
         const e = JSON.parse(f.data) as StoreEvent;
         setState({ connected: true, last: e });
         useArrivals.getState().arrive(e);

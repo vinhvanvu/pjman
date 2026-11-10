@@ -3,6 +3,7 @@ import { eventsBySession, follow, lastSeq, readEvents } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
 import { hostFactsOf, lastActs, LIVE_MINUTES, sessionLogOf, sessionState, type SessionHostFacts } from '../session-state.js';
+import type { HostStatus } from '../host.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
 import { CliError, notFound } from '../util.js';
@@ -14,6 +15,8 @@ export interface ViewOpts extends GetOpts {
   ref?: string;
   /** A session to follow: its last bound change, else the project's board. */
   session?: string;
+  /** What each hosted session's program reports, by session key, as the server follows it (host-watch.ts). */
+  hostStates?: ReadonlyMap<string, HostStatus>;
 }
 
 export interface View {
@@ -82,10 +85,13 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   for (const e of eventsBySession(events).get(rec.key) ?? []) if (!last || e.at > last) last = e.at;
   const ended = log.length > 0 && log[log.length - 1].text.startsWith('session ended');
   const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
-  const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
   const read = sessionLogOf(rec);
-  const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false }, now) === 'working';
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last, host: hostFactsOf(rec.data) };
+  const host = opts.hostStates?.get(rec.key);
+  // live by the stream's window, or by the host's word that its program is up (working, or blocked on the person)
+  const up = host?.state === 'working' || host?.state === 'blocked';
+  const state = ended ? 'ended' : up || (last && last >= liveSince) ? 'live' : 'quiet';
+  const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false, host }, now) === 'working';
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last, host: hostFactsOf(rec.data, host) };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };

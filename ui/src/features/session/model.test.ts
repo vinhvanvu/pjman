@@ -66,6 +66,19 @@ describe('the session bar', () => {
     );
     expect(sessionBar({ ...base, state: 'live', host: { name: 'cmux' } }, 0, now).parts[0]).toBe('claude-code for vinhvanvu in cmux');
   });
+  it("says what the program is blocked on when the host says so, in place of working", () => {
+    const host = (kind?: string) => ({ name: 'rex', status: { state: 'blocked' as const, kind: kind as 'question' | undefined, at: '2026-11-06T15:11:00Z' } });
+    expect(sessionBar({ ...base, state: 'live', last: '2026-11-06T15:10:00Z', host: host('question') }, 0, now).parts).toEqual([
+      'claude-code for vinhvanvu in rex',
+      'asks you a question',
+      'last acted 2 min ago',
+    ]);
+    expect(sessionBar({ ...base, state: 'live', host: host('permission') }, 0, now).parts[1]).toBe('asks your permission');
+    expect(sessionBar({ ...base, state: 'live', host: host('auth') }, 0, now).parts[1]).toBe('needs you to sign in');
+    expect(sessionBar({ ...base, state: 'live', host: host() }, 0, now).parts[1]).toBe('blocked, needs you');
+    // a working program reads as before
+    expect(sessionBar({ ...base, state: 'live', host: { name: 'rex', status: { state: 'working', at: '2026-11-06T15:11:00Z' } } }, 0, now).parts[1]).toBe('working 3h 12m');
+  });
   it('names the session for the crumb', () => {
     expect(sessionTitle({ key: 'session:abc', ...base })).toBe('claude-code · 2026-11-06, for vinhvanvu');
     expect(sessionTitle({ key: 'session:abcdefghijk' })).toBe('abcdefgh');

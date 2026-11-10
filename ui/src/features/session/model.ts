@@ -60,6 +60,11 @@ export function hostWords(host: SessionFacts['host'] | undefined): string {
   return `in ${host.name}${host.version ? ` ${host.version}` : ''}${host.validated === false ? ' (unvalidated)' : ''}`;
 }
 
+/** What the program is blocked on, as the host says it: a question for the person, a permission, a login. */
+export function blockedWords(kind: string | undefined): string {
+  return kind === 'question' ? 'asks you a question' : kind === 'permission' ? 'asks your permission' : kind === 'auth' ? 'needs you to sign in' : 'blocked, needs you';
+}
+
 /** The session bar's parts, in order: who for whom, and where it runs; working for how long, or quiet or ended since
  *  when; when it last acted; what waits. The last part is the one that reads in the waits colour when something does. */
 export function sessionBar(
@@ -75,7 +80,9 @@ export function sessionBar(
     .filter(Boolean)
     .join(' ');
   const parts = [who];
-  if (session.state === 'live')
+  const status = session.host?.status;
+  if (session.state !== 'ended' && status?.state === 'blocked') parts.push(blockedWords(status.kind));
+  else if (session.state === 'live')
     parts.push(session.started ? `working ${durationWords(session.started, now)}` : 'working');
   else if (session.state === 'ended') parts.push(session.last ? `ended ${agoWords(session.last, now)}` : 'ended');
   else parts.push(session.last ? `quiet since ${agoWords(session.last, now)}` : 'quiet');
