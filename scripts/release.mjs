@@ -1,6 +1,7 @@
 // The release: one command that reads what main has shipped since the last tag, derives the version from the record,
-// writes the changelog, stamps the version, commits, tags, builds, packs and attaches the package to a GitHub release
-// (decisions releases-homebrew/one-release-command, bump-from-the-record).
+// writes the changelog, stamps the version, commits, tags, builds, packs, attaches the package to a GitHub release,
+// publishes it to npm and writes the Homebrew formula for it into the tap
+// (decisions releases-homebrew/one-release-command, bump-from-the-record, tap-while-private).
 //
 //   npm run release                    derive the level from the changes and release
 //   npm run release -- minor           a typed level overrides the derived one (patch | minor | major)
@@ -14,6 +15,7 @@
 // A store migration the tool carries for a version past the current one makes the release at least a minor, and its
 // version must be the release's (decision releases-homebrew/store-names-its-version).
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -47,6 +49,25 @@ const { compareVersions } = await import(path.join(root, 'dist', 'version.js'));
 const { VERSION_RE } = await import(path.join(root, 'dist', 'keys.js'));
 const { RELEASE_LEVELS } = await import(path.join(root, 'dist', 'validate.js'));
 const pjman = (args, opts = {}) => run(process.execPath, [path.join(root, 'bin', 'pjman.js'), ...args], opts);
+
+// ---- the Homebrew formula: scripts/pjman.rb with the version and the checksum of the package npm serves, written to the
+// tap after each publish so brew install and brew upgrade follow the release ----
+
+const TAP = 'vinhvanvu/homebrew-pjman';
+const FORMULA = 'Formula/pjman.rb';
+const formula = (version, sha256) =>
+  fs.readFileSync(path.join(root, 'scripts', 'pjman.rb'), 'utf8').replaceAll('__VERSION__', version).replaceAll('__SHA256__', sha256);
+const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+/** Writes the formula to the tap through the GitHub API: an update when the file exists, a creation otherwise. */
+const writeFormula = (version, sha256) => {
+  const existing = soft('gh', ['api', `repos/${TAP}/contents/${FORMULA}`, '-q', '.sha']);
+  const content = Buffer.from(formula(version, sha256)).toString('base64');
+  return run('gh', [
+    'api', '-X', 'PUT', `repos/${TAP}/contents/${FORMULA}`,
+    '-f', `message=pjman ${version}`, '-f', `content=${content}`, ...(existing ? ['-f', `sha=${existing}`] : []),
+    '-q', '.commit.html_url',
+  ]);
+};
 
 // ---- arguments ------------------------------------------------------------------------------------------------------
 
@@ -183,6 +204,9 @@ if (dryRun) {
   say('');
   say(entry.trimEnd());
   say('');
+  say(`the tap ${TAP} gets ${FORMULA} for ${next}:`);
+  say(formula(next, '<sha256 of the package>').replace(/^#.*\n/gm, '').trimEnd());
+  say('');
   say('dry run: nothing written');
   process.exit(0);
 }
@@ -195,6 +219,7 @@ if (git('status', '--porcelain')) fail('the working tree is not clean; commit or
 if (soft('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`])) fail(`tag ${tag} exists; a release that stopped after its tag is finished by hand with the commands it printed`);
 if (!ok('gh', ['auth', 'status'])) fail('gh is not signed in; the release is created with gh');
 if (!ok('npm', ['whoami'])) fail('npm is not signed in (npm login); the release publishes the package to npm');
+if (!ok('gh', ['api', `repos/${TAP}`])) fail(`the tap ${TAP} is not reachable; the release writes ${FORMULA} there`);
 
 // ---- the build, so the commit carries the built app -----------------------------------------------------------------
 
@@ -251,6 +276,7 @@ const recordArgs = ['new', 'release', `${product}/${next}`, '--at', new Date().t
 const remaining = [
   `gh release create ${tag} ${tarball} --title ${tag} --notes-file ${notes} --verify-tag`,
   `npm publish ${tarball} --access public`,
+  `write ${FORMULA} in ${TAP} from scripts/pjman.rb with __VERSION__ ${next} and __SHA256__ ${sha256Of(tarball)}`,
   `node bin/pjman.js ${recordArgs.join(' ')} --url <the release URL> < ${notes}`,
 ];
 const step = (what, fn) => {
@@ -263,14 +289,19 @@ const step = (what, fn) => {
   }
 };
 step('the push', () => git('push', '-q', 'origin', 'main', tag));
-const url = step('the GitHub release', () => run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag']));
+const url = step('the GitHub release', () => run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag', '--latest']));
 say(`released ${tag}: ${url}`);
 remaining.shift();
-remaining[1] = remaining[1].replace('<the release URL>', url);
+remaining[2] = remaining[2].replace('<the release URL>', url);
 
 // the same bits on npm: npm install -g pjman is the install, and the Homebrew formula reads the registry's tarball
 step('the npm publish', () => run('npm', ['publish', tarball, '--access', 'public']));
 say(`published pjman@${next} to npm`);
+remaining.shift();
+
+// the formula: the same package by its registry URL and checksum, so brew install and brew upgrade follow the release
+const commit = step('the formula', () => writeFormula(next, sha256Of(tarball)));
+say(`wrote ${FORMULA} in ${TAP} for ${next}: ${commit}`);
 remaining.shift();
 
 // the release as a record: its creation is the event (decision releases-homebrew/release-is-a-record)

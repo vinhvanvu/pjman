@@ -9,11 +9,11 @@ A change, a decision, a feature, a session and a release are records in one git 
 ## Install
 
 ```bash
-npm install -g pjman
+npm install -g pjman        # or: brew install vinhvanvu/pjman/pjman
 cd <your-repo> && pjman init
 ```
 
-Node 22.13 or newer and git. With Claude Code on the PATH, `pjman init` installs the plugin, and every session from then on starts from the record.
+Node 22.13 or newer and git; Homebrew brings its own Node. With Claude Code on the PATH, `pjman init` installs the plugin, and every session from then on starts from the record.
 
 ## What you get
 

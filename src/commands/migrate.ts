@@ -58,8 +58,8 @@ export const MIGRATIONS: readonly Migration[] = [
     about: 'every change named as a parent a milestone by its kind',
   },
   {
-    name: 'session-kinds', since: '0.4.0',
-    pending: (store) => compareVersions(storeVersion(store), '0.4.0') < 0 && missingSessionKinds(loadStore(store)).length > 0,
+    name: 'session-kinds', since: '0.3.0',
+    pending: (store) => compareVersions(storeVersion(store), '0.3.0') < 0 && missingSessionKinds(loadStore(store)).length > 0,
     run: (store, opts) => migrateSessionKinds(store, opts),
     about: 'the kinds a session with no change may be given (review, backlog, chat, other) as records',
   },
@@ -70,7 +70,7 @@ export function migrateSessionKinds(store: Store, opts: { session?: string; writ
   if (store.mode === 'standalone' && git(store.root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
   const created = seedSessionKinds(store, opts);
   const commit = store.mode === 'standalone' ? git(store.root, ['rev-parse', '--short', 'HEAD']) : null;
-  return { kind: 'session-kinds', since: '0.4.0', products: 0, moved: 0, rewritten: created.length, commit };
+  return { kind: 'session-kinds', since: '0.3.0', products: 0, moved: 0, rewritten: created.length, commit };
 }
 
 /** The format this pjman writes: the version of the latest move it knows. A store stamped higher was written by a newer
