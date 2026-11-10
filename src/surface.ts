@@ -35,7 +35,7 @@ export const FLAG_TYPES = {
   receipt: { type: 'boolean' }, reason: { type: 'string' }, log: { type: 'string' }, branch: { type: 'string' },
   before: { type: 'string' }, after: { type: 'string' }, first: { type: 'boolean' }, last: { type: 'boolean' },
   later: { type: 'boolean' }, for: { type: 'string' }, map: { type: 'boolean' }, 'no-map': { type: 'boolean' },
-  step: { type: 'string', multiple: true },
+  step: { type: 'string', multiple: true }, 'no-host': { type: 'boolean' },
 } as const satisfies Record<string, { type: 'string' | 'boolean'; multiple?: boolean; short?: string }>;
 
 /** Flags of models since replaced: refused wherever they are given, with where their job went. */
@@ -192,7 +192,7 @@ export const COMMANDS: Command[] = [
   { name: 'session', group: 'session', line: "a session's record: start it, log to it, bind it to a change, observe an edge",
     about: 'a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
     usage: [
-      'pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]',
+      'pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]',
       'pjman session log <id> <text>',
       'pjman session bind <id> <change> [--reason prompt|created|branch]',
       'pjman session unbind <id> <change>',
@@ -200,7 +200,7 @@ export const COMMANDS: Command[] = [
       'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)',
       'pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in)',
     ],
-    flags: { start: ['agent', 'on-behalf-of', 'parent', 'log', 'branch', 'full'], log: [], bind: ['reason'], unbind: [], observe: [], focus: [], project: [] },
+    flags: { start: ['agent', 'on-behalf-of', 'parent', 'log', 'branch', 'full', 'no-host'], log: [], bind: ['reason'], unbind: [], observe: [], focus: [], project: [] },
     args: { start: 1, bind: 2, unbind: 2, observe: 4, focus: 2, project: 2 } },
   { name: 'brief', group: 'session', line: 'what an agent needs in front of it, every session or since its last brief',
     about: "print the brief: what an agent needs in front of it every session (the adapter injects it; pjman init --brief claude-md writes it to ~/.claude/CLAUDE.md); with --session, what the store has for that session since its last brief: the bound change's context in full when the binding moved (or --full), else what changed on it, its milestone, its decisions and its dependency edges, without the session's own writes, one line per record, and the other live sessions near it; the brief records how far it reached and ends with its size",

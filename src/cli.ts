@@ -41,6 +41,7 @@ import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, row, show, storeContext } from './commands/view.js';
 import { describeMigration, formatMismatch, migrate, pendingMigration } from './commands/migrate.js';
 import { TOOL_VERSION } from './version.js';
+import { sessionHost } from './host.js';
 import { formatIdentity, identity } from './identity.js';
 import { fieldKind, shortenText, typedRef } from './keys.js';
 
@@ -283,7 +284,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const [, sub, id, ...rest] = pos;
       if (sub === 'start') {
         if (!id) throw usageError('usage: pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]');
-        const r = sessionStart(store, id, { agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, log: v.log, branch: v.branch, full: !!v.full, writer: v.writer, session: v.session });
+        // the host is read from this process's own environment: the hook runs inside the terminal the session runs in
+        const r = sessionStart(store, id, { agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, log: v.log, branch: v.branch, full: !!v.full, writer: v.writer, session: v.session, host: v['no-host'] ? null : sessionHost(process.env) });
         // the brief's text is what the agent reads, named as the context names records; the rest keeps full keys
         if (v.json) json({ ...r, brief: r.brief ? { ...r.brief, text: shortenText(r.brief.text, scopeProduct) } : null });
         else out(`${r.created ? 'created' : 'started'} ${r.key}${r.bound ? `, bound ${r.bound} (branch)` : ''}${r.brief ? `; ${formatBriefSize(r.brief)}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);

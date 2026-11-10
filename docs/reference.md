@@ -338,7 +338,7 @@ pjman events rebuild
 pjman follow [--since <seq>] [--json]
     print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to
 
-pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]
+pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]
 pjman session log <id> <text>
 pjman session bind <id> <change> [--reason prompt|created|branch]
 pjman session unbind <id> <change>
