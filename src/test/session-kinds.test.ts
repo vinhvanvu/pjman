@@ -148,12 +148,12 @@ test('validate refuses a session whose kind is not a session kind record, and a 
   assert.equal(errors().length, 0);
 });
 
-test('the session-kinds move: a store stamped before 0.4.0 that lacks the four gets them created, one write each, then the stamp', () => {
+test('the session-kinds move: a store stamped before 0.3.0 that lacks the four gets them created, one write each, then the stamp', () => {
   for (const k of ['chat', 'other']) fs.rmSync(path.join(store.root, 'session-kinds', `${k}.md`));
   execFileSync('git', ['add', '-A'], { cwd: store.root });
   execFileSync('git', ['commit', '-qm', 'test: two kinds dropped'], { cwd: store.root });
-  writeStoreConfig(store.root, { ...loadStoreConfig(store.root), version: '0.3.0' });
-  execFileSync('git', ['commit', '-qam', 'test: stamped 0.3.0'], { cwd: store.root });
+  writeStoreConfig(store.root, { ...loadStoreConfig(store.root), version: '0.2.0' });
+  execFileSync('git', ['commit', '-qam', 'test: stamped 0.2.0'], { cwd: store.root });
   const old = findStore(path.join(tmp, 'web'))!;
   assert.equal(pendingMigration(old), 'session-kinds');
   const r = migrate(old, {});
