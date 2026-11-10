@@ -80,19 +80,45 @@ A milestone is a goal whose plan is the changes filed under it. Its progress is 
 
 Drag a column to reorder; dependencies and dates are checked against the order and never move it.
 
-## The record
+## Working with it
 
-### A change with its plan
+### Start a change by saying what you want
+
+```text
+you    export a saved card as a PDF
+agent  filed change:card-export · changes feature:saved-cards · one change · later · no date
+```
+
+The agent checks for a duplicate, finds the node on the map the request alters, and files a change: where it came from in your words, what it is for, what done means, and the steps. Status and progress are derived, never written.
 
 ![A change's page: name, gist, the plan as steps, its decisions, then the origin in your words, the intent and done when](assets/change.png)
 
-Where it came from in your words, what it is for, what done means, and the steps. Status and progress are derived, never written.
+### Name a ticket and get its change
+
+```console
+$ pjman get vinhvanvu/pjman#11
+vinhvanvu/pjman#11 → github-issue:vinhvanvu/pjman#11 (ticket id; source)
+source github-issue:vinhvanvu/pjman#11 — /clear closes the cmux dock and reopens it in a new pane about 14s later
+
+referenced by:
+- binds change:clear-keeps-dock
+
+reached change:clear-keeps-dock through binds
+
+# change:clear-keeps-dock — Clear keeps the dock
+Clearing a session keeps its docked pane and points it at the new session's page
+status: done
+kind: bug · severity nuisance
+…
+```
+
+Issues from GitHub and Linear are read with the tracker's own tools and handed to `pjman sync`. Each becomes a source in the store and, when no change has it yet, a change with the ticket in its origin. From then on the ticket's id is a way in: `pjman get` with an id, a URL, a file or a key answers with the record and every change in reach, and a session whose prompt names a ticket starts on its change.
 
 ### Decisions you make, not the agent
 
 ![A proposed decision: the question, the options with the recommended one marked and its why, Accept with a line in your words](assets/decision.png)
 
-The agent lays out the options and recommends one. You accept, in your words, and the session working the change is told.
+Before a choice that forecloses options, the agent lays the options out and recommends one. It never accepts its own. You accept on the dashboard or in the chat, in your words, and the session working the change is told.
 
 ### Releases from the record
 
