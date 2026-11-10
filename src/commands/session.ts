@@ -9,6 +9,10 @@ import { CliError, localDate, nowIso, notFound } from '../util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 import { EDGES } from '../validate.js';
 import { readEvents, type EventInput } from '../events.js';
+import { SLUG_RE } from '../keys.js';
+import { nameProblem } from '../foundation.js';
+import { inferSessionKind, type Inferred } from '../session-kinds.js';
+import { newSessionKind } from './new.js';
 
 function load(store: Store, id: string) {
   const loaded = loadStore(store);
@@ -18,15 +22,15 @@ function load(store: Store, id: string) {
   return { loaded, rec };
 }
 
-type SaveOp = 'log' | 'bind' | 'observe' | 'unbind' | 'focus' | 'briefed' | 'project';
+type SaveOp = 'log' | 'bind' | 'observe' | 'unbind' | 'focus' | 'briefed' | 'project' | 'name';
 
 /** `value`: on a bind or a focus, the key of the change, so the event says where the session went. */
 function save(store: Store, rec: ReturnType<typeof load>['rec'], data: Record<string, unknown>, body: string, message: string, op: SaveOp, value?: string): string | null {
   const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render('session', data, body));
   validateOrUndo(store, [rec.path], [], prior);
-  const fields = { log: ['log'], bind: ['changes'], observe: ['observed'], unbind: ['changes', 'observed', 'log'], focus: ['focus'], briefed: ['briefed'], project: ['project', 'log'] }[op];
-  const evOp = op === 'unbind' || op === 'focus' || op === 'briefed' || op === 'project' ? 'set' : op;
+  const fields = { log: ['log'], bind: ['changes'], observe: ['observed'], unbind: ['changes', 'observed', 'log'], focus: ['focus'], briefed: ['briefed'], project: ['project', 'log'], name: ['name', 'kind', 'log'] }[op];
+  const evOp = op === 'unbind' || op === 'focus' || op === 'briefed' || op === 'project' || op === 'name' ? 'set' : op;
   return finishWrite(store, message, rec.key, [{ op: evOp, key: rec.key, type: 'session', path: rec.path, fields, value, writer: envelope({}).writer }]);
 }
 
@@ -155,6 +159,59 @@ export function sessionLog(store: Store, id: string, text: string): { path: stri
   const { rec } = load(store, id);
   const commit = save(store, rec, rec.data, withLogLine(rec, text), `pjman: session log ${rec.key}`, 'log');
   return { path: rec.path, commit };
+}
+
+export interface NameFlags {
+  /** The name, one to four words; inferred from the session's own sources when not given. */
+  name?: string;
+  /** A session kind's slug or key; inferred from the record when not given; created when the store lacks it. */
+  kind?: string;
+  writer?: string;
+  session?: string;
+}
+
+export interface NameResult {
+  path: string;
+  name: string;
+  kind: string;
+  /** What the inference read, when the name or the kind was inferred. */
+  inferred?: string;
+  /** The kind was created by this call. */
+  createdKind: boolean;
+  commit: string | null;
+}
+
+/** Name a session with no change (decision unbound-sessions/naming): the name and the kind it is given are written,
+ *  what is not given is inferred from the session's own record (session-kinds.ts), and a kind the store lacks is
+ *  created on the spot. A session that later binds a change keeps its name. Refused when nothing on the record names
+ *  it: a name has to be said. */
+export function sessionName(store: Store, id: string, flags: NameFlags): NameResult {
+  const first = load(store, id);
+  const given = flags.kind?.trim();
+  const slug = given ? (given.startsWith('session-kind:') ? given.slice('session-kind:'.length) : given) : undefined;
+  if (slug?.includes(':')) throw new CliError(`--kind ${given} is not a session kind: session-kind:<slug>, or the slug alone`);
+  let inferred: Inferred | null = null;
+  if (!slug || !flags.name?.trim()) inferred = inferSessionKind(first.loaded, first.rec);
+  const kindSlug = slug ?? inferred?.kind;
+  if (!kindSlug) throw new CliError(`refused: nothing on ${first.rec.key} says what it is doing (no PR, ticket or log line observed on it); name it: pjman session name ${id} "…" --kind <kind>`);
+  const name = flags.name?.trim() || inferred?.name;
+  if (!name) throw new CliError(`refused: ${first.rec.key} reads as ${kindSlug} but nothing on it names it; give it a name: pjman session name ${id} "…" --kind ${kindSlug}`);
+  const np = nameProblem(name);
+  if (np) throw new CliError(`name: ${np}`);
+  // the kind: a record; one the store lacks is created first, as its own write
+  let createdKind = false;
+  const kindRes = resolve(first.loaded, `session-kind:${kindSlug}`);
+  if (kindRes.status !== 'ok' && kindRes.status !== 'alias') {
+    if (!SLUG_RE.test(kindSlug)) throw new CliError(`--kind '${kindSlug}' is not a slug (lower-case letters, digits, hyphens)`);
+    newSessionKind(store, kindSlug, { writer: flags.writer, session: flags.session });
+    createdKind = true;
+  } else if (kindRes.rec.type !== 'session-kind') throw new CliError(`${kindRes.rec.key} is a ${kindRes.rec.type}, not a session kind`);
+  const { loaded, rec } = load(store, id);
+  const kindKey = fullKey(loaded, `session-kind:${kindSlug}`);
+  const same = rec.data.name === name && rec.data.kind === kindKey;
+  const line = `named "${name}" (${kindSlug})${inferred && (!slug || !flags.name?.trim()) ? `, read from ${inferred.from}` : ''}`;
+  const commit = same ? null : save(store, rec, { ...rec.data, name, kind: kindKey }, withLogLine(rec, line), `pjman: session name ${rec.key} "${name}" (${kindSlug})`, 'name', kindKey);
+  return { path: rec.path, name, kind: kindKey, inferred: inferred && (!slug || !flags.name?.trim()) ? inferred.from : undefined, createdKind, commit };
 }
 
 /** Why a session was bound: the person's prompt named it, the session created it, its branch was cut for it, or a

@@ -180,9 +180,22 @@ A run of an agent on behalf of a person: append-only.
 | create | `pjman session start <id> --agent <agent> --on-behalf-of <person>   (the adapter does it)` |
 | read | `pjman show session:<id> · pjman brief --session <id> · pjman open --session <id>` |
 | list | `pjman ls session` |
-| update | `pjman session log\|bind\|unbind\|observe\|focus\|project <id> … · pjman note session:<id> <text>` |
+| update | `pjman session log\|bind\|unbind\|observe\|focus\|project <id> … · pjman session name <id> ["…"] [--kind <kind>]   (a session with no change: its name and kind, inferred from its record when not given) · pjman note session:<id> <text>` |
 | rename | `— (its id is the harness's)` |
 | delete | `pjman rm session:<id>   (refused while anything was written in it)` |
+
+### session-kind
+
+What a session with no change is doing: review, backlog, chat, other, or one a person made.
+
+| operation | command |
+|---|---|
+| create | `pjman new session-kind <slug> [--name …] [--gist …]   (the four come with the store; pjman session name --kind <new> creates one)` |
+| read | `pjman show session-kind:<slug> · pjman get session-kind:<slug>   (the sessions given it)` |
+| list | `pjman ls session-kind · pjman ls session --kind <slug>` |
+| update | `pjman set session-kind:<slug> name=… gist=… links+=…` |
+| rename | `pjman mv session-kind:<old> session-kind:<new>   (every session carrying it follows; the old slug stays an alias)` |
+| delete | `pjman rm session-kind:<slug>   (refused while a session carries it)` |
 
 ### release
 
@@ -259,12 +272,14 @@ pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|m
 pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]... [--body <text>]
 pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...
 pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)
+pjman new session-kind <slug> [--name <one to four words>] [--gist <one line>] [--links <key>]...   (review, backlog, chat and other come with the store; pjman session name creates one it is handed)
     create a record; refused if it would not validate. Keys are paths under the product (feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug>); inside a project the slug alone names a record. A decision is created with pjman decision, a session with pjman session start
 
 pjman show <ref> [--json]
     print one record by its key or slug, as it is stored (an aspect with every place it reaches; a place read through its aspect)
 
-pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|actor] [--status <s>] [--kind work|bug|milestone] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--json]
+pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|session-kind|actor] [--status <s>] [--kind work|bug|milestone] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--json]
+pjman ls session --kind <session kind>   (the sessions with no change given that kind)
     list records, by entity, status, kind and where they sit: --project for a change's project, --product for anything under a product, --parent for a milestone's children or a feature's nodes, --feature for the changes naming a node or anything beneath it. A status or kind outside the vocabulary is refused. Bugs come worst first, then oldest
 
 pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...
@@ -274,8 +289,8 @@ pjman set <ref> <field>=- < file   (one value from stdin)
 pjman rm <ref>... [--detach] [--json]
     remove one or several records, one commit (a change takes its decisions with it). Refused while anything refers to one, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped
 
-pjman mv <kind>:<old> <kind>:<new>   (product, feature, aspect, place, project, change, decision, person, agent)
-    rename a product (every key beneath it follows), a feature or a change (the folder moves, the old slug stays as an alias; <product>/<slug> moves it to another product), an aspect or a place, a project (directories bound to it follow), a decision (within or across changes) or a person (the old handle stays as an alias; the user config follows); every reference is rewritten in the same commit. Sources and sessions keep their keys, which are external; a release keeps its version, which is a fact
+pjman mv <kind>:<old> <kind>:<new>   (product, feature, aspect, place, project, change, decision, person, agent, session-kind)
+    rename a product (every key beneath it follows), a feature or a change (the folder moves, the old slug stays as an alias; <product>/<slug> moves it to another product), an aspect or a place, a project (directories bound to it follow), a decision (within or across changes), a person (the old handle stays as an alias; the user config follows) or a session kind (every session carrying it follows; the old slug stays as an alias); every reference is rewritten in the same commit. Sources and sessions keep their keys, which are external; a release keeps its version, which is a fact
 
 pjman decision <change>/<slug> --name <one to four words> --gist <one line> --question <text> [--criterion <text>]... --option <id>=<text>... [--case <id>=<points, one per line>]... [--recommend <id>[=<why>]] [--supersedes <decision>] [--links <key>]...
 pjman decision <ref> [--question <reframed>] [--option <id>=<text>]... [--comment <words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]   (a comment without --by is the writer's own)
@@ -345,6 +360,7 @@ pjman session unbind <id> <change>
 pjman session observe <id> <edge> <from> <to>
 pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)
 pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in)
+pjman session name <id> ["<name>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)
     a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did
 
 pjman brief

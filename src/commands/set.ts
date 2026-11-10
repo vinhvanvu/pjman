@@ -25,6 +25,7 @@ const SETTABLE: Record<RecordType, string[]> = {
   source: ['title', 'url', 'links'],
   actor: ['name', 'url', 'links'],
   session: [],
+  'session-kind': ['name', 'gist', 'links'],
 };
 const LISTS = new Set(['binds', 'links', 'owners', 'features', 'aspects', 'levels', 'depends_on', 'sequence']);
 const SECTIONS: Record<string, string> = { summary: 'Summary', ...SECTION_FIELDS };

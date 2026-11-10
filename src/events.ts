@@ -306,6 +306,7 @@ export const typeOfPath = (p: string): RecordType | null => {
   if (p.startsWith('decisions/')) return 'decision';
   if (p.startsWith('sources/')) return 'source';
   if (p.startsWith('sessions/')) return 'session';
+  if (p.startsWith('session-kinds/')) return 'session-kind';
   if (p.startsWith('actors/')) return 'actor';
   return null;
 };
@@ -329,6 +330,7 @@ export function keyOfPath(p: string, type: RecordType, root: string, sha: string
     case 'place': return `aspect:${under}/${seg[3]}/${base}`;
     case 'release': return `release:${under}/${base}`;
     case 'session': return `session:${dated?.[1] ?? base}`;
+    case 'session-kind': return `session-kind:${base}`;
     case 'source':
     case 'actor': {
       // the key is in the frontmatter at that commit

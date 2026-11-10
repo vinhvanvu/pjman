@@ -132,8 +132,10 @@ export function newRecord(store: Store, type: string, ident: string, flags: NewF
       return newActor(store, ident, flags);
     case 'session':
       return newSession(store, ident, flags);
+    case 'session-kind':
+      return newSessionKind(store, ident, flags);
     default:
-      throw new CliError(`unknown record type '${type}' (product, feature, aspect, place, project, change, decision, release, source, actor, session)`);
+      throw new CliError(`unknown record type '${type}' (product, feature, aspect, place, project, change, decision, release, source, actor, session, session-kind)`);
   }
 }
 
@@ -422,6 +424,29 @@ export function newActor(store: Store, ident: string, flags: NewFlags): NewResul
   const data: Record<string, unknown> = { kind: key.kind, name: flags.name, url: flags.url, links: listOrNone(flags.links), ...stamp(flags) };
   writeFile(store, rel, render('actor', data, flags.body ? flags.body.trim() + '\n' : ''));
   return finish(store, 'actor', key.raw, rel, [rel], flags);
+}
+
+/** A session kind (decision unbound-sessions/kinds): store-wide, keyed by slug, with a name (the slug's words when none
+ *  is given) and a one-line gist. The naming command creates one it is handed that does not exist. */
+export function newSessionKind(store: Store, ident: string, flags: NewFlags): NewResult {
+  const slug = ident.startsWith('session-kind:') ? ident.slice('session-kind:'.length) : ident;
+  if (!SLUG_RE.test(slug)) throw new CliError(`'${slug}' is not a slug (lower-case letters, digits, hyphens)`);
+  const key = `session-kind:${slug}`;
+  const rel = path.join('session-kinds', `${slug}.md`);
+  refuseExisting(store, rel);
+  const loaded = loadStore(store);
+  if (loaded.aliases.has(key)) throw new CliError(`refused: '${slug}' is a former name of ${loaded.aliases.get(key)!.join(', ')}`);
+  const name = flags.name?.trim() || slug.split('-').filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+  const np = nameProblem(name);
+  if (np) throw new CliError(`--name: ${np}`);
+  const gist = flags.gist?.trim() || undefined;
+  if (gist) {
+    const gp = gistProblem(gist);
+    if (gp) throw new CliError(`--gist: ${gp}`);
+  }
+  const data: Record<string, unknown> = { name, gist, links: listOrNone(flags.links), ...stamp(flags) };
+  writeFile(store, rel, render('session-kind', data, flags.body ? flags.body.trim() + '\n' : ''));
+  return finish(store, 'session-kind', key, rel, [rel], flags);
 }
 
 export function newSession(store: Store, ident: string, flags: NewFlags): NewResult {

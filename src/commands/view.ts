@@ -39,7 +39,10 @@ export function row(r: Rec): Row {
   const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
   return {
     type: r.type, key: r.key, path: r.path, valid: r.valid,
-    ...(r.type === 'change' || r.type === 'decision' ? { gist: s(r.data.gist) } : { title: s(r.data.title) }),
+    ...(r.type === 'change' || r.type === 'decision' || r.type === 'session-kind' ? { gist: s(r.data.gist) }
+      // a session's line is its name and kind, when it was given them (decision unbound-sessions/naming)
+      : r.type === 'session' ? { title: s(r.data.name) ? `${s(r.data.name)}${s(r.data.kind) ? ` (${s(r.data.kind)!.replace(/^session-kind:/, '')})` : ''}` : undefined }
+      : { title: s(r.data.title) }),
     name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
     writer: s(r.data.writer), session: s(r.data.session), data: r.data,
   };
@@ -87,7 +90,7 @@ export function branchOf(rec: Rec, observed: Map<string, { to: string; at: strin
 const TYPE_ALIASES: Record<string, RecordType> = {
   product: 'product', products: 'product', feature: 'feature', features: 'feature', aspect: 'aspect', aspects: 'aspect', place: 'place', places: 'place',
   project: 'project', projects: 'project', change: 'change', changes: 'change', decision: 'decision', decisions: 'decision',
-  release: 'release', releases: 'release',
+  release: 'release', releases: 'release', 'session-kind': 'session-kind', 'session-kinds': 'session-kind',
   source: 'source', sources: 'source', session: 'session', sessions: 'session', actor: 'actor', actors: 'actor',
 };
 
@@ -97,7 +100,7 @@ export function bugOrder(a: { severity?: string; created?: string; key: string }
   return rank(a.severity) - rank(b.severity) || (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key);
 }
 
-const LIST_TYPES: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'actor'];
+const LIST_TYPES: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'session-kind', 'actor'];
 
 /** The statuses a listing can filter by, per type that has one. */
 const STATUSES: Partial<Record<RecordType, readonly string[]>> = { change: CANONICAL_STATUSES, decision: DECISION_STATUSES, feature: FEATURE_STATUSES };
@@ -132,8 +135,15 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
     if (known && !known.includes(opts.status)) throw usageError(`--status ${opts.status} is not a status${t ? ` of a ${t}` : ''} (${known.join(', ')})`);
     recs = recs.filter((r) => statusOf(r) === opts.status);
   }
-  if (opts.kind) {
-    if (!(CHANGE_KINDS as readonly string[]).includes(opts.kind)) throw usageError(`--kind ${opts.kind} is not a kind of change (${CHANGE_KINDS.join(', ')})`);
+  if (opts.kind && t === 'session') {
+    // a session's kind is a record (decision unbound-sessions/kinds): the filter takes its slug or key; one the store lacks is refused
+    const k = resolve(loaded, opts.kind.includes(':') ? opts.kind : `session-kind:${opts.kind}`);
+    if ((k.status !== 'ok' && k.status !== 'alias') || k.rec.type !== 'session-kind') {
+      throw usageError(`--kind ${opts.kind} is not a session kind (${ofType(loaded, 'session-kind').map((r) => r.key.slice('session-kind:'.length)).sort().join(', ')})`);
+    }
+    recs = recs.filter((r) => live(loaded, r.data.kind)?.key === k.rec.key);
+  } else if (opts.kind) {
+    if (!(CHANGE_KINDS as readonly string[]).includes(opts.kind)) throw usageError(`--kind ${opts.kind} is not a kind of change (${CHANGE_KINDS.join(', ')}); a session's kind is pjman ls session --kind <kind>`);
     recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
   }
   const node = (flag: string, raw: string): Rec => {
@@ -173,7 +183,7 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(withBranch);
   }
-  const typeOrder: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'actor'];
+  const typeOrder: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'session-kind', 'actor'];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
     .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))
