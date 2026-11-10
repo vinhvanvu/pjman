@@ -8,6 +8,8 @@ import { focusOf } from '../hydrate.js';
 import { CliError, notFound } from '../util.js';
 import { decisionLine, lineOfRow, nextLine, readinessLines, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
 import { formatStep, nextStep, stepsOf } from '../foundation.js';
+import { ownSources } from '../session-kinds.js';
+import { urlOf } from '../refs.js';
 
 export interface ViewOpts extends GetOpts {
   /** A reference to show, and not follow. */
@@ -48,6 +50,19 @@ export interface SessionFacts {
   working: boolean;
   /** The last instant it reached the stream. */
   last?: string;
+  /** A session with no change, named (decision unbound-sessions/naming): its name and its kind, a record. */
+  name?: string;
+  kind?: { key: string; slug: string; name?: string; gist?: string };
+  /** The sources it read on its own, with no change bound (decision unbound-sessions/sources): the branch, the PR,
+   *  the tickets, oldest first, each with the title and URL the store has for it. */
+  sources: SessionSource[];
+}
+
+export interface SessionSource {
+  key: string;
+  at?: string;
+  title?: string;
+  url?: string;
 }
 
 /** What a view shows, as data: a neighbourhood, or a board; the session followed, when one is. */
@@ -83,7 +98,14 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
   const read = sessionLogOf(rec);
   const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false }, now) === 'working';
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last };
+  const kindRec = live(loaded, rec.data.kind);
+  const kind = kindRec ? { key: kindRec.key, slug: kindRec.key.slice('session-kind:'.length), name: str(kindRec.data.name), gist: str(kindRec.data.gist) } : undefined;
+  const sources: SessionSource[] = ownSources(rec).map((s) => {
+    const r = resolve(loaded, s.to);
+    const src = r.status === 'ok' || r.status === 'alias' ? r.rec : undefined;
+    return { key: s.to, at: s.at, title: str(src?.data.title), url: urlOf(s.to, src?.data.url) };
+  });
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last, name: str(rec.data.name), kind, sources };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };

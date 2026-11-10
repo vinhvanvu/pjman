@@ -19,7 +19,7 @@ import { factsOfMotion } from '@/components/change/model';
 import { MotionCard } from '@/components/change/MotionCard';
 import { SessionPill } from '@/components/change/SessionPill';
 import { SESSION, TONE } from '@/lib/tones';
-import { cardRows, groupsOf, lastArrival, unbound, type CardRow } from './model';
+import { cardRows, groupsOf, lastArrival, namedUnbound, unbound, type CardRow } from './model';
 
 /** What the event the page is locked on touched: the change it wrote or decided on. */
 export interface Touched {
@@ -77,6 +77,9 @@ export function Cards({
   });
   // a held card is lifted out whatever the grid holds still with: a hold that began before the lift still shows it
   const rows = shown.filter((r) => r.kind !== 'card' || !held.has(r.change.key));
+  // a session named on no change (a review, a backlog pass) has its own row, titled with its name; the unnamed stay
+  // folded, since a fresh session binds soon (change:unbound-sessions)
+  const named = namedUnbound(sessions);
   const free = unbound(sessions);
   const [open, setOpen] = useState(false);
   return (
@@ -118,6 +121,25 @@ export function Cards({
           ))}
         </AnimatePresence>
       </ol>
+      {named.length > 0 && (
+        <section className="flex flex-col gap-1.5" aria-label="Sessions on no change, named">
+          <div className="flex items-center gap-2">
+            <Label>On no change</Label>
+            <span className="text-meta text-ink-faint">
+              {plural(named.length, 'named session')}: a review, a backlog pass, a chat
+            </span>
+          </div>
+          <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
+            {named.map((s) => (
+              <li key={s.key} className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2">
+                <span className="min-w-0 truncate text-xs font-medium">{s.name}</span>
+                {s.kind && <Label className="shrink-0">{s.kind}</Label>}
+                <SessionPill session={s} now={now} className="ml-auto" />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {free.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <button

@@ -6,6 +6,7 @@ import type { Store } from './config.js';
 import type { Loaded, Rec } from './records.js';
 import { loadStore, resolve } from './records.js';
 import { newSessionKind } from './commands/new.js';
+import { nameProblem } from './foundation.js';
 
 export interface SessionKindSeed {
   slug: string;
@@ -75,10 +76,12 @@ function logLines(rec: Rec): string[] {
  *  such source's title when the store has a record for it, else its key's rest. */
 export function inferSessionKind(loaded: Loaded, rec: Rec): Inferred | null {
   const sources = ownSources(rec);
+  // the source's title names the session when it is short enough to be a name (one to four words); a longer one
+  // leaves the key to name it, since a name cut short says less than the key
   const titleOf = (key: string): string | undefined => {
     const r = resolve(loaded, key);
     const t = r.status === 'ok' || r.status === 'alias' ? r.rec.data.title : undefined;
-    return typeof t === 'string' && t.trim() ? t.trim() : undefined;
+    return typeof t === 'string' && t.trim() && !nameProblem(t) ? t.trim() : undefined;
   };
   const restOf = (key: string): string => key.slice(key.indexOf(':') + 1);
   const pr = sources.find((s) => s.to.startsWith('github-pr:'));

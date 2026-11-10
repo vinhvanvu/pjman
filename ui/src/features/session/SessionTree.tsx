@@ -38,6 +38,7 @@ import type { PageSearch } from '@/routes/-search';
 import { useFreshEvents } from '@/state/arrivals';
 import { useAt } from '@/state/moment';
 import { type ChipView, chipViews, sessionBar, shownOf, viewing } from './model';
+import { SessionSources } from './SessionSources';
 
 const NO_EVENTS: readonly StoreEvent[] = [];
 /** The lanes over the session's life, every one of them: the rail's page is read by the rail itself. */
@@ -191,13 +192,16 @@ export function SessionTree({
         >
           {barRow}
           <div className="flex flex-col gap-1.5">
-            <Label>session</Label>
-            <h1 className="text-[18px] font-semibold tracking-tight">No change yet</h1>
+            <Label>session{session.kind ? ` · ${session.kind.name ?? session.kind.slug}` : ''}</Label>
+            <h1 className="text-[18px] font-semibold tracking-tight">{session.name ?? 'No change yet'}</h1>
             <p className="text-body text-ink-muted">
-              The page moves to the change the moment this session binds one: name it in a prompt, or start on its
-              branch.
+              {session.name
+                ? (session.kind?.gist ?? 'Work on no change.') +
+                  ' The page moves to a change the moment this session binds one.'
+                : 'The page moves to the change the moment this session binds one: name it in a prompt, or start on its branch.'}
             </p>
           </div>
+          <SessionSources sources={session.sources} lens={lens} />
           {!wide && rail}
         </section>
         {wide && (
