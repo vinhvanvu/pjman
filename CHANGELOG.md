@@ -2,6 +2,58 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.3.0 — 2026-11-10
+
+### Added
+
+- **Activity timeline**: One timeline component over the event stream at any scope, a single vertical rail: lanes from one axis as colours, the other axis on every dot, folding to a rollup as the scope grows (change:activity-timeline)
+- **Map and record**: The product map shows the work at its leaves and the panel reads one node record at every level, product to capability (change:feature-detail)
+- **Rex adapter**: A host interface with Rex as its first implementation: a session binds to the block that hosts it, its state is read from the host, the block carries where the work stands, and an answer reaches it through the host (change:rex-adapter)
+
+### Changed
+
+- **Public**: The repository public, the package on npm and the tap ordinary, with a README a newcomer can follow (change:public)
+- **Rail pages**: The rail shows the last few rows, pages back through the rest and filters what it shows (change:rail-pages)
+- **Session page**: What following a session shows at desktop width when it is not docked beside the terminal (change:session-detail)
+- **Timeline follows the focus**: The session page's timeline holds only the shown change's rows, its own filter goes, and the wide panel grows by 100px (change:session-timeline-focus)
+- **Clear moves the dock**: Clearing a session moves the docked pane off the ended session to a view that stands on its own, instead of the next session's empty page (change:clear-moves-the-dock)
+- **Change page**: What a change's own page shows at desktop width beyond its record in the side panel (change:change-detail)
+- **Cold start gaps**: A product with no map gets one through intake, by what the repository holds, and its first sessions are recorded wherever they start (change:cold-start-gaps)
+- **Decision depths**: One decision card at three depths, a row, the ladder and the thread, opened in place with Accept for any option and a line in your words (change:decision-depths)
+- **Run to the end**: Once the go is given, the plan runs to its end; the agent stops only at a decision it opened, a blocker it recorded, or the code committed for review (change:run-to-the-end)
+- **Bridge rework**: The bridge orients and explores: the transport as its one timeline, the changes in motion as cards in a grid beneath it, hover and a held filter tying the two; no session list, no decisions (change:bridge-rework)
+- **Decided decisions fold**: A decided decision's row reads the answer alone, and the decided list on a change folds to one line by default (change:decided-decisions-fold)
+- **Aspects as work goes**: Aspects are proposed from what sessions say and do, so the cross-cutting is recorded without anyone asking for it (change:aspects-as-work-goes)
+- **Alive step bars**: A change's step bar moves while a session works it, so the plan reads as alive and not as a count (change:alive-step-bars)
+- **Interface audit**: The CLI and the HTTP API read as one coherent surface before release: verbs, flags, output and errors an agent uses right first time and a person understands (change:interface-audit)
+- **Milestone page**: What a milestone's own page shows: its children, their progress and what waits beneath (change:milestone-detail)
+- **Later shows milestones**: Later lists an unordered milestone with its open children beneath it, so it can be found and ordered as one (change:later-shows-milestones)
+- **Questions become decisions**: An open question an agent lays out in conversation is recorded as a proposed decision before the turn ends (change:questions-become-decisions)
+- **Milestone kind**: A milestone is a change of kind milestone, named at filing, so every surface reads the kind instead of counting children (change:milestone-kind)
+- **Named unbound sessions**: A session working outside any change gets a name, a kind and its own sources, so a review or a backlog pass is found and shown as what it is (change:unbound-sessions)
+- **Releases and Homebrew**: pjman is versioned and released by tag, and installed and updated with Homebrew (change:releases-homebrew)
+- **README tune-up**: The README gets its screenshots and a tighter text before the repository goes public (change:readme-tune-up)
+
+### Fixed
+
+- **Bridge lost on sessions**: Opened from the bridge, the wide session page's rail has no Bridge entry, so the way back is only the pill (change:bridge-lost-on-session-page)
+- **Session page too early**: The session page waits for a session the store does not hold yet instead of raising an error, and says plainly when there is no such session (change:session-page-before-record)
+- **Start on the bridge**: A new session's docked pane opens on the product's bridge and follows the session only once it binds a change, as a cleared one does (change:start-on-the-bridge)
+- **Filing moves the dock**: A session bound by the agent's own write (filing a change, or a bind) brings the parked pane to its page, as a prompt's bind does (change:bind-moves-the-dock)
+- **Clear reaches the bridge**: A clear sends the terminal's pane to the bridge wherever the person had browsed it, not only when the hook last pointed it at a session (change:clear-returns-to-the-bridge)
+- **Cross-origin server access**: Any web page open in the person's browser can read the whole store from the local server and write to it (change:local-server-cross-origin)
+- **Card reads the plan**: A milestone's bridge card reads its own plan steps while its page reads its children, so the two disagree (change:bridge-card-reads-the-plan)
+- **Step bar in order**: Every step bar draws the plan sorted, done then the one on then open then dropped, whatever order the steps were worked in (change:step-bar-in-order)
+- **Rest takes the slug**: pjman rest accepts a change's bare slug inside the project, as every other command does (change:rest-takes-the-slug)
+- **Dashboard reads slow**: The store's reads cost what the page or command asks, not the whole store; at 100x a load takes 12s and the map 7 minutes (change:dashboard-reads-slow)
+- **Map page scroll**: The product map page scrolls the whole window past the app instead of scrolling inside its pane (change:map-page-scroll)
+- **Host field unknown**: pjman validate warns unknown field 'host' on every session a host recorded, though it checks the field's shape (change:host-field-unknown)
+
+### Store
+
+- The kinds move: every change named as a parent a milestone by its kind. After installing, run `pjman migrate` until it reports nothing to migrate (each run makes one move; the stamp comes last).
+- The session-kinds move: the kinds a session with no change may be given (review, backlog, chat, other) as records. After installing, run `pjman migrate` until it reports nothing to migrate (each run makes one move; the stamp comes last).
+
 ## 0.2.0 — 2026-11-06
 
 ### Added
