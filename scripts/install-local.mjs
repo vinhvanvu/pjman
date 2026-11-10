@@ -51,7 +51,8 @@ else {
   try {
     current = JSON.parse(fs.readFileSync(known, 'utf8')).pjman?.source?.path;
   } catch {}
-  if (current && fs.realpathSync(current) !== real) {
+  // a marketplace pointing at a path that is gone (the install under the old name) is replaced like one pointing elsewhere
+  if (current && (!fs.existsSync(current) || fs.realpathSync(current) !== real)) {
     const r = soft('claude', ['plugin', 'marketplace', 'remove', 'pjman']);
     say(r.failed ? `marketplace pjman not removed: ${r.failed}` : `marketplace pjman no longer reads ${current}`);
     current = undefined;
