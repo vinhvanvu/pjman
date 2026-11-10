@@ -6,22 +6,81 @@ The record of a software product, kept in git by the agents that build it.
 
 A change, a decision, a feature, a session and a release are records in one git store, under one schema. Coding agents read the record at the start of every session and write back through one command. You read it on a dashboard and make the decisions.
 
-## Install
+> Works best in [cmux](#works-best-in-cmux-and-rex) and [Rex](#works-best-in-cmux-and-rex): the dashboard docks beside the session and follows it. Any terminal works.
+
+## Getting started
+
+**1. Install.** Node 22.13 or newer and git; Homebrew brings its own Node.
 
 ```bash
 npm install -g @vinhvanvu/pjman   # or: brew install vinhvanvu/pjman/pjman
-cd <your-repo> && pjman init
 ```
 
-Node 22.13 or newer and git; Homebrew brings its own Node. With Claude Code on the PATH, `pjman init` installs the plugin, and every session from then on starts from the record.
+**2. Run `pjman init` in a repository.** It asks one question, whether a product map should be proposed from the repository, and prints what it did:
 
-## What you get
+```console
+$ cd acme && pjman init
+Should the first session propose a product map from this repository? [Y/n]
+created the global store at ~/.pjman/store (its own git repository)
+created person:ada
+the repository holds code (package.json)
+created product:acme
+registered project:acme under product:acme
+the first change through intake proposes a product map …
+you are person:ada
+Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins
+dashboard: http://127.0.0.1:7331
+left to do: nothing here; to read tickets, sign in to the tracker from inside a session (/mcp)
+```
 
-### Sessions that start from the record
+When it worked you have four things: a store of your own at `~/.pjman/store`, the repository registered as a project under a product, the Claude Code plugin installed (when `claude` is on the PATH), and the dashboard running at the address it printed. Running it again is the health check: it repairs what is missing and undoes nothing.
+
+**3. Start a session.** Run `claude` in the repository. The agent opens with what pjman is, the rules it works by, and what is in flight:
 
 ![A session's first screen: what pjman is, the rules the agent works by, then the board of what is in flight](assets/session-start.png)
 
-The agent opens with what pjman is, the rules it works by, and what is in flight. Say what you want done; it files the work as a change.
+**4. Say what you want done.** The agent files it as a change with a plan, and with the first one proposes the product map as a decision for you to accept. `pjman open` brings the dashboard to the session's page; in cmux it is already docked beside you.
+
+## Works best in cmux and Rex
+
+pjman runs in any terminal. In a terminal it knows, the session and the dashboard become one workspace.
+
+![A real session in cmux: the agent at work on the left, the dashboard docked beside it on the session's page](assets/docked.png)
+
+- **Docked beside the session** (cmux). At session start a pane opens on the bridge. Once the session takes up a change the pane follows it: what the session is on, the decisions waiting on you, its log, the handoff. It closes with the session.
+- **Labelled.** The session's block (Rex) or sidebar pill (cmux) says which change it is on and where the work stands.
+- **Live state** (Rex). The dashboard reads working, waiting on you, or stopped from the terminal itself, as it happens.
+- **Open and launch from the dashboard.** A session's row brings its terminal to the front; a change can start a session in a worktree named for it.
+
+Elsewhere the dashboard opens in your browser and reads a session's state from the record. What each terminal gives is in [`adapters/hosts.md`](adapters/hosts.md).
+
+## The dashboard
+
+Four places, one per question.
+
+### The bridge: what needs you now
+
+The picture at the top. The day's writes on one timeline, every live session, and the changes in motion grouped by what each needs from you.
+
+### The product map: what the product is
+
+![The product map: features, the capabilities beneath them and the open work at the leaves, state as a dot; the product's record beside it](assets/map.png)
+
+A change names the node it adds, changes or removes, and a node's state follows from the changes that built it.
+
+### Milestones: toward what
+
+![Milestones: the ones in flight nearest to done first, each with its progress, its count of changes done and the next one; the done folded beneath](assets/milestones.png)
+
+A milestone is a goal whose plan is the changes filed under it. Its progress is their done count.
+
+### The roadmap: in what order
+
+![The roadmap: done by the day and in flight on the left, what is in order and what comes later on the right](assets/roadmap.png)
+
+Drag a column to reorder; dependencies and dates are checked against the order and never move it.
+
+## The record
 
 ### A change with its plan
 
@@ -34,18 +93,6 @@ Where it came from in your words, what it is for, what done means, and the steps
 ![A proposed decision: the question, the options with the recommended one marked and its why, Accept with a line in your words](assets/decision.png)
 
 The agent lays out the options and recommends one. You accept, in your words, and the session working the change is told.
-
-### The product map
-
-![The product map: features, the capabilities beneath them and the open work at the leaves, state as a dot; the product's record beside it](assets/map.png)
-
-What the product is. A change names the node it adds, changes or removes, and a node's state follows from the changes that built it.
-
-### The roadmap
-
-![The roadmap: done by the day and in flight on the left, what is in order and what comes later on the right](assets/roadmap.png)
-
-In what order it comes. Drag a column to reorder; dependencies and dates are checked against the order and never move it.
 
 ### Releases from the record
 
