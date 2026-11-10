@@ -106,6 +106,10 @@ working it.
    conversation moves to another change. Name the change as `change:<slug>` in your reply so the person can too. When
    the work is a change you did not create and the prompt did not name, bind it: `pjman session bind <session-id>
    change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`.
+   Work that belongs to no change (a review, a backlog pass, a planning chat) is still recorded: the session is named
+   with a kind, `pjman session name <session-id> "<name>" --kind review|backlog|chat|other` (a kind the store lacks is
+   created; `pjman ls session-kind` lists them). A PR the person's prompt names does this by itself; name the session
+   yourself as soon as the person's words make the work clear, and it keeps the name if it later binds a change.
    On every prompt the harness hands you the brief: what others changed on your bound change, its milestone, its
    decisions and its dependencies since your last brief, and other live sessions near it. Act on what it says.
 6. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
