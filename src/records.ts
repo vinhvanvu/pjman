@@ -22,7 +22,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   // a release: the version a product shipped, when, from which commit, at what level, and the changes it ships in order
   release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'ships', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
-  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'name', 'kind', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
+  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'name', 'kind', 'host', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
   // a session kind: what a session with no change is doing (review, backlog, chat, other, or one a person made), store-wide
   'session-kind': ['name', 'gist', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   actor: ['kind', 'name', 'url', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
