@@ -13,6 +13,7 @@ import { SLUG_RE } from '../keys.js';
 import { nameProblem } from '../foundation.js';
 import { inferSessionKind, type Inferred } from '../session-kinds.js';
 import { newSessionKind } from './new.js';
+import type { SessionHost } from '../host.js';
 
 function load(store: Store, id: string) {
   const loaded = loadStore(store);
@@ -53,6 +54,9 @@ export interface StartFlags {
   full?: boolean;
   writer?: string;
   session?: string;
+  /** Where the session runs, as the environment the start runs in says (host.ts): written on the record once, at
+   *  the first start that knows it; a start inside no host leaves it as it is. */
+  host?: SessionHost | null;
 }
 
 export interface StartResult {
@@ -102,6 +106,15 @@ export function sessionStart(store: Store, ident: string, flags: StartFlags): St
   if (flags.log?.trim()) {
     body = withLogLine(current(), flags.log);
     events.push({ op: 'log', key, type: 'session', path: rel, fields: ['log'], writer: env.writer });
+  }
+  if (flags.host && !data.host) {
+    const h: Record<string, unknown> = { name: flags.host.name, session: flags.host.session };
+    if (flags.host.block) h.block = flags.host.block;
+    if (flags.host.version) h.version = flags.host.version;
+    if (flags.host.validated !== undefined) h.validated = flags.host.validated;
+    data.host = h;
+    body = withLogLine(current(), `runs in ${flags.host.name}${flags.host.version ? ` ${flags.host.version}` : ''}${flags.host.validated === false ? ' (a version the adapter has not validated)' : ''}`);
+    events.push({ op: 'set', key, type: 'session', path: rel, fields: ['host'], writer: env.writer });
   }
   let bound: string | undefined;
   let observed: string | undefined;

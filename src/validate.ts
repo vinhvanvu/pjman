@@ -559,6 +559,20 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           if (p) err(r, `name: `);
         }
         if (typeof d.kind === 'string') checkRef(r, 'kind', d.kind, ['session-kind']);
+        // host: where the session runs (change:rex-adapter): the host's name and its own ids, the version it ran on and
+        // whether the adapter had validated that version
+        if (d.host !== undefined) {
+          const h = d.host as Record<string, unknown>;
+          if (!h || typeof h !== 'object' || Array.isArray(h)) err(r, `'host' must be a mapping {name, session, block?, version?, validated?}`);
+          else {
+            if (typeof h.name !== 'string' || !h.name.trim()) err(r, `host.name must be the host's name`);
+            if (typeof h.session !== 'string' || !h.session.trim()) err(r, `host.session must be the host's id for the session`);
+            if (h.block !== undefined && typeof h.block !== 'string') err(r, `host.block must be a string`);
+            if (h.version !== undefined && typeof h.version !== 'string') err(r, `host.version must be a string`);
+            if (h.validated !== undefined && typeof h.validated !== 'boolean') err(r, `host.validated must be true or false`);
+            for (const k of Object.keys(h)) if (!['name', 'session', 'block', 'version', 'validated'].includes(k)) warn(r, `host: unknown field '${k}'`);
+          }
+        }
         if (!r.sections.has('Log')) warn(r, `body has no '## Log' section`);
         break;
       }

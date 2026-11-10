@@ -53,21 +53,36 @@ export const shownOf = (pick: string | undefined, focus: string | undefined): st
 /** Viewing: the person holds a pick that is not where the session is. */
 export const viewing = (pick: string | undefined, focus: string | undefined): boolean => !!pick && pick !== focus;
 
-/** The session bar's parts, in order: who for whom; working for how long, or quiet or ended since when; when it last
- *  acted; what waits. The last part is the one that reads in the waits colour when something does. */
+/** Where the session runs, as the bar says it: the host and its version, and a word when the adapter has not validated
+ *  that version; nothing when no host holds it. */
+export function hostWords(host: SessionFacts['host'] | undefined): string {
+  if (!host) return '';
+  return `in ${host.name}${host.version ? ` ${host.version}` : ''}${host.validated === false ? ' (unvalidated)' : ''}`;
+}
+
+/** What the program is blocked on, as the host says it: a question for the person, a permission, a login. */
+export function blockedWords(kind: string | undefined): string {
+  return kind === 'question' ? 'asks you a question' : kind === 'permission' ? 'asks your permission' : kind === 'auth' ? 'needs you to sign in' : 'blocked, needs you';
+}
+
+/** The session bar's parts, in order: who for whom, and where it runs; working for how long, or quiet or ended since
+ *  when; when it last acted; what waits. The last part is the one that reads in the waits colour when something does. */
 export function sessionBar(
-  session: Pick<SessionFacts, 'agent' | 'onBehalfOf' | 'started' | 'last' | 'state'>,
+  session: Pick<SessionFacts, 'agent' | 'onBehalfOf' | 'started' | 'last' | 'state' | 'host'>,
   waits: number,
   now = Date.now(),
 ): { parts: string[]; waits: string; alarm: boolean } {
   const who = [
     session.agent ? short(session.agent) : 'session',
     session.onBehalfOf ? `for ${short(session.onBehalfOf)}` : '',
+    hostWords(session.host),
   ]
     .filter(Boolean)
     .join(' ');
   const parts = [who];
-  if (session.state === 'live')
+  const status = session.host?.status;
+  if (session.state !== 'ended' && status?.state === 'blocked') parts.push(blockedWords(status.kind));
+  else if (session.state === 'live')
     parts.push(session.started ? `working ${durationWords(session.started, now)}` : 'working');
   else if (session.state === 'ended') parts.push(session.last ? `ended ${agoWords(session.last, now)}` : 'ended');
   else parts.push(session.last ? `quiet since ${agoWords(session.last, now)}` : 'quiet');

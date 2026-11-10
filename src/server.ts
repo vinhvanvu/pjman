@@ -22,6 +22,10 @@ import { decide, reopen } from './commands/decision.js';
 import { withStoreLock } from './lock.js';
 import { intake } from './intake.js';
 import { CliError } from './util.js';
+import { HostWatch } from './host-watch.js';
+import { hostHere, hostLaunch, hostOpen } from './commands/host.js';
+import { hostOfRecord, type HostAdapter, type HostId, type HostStatus } from './host.js';
+import { sessionLogOf } from './session-state.js';
 
 /** The kinds a `kinds=` filter may name; anything else is ignored. */
 const ROW_KINDS: ReadonlySet<RowKind> = new Set<RowKind>(['write', 'decision', 'line', 'file', 'switch', 'bind']);
@@ -99,7 +103,7 @@ class HttpError extends Error {
 
 /** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
 /** The routes that write; everything else reads. */
-const WRITES = ['/order', '/decide', '/reopen'];
+const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch'];
 
 /** The API's index, as data (GET /api/v1): one style throughout (change:interface-audit). A collection's member is
  *  named in the path (/records/{kind}/{rest}, /products/{slug}/…, /projects/{slug}/…, /sessions/{id}/…); a view over
@@ -124,6 +128,8 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
   { method: 'POST', path: '/order', body: '{change, before|after|first|last|later}', about: "move a change in its product's order, as pjman order" },
   { method: 'POST', path: '/decide', body: '{decision, option?, words?}', about: 'a proposed decision accepted by the person signed in' },
   { method: 'POST', path: '/reopen', body: '{decision}', about: 'a decided decision back to proposed' },
+  { method: 'POST', path: '/open', body: '{session}', about: "a session's block brought to the front on the host it runs in" },
+  { method: 'POST', path: '/launch', body: '{change}', about: "a session for a change launched on the host this machine runs, the harness in the change's worktree" },
 ];
 
 const CONVENTIONS = {
@@ -131,6 +137,9 @@ const CONVENTIONS = {
   envelope: 'every answer is {seq, data} or {seq, error: {code, message, tried?}}; seq is the stream position, also in X-Pjman-Seq',
   errors: 'not-found 404, ambiguous 409, bad-request 400, method-not-allowed 405, forbidden-host and forbidden-origin 403, unsupported-media-type 415',
 };
+
+/** How long after its last line a hosted session is still followed on its host. */
+const HOST_WATCH_HOURS = 12;
 
 export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const staticDir = opts.staticDir === undefined ? defaultStaticDir() : opts.staticDir;
@@ -152,6 +161,52 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     res.end(text);
   };
   const sendAll = send;
+
+  // the host watch (change:rex-adapter): every session the store holds that runs in a host and has not ended is
+  // followed on its host, and what its program reports is handed to every read as a fact beside the record's own. A
+  // change in what a host says is a frame on the stream (`event: host`), so a page refetches as it does for a write.
+  const streams = new Set<http.ServerResponse>();
+  const watch = new HostWatch({
+    onChange: (key, status) => {
+      const data = JSON.stringify({ op: 'host', type: 'session', key, at: status?.at ?? new Date().toISOString(), state: status?.state, kind: status?.kind });
+      for (const res of streams) res.write(`event: host\ndata: ${data}\n\n`);
+    },
+  });
+  const sweep = () => {
+    const loaded = current();
+    const since = new Date(Date.now() - HOST_WATCH_HOURS * 3_600_000).toISOString();
+    const wanted: { key: string; adapter: HostAdapter; id: HostId }[] = [];
+    for (const rec of ofType(loaded, 'session')) {
+      if (!rec.valid) continue;
+      const h = hostOfRecord(rec.data);
+      if (!h) continue;
+      const { ended, line } = sessionLogOf(rec);
+      if (ended) continue;
+      const started = typeof rec.data.started === 'string' ? rec.data.started : '';
+      if ((line?.at ?? started) < since) continue; // long quiet: let go, the record's own rule reads it
+      wanted.push({ key: rec.key, adapter: h.adapter, id: h.id });
+    }
+    watch.keep(wanted);
+  };
+  let sweepTimer: NodeJS.Timeout | undefined;
+  const sweepSoon = () => {
+    if (sweepTimer) clearTimeout(sweepTimer);
+    sweepTimer = setTimeout(() => {
+      sweepTimer = undefined;
+      try {
+        sweep();
+      } catch {
+        // a store mid-write: the next event sweeps again
+      }
+    }, 500);
+    sweepTimer.unref?.();
+  };
+  const stopSweeping = follow(store, lastSeq(store), () => sweepSoon());
+  sweepSoon();
+  const hostStates = (): ReadonlyMap<string, HostStatus> => watch.states();
+  // the host this machine runs, asked once: a session can be launched on it from the dashboard
+  let hostHereMemo: ReturnType<typeof hostHere> | undefined;
+  const hostOnMachine = () => (hostHereMemo === undefined ? (hostHereMemo = hostHere()) : hostHereMemo);
 
   /** The store as it stands, held between requests and loaded again only once it moved (stampOf): a page that asks
    *  again, or another page, reads what is held and every lookup already built on it (change:dashboard-reads-slow).
@@ -191,6 +246,15 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
         const writer = readUserConfig().actor;
         if (!writer) throw new HttpError(403, 'no-actor', 'no person is signed in: set actor in ~/.pjman/config.yaml');
+        if (route === '/open') {
+          // not a write to the store: the host is asked to bring the session's block to the front (change:rex-adapter)
+          if (!s(body.session)) throw new HttpError(400, 'bad-request', 'session is required');
+          return send(res, 200, { data: hostOpen(store, s(body.session)!) });
+        }
+        if (route === '/launch') {
+          if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
+          return send(res, 200, { data: hostLaunch(store, s(body.change)!) });
+        }
         if (route === '/order') {
           if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
           const r = withStoreLock(store.root, () => order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer }));
@@ -233,6 +297,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const cfg = store.config;
       return send(res, 200, { data: {
         root: store.root, mode: store.mode, name: cfg.name, project: store.project ?? null, actor: readUserConfig().actor ?? null,
+        host: hostOnMachine(),
         source_kinds: cfg.source_kinds, vocabulary: cfg.vocabulary,
         projects: ofType(loaded, 'project').map(row),
         products: ofType(loaded, 'product').map((p) => {
@@ -301,7 +366,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if (route === '/scope') {
       const q = url.searchParams;
       const days = q.get('days');
-      return send(res, 200, { data: scope(store, loaded, { lens: q.get('lens') ?? undefined, node: q.get('key') ?? undefined, days: days ? Number(days) : undefined, done: q.get('done') === '1', retired: q.get('retired') === '1', ...asOf }) });
+      return send(res, 200, { data: scope(store, loaded, { lens: q.get('lens') ?? undefined, node: q.get('key') ?? undefined, days: days ? Number(days) : undefined, done: q.get('done') === '1', retired: q.get('retired') === '1', hostStates: hostStates(), ...asOf }) });
     }
     if (route === '/intake') {
       const text = url.searchParams.get('text');
@@ -319,7 +384,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       // its own code, since a session the store does not hold yet is one the page waits for: the pane is pointed at
       // the page before the record is written (change:session-page-before-record)
       if (resolve(loaded, key).status !== 'ok') throw new HttpError(404, 'no-session', `${key} resolves to nothing`);
-      return send(res, 200, { data: viewData(store, { session: id, ...getOpts }, loaded) });
+      return send(res, 200, { data: viewData(store, { session: id, hostStates: hostStates(), ...getOpts }, loaded) });
     }
     if ((m = /^\/projects\/([a-z0-9][a-z0-9-]*)\/board$/.exec(route))) {
       return send(res, 200, { data: storeContext(store, { project: `project:${m[1]}` }, loaded) });
@@ -327,7 +392,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/bridge$/.exec(route))) {
       const days = url.searchParams.get('days');
       const product = `product:${m[1]}`;
-      return send(res, 200, { data: bridge(store, loaded, { product, days: days ? Number(days) : undefined, ...asOf }) });
+      return send(res, 200, { data: bridge(store, loaded, { product, days: days ? Number(days) : undefined, hostStates: hostStates(), ...asOf }) });
     }
     if ((m = /^\/products\/([a-z0-9][a-z0-9-]*)\/timeline$/.exec(route))) {
       // the axis a moment is placed on: always as of now, whatever at= says
@@ -347,9 +412,11 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         res.write(`retry: 2000\n\n`);
         const stop = follow(store, sinceParam ? since : lastSeq(store), (e) => res.write(`id: ${e.seq}\nevent: ${e.op}\ndata: ${JSON.stringify(e)}\n\n`));
         const beat = setInterval(() => res.write(': keep-alive\n\n'), 15000);
+        streams.add(res);
         req.on('close', () => {
           stop();
           clearInterval(beat);
+          streams.delete(res);
         });
         return;
       }
@@ -376,7 +443,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     fs.createReadStream(file).pipe(res);
   };
 
-  return http.createServer((req, res) => {
+  const server = http.createServer((req, res) => {
     try {
       // who may call (decision local-server-cross-origin/who-may-call): the request names this server by one of its own
       // names, and a page that sends an Origin was loaded from one; no CORS header is ever sent, so another site's page
@@ -400,6 +467,12 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       fail(res, e);
     }
   });
+  server.on('close', () => {
+    stopSweeping();
+    if (sweepTimer) clearTimeout(sweepTimer);
+    watch.close();
+  });
+  return server;
 }
 
 /** Listen; when registering, write the address file and remove it on exit. Resolves with the address and whether it registered. */

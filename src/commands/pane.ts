@@ -2,7 +2,8 @@ import type { Store } from '../config.js';
 import { eventsBySession, follow, lastSeq, readEvents } from '../events.js';
 import { get, type GetOpts, type Neighbourhood } from '../graph.js';
 import { loadStore, resolve, type Loaded, type Rec } from '../records.js';
-import { lastActs, LIVE_MINUTES, sessionLogOf, sessionState } from '../session-state.js';
+import { hostFactsOf, lastActs, LIVE_MINUTES, sessionLogOf, sessionState, type SessionHostFacts } from '../session-state.js';
+import type { HostStatus } from '../host.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
 import { CliError, notFound } from '../util.js';
@@ -16,6 +17,8 @@ export interface ViewOpts extends GetOpts {
   ref?: string;
   /** A session to follow: its last bound change, else the project's board. */
   session?: string;
+  /** What each hosted session's program reports, by session key, as the server follows it (host-watch.ts). */
+  hostStates?: ReadonlyMap<string, HostStatus>;
 }
 
 export interface View {
@@ -56,6 +59,8 @@ export interface SessionFacts {
   /** The sources it read on its own, with no change bound (decision unbound-sessions/sources): the branch, the PR,
    *  the tickets, oldest first, each with the title and URL the store has for it. */
   sources: SessionSource[];
+  /** Where it runs, when a host holds it: the host's name and version, and whether the adapter validated that version. */
+  host?: SessionHostFacts;
 }
 
 export interface SessionSource {
@@ -95,9 +100,12 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   for (const e of eventsBySession(events).get(rec.key) ?? []) if (!last || e.at > last) last = e.at;
   const ended = log.length > 0 && log[log.length - 1].text.startsWith('session ended');
   const liveSince = new Date(now - LIVE_MINUTES * 60_000).toISOString();
-  const state = ended ? 'ended' : last && last >= liveSince ? 'live' : 'quiet';
   const read = sessionLogOf(rec);
-  const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false }, now) === 'working';
+  const host = opts.hostStates?.get(rec.key);
+  // live by the stream's window, or by the host's word that its program is up (working, or blocked on the person)
+  const up = host?.state === 'working' || host?.state === 'blocked';
+  const state = ended ? 'ended' : up || (last && last >= liveSince) ? 'live' : 'quiet';
+  const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false, host }, now) === 'working';
   const kindRec = live(loaded, rec.data.kind);
   const kind = kindRec ? { key: kindRec.key, slug: kindRec.key.slice('session-kind:'.length), name: str(kindRec.data.name), gist: str(kindRec.data.gist) } : undefined;
   const sources: SessionSource[] = ownSources(rec).map((s) => {
@@ -105,7 +113,7 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
     const src = r.status === 'ok' || r.status === 'alias' ? r.rec : undefined;
     return { key: s.to, at: s.at, title: str(src?.data.title), url: urlOf(s.to, src?.data.url) };
   });
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last, name: str(rec.data.name), kind, sources };
+  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last, name: str(rec.data.name), kind, sources, host: hostFactsOf(rec.data, host) };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };

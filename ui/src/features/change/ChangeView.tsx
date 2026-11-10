@@ -10,7 +10,8 @@
 import { cn } from 'cn';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import type { ChangeContext, Lens, RailSession, Scope } from '@/data/contract';
-import { useDecideAction, useRail, useScope, useStore } from '@/data/queries';
+import { useDecideAction, useLaunch, useRail, useScope, useStore } from '@/data/queries';
+import { useAt } from '@/state/moment';
 import { ActivityRail } from '@/features/rail/ActivityRail';
 import type { RunSession } from '@/features/rail/model';
 import { sessionTitle } from '@/features/session/model';
@@ -51,6 +52,8 @@ export function ChangeView({
   const decide = useDecideAction('decide');
   const reopen = useDecideAction('reopen');
   const { data: store } = useStore();
+  const launch = useLaunch();
+  const at = useAt(); // a page held at a past moment launches nothing: the past is read
   const head = useRail(c.key, LAST_QUERY).data;
   const last = head?.last?.at;
   const waits = ctx.decisions.filter((d) => d.status === 'proposed').length;
@@ -96,7 +99,13 @@ export function ChangeView({
         milestone ? (
           <MilestoneBar figures={{ ...figures, moved: figures.moved ?? last }} />
         ) : (
-          <ChangeBar sessions={touched} live={scope.sessions} last={last} waits={waits} />
+          <ChangeBar
+            sessions={touched}
+            live={scope.sessions}
+            last={last}
+            waits={waits}
+            launch={store?.host && !at && c.data.status !== 'done' && c.data.status !== 'dropped' ? { host: store.host.name, run: () => launch.mutate({ change: c.key }), busy: launch.isPending } : undefined}
+          />
         )
       }
       milestoneSlot={

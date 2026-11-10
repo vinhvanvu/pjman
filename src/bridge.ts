@@ -10,8 +10,9 @@ import { eventsSince, readEvents } from './events.js';
 import { productOf } from './commands/order.js';
 import { memo, ofType, push, type Loaded, type Rec } from './records.js';
 import { proposedDecisions, type WaitingDecision } from './scope.js';
-import { lastActs, sessionLogOf, sessionState, type SessionState } from './session-state.js';
-export { sessionState, type SessionState, type StateFacts } from './session-state.js';
+import { hostFactsOf, lastActs, sessionLogOf, sessionState, type SessionHostFacts, type SessionState } from './session-state.js';
+import type { HostStatus } from './host.js';
+export { sessionState, type SessionHostFacts, type SessionState, type StateFacts } from './session-state.js';
 import { effectsOf, live, rootProductOf, structuralParent } from './tree.js';
 import { lineOf, nextStep, stepsOf, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
@@ -39,6 +40,9 @@ export interface BridgeSession {
   line?: { at: string; text: string };
   /** Ended: when it wrote its closing line, and the reason the line gives. */
   ended?: { at: string; reason: string };
+  /** Where it runs, when a host holds it (change:rex-adapter): the host's name and version, and whether the adapter
+   *  validated that version. */
+  host?: SessionHostFacts;
   /** The session it was spawned by, when it is a subagent's: such a session is carried under its parent, never as a
    *  row of its own. */
   parent?: string;
@@ -91,6 +95,8 @@ export interface Bridge {
 export interface BridgeOpts {
   /** The product whose sessions are listed; every product when absent. */
   product?: string;
+  /** What each hosted session's program reports, by session key, as the server follows it (host-watch.ts). */
+  hostStates?: ReadonlyMap<string, HostStatus>;
   /** How far back a session's last act may be, in days. */
   days?: number;
   now?: number;
@@ -204,7 +210,8 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     const product = on ? productOf(loaded, on) : project ? rootProductOf(loaded, project) : undefined;
     if (productKey && product?.key !== productKey) continue;
     const proposed = on ? (proposedOn.get(on.key) ?? []) : [];
-    const state = sessionState({ ended: !!ended, line: line?.at, act, proposed: proposed.length > 0 }, now);
+    const host = opts.hostStates?.get(rec.key);
+    const state = sessionState({ ended: !!ended, line: line?.at, act, proposed: proposed.length > 0, host }, now);
     rows.push({
       key: rec.key,
       agent: str(rec.data.agent),
@@ -214,6 +221,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
       state,
       line,
       ended,
+      host: hostFactsOf(rec.data, host),
       parent: str(rec.data.parent),
       children: [],
       change: on ? asChange(on) : undefined,

@@ -41,6 +41,8 @@ import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, row, show, storeContext } from './commands/view.js';
 import { describeMigration, formatMismatch, migrate, pendingMigration } from './commands/migrate.js';
 import { TOOL_VERSION } from './version.js';
+import { sessionHost } from './host.js';
+import { hostHere, hostLabel, hostLaunch, hostOpen, hostSend, hostStatus } from './commands/host.js';
 import { formatIdentity, identity } from './identity.js';
 import { fieldKind, shortenText, typedRef } from './keys.js';
 
@@ -283,7 +285,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const [, sub, id, ...rest] = pos;
       if (sub === 'start') {
         if (!id) throw usageError('usage: pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]');
-        const r = sessionStart(store, id, { agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, log: v.log, branch: v.branch, full: !!v.full, writer: v.writer, session: v.session });
+        // the host is read from this process's own environment: the hook runs inside the terminal the session runs in
+        const r = sessionStart(store, id, { agent: v.agent, onBehalfOf: v['on-behalf-of'], parent: v.parent, log: v.log, branch: v.branch, full: !!v.full, writer: v.writer, session: v.session, host: v['no-host'] ? null : sessionHost(process.env) });
         // the brief's text is what the agent reads, named as the context names records; the rest keeps full keys
         if (v.json) json({ ...r, brief: r.brief ? { ...r.brief, text: shortenText(r.brief.text, scopeProduct) } : null });
         else out(`${r.created ? 'created' : 'started'} ${r.key}${r.bound ? `, bound ${r.bound} (branch)` : ''}${r.brief ? `; ${formatBriefSize(r.brief)}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
@@ -643,6 +646,51 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       out(`dashboard: ${s.address.url}${s.started ? '' : ' (already running)'}${s.ui ? '' : ' (API only: no built app)'}`);
       if (v.open) openPage(s.address.url);
       return 0;
+    }
+    case 'host': {
+      // the host of a session asked for something (change:rex-adapter); with no verb, the host this machine runs
+      const [, sub, id, ...rest] = pos;
+      if (!sub) {
+        const here = hostHere();
+        if (v.json) json(here);
+        else out(here ? `${here.name} ${here.version ?? '(version unknown)'}: ${here.validated === null ? 'version unknown' : here.validated ? 'validated' : `not validated (the adapter validated ${here.range})`}; interface ${here.interface}` : 'no host: no terminal multiplexer the tool knows answers on this machine');
+        return 0;
+      }
+      const store = scoped(requireStore(cwd, v.store));
+      const sid = id || process.env.PJMAN_SESSION;
+      if (!sid) throw usageError(sub === 'launch' ? 'usage: pjman host launch <change>' : `usage: pjman host ${sub} <session-id> …  (or PJMAN_SESSION set)`);
+      if (sub === 'label') {
+        const r = hostLabel(store, sid, { clear: !!v.clear });
+        if (v.json) json(r);
+        else out(r.ok ? `${r.host.name}: ${r.text ? `labelled "${r.text}"` : 'label cleared'}` : `${r.host.name} did not take the label`);
+        return r.ok ? 0 : 1;
+      }
+      if (sub === 'send') {
+        if (!rest.length) throw usageError('usage: pjman host send <session-id> <text>');
+        const r = hostSend(store, sid, rest.join(' '));
+        if (v.json) json(r);
+        else out(r.ok ? `${r.host.name}: sent` : `${r.host.name} did not take the text`);
+        return r.ok ? 0 : 1;
+      }
+      if (sub === 'open') {
+        const r = hostOpen(store, sid);
+        if (v.json) json(r);
+        else out(r.ok ? `${r.host.name}: opened` : `${r.host.name} did not open it`);
+        return r.ok ? 0 : 1;
+      }
+      if (sub === 'launch') {
+        const r = hostLaunch(store, sid);
+        if (v.json) json(r);
+        else out(`${r.host}: session ${r.id.session} launched for ${r.change} in ${r.cwd} (${r.command.join(' ')})`);
+        return 0;
+      }
+      if (sub === 'status') {
+        const r = hostStatus(store, sid);
+        if (v.json) json(r);
+        else out(r.status ? `${r.host.name}: ${r.status.state}${r.status.kind ? ` (${r.status.kind})` : ''}${r.status.title ? ` — ${r.status.title}` : ''}` : `${r.host.name}: no program status`);
+        return 0;
+      }
+      throw usageError('usage: pjman host [label [--clear] | send <text> | open | status] <session-id> · pjman host launch <change>');
     }
     case 'open': {
       const session = v.session || process.env.PJMAN_SESSION || undefined;

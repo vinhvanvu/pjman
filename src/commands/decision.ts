@@ -16,6 +16,7 @@ import { envelope, finishWrite, fullKeys, render, snapshot, validateOrUndo, writ
 import { dayOf, decisionState, foundationHash, foundationOf, gistProblem, nameProblem, threadOf, type DecisionState, type Entry } from '../foundation.js';
 import { decisionHome } from './new.js';
 import { acrossCueOfDecision, aspectKeysOf, ASPECT_CUE_HINT, coveredByAspect } from '../aspects.js';
+import { deliverDecision, type Delivery } from './host.js';
 
 /** An entry as the command takes it, before the tool stamps it. */
 export type EntryInput = Omit<Entry, 'at'> & { at?: string };
@@ -39,6 +40,9 @@ export interface DecisionResult {
   created: boolean;
   /** The entries appended, by type. */
   appended: string[];
+  /** An acceptance delivered into the sessions working the change through their hosts (change:rex-adapter): each
+   *  session, its host, and whether the host took it. */
+  delivered?: Delivery[];
   status: string;
   state: DecisionState;
   commit: string | null;
@@ -269,7 +273,16 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     const phrase = acrossCueOfDecision(data);
     if (phrase && !(change && aspectKeysOf(loaded, change).length) && !(existing && coveredByAspect(loaded, existing))) notes.push(`it says "${phrase}": ${ASPECT_CUE_HINT}`);
   }
-  return { key, path: rel, created: !existing, appended, status: String(data.status), state, commit, notes };
+  // an acceptance reaches the sessions working the change: through the host for the agents without a waking
+  // adapter (decision rex-adapter/delivery-through-the-host); the others hear it from their harness's wake module
+  let delivered: Delivery[] | undefined;
+  if (appended.includes('accept') && data.status === 'decided') {
+    const accept = opts.entries.find((e) => e.type === 'accept');
+    const after = loadStore(store);
+    delivered = deliverDecision(after, key, accept?.option ?? state.recommendation?.option ?? '', accept?.text, accept?.by ?? env.writer ?? 'the person');
+    for (const d of delivered) notes.push(d.ok ? `delivered to ${d.session} through ${d.host}` : `${d.host} did not take the delivery to ${d.session}`);
+  }
+  return { key, path: rel, created: !existing, appended, status: String(data.status), state, commit, notes, ...(delivered?.length ? { delivered } : {}) };
 }
 
 /** A proposed decision accepted by the person from the dashboard or `pjman decide`: the recommended option, else the

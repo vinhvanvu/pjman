@@ -18,6 +18,7 @@ export type { OrderResult } from '@contract/commands/order';
 export type { SetResult } from '@contract/commands/set';
 export type { ChangeContext, Row } from '@contract/commands/view';
 export type { SessionFacts } from '@contract/commands/pane';
+export type { HostResult, LaunchResult } from '@contract/commands/host';
 export type { StoreEvent } from '@contract/events';
 export type { Moment } from '@contract/moment';
 export type { Timeline, TimelineEvent } from '@contract/timeline';
@@ -57,6 +58,8 @@ export interface StoreInfo {
   vocabulary: Record<string, string>;
   projects: Row[];
   products: ProductRow[];
+  /** The host the server's machine runs (a terminal multiplexer), on which a session can be launched; null when none. */
+  host: { name: string; version: string | null; validated: boolean | null } | null;
 }
 
 /** A product as the store lists it: its short name and one line of health, for the switcher. */

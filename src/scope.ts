@@ -13,7 +13,8 @@ import { CliError, localDate, notFound } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
 import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
-import { lastActs, sessionLogOf, sessionState, type SessionState } from './session-state.js';
+import { hostFactsOf, lastActs, sessionLogOf, sessionState, type SessionHostFacts, type SessionState } from './session-state.js';
+import type { HostStatus } from './host.js';
 
 /** The roadmap lens draws the feature tree too: its rows are the features; its columns come from the sequence. */
 export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
@@ -138,6 +139,8 @@ export interface LiveSession {
   /** The change it was last bound to. */
   on?: string;
   lastLine?: string;
+  /** Where it runs, when a host holds it, with the host's word on what it is doing when the server has it. */
+  host?: SessionHostFacts;
   /** Its state by the rule the bridge reads a session by: working while its last act reached the stream inside the
    *  window and was not a stop line; waiting when it stopped and a decision is proposed on its change; stopped
    *  otherwise; ended once its closing line was written inside the window. */
@@ -223,6 +226,8 @@ export interface ScopeOpts {
   now?: number;
   /** Read as of this event: the stream is cut after it. */
   until?: number;
+  /** What each hosted session's program reports, by session key, as the server follows it (host-watch.ts). */
+  hostStates?: ReadonlyMap<string, HostStatus>;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
@@ -659,8 +664,9 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       const on = bound[bound.length - 1];
       const log = (s.sections.get('Log') ?? '').split('\n').filter((l) => l.trim());
       const { ended, line } = sessionLogOf(s);
-      const state = sessionState({ ended: !!ended, line: line?.at, act: ix.acts.get(s.key), proposed: !!on && (ix.waiting.get(on) ?? 0) > 0 }, ix.now);
-      return { key: s.key, agent: str(s.data.agent), onBehalfOf: str(s.data.on_behalf_of), started: str(s.data.started), last: ix.liveSessions.get(s.key)!, on, lastLine: log.length ? log[log.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined, state };
+      const host = opts.hostStates?.get(s.key);
+      const state = sessionState({ ended: !!ended, line: line?.at, act: ix.acts.get(s.key), proposed: !!on && (ix.waiting.get(on) ?? 0) > 0, host }, ix.now);
+      return { key: s.key, agent: str(s.data.agent), onBehalfOf: str(s.data.on_behalf_of), started: str(s.data.started), last: ix.liveSessions.get(s.key)!, on, lastLine: log.length ? log[log.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined, state, host: hostFactsOf(s.data, host) };
     })
     .filter((s) => !node || (s.on && nodeKeys.has(s.on)))
     .sort((a, b) => b.last.localeCompare(a.last));
