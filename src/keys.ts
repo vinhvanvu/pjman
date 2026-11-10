@@ -6,6 +6,7 @@
 //   decision:<product>/<change>/<slug>  decision:<product>/<slug> (product level)  decision:/<slug> (store level)
 //   aspect:<product>/<slug>             aspect:<product>/<aspect>/<place> (a place the aspect applies)
 //   release:<product>/<version>         a version the product shipped (decision releases-homebrew/release-is-a-record)
+//   session-kind:<slug>                 a kind a session with no change is given (decision unbound-sessions/kinds): store-wide
 //
 // Inside a product the slug alone names a record (`feature:<slug>`, `change:<slug>`, `decision:<change>/<slug>`,
 // `aspect:<slug>`, `aspect:<aspect>/<place>`, `release:<version>`):
@@ -13,7 +14,7 @@
 import { createHash } from 'node:crypto';
 
 /** Kinds whose keys name records inside the store. Every other kind is a source kind. */
-export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature', 'aspect', 'release']);
+export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'session-kind', 'project', 'product', 'feature', 'aspect', 'release']);
 /** Kinds keyed beneath a product. */
 export const SCOPED_KINDS = new Set(['feature', 'change', 'decision', 'aspect', 'release']);
 

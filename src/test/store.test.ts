@@ -61,7 +61,7 @@ test('init creates the global store, its own repository, and registers the repos
   assert.ok(loadStore(store).byKey.has('project:project'));
   writeStoreConfig(store.root, { ...store.config, vocabulary: { merged: 'done' } });
   store = findStore(project)!;
-  assert.match(git(store.root, 'log', '--format=%s'), /pjman: new project:project\npjman: new product:project\npjman: new person:tester\npjman: init store global$/);
+  assert.match(git(store.root, 'log', '--format=%s'), /pjman: new project:project\npjman: new product:project\npjman: new person:tester\npjman: new session-kind:other\npjman: new session-kind:chat\npjman: new session-kind:backlog\npjman: new session-kind:review\npjman: init store global$/);
   assert.ok(fs.existsSync(path.join(store.root, '.gitignore')));
   assert.deepEqual(init({ checkers: [], cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
 });

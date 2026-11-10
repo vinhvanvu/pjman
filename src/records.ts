@@ -6,7 +6,7 @@ import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecis
 import { ambiguous, CliError, notFound } from './util.js';
 import { indexedEntries, type Entry, type Head, type HeadField } from './store-index.js';
 
-export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'release' | 'source' | 'session' | 'actor';
+export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'release' | 'source' | 'session' | 'session-kind' | 'actor';
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
@@ -22,7 +22,9 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   // a release: the version a product shipped, when, from which commit, at what level, and the changes it ships in order
   release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'ships', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
-  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
+  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'name', 'kind', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
+  // a session kind: what a session with no change is doing (review, backlog, chat, other, or one a person made), store-wide
+  'session-kind': ['name', 'gist', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   actor: ['kind', 'name', 'url', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
 };
 
@@ -37,6 +39,7 @@ export const LAYER_OF: Record<RecordType, string> = {
   release: 'work',
   source: 'sources',
   session: 'core',
+  'session-kind': 'core',
   actor: 'core',
 };
 
@@ -206,7 +209,7 @@ export function isLegacyLayout(root: string | Source): boolean {
   return src.list('products').some((n) => n.endsWith('.md'));
 }
 
-const STORE_FILES = ['products', 'projects', 'decisions', 'sources', 'sessions', 'actors', 'pjman.yaml', 'index.db', 'events.jsonl', 'README.md'];
+const STORE_FILES = ['products', 'projects', 'decisions', 'sources', 'sessions', 'session-kinds', 'actors', 'pjman.yaml', 'index.db', 'events.jsonl', 'README.md'];
 
 export function loadStore(store: Store, src: Source = indexedSource(store)): Loaded {
   const records: Rec[] = [];
@@ -428,6 +431,19 @@ export function loadStore(store: Store, src: Source = indexedSource(store)): Loa
     r.handle = handle;
     const k = headField(r, 'kind');
     if (k === 'person' || k === 'agent') r.key = `${k}:${handle}`;
+    records.push(r);
+  }
+
+  // session-kinds/<slug>.md: the kinds a session with no change may be given
+  for (const f of listDir(path.join(root, 'session-kinds'))) {
+    const rel = path.join('session-kinds', f);
+    if (!f.endsWith('.md')) {
+      unexpected(rel);
+      continue;
+    }
+    const slug = f.slice(0, -3);
+    const r = readRec(src, store, rel, 'session-kind', `session-kind:${slug}`);
+    r.fileSlug = slug;
     records.push(r);
   }
 
@@ -677,7 +693,7 @@ function resolveOnce(loaded: Loaded, raw: unknown, scope: string | null | undefi
     if (hits.length > 1) return { status: 'ambiguous', key, candidates: hits.map((x) => x.key) };
     return { status: 'missing', key };
   }
-  if (key.kind === 'product') return viaAlias(key.raw) ?? { status: 'missing', key };
+  if (key.kind === 'product' || key.kind === 'session-kind') return viaAlias(key.raw) ?? { status: 'missing', key };
   if (key.kind === 'session' || key.kind === 'project') return { status: 'missing', key };
   if (key.kind === 'person' || key.kind === 'agent') return viaAlias(key.raw) ?? { status: 'actor-key', key };
   if (key.kind === 'url') {

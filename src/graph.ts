@@ -120,6 +120,7 @@ function edgesOnce(loaded: Loaded): Edge[] {
       case 'session':
         if (typeof d.parent === 'string') edge('parent', r.key, d.parent, r);
         for (const k of list(d.changes)) edge('changes', r.key, live(k), r);
+        if (typeof d.kind === 'string') edge('kind', r.key, live(d.kind), r);
         if (Array.isArray(d.observed)) {
           for (const o of d.observed) {
             if (!o || typeof o !== 'object') continue;
@@ -128,6 +129,9 @@ function edgesOnce(loaded: Loaded): Edge[] {
             out.push({ edge: e.edge, from: live(e.from), to: canon(e.to), on: r.path, observed: true, at: typeof e.at === 'string' ? e.at : null });
           }
         }
+        break;
+      case 'session-kind':
+        for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'actor':
         break;

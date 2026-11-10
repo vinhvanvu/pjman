@@ -18,6 +18,7 @@ const REQUIRED: Record<RecordType, string[]> = {
   release: ['version', 'tag', 'at'],
   source: ['kind', 'key'],
   session: ['agent', 'on_behalf_of', 'started'],
+  'session-kind': ['name'],
   actor: ['kind'],
 };
 
@@ -31,7 +32,8 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   decision: ['name', 'gist', 'status', 'decided_by', 'decided_on', 'rungs_from', 'migrated', 'writer', 'session', 'created'], // supersedes: a key or a list, checked below
   release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'writer', 'session', 'created'],
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
-  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'writer', 'created'],
+  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'name', 'kind', 'writer', 'created'],
+  'session-kind': ['name', 'gist', 'writer', 'session', 'created'],
   actor: ['kind', 'name', 'url', 'writer', 'session', 'created'],
 };
 
@@ -46,6 +48,7 @@ const LIST_FIELDS: Record<RecordType, string[]> = {
   release: ['ships', 'links'],
   source: ['links'],
   session: ['changes'],
+  'session-kind': ['links', 'aliases'],
   actor: ['links', 'aliases'],
 };
 
@@ -66,7 +69,7 @@ const KNOWN_SECTIONS: Partial<Record<RecordType, readonly string[]>> = {
 /** Edge name → [from kinds, to kinds]. 'source' stands for any source kind. */
 export const EDGES: Record<string, [string[], string[]]> = {
   binds: [['change'], ['source']],
-  links: [['product', 'feature', 'aspect', 'project', 'change', 'decision', 'source', 'actor'], ['source']],
+  links: [['product', 'feature', 'aspect', 'project', 'change', 'decision', 'source', 'actor', 'session'], ['source']], // a session: a source it read with no change bound (decision unbound-sessions/sources)
   supersedes: [['decision'], ['decision']],
   parent: [['session', 'change', 'feature', 'aspect', 'project'], ['session', 'change', 'feature', 'aspect', 'project']],
   depends_on: [['change'], ['change']],
@@ -80,6 +83,7 @@ export const EDGES: Record<string, [string[], string[]]> = {
   adds: [['change'], ['feature']],
   removes: [['change'], ['feature']],
   ships: [['release'], ['change']],
+  kind: [['session'], ['session-kind']],
 };
 
 /** A slug alias, or `<product>/<slug>` for a key the record had in another product. */
@@ -120,7 +124,7 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
       err(r, `${field}: '${String(raw)}' is not a key (kind:rest)`);
       return;
     }
-    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session', 'project', 'product', 'feature', 'aspect'].includes(key.kind);
+    const isRecordKind = ['person', 'agent', 'change', 'decision', 'session', 'session-kind', 'project', 'product', 'feature', 'aspect', 'release'].includes(key.kind);
     const cls = isRecordKind ? (isActorKey(key) ? 'actor' : key.kind) : 'source';
     if (cls === 'source' && !sourceKinds.has(key.kind)) {
       err(r, `${field}: '${key.raw}' has unknown kind '${key.kind}' (not a record kind; not in source_kinds)`);
@@ -549,7 +553,30 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           if (f === 'briefed' && (typeof m.seq !== 'number' || !Number.isInteger(m.seq) || m.seq < 0)) err(r, `briefed.seq must be a whole number`);
           for (const k of Object.keys(m)) if (!['change', 'at', 'seq'].includes(k) || (f === 'focus' && k === 'seq')) warn(r, `${f}: unknown field '${k}'`);
         }
+        // a session with no change may carry a name and a kind (decision unbound-sessions/kinds): the kind is a record
+        if (typeof d.name === 'string') {
+          const p = nameProblem(d.name);
+          if (p) err(r, `name: `);
+        }
+        if (typeof d.kind === 'string') checkRef(r, 'kind', d.kind, ['session-kind']);
         if (!r.sections.has('Log')) warn(r, `body has no '## Log' section`);
+        break;
+      }
+      case 'session-kind': {
+        if (r.fileSlug && !SLUG_RE.test(r.fileSlug)) err(r, `file name '' is not a slug`);
+        if (typeof d.name === 'string') {
+          const p = nameProblem(d.name);
+          if (p) err(r, `name: `);
+        }
+        if (typeof d.gist === 'string') {
+          const p = gistProblem(d.gist);
+          if (p) err(r, `gist: `);
+        }
+        for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        for (const a of listOf(d.aliases)) {
+          if (!SLUG_RE.test(a)) err(r, `aliases: '' is not a slug`);
+          else if (loaded.byKey.has(`session-kind:`)) err(r, `aliases: '' is also a live kind`);
+        }
         break;
       }
       case 'actor': {

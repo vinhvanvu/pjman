@@ -8,6 +8,7 @@ import { loadStore } from '../records.js';
 import { personOf } from '../refs.js';
 import { CliError, notFound } from '../util.js';
 import { newActor, newProduct, newProject } from './new.js';
+import { seedSessionKinds } from '../session-kinds.js';
 import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
 import { FORMAT_VERSION } from './migrate.js';
@@ -64,7 +65,7 @@ export function installClaudeAdapter(): string {
   }
 }
 
-const FOLDERS = ['products', 'projects', 'decisions', 'sources', 'sessions', 'actors'];
+const FOLDERS = ['products', 'projects', 'decisions', 'sources', 'sessions', 'session-kinds', 'actors'];
 
 /** A yes/no question on the terminal; the default when stdin is not a terminal or the answer is empty. */
 export function askYesNo(question: string, dflt: boolean): boolean {
@@ -177,6 +178,7 @@ export function init(opts: InitOpts): string[] {
       const inv = inventory(project);
       newProject(own, slug, { title, product: `product:${slug}`, writer: actor, map: opts.map === false ? 'skip' : 'propose', holds: inv.holds });
       out.push(`registered project:${slug} under product:${slug}`);
+      seedSessionKinds(own, { writer: actor });
       out.push(`the repository holds ${describeInventory(inv)}`);
       if (opts.map !== false) out.push(mapGuidance(inv.holds));
     }
@@ -207,6 +209,9 @@ export function init(opts: InitOpts): string[] {
     if (!slug) throw new CliError(`'${title}' does not make a project slug; pass --name`);
     const key = `project:${slug}`;
     const store = openStore(root);
+    // the kinds a session with no change may be given come with the store (decision unbound-sessions/kinds)
+    const seeded = seedSessionKinds(store, { writer: actor });
+    if (seeded.length) out.push(`created ${seeded.join(', ')}`);
     let loaded = loadStore(store);
     // the person: a record keyed by their handle, holding the accounts the sources will be matched through
     if (actor && !loaded.byKey.has(actor)) {

@@ -50,6 +50,9 @@ export interface BridgeSession {
   decision?: WaitingDecision;
   /** Its change is in review: an ended session whose work waits for a look. */
   inReview: boolean;
+  /** A session with no change, named (decision unbound-sessions/naming): its name and its kind's slug. */
+  name?: string;
+  kind?: string;
 }
 
 /** A change in motion: touched inside the window and not finished, with what a card says about it. */
@@ -216,6 +219,8 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
       change: on ? asChange(on) : undefined,
       decision: state === 'waiting' ? proposed[0] : undefined,
       inReview: on?.data.status === 'review',
+      name: str(rec.data.name),
+      kind: live(loaded, rec.data.kind)?.key.slice('session-kind:'.length),
     });
   }
   // a subagent's session is carried under its parent; one spawned by a session outside the window or the product is

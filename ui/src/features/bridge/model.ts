@@ -129,9 +129,15 @@ export function ticksOf(
   return out;
 }
 
-/** The sessions on no change that are not over: counted in one folded line, since nothing on the grid carries them. */
+/** The sessions on no change that are not over and have no name: counted in one folded line, since nothing on the
+ *  grid carries them and a fresh session binds soon. */
 export const unbound = (sessions: readonly BridgeSession[]): BridgeSession[] =>
-  sessions.filter((s) => !s.change && s.state !== 'ended');
+  sessions.filter((s) => !s.change && s.state !== 'ended' && !s.name);
+
+/** The sessions on no change that were named (a review, a backlog pass, a chat; change:unbound-sessions): each has a
+ *  row of its own, titled with its name, the ended ones too, since the work was real. */
+export const namedUnbound = (sessions: readonly BridgeSession[]): BridgeSession[] =>
+  sessions.filter((s) => !s.change && !!s.name);
 
 /** The last of the live arrivals that touched a change: a write to it, to a decision on it, or by a session on it. */
 export function lastArrival(

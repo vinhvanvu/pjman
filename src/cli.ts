@@ -20,7 +20,7 @@ import { syncLinear } from './sync/linear.js';
 import { syncGithub } from './sync/github.js';
 import { init } from './commands/init.js';
 import { newRecord, type NewFlags } from './commands/new.js';
-import { sessionBind, sessionFocus, type BindReason, sessionLog, sessionObserve, sessionStart, sessionUnbind, sessionProject } from './commands/session.js';
+import { sessionBind, sessionFocus, type BindReason, sessionLog, sessionObserve, sessionStart, sessionUnbind, sessionProject, sessionName } from './commands/session.js';
 import { brief, followWakes, formatBriefSize, type Wake } from './hydrate.js';
 import { note } from './commands/note.js';
 import { envelope } from './write.js';
@@ -187,7 +187,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'new': {
       const store = scoped(requireStore(cwd, v.store));
       const [, type, ident] = pos;
-      if (!type || !ident) throw usageError('usage: pjman new <product|feature|aspect|place|project|change|decision|release|source|actor|session> <ident> [flags]');
+      if (!type || !ident) throw usageError('usage: pjman new <product|feature|aspect|place|project|change|decision|release|source|actor|session|session-kind> <ident> [flags]');
       const flags: NewFlags = {
         title: v.title, status: v.status, project: v.project, tracker: v.tracker, summary: v.summary,
         gist: v.gist, origin: v.origin, intent: v.intent, doneWhen: v['done-when'], scope: v.scope, openQuestions: v['open-questions'], blockedOn: v['blocked-on'], notes: v.notes,
@@ -314,7 +314,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (!id || !rest[0]) throw usageError('usage: pjman session project <id> <project>');
         const r = sessionProject(store, id, rest[0]);
         out(r.moved ? `resolved ${r.path} to ${r.project}${r.commit ? ` (committed ${r.commit})` : ''}` : `${r.path} is already ${r.project}'s`);
-      } else throw usageError('usage: pjman session start|log|bind|unbind|observe|focus|project <id> … (pjman help session)');
+      } else if (sub === 'name') {
+        if (!id) throw usageError('usage: pjman session name <id> ["<name>"] [--kind <kind>]   (what is not given is inferred from the session\'s own record)');
+        const r = sessionName(store, id, { name: rest.length ? rest.join(' ') : undefined, kind: v.kind, writer: v.writer, session: v.session });
+        if (v.json) json(r);
+        else out(`${r.commit ? 'named' : 'already named'} ${r.path}: "${r.name}" (${r.kind})${r.inferred ? `, read from ${r.inferred}` : ''}${r.createdKind ? `; created ${r.kind}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`);
+      } else throw usageError('usage: pjman session start|log|bind|unbind|observe|focus|project|name <id> … (pjman help session)');
       return 0;
     }
     case 'note': {
@@ -580,6 +585,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (r.kind === 'stamp') out(`stamped: the store is in format ${r.version}${undo}`);
         else if (r.kind === 'foundation') out(`migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.decisions ?? 0, 'decision')} mapped into the foundation (introduced in ${r.since}), each marked migrated until it is next written${undo}`);
         else if (r.kind === 'kinds') out(`migrated: ${plural(r.changes ?? 0, 'parent change')} now a milestone by kind (introduced in ${r.since}); steps one carried are in its Notes, since a milestone's plan is its children${undo}`);
+        else if (r.kind === 'session-kinds') out(`migrated: ${plural(r.rewritten, 'session kind')} created (introduced in ${r.since}): what a session with no change may be given, each its own record${r.commit ? ` (at ${r.commit})` : ''}`);
         else out(`migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product (introduced in ${r.since})${undo}`);
         const next = pendingMigration(store);
         if (next) out(`the store still waits for ${describeMigration(next)}: run pjman migrate again`);

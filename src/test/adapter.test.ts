@@ -90,6 +90,29 @@ test('a prompt naming several changes binds none and says so; the turn shows the
   assert.equal(at({ prompt: 'carry on' }), '');
 });
 
+test('a prompt naming a PR that leads to no change observes it on the session itself and names the session review; a later bind keeps the name', () => {
+  hook('SessionStart', { session_id: 'sess-r', source: 'startup' });
+  assert.equal(hook('UserPromptSubmit', { session_id: 'sess-r', prompt: 'review https://github.com/acme/app/pull/5 please' }), '');
+  const rec = loadStore(store).byKey.get('session:sess-r')![0];
+  assert.equal(rec.data.changes, undefined);
+  assert.deepEqual((rec.data.observed as { from: string; to: string }[]).map((o) => [o.from, o.to]), [['session:sess-r', 'github-pr:acme/app#5']]);
+  assert.equal(rec.data.name, 'Review of acme/app#5');
+  assert.equal(rec.data.kind, 'session-kind:review');
+  assert.match(rec.body, /named "Review of acme\/app#5" \(review\), read from github-pr:acme\/app#5/);
+  // the same PR again writes nothing more; a prompt that names nothing leaves it as it is
+  const before = fs.readFileSync(rec.abs, 'utf8');
+  hook('UserPromptSubmit', { session_id: 'sess-r', prompt: 'the same https://github.com/acme/app/pull/5' });
+  hook('UserPromptSubmit', { session_id: 'sess-r', prompt: 'looks fine' });
+  assert.equal(fs.readFileSync(rec.abs, 'utf8'), before);
+  // bound later, the session keeps its name and its own edge; the branch it stands on is observed on the change from here
+  hook('UserPromptSubmit', { session_id: 'sess-r', prompt: 'now change:eight-week-test' });
+  const bound = loadStore(store).byKey.get('session:sess-r')![0];
+  assert.deepEqual(bound.data.changes, ['change:project/eight-week-test']);
+  assert.equal(bound.data.name, 'Review of acme/app#5');
+  assert.equal((bound.data.observed as unknown[]).length, 1);
+  assert.equal(validate(loadStore(store)).filter((p) => p.level === 'error').length, 0);
+});
+
 test('a file write records an observed edge; a store write does not; a turn that acted gets a log line', () => {
   hook('PostToolUse', { tool_name: 'Bash', tool_input: { command: 'cat README.md && npm test' } });
   hook('Stop', { last_assistant_message: 'Read only.' });

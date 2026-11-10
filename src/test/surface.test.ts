@@ -82,7 +82,7 @@ test('the error contract: usage exits 2, not found 1 with what was tried, and --
   assert.equal(r.code, 2);
   assert.match(r.err, /--status bogus is not a status of a change \(open, planning/);
   assert.match(pj(['ls', 'change', '--kind', 'nope']).err, /--kind nope is not a kind of change \(work, bug, milestone\)/);
-  assert.match(pj(['ls', 'step']).err, /unknown entity 'step' \(product, feature, aspect, place, project, change, decision, release, source, session, actor\)/);
+  assert.match(pj(['ls', 'step']).err, /unknown entity 'step' \(product, feature, aspect, place, project, change, decision, release, source, session, session-kind, actor\)/);
   r = pj([]);
   assert.equal(r.code, 2);
   assert.match(r.out, /^pjman — /);

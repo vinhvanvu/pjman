@@ -13,7 +13,9 @@
 //                     ahead of the board
 //   UserPromptSubmit  a prompt naming one change, a ticket or a URL binds the change it leads to (pjman refs); one naming several binds none and
 //                     the agent is told the candidates; a ticket of the project's tracker with no record is read from the tracker and created
-//                     through the sync (gh for GitHub), or the agent is told to; then the brief (pjman brief --session): the bound change's
+//                     through the sync (gh for GitHub), or the agent is told to; a source it names that leads to no change (a PR, a branch)
+//                     is observed on the session itself while nothing is bound, and the session is then named from its own record
+//                     (pjman session name: a PR reads review); then the brief (pjman brief --session): the bound change's
 //                     context in full when the binding moved, else what changed on it since the last brief
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write in the project records an
 //                     observed `links` edge from the bound change and marks the turn as having written code; a shell call that writes a
@@ -216,7 +218,6 @@ function taken(st, key) {
   return key;
 }
 function observeWork(st, sid, cwd, env) {
-  if (!st.bound) return;
   const branch = currentBranch(cwd);
   // a pull request is asked of the forge only off the default branch: the call reaches the network
   const prUrl = branch && store_sourceKinds().includes('github-pr') ? sh('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd) : null;
@@ -234,13 +235,29 @@ function workKeys(branch, prUrl) {
   if (m) keys.push(`github-pr:${m[1]}#${m[2]}`);
   return keys;
 }
+/** The edges observed: from the bound change, or, while nothing is bound, from the session itself (decision
+ *  unbound-sessions/sources), so a review or a backlog pass is found from the PR or the ticket it read. Returns how
+ *  many were new. */
 function observeKeys(st, sid, cwd, env, keys) {
-  if (!st.bound) return;
+  const from = st.bound ?? `session:${sid}`;
+  let added = 0;
   for (const key of keys) {
-    const edge = `${st.bound}|${key}`;
+    const edge = `${from}|${key}`;
     if (st.observed.includes(edge)) continue;
-    if (tryPjman(['session', 'observe', sid, 'links', st.bound, key], { cwd, env }) !== null) st.observed.push(edge);
+    if (tryPjman(['session', 'observe', sid, 'links', from, key], { cwd, env }) !== null) {
+      st.observed.push(edge);
+      added += 1;
+    }
   }
+  return added;
+}
+/** A session with no change, once a source was observed on it, is named from its own record (pjman session name infers
+ *  the kind and the name; decision unbound-sessions/naming): the hook adds no rule of its own. Nothing to infer from
+ *  leaves it unnamed, and the agent names it when the person's words make the work clear. */
+function nameUnbound(st, sid, cwd, env) {
+  if (st.bound || st.named) return;
+  const r = tryPjman(['session', 'name', sid, '--json'], { cwd, env, json: true });
+  if (r) st.named = r.kind;
 }
 let _sourceKinds = null;
 const store_sourceKinds = () => _sourceKinds ?? [];
@@ -602,19 +619,21 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
  *  told to read and sync it. A pattern match alone never creates a record. */
 function promptChange(prompt, { cwd, env }) {
   const refs = tryPjman(['refs', '-', '--json'], { cwd, json: true, input: prompt }) ?? [];
+  // the sources the prompt names that lead to no change (a PR, a branch, a URL): what a session with no change reads
+  const sources = [...new Set(refs.filter((r) => !r.weak && !r.change && !r.creatable && typeof r.key === 'string' && !r.key.startsWith('file:')).map((r) => r.key))];
   // a prompt naming several changes is about none of them for certain: nothing binds, the agent is told the candidates
   const named = [...new Set(refs.filter((r) => !r.weak && r.change).map((r) => r.change))];
-  if (named.length > 1) return { hint: `This prompt names several changes (${named.join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.` };
+  if (named.length > 1) return { hint: `This prompt names several changes (${named.join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.`, sources };
   for (const r of refs.reverse()) {
     if (r.weak) continue; // a bare #1: as often a list item as an issue
-    if (r.change) return { key: r.change };
+    if (r.change) return { key: r.change, sources };
     if (!r.creatable) continue;
     const created = createFromTracker(r, { cwd, env });
-    if (created) return { key: created };
+    if (created) return { key: created, sources };
     const sync = r.key.startsWith('github-issue:') ? 'github' : r.key.slice(0, r.key.indexOf(':'));
-    return { hint: `${r.text} is ${r.key}; the store has no record of it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound when you name it).` };
+    return { hint: `${r.text} is ${r.key}; the store has no record of it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound when you name it).`, sources };
   }
-  return null;
+  return sources.length ? { sources } : null;
 }
 
 /** GitHub issues: gh is at hand, so the hook reads the issue and the sync creates the change. */
@@ -775,6 +794,9 @@ async function main() {
           if (!input.agent_id) await followView(sid, cwd); // the first subject: a pane parked by a clear follows now
         }
       }
+      // a prompt that binds nothing but names a source (a PR to review, a branch): the session reads it, recorded on the
+      // session itself, and is named from what it read (change:unbound-sessions)
+      if (!st.bound && found?.sources?.length && observeKeys(st, sid, cwd, env, found.sources) > 0) nameUnbound(st, sid, cwd, env);
       // the brief: in full when the binding moved, else what changed since the last one; nothing when nothing did
       const b = briefFor(st, sid, cwd, env);
       if (b) parts.push(b);

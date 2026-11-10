@@ -187,6 +187,24 @@ function mvActor(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, o
   return finish(store, loaded, from, to, 'actor', newRel, rewritten, pathAfter, opts, ['aliases']);
 }
 
+/** A session kind: the file moves, every session carrying it follows, the old slug stays as an alias. */
+function mvSessionKind(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
+  const rec = source(loaded, fromRaw, 'session-kind');
+  if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before renaming`);
+  const toSlug = toRaw.slice('session-kind:'.length);
+  if (!SLUG_RE.test(toSlug)) throw new CliError(`'${toSlug}' is not a slug`);
+  const from = rec.key;
+  const to = `session-kind:${toSlug}`;
+  if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
+  if (loaded.aliases.has(to)) throw new CliError(`'${toSlug}' is a former name of ${loaded.aliases.get(to)!.join(', ')}`);
+  const newRel = path.join('session-kinds', `${toSlug}.md`);
+  move(store, rec.path, newRel);
+  const pathAfter = (rel: string) => (rel === rec.path ? newRel : rel);
+  const rewrite = (text: string) => rewriteKey(text, from, to);
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) => (r === rec ? withAlias(r, rec.fileSlug!, rewrite) : rewrite(text)));
+  return finish(store, loaded, from, to, 'session-kind', newRel, rewritten, pathAfter, opts, ['aliases']);
+}
+
 function mvDecision(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
   const rec = source(loaded, fromRaw, 'decision');
   const t = parseDecisionRest(toRaw.slice('decision:'.length));
@@ -265,7 +283,8 @@ export function mv(store: Store, fromRaw: string, toRaw: string, opts: { session
     case 'aspect': return mvAspect(store, loaded, from.raw, to.raw, opts);
     case 'person':
     case 'agent': return mvActor(store, loaded, from.raw, to.raw, opts);
-    default: throw new CliError('mv renames products, features, aspects and places, changes, decisions, projects, people and agents; sources and sessions keep their keys (they are external), a release its version (a fact)');
+    case 'session-kind': return mvSessionKind(store, loaded, from.raw, to.raw, opts);
+    default: throw new CliError('mv renames products, features, aspects and places, changes, decisions, projects, people, agents and session kinds; sources and sessions keep their keys (they are external), a release its version (a fact)');
   }
 }
 

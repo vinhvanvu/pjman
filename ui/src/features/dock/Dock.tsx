@@ -19,6 +19,7 @@ import { Pulse } from '@/components/presence/Presence';
 import { livenessWords } from '@/features/session-follow';
 import { ActivityRail } from '@/features/rail/ActivityRail';
 import { SessionTree, useSessionSearch } from '@/features/session';
+import { SessionSources } from '@/features/session/SessionSources';
 import { pickups, readiness, type Pickup } from './model';
 
 export function Dock({
@@ -91,7 +92,9 @@ function Moved({ arrival }: { arrival?: number }) {
 }
 
 /** The dock before the session binds a change: a pickup list, what this session could take up (decision
- *  fresh-dock-readiness): open changes by the feature they name, in the roadmap's order, the nearest to fully decided first. */
+ *  fresh-dock-readiness): open changes by the feature they name, in the roadmap's order, the nearest to fully decided first.
+ *  A session named on no change (change:unbound-sessions: a review, a backlog pass, a chat) shows its own work instead:
+ *  its name and kind, the sources it read, and its lines; the pickup list stays for a session with no name yet. */
 function DockFresh({
   scope,
   session,
@@ -106,12 +109,13 @@ function DockFresh({
   const groups = pickups(scope);
   const open = groups.reduce((n, g) => n + g.changes.length, 0);
   const product = scope.node?.name ?? scope.node?.title ?? (scope.node ? short(scope.node.key) : 'the store');
+  const named = !!session?.name;
   return (
     <article className="flex flex-col gap-5 p-4">
       <header className="relative flex flex-col gap-1.5">
         <Moved arrival={moved} />
         <div className="flex flex-wrap items-center gap-2">
-          <Label>session · {product}</Label>
+          <Label>session · {named && session?.kind ? (session.kind.name ?? session.kind.slug) : product}</Label>
           {session?.started && (
             <>
               <span className="text-ink-faint">·</span>
@@ -119,43 +123,55 @@ function DockFresh({
             </>
           )}
         </div>
-        <h1 className="text-section font-semibold tracking-tight">No change yet</h1>
+        <h1 className="text-section font-semibold tracking-tight">{named ? session?.name : 'No change yet'}</h1>
         <p className="text-xs text-ink-muted">
-          The dock moves to the change the moment this session binds one: name it in a prompt, or start on its branch.
+          {named
+            ? `${session?.kind?.gist ?? 'Work on no change.'} The dock moves to a change the moment this session binds one.`
+            : 'The dock moves to the change the moment this session binds one: name it in a prompt, or start on its branch.'}
         </p>
       </header>
 
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center gap-2">
-          <Label>Pick up</Label>
-          <span className="text-meta text-ink-faint">
-            {plural(open, 'open change')} · in roadmap order, the nearest to decided first
-          </span>
-        </div>
-        {groups.length === 0 ? (
-          <div className="text-xs text-ink-faint">Nothing open across {product}.</div>
-        ) : (
-          groups.map((g) => (
-            <section key={g.key ?? ''} className="flex flex-col gap-1.5">
-              {g.key ? (
-                <NodeLink to={g.key} lens={lens} className="text-xs font-medium text-ink-muted hover:text-primary">
-                  {g.name}
-                </NodeLink>
-              ) : (
-                <span className="text-xs font-medium text-ink-faint">{g.name}</span>
-              )}
-              <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
-                {g.changes.map((p) => (
-                  <PickupRow key={p.row.key} pickup={p} lens={lens} />
-                ))}
-              </ul>
-            </section>
-          ))
-        )}
-      </section>
+      {named && session && <SessionSources sources={session.sources} lens={lens} />}
+
+      {!named && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <Label>Pick up</Label>
+            <span className="text-meta text-ink-faint">
+              {plural(open, 'open change')} · in roadmap order, the nearest to decided first
+            </span>
+          </div>
+          {groups.length === 0 ? (
+            <div className="text-xs text-ink-faint">Nothing open across {product}.</div>
+          ) : (
+            groups.map((g) => (
+              <section key={g.key ?? ''} className="flex flex-col gap-1.5">
+                {g.key ? (
+                  <NodeLink to={g.key} lens={lens} className="text-xs font-medium text-ink-muted hover:text-primary">
+                    {g.name}
+                  </NodeLink>
+                ) : (
+                  <span className="text-xs font-medium text-ink-faint">{g.name}</span>
+                )}
+                <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
+                  {g.changes.map((p) => (
+                    <PickupRow key={p.row.key} pickup={p} lens={lens} />
+                  ))}
+                </ul>
+              </section>
+            ))
+          )}
+        </section>
+      )}
 
       {session && (
-        <ActivityRail scope={session.key} lens={lens} limit={8} label="Live" note={<Liveness session={session} />} />
+        <ActivityRail
+          scope={session.key}
+          lens={lens}
+          limit={named ? 20 : 8}
+          label="Live"
+          note={<Liveness session={session} />}
+        />
       )}
     </article>
   );

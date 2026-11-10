@@ -6,6 +6,7 @@ import {
   groupsOf,
   lastArrival,
   motionOf,
+  namedUnbound,
   pillWords,
   sessionChanges,
   stepWords,
@@ -224,5 +225,12 @@ describe('the tie to the transport', () => {
 
   it('counts the sessions on no change that are not over', () => {
     expect(unbound([...sessions, s('gone', { state: 'ended' })]).map((x) => x.key)).toEqual(['session:free']);
+  });
+
+  it('a session named on no change has a row of its own, ended or not, and leaves the folded count', () => {
+    const named = s('review', { name: 'Round the tax up', kind: 'review' });
+    const over = s('past', { name: 'Sorting the week', kind: 'backlog', state: 'ended' });
+    expect(namedUnbound([...sessions, named, over]).map((x) => x.key)).toEqual(['session:review', 'session:past']);
+    expect(unbound([...sessions, named, over]).map((x) => x.key)).toEqual(['session:free']);
   });
 });

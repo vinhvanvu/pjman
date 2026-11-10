@@ -20,12 +20,13 @@ import { CHANGE_SECTIONS, foundationHash, foundationOf, stepsOf, unmigrated } fr
 import { sections as parseSections } from '../frontmatter.js';
 import { compareVersions, UNSTAMPED_VERSION } from '../version.js';
 import { noteReshaping } from '../store-index.js';
+import { missingSessionKinds, seedSessionKinds } from '../session-kinds.js';
 
 /** A move the store's format has made, with the pjman version that introduced it. In order: the first whose check says
  *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
  *  since they predate the stamp and a store from then carries no version; a move from here on checks the stamp
  *  (`compareVersions(storeVersion(store), since) < 0`). */
-export type MigrationName = 'layout' | 'foundation' | 'kinds';
+export type MigrationName = 'layout' | 'foundation' | 'kinds' | 'session-kinds';
 
 export interface Migration {
   name: MigrationName;
@@ -56,7 +57,21 @@ export const MIGRATIONS: readonly Migration[] = [
     run: (store, opts) => migrateKinds(store, opts),
     about: 'every change named as a parent a milestone by its kind',
   },
+  {
+    name: 'session-kinds', since: '0.4.0',
+    pending: (store) => compareVersions(storeVersion(store), '0.4.0') < 0 && missingSessionKinds(loadStore(store)).length > 0,
+    run: (store, opts) => migrateSessionKinds(store, opts),
+    about: 'the kinds a session with no change may be given (review, backlog, chat, other) as records',
+  },
 ];
+
+/** The session kinds (decision unbound-sessions/kinds): the four defaults the store lacks are created, one write each. */
+export function migrateSessionKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  if (store.mode === 'standalone' && git(store.root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  const created = seedSessionKinds(store, opts);
+  const commit = store.mode === 'standalone' ? git(store.root, ['rev-parse', '--short', 'HEAD']) : null;
+  return { kind: 'session-kinds', since: '0.4.0', products: 0, moved: 0, rewritten: created.length, commit };
+}
 
 /** The format this pjman writes: the version of the latest move it knows. A store stamped higher was written by a newer
  *  pjman; one stamped lower, or not at all, waits for `pjman migrate`. */
@@ -98,7 +113,7 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
   noteReshaping(store);
   const pending = pendingMigration(store);
   if (!pending) {
-    throw new CliError(`nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, and the store is in format ${storeVersion(store)}`);
+    throw new CliError(`nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, the session kinds are records, and the store is in format ${storeVersion(store)}`);
   }
   if (pending === 'stamp') return stamp(store, opts);
   return MIGRATIONS.find((m) => m.name === pending)!.run(store, opts);
