@@ -9,7 +9,7 @@ A change, a decision, a feature, a session and a release are records in one git 
 ## Install
 
 ```bash
-npm install -g pjman        # or: brew install vinhvanvu/pjman/pjman
+npm install -g @vinhvanvu/pjman   # or: brew install vinhvanvu/pjman/pjman
 cd <your-repo> && pjman init
 ```
 
