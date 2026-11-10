@@ -104,6 +104,12 @@ export function useOpenHost() {
   return useMutation({ mutationFn: (body: { session: string }) => api.openHost(body) });
 }
 
+/** A session for a change launched on the host (change:rex-adapter): the record comes with the harness's start, as
+ *  an event the stream carries, so nothing is refetched here. */
+export function useLaunch() {
+  return useMutation({ mutationFn: (body: { change: string }) => api.launch(body) });
+}
+
 export type { DecideAction, DecideOpts } from './contract';
 
 /** The write a decision's Accept or Reopen calls, or nothing on a page held at a past moment: the past is read, never

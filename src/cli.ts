@@ -42,7 +42,7 @@ import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, r
 import { describeMigration, formatMismatch, migrate, pendingMigration } from './commands/migrate.js';
 import { TOOL_VERSION } from './version.js';
 import { sessionHost } from './host.js';
-import { hostHere, hostLabel, hostOpen, hostSend, hostStatus } from './commands/host.js';
+import { hostHere, hostLabel, hostLaunch, hostOpen, hostSend, hostStatus } from './commands/host.js';
 import { formatIdentity, identity } from './identity.js';
 import { fieldKind, shortenText, typedRef } from './keys.js';
 
@@ -652,7 +652,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       }
       const store = scoped(requireStore(cwd, v.store));
       const sid = id || process.env.PJMAN_SESSION;
-      if (!sid) throw usageError(`usage: pjman host ${sub} <session-id> …  (or PJMAN_SESSION set)`);
+      if (!sid) throw usageError(sub === 'launch' ? 'usage: pjman host launch <change>' : `usage: pjman host ${sub} <session-id> …  (or PJMAN_SESSION set)`);
       if (sub === 'label') {
         const r = hostLabel(store, sid, { clear: !!v.clear });
         if (v.json) json(r);
@@ -672,13 +672,19 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         else out(r.ok ? `${r.host.name}: opened` : `${r.host.name} did not open it`);
         return r.ok ? 0 : 1;
       }
+      if (sub === 'launch') {
+        const r = hostLaunch(store, sid);
+        if (v.json) json(r);
+        else out(`${r.host}: session ${r.id.session} launched for ${r.change} in ${r.cwd} (${r.command.join(' ')})`);
+        return 0;
+      }
       if (sub === 'status') {
         const r = hostStatus(store, sid);
         if (v.json) json(r);
         else out(r.status ? `${r.host.name}: ${r.status.state}${r.status.kind ? ` (${r.status.kind})` : ''}${r.status.title ? ` — ${r.status.title}` : ''}` : `${r.host.name}: no program status`);
         return 0;
       }
-      throw usageError('usage: pjman host [label [--clear] | send <text> | open | status] <session-id>');
+      throw usageError('usage: pjman host [label [--clear] | send <text> | open | status] <session-id> · pjman host launch <change>');
     }
     case 'open': {
       const session = v.session || process.env.PJMAN_SESSION || undefined;

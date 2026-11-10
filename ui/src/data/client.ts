@@ -15,6 +15,7 @@ import type {
   SessionView,
   SetResult,
   HostResult,
+  LaunchResult,
   StoreInfo,
   Timeline,
 } from './contract';
@@ -132,5 +133,7 @@ export const api = {
   decide: (body: DecideBody) => post<SetResult>('/decide', body),
   /** A session's block brought to the front on its host (change:rex-adapter). */
   openHost: (body: { session: string }) => post<HostResult>('/open', body),
+  /** A session for a change launched on the host the server's machine runs (change:rex-adapter). */
+  launch: (body: { change: string }) => post<LaunchResult>('/launch', body),
   reopen: (body: DecideBody) => post<SetResult>('/reopen', body),
 };

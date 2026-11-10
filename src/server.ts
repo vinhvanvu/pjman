@@ -23,7 +23,7 @@ import { withStoreLock } from './lock.js';
 import { intake } from './intake.js';
 import { CliError } from './util.js';
 import { HostWatch } from './host-watch.js';
-import { hostOpen } from './commands/host.js';
+import { hostHere, hostLaunch, hostOpen } from './commands/host.js';
 import { hostOfRecord, type HostAdapter, type HostId, type HostStatus } from './host.js';
 import { sessionLogOf } from './session-state.js';
 
@@ -103,7 +103,7 @@ class HttpError extends Error {
 
 /** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
 /** The routes that write; everything else reads. */
-const WRITES = ['/order', '/decide', '/reopen', '/open'];
+const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch'];
 
 /** The API's index, as data (GET /api/v1): one style throughout (change:interface-audit). A collection's member is
  *  named in the path (/records/{kind}/{rest}, /products/{slug}/…, /projects/{slug}/…, /sessions/{id}/…); a view over
@@ -129,6 +129,7 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
   { method: 'POST', path: '/decide', body: '{decision, option?, words?}', about: 'a proposed decision accepted by the person signed in' },
   { method: 'POST', path: '/reopen', body: '{decision}', about: 'a decided decision back to proposed' },
   { method: 'POST', path: '/open', body: '{session}', about: "a session's block brought to the front on the host it runs in" },
+  { method: 'POST', path: '/launch', body: '{change}', about: "a session for a change launched on the host this machine runs, the harness in the change's worktree" },
 ];
 
 const CONVENTIONS = {
@@ -203,6 +204,9 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const stopSweeping = follow(store, lastSeq(store), () => sweepSoon());
   sweepSoon();
   const hostStates = (): ReadonlyMap<string, HostStatus> => watch.states();
+  // the host this machine runs, asked once: a session can be launched on it from the dashboard
+  let hostHereMemo: ReturnType<typeof hostHere> | undefined;
+  const hostOnMachine = () => (hostHereMemo === undefined ? (hostHereMemo = hostHere()) : hostHereMemo);
 
   /** The store as it stands, held between requests and loaded again only once it moved (stampOf): a page that asks
    *  again, or another page, reads what is held and every lookup already built on it (change:dashboard-reads-slow).
@@ -247,6 +251,10 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           if (!s(body.session)) throw new HttpError(400, 'bad-request', 'session is required');
           return send(res, 200, { data: hostOpen(store, s(body.session)!) });
         }
+        if (route === '/launch') {
+          if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
+          return send(res, 200, { data: hostLaunch(store, s(body.change)!) });
+        }
         if (route === '/order') {
           if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
           const r = withStoreLock(store.root, () => order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer }));
@@ -289,6 +297,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       const cfg = store.config;
       return send(res, 200, { data: {
         root: store.root, mode: store.mode, name: cfg.name, project: store.project ?? null, actor: readUserConfig().actor ?? null,
+        host: hostOnMachine(),
         source_kinds: cfg.source_kinds, vocabulary: cfg.vocabulary,
         projects: ofType(loaded, 'project').map(row),
         products: ofType(loaded, 'product').map((p) => {

@@ -119,6 +119,8 @@ case "$1 $2" in
   "version --json") echo '{"version":"0.3.1"}';;
   "block call") echo '[{"state":"blocked","kind":"question","app":"claude-code"}]';;
   "focus -s") echo "focused $*" >> '${tmp}/rex-focus';;
+  "new login") echo "launched $*" >> '${tmp}/rex-new'; echo '{"session_id":"session:new9"}';;
+  "block ls") echo '[{"block_id":"block:b9"}]';;
   "events -s") echo '{"type":"session_event","payload":{"session_id":"session:s1","event":{"type":"block_event","payload":{"block_id":"block:b1","creator_name":"com.superlogical.terminal","name":"program_status_changed","payload":{"record":{"state":"blocked","kind":"question"}}}}}}'; sleep 5;;
   *) exit 1;;
 esac
@@ -203,4 +205,17 @@ test('POST /open asks the host to bring the session\'s block to the front; a ses
   assert.equal(no.status, 400);
   assert.match(((await no.json()) as { error: { message: string } }).error.message, /runs in no host/);
   assert.equal((await post({})).status, 400);
+});
+
+test('POST /launch opens a session for a change on the host this machine runs; the store says which host that is', async () => {
+  const info = (await (await fetch(`${base}/store`)).json()) as { data: { host: { name: string; version: string | null; validated: boolean | null } | null } };
+  assert.deepEqual(info.data.host, { name: 'rex', version: '0.3.1', validated: true, interface: 1, range: '>=0.1 <1' });
+  const res = await fetch(`${base}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ change: 'change:login' }) });
+  assert.equal(res.status, 200);
+  const r = (await res.json()) as { data: { host: string; id: { session: string; block?: string }; command: string[] } };
+  assert.equal(r.data.host, 'rex');
+  assert.deepEqual(r.data.id, { session: 'session:new9', block: 'block:b9' });
+  assert.deepEqual(r.data.command, ['claude', '--worktree', 'login']);
+  assert.match(fs.readFileSync(path.join(tmp, 'rex-new'), 'utf8'), new RegExp(`launched new login -c ${store.projectDir} --json -- claude --worktree login`));
+  assert.equal((await fetch(`${base}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) })).status, 400);
 });

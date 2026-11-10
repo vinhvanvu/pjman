@@ -3,7 +3,9 @@
 // front; with no verb, the host this machine runs, its version and whether the adapter validated it.
 import type { Store } from '../config.js';
 import { nextStep, stepsOf } from '../foundation.js';
-import { hostOfRecord, hostPresent, inRange, type HostStatus, type SessionHost } from '../host.js';
+import { hostOfRecord, hostPresent, inRange, type HostId, type HostStatus, type SessionHost } from '../host.js';
+import { worktreeNameFor } from '../branch.js';
+import { resolve } from '../records.js';
 import { changeOfDecision } from '../bridge.js';
 import { findSession, loadStore, type Loaded, type Rec } from '../records.js';
 import { proposedDecisions } from '../scope.js';
@@ -84,6 +86,40 @@ export function hostOpen(store: Store, ident: string): HostResult {
 export function hostStatus(store: Store, ident: string): { session: string; host: SessionHost; status: HostStatus | null } {
   const { rec, adapter, id, host } = hosted(store, ident);
   return { session: rec.key, host, status: adapter.status(id) };
+}
+
+/** The command a launched session runs: the harness opened in the change's worktree, as the pjman skill has it
+ *  (`claude --worktree <slug>`). The harness adapter owns this line; a second harness adds its own here. */
+export function launchCommand(changeKey: string): string[] {
+  return ['claude', '--worktree', worktreeNameFor(changeKey)];
+}
+
+export interface LaunchResult {
+  change: string;
+  host: string;
+  /** The host's ids for the new session; the session record comes once the harness's start hook runs. */
+  id: HostId;
+  cwd: string;
+  command: string[];
+}
+
+/** A session for a change, launched on the host this machine runs: in the project's directory, the harness opened in
+ *  the change's worktree, the session named for the change. */
+export function hostLaunch(store: Store, changeRef: string, env: NodeJS.ProcessEnv = process.env): LaunchResult {
+  const here = hostPresent(env);
+  if (!here) throw new CliError('no host: no terminal multiplexer the tool knows answers on this machine');
+  const loaded = loadStore(store);
+  const raw = changeRef.includes(':') ? changeRef : `change:${changeRef}`;
+  const res = resolve(loaded, raw);
+  if (res.status !== 'ok' && res.status !== 'alias') throw notFound(raw, { as: 'change' });
+  const c = res.rec;
+  if (c.type !== 'change') throw new CliError(`${c.key} is a ${c.type}, not a change`);
+  if (c.data.status === 'done' || c.data.status === 'dropped') throw new CliError(`${c.key} is ${String(c.data.status)}; a session is launched for open work`);
+  const cwd = store.projectDir ?? process.cwd();
+  const command = launchCommand(c.key);
+  const id = here.adapter.launch({ cwd, name: worktreeNameFor(c.key), command }, env);
+  if (!id) throw new CliError(`${here.adapter.manifest.environment} did not open a session`);
+  return { change: c.key, host: here.adapter.manifest.environment, id, cwd, command };
 }
 
 /** The host this machine runs: the first whose command answers, its version, and whether the adapter validated it. */

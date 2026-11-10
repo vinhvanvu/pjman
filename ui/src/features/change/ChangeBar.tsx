@@ -13,6 +13,7 @@ export function ChangeBar({
   live,
   last,
   waits,
+  launch,
 }: {
   /** The sessions that touched the change, each with its first event on it. */
   sessions: readonly { key: string; first?: string }[];
@@ -21,6 +22,8 @@ export function ChangeBar({
   /** The change's last event, from its rail. */
   last?: string;
   waits: number;
+  /** A session launched for the change on the host the server's machine runs (change:rex-adapter), when one is. */
+  launch?: { host: string; run: () => void; busy: boolean };
 }) {
   const bar = changeBar({ sessions, live, last, waits });
   return (
@@ -36,6 +39,17 @@ export function ChangeBar({
         <span className="font-normal text-ink-faint">· </span>
         {bar.waits}
       </span>
+      {launch && (
+        <button
+          type="button"
+          onClick={launch.run}
+          disabled={launch.busy}
+          className="ml-auto h-[22px] shrink-0 rounded-row border border-line px-2 text-xs font-semibold text-ink hover:bg-raised disabled:opacity-60"
+          aria-label={`Start a session for this change in ${launch.host}`}
+        >
+          New session in {launch.host}
+        </button>
+      )}
     </div>
   );
 }

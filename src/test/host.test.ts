@@ -240,5 +240,10 @@ test('the label: the change and where the work stands, written onto the block th
   assert.equal(run('host', 'open', 'in-rex'), 'rex: opened');
   assert.equal(run('host', 'status', 'in-rex'), 'rex: blocked (question) — Q');
   assert.equal(run('host'), 'rex 0.3.1: validated; interface 1');
+  // a session launched for the change: the harness in its worktree, from the project's directory, named for it
+  fs.writeFileSync(calls, '');
+  assert.match(run('host', 'launch', 'rex-adapter'), /^rex: session session:new1 launched for change:.*rex-adapter in .* \(claude --worktree rex-adapter\)$/);
+  assert.deepEqual(seen(), ['rex version --json', `rex new rex-adapter -c ${store.projectDir} --json -- claude --worktree rex-adapter`, 'rex block ls -s session:new1 --json']); // the host present is told by its version first
+  assert.throws(() => run('host', 'launch', 'no-such-change'), /no-such-change/);
   assert.throws(() => run('host', 'label', 'outside'), /runs in no host the tool knows/);
 });
