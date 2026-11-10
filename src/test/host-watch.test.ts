@@ -118,6 +118,7 @@ before(async () => {
 case "$1 $2" in
   "version --json") echo '{"version":"0.3.1"}';;
   "block call") echo '[{"state":"blocked","kind":"question","app":"claude-code"}]';;
+  "focus -s") echo "focused $*" >> '${tmp}/rex-focus';;
   "events -s") echo '{"type":"session_event","payload":{"session_id":"session:s1","event":{"type":"block_event","payload":{"block_id":"block:b1","creator_name":"com.superlogical.terminal","name":"program_status_changed","payload":{"record":{"state":"blocked","kind":"question"}}}}}}'; sleep 5;;
   *) exit 1;;
 esac
@@ -187,4 +188,19 @@ test('a host frame reaches an open stream when the host speaks', async () => {
   sessionStart(store, 'in-rex-2', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', log: 'session started', host: { name: 'rex', session: 'session:s1', block: 'block:b1' } });
   await until(() => /event: host\ndata: \{[^\n]*"key":"session:in-rex-2"[^\n]*"state":"blocked"/.test(seen));
   ctl.abort();
+});
+
+test('POST /open asks the host to bring the session\'s block to the front; a session in no host is refused', async () => {
+  const post = (body: unknown) => fetch(`${base}/open`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const ok = await post({ session: 'session:in-rex' });
+  assert.equal(ok.status, 200);
+  const r = (await ok.json()) as { data: { did: string; ok: boolean; host: { name: string } } };
+  assert.equal(r.data.did, 'open');
+  assert.equal(r.data.ok, true);
+  assert.equal(r.data.host.name, 'rex');
+  assert.match(fs.readFileSync(path.join(tmp, 'rex-focus'), 'utf8'), /focused focus -s session:s1 block:b1/);
+  const no = await post({ session: 'session:plain' });
+  assert.equal(no.status, 400);
+  assert.match(((await no.json()) as { error: { message: string } }).error.message, /runs in no host/);
+  assert.equal((await post({})).status, 400);
 });

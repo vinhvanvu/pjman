@@ -98,6 +98,12 @@ export function useDecide(kind: 'decide' | 'reopen') {
   });
 }
 
+/** The session's block brought to the front on its host (change:rex-adapter): nothing in the store moves, so nothing
+ *  is refetched. */
+export function useOpenHost() {
+  return useMutation({ mutationFn: (body: { session: string }) => api.openHost(body) });
+}
+
 export type { DecideAction, DecideOpts } from './contract';
 
 /** The write a decision's Accept or Reopen calls, or nothing on a page held at a past moment: the past is read, never

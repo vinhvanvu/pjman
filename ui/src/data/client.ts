@@ -14,6 +14,7 @@ import type {
   ScopeQuery,
   SessionView,
   SetResult,
+  HostResult,
   StoreInfo,
   Timeline,
 } from './contract';
@@ -129,5 +130,7 @@ export const api = {
   /** The writes, as the person signed in: reorder the roadmap; decide a proposed decision, or reopen a decided one. */
   order: (body: OrderBody) => post<OrderResult>('/order', body),
   decide: (body: DecideBody) => post<SetResult>('/decide', body),
+  /** A session's block brought to the front on its host (change:rex-adapter). */
+  openHost: (body: { session: string }) => post<HostResult>('/open', body),
   reopen: (body: DecideBody) => post<SetResult>('/reopen', body),
 };

@@ -22,7 +22,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { m } from 'motion/react';
 import type { Lens, SessionFacts, StoreEvent } from '@/data/contract';
-import { useDecideAction, useRail, useScope, useStore } from '@/data/queries';
+import { useDecideAction, useOpenHost, useRail, useScope, useStore } from '@/data/queries';
 import { Pending } from '@/components/Pending';
 import { Label } from '@/components/chips/Chip';
 import { Pulse } from '@/components/presence/Presence';
@@ -127,7 +127,16 @@ export function SessionTree({
   const focusChip = chips.find((c) => c.isFocus) ?? live.find((c) => c.isFocus);
   const shownChip = chips.find((c) => c.key === shown) ?? live.find((c) => c.key === shown);
 
-  const barRow = <SessionBar live={session.state === 'live'} parts={bar.parts} waits={bar.waits} alarm={bar.alarm} />;
+  const openHost = useOpenHost();
+  const barRow = (
+    <SessionBar
+      live={session.state === 'live'}
+      parts={bar.parts}
+      waits={bar.waits}
+      alarm={bar.alarm}
+      host={session.host && session.state !== 'ended' ? { name: session.host.name, open: () => openHost.mutate({ session: session.key }), busy: openHost.isPending } : undefined}
+    />
+  );
   const header = (
     <>
       {chips.length > 1 && (
@@ -295,7 +304,9 @@ export function SessionTree({
 }
 
 /** The session bar: a separator travels with the word after it, so a wrapped line never ends in a dot. */
-function SessionBar({ live, parts, waits, alarm }: { live: boolean; parts: string[]; waits: string; alarm: boolean }) {
+/** The bar; with a host, the way to the session's block: one button that asks the host to bring it to the front
+ *  (change:rex-adapter). */
+function SessionBar({ live, parts, waits, alarm, host }: { live: boolean; parts: string[]; waits: string; alarm: boolean; host?: { name: string; open: () => void; busy: boolean } }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-ink-muted">
       {live && <Pulse />}
@@ -309,6 +320,17 @@ function SessionBar({ live, parts, waits, alarm }: { live: boolean; parts: strin
         <span className="font-normal text-ink-faint">· </span>
         {waits}
       </span>
+      {host && (
+        <button
+          type="button"
+          onClick={host.open}
+          disabled={host.busy}
+          className="ml-auto h-[22px] shrink-0 rounded-row border border-line px-2 text-xs font-semibold text-ink hover:bg-raised disabled:opacity-60"
+          aria-label={`Open the session's terminal in ${host.name}`}
+        >
+          Open in {host.name}
+        </button>
+      )}
     </div>
   );
 }

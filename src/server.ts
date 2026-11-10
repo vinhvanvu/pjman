@@ -23,6 +23,7 @@ import { withStoreLock } from './lock.js';
 import { intake } from './intake.js';
 import { CliError } from './util.js';
 import { HostWatch } from './host-watch.js';
+import { hostOpen } from './commands/host.js';
 import { hostOfRecord, type HostAdapter, type HostId, type HostStatus } from './host.js';
 import { sessionLogOf } from './session-state.js';
 
@@ -102,7 +103,7 @@ class HttpError extends Error {
 
 /** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
 /** The routes that write; everything else reads. */
-const WRITES = ['/order', '/decide', '/reopen'];
+const WRITES = ['/order', '/decide', '/reopen', '/open'];
 
 /** The API's index, as data (GET /api/v1): one style throughout (change:interface-audit). A collection's member is
  *  named in the path (/records/{kind}/{rest}, /products/{slug}/…, /projects/{slug}/…, /sessions/{id}/…); a view over
@@ -127,6 +128,7 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
   { method: 'POST', path: '/order', body: '{change, before|after|first|last|later}', about: "move a change in its product's order, as pjman order" },
   { method: 'POST', path: '/decide', body: '{decision, option?, words?}', about: 'a proposed decision accepted by the person signed in' },
   { method: 'POST', path: '/reopen', body: '{decision}', about: 'a decided decision back to proposed' },
+  { method: 'POST', path: '/open', body: '{session}', about: "a session's block brought to the front on the host it runs in" },
 ];
 
 const CONVENTIONS = {
@@ -240,6 +242,11 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
         const writer = readUserConfig().actor;
         if (!writer) throw new HttpError(403, 'no-actor', 'no person is signed in: set actor in ~/.pjman/config.yaml');
+        if (route === '/open') {
+          // not a write to the store: the host is asked to bring the session's block to the front (change:rex-adapter)
+          if (!s(body.session)) throw new HttpError(400, 'bad-request', 'session is required');
+          return send(res, 200, { data: hostOpen(store, s(body.session)!) });
+        }
         if (route === '/order') {
           if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
           const r = withStoreLock(store.root, () => order(store, s(body.change)!, { before: s(body.before), after: s(body.after), first: body.first === true, last: body.last === true, later: body.later === true, writer }));

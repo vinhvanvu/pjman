@@ -67,7 +67,7 @@ describe('the session bar', () => {
     expect(sessionBar({ ...base, state: 'live', host: { name: 'cmux' } }, 0, now).parts[0]).toBe('claude-code for vinhvanvu in cmux');
   });
   it("says what the program is blocked on when the host says so, in place of working", () => {
-    const host = (kind?: string) => ({ name: 'rex', status: { state: 'blocked' as const, kind: kind as 'question' | undefined, at: '2026-11-06T15:11:00Z' } });
+    const host = (kind?: 'question' | 'permission' | 'auth') => ({ name: 'rex', status: { state: 'blocked' as const, kind, at: '2026-11-06T15:11:00Z' } });
     expect(sessionBar({ ...base, state: 'live', last: '2026-11-06T15:10:00Z', host: host('question') }, 0, now).parts).toEqual([
       'claude-code for vinhvanvu in rex',
       'asks you a question',
