@@ -184,7 +184,8 @@ test('a session started inside Rex records its host, version and validation; a s
   let rec = findSession(loadStore(store), 'in-rex')!;
   assert.deepEqual(rec.data.host, { name: 'rex', session: 'session:s1', block: 'block:b1', version: '0.3.1', validated: true });
   assert.match(rec.body, /runs in rex 0\.3\.1\n/);
-  assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error'), []);
+  // the host is a known field of a session: validate neither errs nor warns on it (change:host-field-unknown)
+  assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error' || /host/.test(p.message)), []);
   // a resume in the same terminal: the host is already there, written once
   start('in-rex', withRex, '--log', 'session resumed');
   rec = findSession(loadStore(store), 'in-rex')!;
