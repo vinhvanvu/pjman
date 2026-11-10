@@ -29,14 +29,14 @@ const packed = JSON.parse(run('npm', ['pack', '--json', '--pack-destination', de
 const tarball = path.join(dest, packed[0].filename);
 say(`packed ${packed[0].filename} (${packed[0].entryCount} files)`);
 
-run('npm', ['install', '-g', '--no-audit', '--no-fund', tarball], { stdio: ['ignore', 'ignore', 'inherit'] });
-fs.rmSync(dest, { recursive: true, force: true });
 const globalRoot = run('npm', ['root', '-g']);
-// the package was named pjman before 0.3.1 (decision public/npm-name); an install under the old name is removed so one bin remains
+// the package was named pjman before 0.3.1 (decision public/npm-name); an install under the old name is removed before the install, which would otherwise collide with its pjman bin
 if (fs.existsSync(path.join(globalRoot, 'pjman'))) {
   run('npm', ['uninstall', '-g', '--no-audit', '--no-fund', 'pjman'], { stdio: ['ignore', 'ignore', 'inherit'] });
   say('removed the install under the old name pjman');
 }
+run('npm', ['install', '-g', '--no-audit', '--no-fund', tarball], { stdio: ['ignore', 'ignore', 'inherit'] });
+fs.rmSync(dest, { recursive: true, force: true });
 const installed = path.join(globalRoot, '@vinhvanvu', 'pjman');
 const real = fs.realpathSync(installed);
 if (real === fs.realpathSync(root)) throw new Error(`the global install still links to this checkout (${real}); run: npm unlink -g pjman, then again`);
