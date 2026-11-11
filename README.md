@@ -135,7 +135,7 @@ Issues come in from GitHub through `pjman sync`: each becomes a source in the st
 
 ### Decisions you make, not the agent
 
-![A proposed decision: the question, the options with the recommended one marked and its why, Accept with a line in your words](assets/decision.png)
+![A decision waiting on you: how pjman's panel gets into cmux, three options (upstream, companion, fork) with upstream recommended and its why, and Accept with a line in your words](assets/decision.png)
 
 Before a choice that forecloses options, the agent lays the options out and recommends one. It never accepts its own. You accept on the dashboard or in the chat, in your words, and the session working the change is told.
 
