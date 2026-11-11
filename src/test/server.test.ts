@@ -9,7 +9,7 @@ import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
 import { sessionBind, sessionLog } from '../commands/session.js';
 import { findStore, type Store } from '../config.js';
-import { readServeAddress, startServer } from '../server.js';
+import { lastPortPath, readLastPort, readServeAddress, serveAddressPath, startServer } from '../server.js';
 import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-server-'));
@@ -72,6 +72,41 @@ test('PORT names the port when none is passed; a checkout does not register unle
   delete process.env.PORT;
   assert.equal(pinned.address.port, want);
   pinned.server.close();
+});
+
+test('a registered start with no port comes back on the last one; a taken one gives way; an explicit port wins', async () => {
+  const first = fs.readFileSync(serveAddressPath(), 'utf8');
+  assert.equal(readLastPort(), readServeAddress()!.port, 'the registered server remembers its port');
+  const freePort = async () => {
+    const srv = http.createServer();
+    await new Promise<void>((res) => srv.listen(0, '127.0.0.1', res));
+    const port = (srv.address() as { port: number }).port;
+    await new Promise<void>((res) => srv.close(() => res()));
+    return port;
+  };
+  // the restart: the last port is free, so the dashboard takes it again
+  const last = await freePort();
+  fs.writeFileSync(lastPortPath(), `${last}\n`);
+  const again = await startServer(store, { staticDir: null, register: true });
+  assert.equal(again.address.port, last);
+  // the last port is taken (the server above holds it), so a new one is chosen and remembered
+  const moved = await startServer(store, { staticDir: null, register: true });
+  assert.notEqual(moved.address.port, last);
+  assert.ok(moved.address.port > 0);
+  assert.equal(readLastPort(), moved.address.port);
+  // an explicit port is used as given, whatever was last
+  const want = await freePort();
+  const pinned = await startServer(store, { staticDir: null, register: true, port: want });
+  assert.equal(pinned.address.port, want);
+  process.env.PORT = String(await freePort());
+  const fromEnv = await startServer(store, { staticDir: null, register: true });
+  assert.equal(fromEnv.address.port, Number(process.env.PORT));
+  delete process.env.PORT;
+  // a port another program holds, named explicitly, is refused rather than moved
+  await assert.rejects(startServer(store, { staticDir: null, register: false, port: last }), /EADDRINUSE/);
+  for (const s of [again, moved, pinned, fromEnv]) s.server.close();
+  fs.writeFileSync(serveAddressPath(), first);
+  fs.writeFileSync(lastPortPath(), `${JSON.parse(first).port}\n`);
 });
 
 test('records by key, the listing, the store', async () => {

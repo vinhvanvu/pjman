@@ -61,6 +61,22 @@ export function serveAddressPath(): string {
   return path.join(userDir(), 'serve.json');
 }
 
+/** Where the port the registered dashboard last had is kept: unlike serve.json it outlives the server, so the next start
+ *  comes back on the same port and the docks already open keep working. */
+export function lastPortPath(): string {
+  return path.join(userDir(), 'port');
+}
+
+/** The port the registered dashboard last listened on, or null. */
+export function readLastPort(): number | null {
+  try {
+    const n = Number(fs.readFileSync(lastPortPath(), 'utf8').trim());
+    return Number.isInteger(n) && n > 0 && n < 65536 ? n : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The running server's address, when one is running (its pid is alive). */
 export function readServeAddress(): ServeAddress | null {
   try {
@@ -527,15 +543,28 @@ export function startServer(store: Store, opts: ServeOpts = {}): Promise<{ serve
   const server = createServer(store, opts);
   const host = opts.host ?? '127.0.0.1';
   const register = opts.register ?? installedTool();
+  // an explicit port (--port, else PORT) is used as given; a registered dashboard with none comes back on the port it last
+  // had when that one is free, and takes a new one only when it is taken
+  const explicit = opts.port ?? (Number(process.env.PORT) || undefined);
+  const last = explicit === undefined && register ? readLastPort() : null;
   return new Promise((res, rej) => {
-    server.once('error', rej);
-    server.listen(opts.port ?? (Number(process.env.PORT) || 0), host, () => {
+    const listen = (want: number, fallback: boolean) => {
+      const onError = (e: NodeJS.ErrnoException) => {
+        if (fallback && e.code === 'EADDRINUSE') return listen(0, false);
+        server.close(); // a server that never listened still stops its store follower and host watch
+        rej(e);
+      };
+      server.once('error', onError);
+      server.listen(want, host, listening);
+    };
+    const listening = () => {
       const a = server.address();
       const port = typeof a === 'object' && a ? a.port : 0;
       const address: ServeAddress = { url: `http://${host === '0.0.0.0' ? os.hostname() : host}:${port}`, host, port, pid: process.pid, store: store.root, started: new Date().toISOString() };
       if (!register) return res({ server, address, registered: false });
       fs.mkdirSync(userDir(), { recursive: true });
       fs.writeFileSync(serveAddressPath(), JSON.stringify(address, null, 2) + '\n');
+      fs.writeFileSync(lastPortPath(), `${port}\n`);
       const cleanup = () => {
         try {
           const cur = JSON.parse(fs.readFileSync(serveAddressPath(), 'utf8')) as ServeAddress;
@@ -547,6 +576,7 @@ export function startServer(store: Store, opts: ServeOpts = {}): Promise<{ serve
       process.on('exit', cleanup);
       for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(sig, () => { cleanup(); process.exit(0); });
       res({ server, address, registered: true });
-    });
+    };
+    listen(explicit ?? last ?? 0, last !== null);
   });
 }

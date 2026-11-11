@@ -232,7 +232,7 @@ export const COMMANDS: Command[] = [
     usage: ['pjman open [--session <id>]', 'pjman open --follow'], flags: ['follow'], args: 0 },
   { name: 'stop', group: 'dashboard', line: 'stop the dashboard', about: 'stop the dashboard server', usage: ['pjman stop'], flags: [], args: 0 },
   { name: 'serve', group: 'dashboard', line: 'the store over HTTP: the API under /api/v1 and the app',
-    about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs. PORT from the environment when --port is absent; a checkout registers only with --register",
+    about: "the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs. PORT from the environment when --port is absent; with neither, a registered server comes back on the port it last had (~/.pjman/port) when that is free, so docks already open keep working, and takes a new one when it is taken; a checkout registers only with --register",
     usage: ['pjman serve [--port <n>] [--host <addr>] [--static <dir>] [--register|--no-register]'], flags: ['port', 'host', 'static', 'register', 'no-register'], args: 0 },
 
   // ---- setup --------------------------------------------------------------------------------------------------------
