@@ -2,7 +2,7 @@
 
 The record of a software product, kept in git by the agents that build it.
 
-![The bridge: the day's writes on one timeline, and the changes in motion grouped by what each needs from you](assets/hero.png)
+![The bridge on a busy afternoon: the day's writes on one timeline, and seven changes in motion grouped by what each needs from you: working now, stopped with the next step set, in review](assets/hero.png)
 
 A change, a decision, a feature, a session and a release are records in one git store, under one schema. Coding agents read the record at the start of every session and write back through one command. You read it on a dashboard and make the decisions.
 
@@ -69,7 +69,7 @@ Four places, one per question.
 
 ### The bridge: what needs you now
 
-The picture at the top. The day's writes on one timeline, every live session, and the changes in motion grouped by what each needs from you.
+The picture at the top. The day's writes on one timeline, every live session, and the changes in motion grouped by what each needs from you. Drag the playhead and the whole board reads as it stood at that moment: the picture is a busy afternoon, replayed.
 
 ### The product map: what the product is
 
