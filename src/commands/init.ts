@@ -95,8 +95,8 @@ export function installClaudeAdapter(): string {
 }
 
 /** Where Claude Code's pjman marketplace reads from, as it recorded it; null when none is registered. */
-export function knownMarketplace(): string | null {
-  const file = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'known_marketplaces.json');
+export function knownMarketplace(claudeDir: string = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')): string | null {
+  const file = path.join(claudeDir, 'plugins', 'known_marketplaces.json');
   try {
     const p = (JSON.parse(fs.readFileSync(file, 'utf8')) as { pjman?: { source?: { path?: string } } }).pjman?.source?.path;
     return typeof p === 'string' ? p : null;
