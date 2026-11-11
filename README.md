@@ -13,7 +13,7 @@ npm install -g @vinhvanvu/pjman   # or: brew install vinhvanvu/pjman/pjman
 cd <your-repo> && pjman init
 ```
 
-Node 22.13 or newer and git; Homebrew brings its own Node. With Claude Code on the PATH, `pjman init` installs the plugin, and every session from then on starts from the record.
+Node 22.13 or newer and git; Homebrew brings its own Node. With Claude Code on the PATH, `pjman init` installs the plugin, and every session from then on starts from the record. Installing with Homebrew, an npm copy that shadows it, and upgrading: [docs/install.md](docs/install.md).
 
 ## What you get
 
