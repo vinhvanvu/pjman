@@ -474,7 +474,7 @@ The app lives in `ui/` (React, Vite) and builds into `dist/ui`, which ships with
 
 ## The Claude Code adapter
 
-`adapters/claude-code/` is a plugin: seven hooks and four skills. Every session starts from `pjman context`, binds to the change the prompt names, records observed edges for the files it writes, and leaves a log line per turn that acted. `pjman init` installs it from the installed package; the manual routes are in [adapters/claude-code/README.md](../adapters/claude-code/README.md).
+`adapters/claude-code/` is a plugin: seven hooks and four skills. Every session starts from `pjman context`, binds to the change the prompt names, records observed edges for the files it writes, and leaves a log line per turn that acted. `pjman init` installs it from the installed package, at the path that survives an upgrade (under Homebrew, `$(brew --prefix)/opt/pjman/…`); run again after a switch between installs (npm to Homebrew, a removed copy), it points the plugin at the one it runs from. After an upgrade the plugin refreshes itself at the next session start. The adapter keeps its own files (the hook log, each session's state, the docks) in `~/.pjman/claude-code/`, so removing the plugin loses none of them. The manual routes are in [adapters/claude-code/README.md](../adapters/claude-code/README.md).
 
 ```
 /plugin marketplace add vinhvanvu/pjman
