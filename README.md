@@ -45,7 +45,9 @@ When it worked you have four things: a store of your own at `~/.pjman/store`, th
 
 pjman runs in any terminal. In a terminal it knows, the session and the dashboard become one workspace.
 
-![A real session in cmux: the agent at work on the left, the dashboard docked beside it on the session's page](assets/docked.png)
+![A real day in cmux: eight sessions in the sidebar, each labelled with its change and its step; the session in the middle; the dock on the right following it on the session's page, with the change it is on, its plan, its sources and its timeline](assets/docked.png)
+
+Left, every running session labelled with the change it is on and how far the plan has come. Middle, the session. Right, the dock following it: the changes it read and wrote, the one it is on now with its plan and next step, what waits on you, and its timeline.
 
 ### The dock follows the session
 
