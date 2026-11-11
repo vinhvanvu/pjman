@@ -69,3 +69,7 @@ brew upgrade pjman               # or: npm install -g @vinhvanvu/pjman@latest
 ```
 
 When the new version changes how the store is laid out, pjman says so and asks for a migration. Run `pjman migrate` until it reports nothing to migrate. Restart open Claude Code sessions to load the new hooks.
+
+## When something is off
+
+`pjman doctor` checks the install without changing anything: which `pjman` runs and whether another copy shadows it, where the Claude Code plugin loads from and its version, sessions still on older hooks, the dashboard, the store and the registered project folders. Each line names the command that fixes it; `pjman init` makes most of the fixes.

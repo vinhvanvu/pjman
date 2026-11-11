@@ -245,6 +245,9 @@ export const COMMANDS: Command[] = [
   { name: 'whoami', group: 'setup', line: 'who you are: the person, their record, their accounts',
     about: "who you are: the configured person, their record and their accounts in order, the first of a handle kind as the primary one; from the store alone, no app asked. --verify asks each account kind's checker (GitHub through gh; a kind with no checker reports unchecked) and gives each account a verdict, verified, unknown or unchecked, with the answers cached for a day (--fresh asks again). What is off is said with the command that resolves it. Writes nothing",
     usage: ['pjman whoami [--verify] [--fresh] [--json]'], flags: ['verify', 'fresh'], args: 0 },
+  { name: 'doctor', group: 'setup', line: "what is wrong with this install, and the command that fixes each thing (writes nothing)",
+    about: "check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, and the registered project folders. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports",
+    usage: ['pjman doctor [--all] [--json]'], flags: ['all'], args: 0 },
 
   // ---- maintenance --------------------------------------------------------------------------------------------------
   { name: 'validate', group: 'maintenance', line: 'check every record and every reference (exit 1 on errors)',

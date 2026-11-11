@@ -41,6 +41,7 @@ import { order, sequenceOf } from './commands/order.js';
 import { formatIntake, intake } from './intake.js';
 import { changeContext, formatChangeContext, formatLs, formatStoreContext, ls, row, show, storeContext } from './commands/view.js';
 import { describeMigration, formatMismatch, migrate, pendingMigration } from './commands/migrate.js';
+import { doctor, formatFindings } from './commands/doctor.js';
 import { TOOL_VERSION } from './version.js';
 import { sessionHost } from './host.js';
 import { hostHere, hostLabel, hostLaunch, hostOpen, hostSend, hostStatus } from './commands/host.js';
@@ -784,6 +785,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         ? json({ root: store.root, mode: store.mode, name: store.config.name, project: store.project ?? null, product: scopeProduct ? `product:${scopeProduct}` : null, project_dir: store.projectDir ?? null, tracker: trackerOf(store), actor: readUserConfig().actor ?? null, source_kinds: store.config.source_kinds })
         : out(`${store.root} (${store.mode})${store.project ? ` ${store.project}` : ''}`);
       return 0;
+    }
+    case 'doctor': {
+      const findings = doctor();
+      if (v.json) json({ findings, off: findings.filter((f) => f.level !== 'ok').length });
+      else for (const line of formatFindings(findings, v.all)) out(line);
+      return findings.some((f) => f.level !== 'ok') ? 1 : 0;
     }
     case 'whoami': {
       const store = globalStore() ?? requireStore(cwd, v.store);
