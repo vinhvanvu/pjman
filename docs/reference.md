@@ -254,7 +254,7 @@ A version the product shipped.
 - `pjman fmt`: rewrite records in canonical form
 - `pjman lift`: move every change up to what its plan says, as one batch
 - `pjman migrate`: the one move the store still waits for
-- `pjman index`: rebuild index.db (exit 1 on conflicts)
+- `pjman index`: read every file again and rebuild index.db (exit 1 on conflicts)
 - `pjman query`: a read-only SQL query against the index
 
 ### Every command in full
@@ -419,7 +419,7 @@ pjman migrate
     the one move the store still waits for, one commit, one event, pjman undo <commit> reverts it: the layout (every product a folder holding its features and changes, keys under the product), the foundation (every change and decision mapped into its shape, nothing dropped, each marked migrated until it is next written), then the stamp (pjman.yaml names the format the store is in, so a store from a newer pjman is refused by an older one)
 
 pjman index [--json]
-    rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)
+    read every file again (the index this machine keeps of the store is thrown away and rebuilt) and rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)
 
 pjman query "<sql>"
     run a read-only SQL query against the index; the answer is JSON

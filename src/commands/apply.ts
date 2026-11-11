@@ -8,7 +8,7 @@ import { emit, keyOfPath, typeOfPath, type EventInput } from '../events.js';
 import { commitAll, git } from '../git.js';
 import { loadStore, resolve, type RecordType } from '../records.js';
 import { CliError, notFound } from '../util.js';
-import { beginBatch, endBatch, envelope } from '../write.js';
+import { beginBatch, endBatch, envelope, settleIndex } from '../write.js';
 import { noteReshaping } from '../store-index.js';
 
 /** The commands a batch may hold: writes to records, nothing that starts a server, reads, or nests. */
@@ -123,6 +123,7 @@ export function applyLines(store: Store, lines: { line: number; argv: string[] }
       endBatch();
       git(store.root, ['reset', '-q', '--hard', head]);
       git(store.root, ['clean', '-qfd', '--', '.']);
+      settleIndex(store);
       throw new CliError(`refused at line ${line} (${argv.join(' ')}): ${(e as Error).message}\nnothing was written`);
     }
   }

@@ -8,6 +8,7 @@ import { openPage, openUrl } from './commands/open.js';
 import { withStoreLock } from './lock.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
+import { resetIndex } from './store-index.js';
 import { loadStore, resolve, storeScope, unresolvedError } from './records.js';
 import { ambiguous, CliError, notFound, plural, usageError } from './util.js';
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
@@ -757,6 +758,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'index': {
       const store = scoped(requireStore(cwd, v.store));
+      // the machine's index of the files is read again whole first, so the rebuild sees the files as they are
+      resetIndex(store);
       const r = buildIndex(store);
       if (v.json) json(r);
       else {

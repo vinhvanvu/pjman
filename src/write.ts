@@ -8,7 +8,7 @@ import { FIELD_ORDER, fullKey, loadStore, type Loaded, type Problem, type Record
 import { CliError } from './util.js';
 import { formatProblems, validate } from './validate.js';
 import { liftAfter } from './lift.js';
-import { notePending } from './store-index.js';
+import { indexedEntries, notePending } from './store-index.js';
 
 export interface Envelope {
   writer?: string;
@@ -65,7 +65,22 @@ export function validateOrUndo(store: Store, rels: string[], created: string[], 
       dir = path.dirname(dir);
     }
   }
+  settleIndex(store, [...rels, ...created, ...prior.keys()]);
   throw new CliError(`refused: the record would not validate\n${formatProblems(errors)}`);
+}
+
+/** Bring the index back to the files a refusal put back (change:refused-write-leaves-index-entry). Validating read
+ *  the written files into the index; the undo leaves no event and no commit, so another process would trust what the
+ *  index holds and read a record that is not there, or one as the refused write had it. Naming the paths (or a
+ *  process that noted it reshapes, which compares every file) makes this read compare them and drop what is gone. */
+export function settleIndex(store: Store, rels: Iterable<string> = []): void {
+  if (process.env.PJMAN_INDEX === '0') return;
+  notePending(store, rels);
+  try {
+    indexedEntries(store);
+  } catch {
+    // an index that cannot be opened is not read either: the files answer
+  }
 }
 
 let batch: EventInput[] | null = null;
