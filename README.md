@@ -148,7 +148,7 @@ One command reads what main shipped since the last tag, resolves each merge to i
 - The store is `~/.pjman/store`: Markdown files with YAML frontmatter, one per record, in a git repository of its own.
 - The `pjman` command is the schema. Every write goes through it and is validated.
 - A skill tells the agent what to record and when. Hooks do the rest: the brief, the binding, the log line, the receipt after every turn.
-- The terminal the session runs in is a host (Rex, cmux), reached through one interface: the session's record says which, its block is labelled with the change and where the work stands, the dashboard reads the session's state from the host and opens or launches a session on it (`adapters/hosts.md`).
+- The terminal a session runs in is a host (cmux, Rex), reached through one interface, so another terminal is another adapter, not another design (`adapters/hosts.md`).
 - Nothing is dropped and nothing is written by hand.
 
 ## Docs
