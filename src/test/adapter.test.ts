@@ -42,6 +42,12 @@ before(() => {
   fs.mkdirSync(path.join(project, 'src'), { recursive: true });
   fs.mkdirSync(env.PJMAN_HOME, { recursive: true });
   fs.writeFileSync(path.join(env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
+  // what an earlier version kept in the plugin's data folder: one session only there, one also already carried
+  fs.mkdirSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-old.json'), '{"bound":"change:old"}');
+  fs.writeFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-both.json'), '{"bound":"change:stale"}');
+  fs.mkdirSync(path.join(env.PJMAN_HOME, 'claude-code', 'state'), { recursive: true });
+  fs.writeFileSync(path.join(env.PJMAN_HOME, 'claude-code', 'state', 'sess-both.json'), '{"bound":"change:fresh"}');
   execFileSync('git', ['init', '-q'], { cwd: project });
   init({ checkers: [], cwd: project, inProject: true });
   store = findStore(project)!;
@@ -62,10 +68,26 @@ test('SessionStart creates the session record and injects the board', () => {
   assert.ok(!/Identity \(pjman whoami/.test(context(hook('SessionStart', { source: 'startup', agent_id: 'sub-1' }))), 'a subagent says nothing about identity');
 });
 
+test('the adapter keeps its files under ~/.pjman/claude-code, carrying what the plugin data folder held once, never over newer files', () => {
+  const state = (dir: string, sid: string) => JSON.parse(fs.readFileSync(path.join(dir, 'state', `${sid}.json`), 'utf8'));
+  const home = path.join(env.PJMAN_HOME, 'claude-code');
+  assert.equal(state(home, 'sess-old').bound, 'change:old');
+  assert.equal(state(home, 'sess-both').bound, 'change:fresh');
+  assert.ok(fs.existsSync(path.join(home, 'state', 'sess-a.json')));
+  assert.ok(!fs.existsSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-a.json')), 'nothing new is written to the plugin data folder');
+  // the folder going away (the marketplace removed) loses nothing, and nothing is carried twice
+  fs.rmSync(env.CLAUDE_PLUGIN_DATA, { recursive: true, force: true });
+  fs.mkdirSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-late.json'), '{}');
+  hook('SessionStart', { source: 'resume' });
+  assert.equal(state(home, 'sess-old').bound, 'change:old');
+  assert.ok(!fs.existsSync(path.join(home, 'state', 'sess-late.json')));
+});
+
 test('a prompt that binds keeps no Markdown view beside the session: the dashboard is the view', () => {
   hook('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
-  assert.equal(fs.existsSync(path.join(env.CLAUDE_PLUGIN_DATA, 'view')), false);
-  const st = JSON.parse(fs.readFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-a.json'), 'utf8'));
+  assert.equal(fs.existsSync(path.join(env.PJMAN_HOME, 'claude-code', 'view')), false);
+  const st = JSON.parse(fs.readFileSync(path.join(env.PJMAN_HOME, 'claude-code', 'state', 'sess-a.json'), 'utf8'));
   assert.equal(st.watcher, undefined);
 });
 
@@ -379,7 +401,7 @@ test('a session in an unregistered git repository registers it and gets the brie
   hook('PostToolUse', { cwd: tmp, session_id: 'sess-rel', tool_name: 'Write', tool_input: { file_path: 'plain/notes.md' } });
   const relRec = () => loadStore(global).records.find((r) => r.type === 'session' && r.sessionId === 'sess-rel')!;
   assert.equal(relRec().data.project, undefined);
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-rel.json'), 'utf8')).tried, [plain]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(env.PJMAN_HOME, 'claude-code', 'state', 'sess-rel.json'), 'utf8')).tried, [plain]);
   hook('PostToolUse', { cwd: tmp, session_id: 'sess-rel', tool_name: 'Bash', tool_input: { command: 'cd auto && npm test' } });
   assert.equal(relRec().data.project, 'project:auto');
   assert.deepEqual(validate(loadStore(global)).filter((p) => p.level === 'error'), []);

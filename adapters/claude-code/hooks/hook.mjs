@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The Claude Code adapter for pjman: one script, one event per invocation, every write through `pjman`.
-// Never blocks, never fails the session: on any error it logs to the plugin data directory and exits 0.
+// Never blocks, never fails the session: on any error it logs to ~/.pjman/claude-code/hook.log and exits 0.
 //
 //   SessionStart      register the repository if it is not a project yet (auto_register); a start outside any repository (a parent
 //                     directory, the home folder) is a session of the global store with no project, resolved to the project of the
@@ -49,7 +49,18 @@ import { fileURLToPath } from 'node:url';
 const AGENT = 'agent:claude-code';
 const EVENT = process.argv[2] ?? '';
 const here = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = process.env.CLAUDE_PLUGIN_DATA || path.join(os.tmpdir(), 'pjman-claude-code');
+// The adapter's own files (the hook log, each session's state, the docks) live with pjman's, not in the plugin's data
+// folder: removing or repointing the plugin's marketplace deletes that folder, and open sessions would lose which pane is
+// their dock (change:pjman-15). What an earlier version left there is carried across once, never over newer files.
+const dataDir = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'claude-code');
+const legacyDataDir = process.env.CLAUDE_PLUGIN_DATA;
+if (legacyDataDir && path.resolve(legacyDataDir) !== path.resolve(dataDir) && !fs.existsSync(path.join(dataDir, '.carried'))) {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true });
+    if (fs.existsSync(legacyDataDir)) fs.cpSync(legacyDataDir, dataDir, { recursive: true, force: false, errorOnExist: false });
+    fs.writeFileSync(path.join(dataDir, '.carried'), `${new Date().toISOString()} from ${legacyDataDir}\n`);
+  } catch {}
+}
 const logFile = path.join(dataDir, 'hook.log');
 
 function note(msg) {

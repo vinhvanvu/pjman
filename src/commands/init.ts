@@ -1,5 +1,6 @@
 import { emit } from '../events.js';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { DEFAULT_SOURCE_KINDS, DEFAULT_TREE_LEVELS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type Store, type StoreConfig, type UserStore } from '../config.js';
 import { git, gitUserEmail, gitUserName, hasGit, toplevel } from '../git.js';
@@ -13,6 +14,7 @@ import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
 import { FORMAT_VERSION } from './migrate.js';
 import { stableRoot, start } from './start.js';
+import { installedTool } from '../server.js';
 import { HANDLE_KINDS, checkersFor, formatIdentity, identity, machineName, type Checker } from '../identity.js';
 import { describeInventory, inventory, mapGuidance } from '../inventory.js';
 import { execFileSync } from 'node:child_process';
@@ -49,6 +51,7 @@ export function installClaudeAdapter(): string {
     return 'no harness found on PATH (claude); the adapter is not installed';
   }
   const root = stableRoot();
+  let repointed: string | null = null;
   const soft = (args: string[]) => {
     try {
       return run(args);
@@ -59,8 +62,25 @@ export function installClaudeAdapter(): string {
     }
   };
   try {
+    const current = knownMarketplace();
+    // a marketplace left by another install (npm before Homebrew, a removed copy, an older Cellar folder) is replaced:
+    // Claude Code has no repoint, and the adapter keeps nothing in the plugin's data folder that removing it would lose
+    // a checkout replaces only a marketplace whose folder is gone, so running it never takes the installed plugin over
+    if (current && !samePath(current, root) && (installedTool() || !fs.existsSync(current))) {
+      carryAdapterData();
+      soft(['plugin', 'marketplace', 'remove', 'pjman']);
+      repointed = current;
+    }
     soft(['plugin', 'marketplace', 'add', root]);
     const out = soft(['plugin', 'install', 'pjman@pjman', '--scope', 'user']);
+    if (repointed) {
+      try {
+        run(['plugin', 'update', 'pjman@pjman']);
+      } catch {
+        // installed above or already current
+      }
+      return `Claude Code: the pjman plugin now loads from ${root} (it read ${repointed}); it loads at the next session or /reload-plugins`;
+    }
     if (!/already/i.test(out)) return 'Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins';
     try {
       run(['plugin', 'marketplace', 'update', 'pjman']);
@@ -71,6 +91,40 @@ export function installClaudeAdapter(): string {
     return 'Claude Code: the pjman plugin is installed (hooks, skill, brief, Linear MCP)';
   } catch (e) {
     return `Claude Code: the plugin could not be installed (${(e as Error).message}); run: claude plugin marketplace add ${root} && claude plugin install pjman@pjman`;
+  }
+}
+
+/** Where Claude Code's pjman marketplace reads from, as it recorded it; null when none is registered. */
+export function knownMarketplace(): string | null {
+  const file = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'known_marketplaces.json');
+  try {
+    const p = (JSON.parse(fs.readFileSync(file, 'utf8')) as { pjman?: { source?: { path?: string } } }).pjman?.source?.path;
+    return typeof p === 'string' ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The adapter's files from the plugin's data folder (where earlier versions kept them) to ~/.pjman/claude-code,
+ *  never over newer ones: removing the marketplace deletes that folder, and the hook may not have run since the upgrade. */
+function carryAdapterData(): void {
+  const from = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'data', 'pjman-pjman');
+  const to = path.join(userDir(), 'claude-code');
+  try {
+    if (!fs.existsSync(from)) return;
+    fs.mkdirSync(to, { recursive: true });
+    fs.cpSync(from, to, { recursive: true, force: false, errorOnExist: false });
+  } catch {
+    // best effort: the hook carries what is left at its next start
+  }
+}
+
+/** Two paths name the same folder; a path that is gone names nothing. */
+function samePath(a: string, b: string): boolean {
+  try {
+    return fs.realpathSync(a) === fs.realpathSync(b);
+  } catch {
+    return false;
   }
 }
 

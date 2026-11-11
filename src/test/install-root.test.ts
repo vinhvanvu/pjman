@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { installClaudeAdapter } from '../commands/init.js';
 import { stableRoot } from '../commands/start.js';
 
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-root-')));
@@ -37,4 +38,35 @@ test('a Cellar path with no opt link, and any other path, stay as they are', () 
   fs.mkdirSync(npm, { recursive: true });
   assert.equal(stableRoot(npm), npm);
   assert.equal(stableRoot(path.join(prefix, 'gone')), path.join(prefix, 'gone'));
+});
+
+// init repoints a marketplace left by another install (change:pjman-15), carrying the adapter's files out of the plugin
+// data folder first; a checkout replaces only one whose folder is gone. `claude` is a fake that records its calls.
+test('init replaces a marketplace whose folder is gone and carries the adapter files across; one that exists is left to the install', () => {
+  const dir = tmp();
+  const calls = path.join(dir, 'calls');
+  fs.mkdirSync(path.join(dir, 'bin'));
+  fs.writeFileSync(path.join(dir, 'bin', 'claude'), `#!/bin/sh\necho "$*" >> ${calls}\n`, { mode: 0o755 });
+  const cfg = path.join(dir, 'claude');
+  fs.mkdirSync(path.join(cfg, 'plugins', 'data', 'pjman-pjman', 'state'), { recursive: true });
+  fs.writeFileSync(path.join(cfg, 'plugins', 'data', 'pjman-pjman', 'state', 's1.json'), '{"pane":"p1"}');
+  const known = (p: string) => fs.writeFileSync(path.join(cfg, 'plugins', 'known_marketplaces.json'), JSON.stringify({ pjman: { source: { source: 'directory', path: p } } }));
+  const saved = { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, PJMAN_HOME: process.env.PJMAN_HOME };
+  Object.assign(process.env, { PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: cfg, PJMAN_HOME: path.join(dir, 'home') });
+  try {
+    known(path.join(dir, 'gone'));
+    const out = installClaudeAdapter();
+    assert.match(out, /now loads from .* \(it read .*gone\)/);
+    const log = fs.readFileSync(calls, 'utf8');
+    assert.match(log, /plugin marketplace remove pjman\n.*plugin marketplace add /);
+    assert.equal(fs.readFileSync(path.join(dir, 'home', 'claude-code', 'state', 's1.json'), 'utf8'), '{"pane":"p1"}');
+    fs.rmSync(calls);
+    const other = path.join(dir, 'other-install');
+    fs.mkdirSync(other);
+    known(other);
+    assert.doesNotMatch(installClaudeAdapter(), /now loads from/);
+    assert.doesNotMatch(fs.readFileSync(calls, 'utf8'), /marketplace remove/, 'a checkout never takes over an install that exists');
+  } finally {
+    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+  }
 });
