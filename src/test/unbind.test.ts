@@ -11,7 +11,7 @@ import { findStore, type Store } from '../config.js';
 import { readEvents, rebuildEvents } from '../events.js';
 import { findSession, loadStore } from '../records.js';
 import { validate } from '../validate.js';
-import { change, decisionRec } from './shape.js';
+import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-unbind-'));
 let store: Store;

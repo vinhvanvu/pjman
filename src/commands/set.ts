@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { replaceSection, sections as parseSections } from '../frontmatter.js';
-import { loadStore, resolve, unresolved, unresolvedError, type RecordType } from '../records.js';
+import { loadStore, resolve, unresolvedError, type RecordType } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersedesOf, unmark, type Marked } from '../supersede.js';
 import { CliError, usageError } from '../util.js';
 import { fieldKind, typedRef } from '../keys.js';

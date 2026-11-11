@@ -7,7 +7,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
 import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
 import { set } from '../commands/set.js';
 import { changeContext, decisionLine } from '../commands/view.js';
 import { findStore, type Store } from '../config.js';

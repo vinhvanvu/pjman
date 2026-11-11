@@ -25,7 +25,7 @@ import { buildIndex } from '../indexdb.js';
 import { loadStore, resolve as resolveKey } from '../records.js';
 import { localDate, today } from '../util.js';
 import { validate } from '../validate.js';
-import { accept, change, decisionRec, next } from './shape.js';
+import { change, decisionRec, next } from './shape.js';
 import { step } from '../commands/step.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-test-'));

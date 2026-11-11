@@ -60,11 +60,6 @@ export function parseKey(raw: unknown): Key | null {
 }
 
 export const isActorKey = (k: Key): boolean => k.kind === 'person' || k.kind === 'agent';
-export const isChangeKey = (k: Key): boolean => k.kind === 'change';
-export const isDecisionKey = (k: Key): boolean => k.kind === 'decision';
-export const isSessionKey = (k: Key): boolean => k.kind === 'session';
-export const isSourceKey = (k: Key): boolean => !RECORD_KINDS.has(k.kind);
-export const isScopedKind = (kind: string): boolean => SCOPED_KINDS.has(kind);
 
 export function slugify(s: string): string {
   return s
@@ -105,7 +100,6 @@ export function sourceFileSlug(kind: string, key: string): string {
 export const productKey = (product: string): string => `product:${product}`;
 export const featureKey = (product: string, slug: string): string => `feature:${product}/${slug}`;
 export const changeKey = (product: string, slug: string): string => `change:${product}/${slug}`;
-export const sessionKey = (id: string): string => `session:${id}`;
 /** A decision's full key: under a change, at product level (no change), or at store level (no product). */
 export const decisionKey = (product: string | null, change: string | null, slug: string): string =>
   product ? `decision:${product}/${change ? `${change}/` : ''}${slug}` : `decision:/${slug}`;

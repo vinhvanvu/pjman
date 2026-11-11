@@ -54,7 +54,6 @@ export function generateStore(root: string, opts: GenerateOpts): Generated {
   write('actors/person-bench.md', '---\nkind: person\nname: Bench\nwriter: person:bench\ncreated: 2026-01-01\n---\n');
 
   let records = 1;
-  const events: string[] = [];
   const base = Date.parse('2026-01-01T00:00:00.000Z');
   const span = Date.parse('2026-11-01T00:00:00.000Z') - base;
   const at = (t: number) => new Date(base + Math.floor(t * span)).toISOString();

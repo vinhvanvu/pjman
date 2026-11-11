@@ -9,7 +9,7 @@ import path from 'node:path';
 import type { Store } from '../config.js';
 import type { EventInput } from '../events.js';
 import { SLUG_RE } from '../keys.js';
-import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../records.js';
+import { loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../records.js';
 import { markSuperseded, resolveSupersedes, supersededBy, supersedesOf } from '../supersede.js';
 import { CliError, isDateString, nowIso, today, notFound, usageError } from '../util.js';
 import { envelope, finishWrite, fullKeys, render, snapshot, validateOrUndo, writeFile } from '../write.js';

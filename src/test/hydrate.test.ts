@@ -14,7 +14,7 @@ import { readEvents, rebuildEvents } from '../events.js';
 import { brief, computeBrief, focusOf, neighboursOf } from '../hydrate.js';
 import { findSession, loadStore } from '../records.js';
 import { validate } from '../validate.js';
-import { accept, change, decisionRec, next } from './shape.js';
+import { change, decisionRec, next } from './shape.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(here, '..', '..', 'bin', 'pjman.js');

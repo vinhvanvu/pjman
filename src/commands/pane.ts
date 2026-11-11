@@ -6,7 +6,7 @@ import { hostFactsOf, lastActs, LIVE_MINUTES, sessionLogOf, sessionState, type S
 import type { HostStatus } from '../host.js';
 import { live, rootProductOf } from '../tree.js';
 import { focusOf } from '../hydrate.js';
-import { CliError, notFound } from '../util.js';
+import { notFound } from '../util.js';
 import { decisionLine, lineOfRow, nextLine, readinessLines, storeContext, type ChangeContext, type Row, type StoreContext } from './view.js';
 import { formatStep, nextStep, stepsOf } from '../foundation.js';
 import { ownSources } from '../session-kinds.js';

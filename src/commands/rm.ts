@@ -8,7 +8,7 @@ import type { Store } from '../config.js';
 import type { EventInput } from '../events.js';
 import { canon } from '../graph.js';
 import { parseKey } from '../keys.js';
-import { eventKeysOf, loadStore, resolve, unresolved, unresolvedError, type Rec } from '../records.js';
+import { eventKeysOf, loadStore, resolve, unresolvedError, type Rec } from '../records.js';
 import { CliError } from '../util.js';
 import { envelope, errorsAt, finishWrite, render, settleIndex } from '../write.js';
 import { noteReshaping } from '../store-index.js';

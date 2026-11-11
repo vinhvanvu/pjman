@@ -18,7 +18,6 @@ import { loadStore } from '../records.js';
 import { rail } from '../rail.js';
 import { accept, change, decisionRec } from './shape.js';
 
-const DAY = 86_400_000;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-rail-'));
 const dir = path.join(tmp, 'web');
 let store: Store;

@@ -14,7 +14,7 @@ import { readEvents } from '../events.js';
 import { eventsBetween, gitSource, loadAt, momentCache, resolveMoment } from '../moment.js';
 import { loadStore } from '../records.js';
 import { live } from '../tree.js';
-import { change, decisionRec } from './shape.js';
+import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-moment-'));
 let store: Store;

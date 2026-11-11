@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import type { Store } from '../config.js';
 import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SEVERITIES } from '../config.js';
 import { branchNameFor, worktreeNameFor } from '../branch.js';
-import { loadStore, memo, ofType, push, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
+import { loadStore, memo, ofType, push, resolve, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { supersedesOf } from '../supersede.js';
 import { derivedStatus, effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from '../tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from '../inventory.js';
 import { aspectAt, aspectCuesOf, aspectsOfChange, featureOfPlace, formatAspectAt, formatAspectCues, formatChangeAspects, reachOfBase, type AspectCue, type ChangeAspects } from '../aspects.js';
 import { urlOf } from '../refs.js';
 import { CliError, usageError, notFound } from '../util.js';
-import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from '../foundation.js';
+import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from '../foundation.js';
 
 export interface Row {
   type: RecordType;

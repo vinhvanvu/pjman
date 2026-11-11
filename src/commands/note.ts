@@ -3,7 +3,7 @@
 // <commit>` takes it back, as any one write.
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { loadStore, resolve, unresolved, unresolvedError } from '../records.js';
+import { loadStore, resolve, unresolvedError } from '../records.js';
 import { CliError, nowIso } from '../util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 

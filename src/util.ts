@@ -50,17 +50,6 @@ export function isTimestamp(v: unknown): v is string {
   return typeof v === 'string' && v.length >= 10 && !Number.isNaN(Date.parse(v));
 }
 
-export function isStringList(v: unknown): v is string[] {
-  return Array.isArray(v) && v.every((x) => typeof x === 'string');
-}
-
-export function asList(v: unknown): string[] {
-  if (v === undefined || v === null) return [];
-  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string');
-  if (typeof v === 'string') return [v];
-  return [];
-}
-
 export function uuidv7(): string {
   const b = new Uint8Array(16);
   crypto.getRandomValues(b);

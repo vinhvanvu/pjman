@@ -22,18 +22,6 @@ export function toplevel(cwd: string): string | null {
   }
 }
 
-/** True when `root` is itself the top of a git repository (a standalone store). */
-export function isOwnRepo(root: string): boolean {
-  if (!fs.existsSync(root)) return false;
-  const top = toplevel(root);
-  if (!top) return false;
-  try {
-    return fs.realpathSync(root) === top;
-  } catch {
-    return false;
-  }
-}
-
 export function gitUserName(): string | null {
   try {
     return git(process.cwd(), ['config', 'user.name']) || null;

@@ -26,7 +26,6 @@ export const CHANGE_FOUNDATION: readonly ChangeSection[] = ['Origin', 'Intent', 
 export const SECTION_FIELDS: Record<string, ChangeSection> = {
   origin: 'Origin', intent: 'Intent', 'done-when': 'Done when', scope: 'Scope', 'open-questions': 'Open questions', 'blocked-on': 'Blocked on', notes: 'Notes',
 };
-export const sectionField = (s: ChangeSection): string => Object.entries(SECTION_FIELDS).find(([, v]) => v === s)![0];
 
 // --- the plan -----------------------------------------------------------------------------------------------------
 

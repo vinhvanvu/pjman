@@ -12,7 +12,7 @@ import { changeContext, formatChangeContext } from '../commands/view.js';
 import { findStore, readUserConfig, writeUserConfig, type Store } from '../config.js';
 import { findReferences } from '../graph.js';
 import { loadStore } from '../records.js';
-import { change, decisionRec } from './shape.js';
+import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-branch-'));
 const project = path.join(tmp, 'project');

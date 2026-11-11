@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { userDir, type Store } from './config.js';
-import { parseRecord, type Parsed } from './frontmatter.js';
+import { parseRecord } from './frontmatter.js';
 import { TOOL_VERSION } from './version.js';
 
 /** One file or folder of the store as the index holds it. */

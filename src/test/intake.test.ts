@@ -10,7 +10,7 @@ import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
 import { formatIntake, intake, words } from '../intake.js';
 import { loadStore } from '../records.js';
-import { change, decisionRec } from './shape.js';
+import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-intake-'));
 let store: Store;

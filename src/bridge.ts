@@ -14,7 +14,7 @@ import { hostFactsOf, lastActs, sessionLogOf, sessionState, type SessionHostFact
 import type { HostStatus } from './host.js';
 export { sessionState, type SessionHostFacts, type SessionState, type StateFacts } from './session-state.js';
 import { effectsOf, live, rootProductOf, structuralParent } from './tree.js';
-import { lineOf, nextStep, stepsOf, type StepState } from './foundation.js';
+import { nextStep, stepsOf, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
 
 export interface BridgeChange {

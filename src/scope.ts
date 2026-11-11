@@ -11,7 +11,7 @@ import { violations, worstSeverity, type RoadmapRow, type Violation } from './ro
 import { ancestorsOf, depthOf, descendantsOf, treeIndex, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate, notFound } from './util.js';
 import { aspectKeysOf, aspectsForFeatures, aspectWhole, featureOfPlace, type AspectAt, type AspectWhole } from './aspects.js';
-import { decisionState, lineOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type StepState } from './foundation.js';
+import { decisionState, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type StepState } from './foundation.js';
 import { nextLine } from './commands/view.js';
 import { hostFactsOf, lastActs, sessionLogOf, sessionState, type SessionHostFacts, type SessionState } from './session-state.js';
 import type { HostStatus } from './host.js';

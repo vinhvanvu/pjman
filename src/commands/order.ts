@@ -5,7 +5,7 @@
 // as the record's links).
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { loadStore, memo, ofType, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../records.js';
+import { loadStore, memo, ofType, resolve, unresolvedError, type Loaded, type Rec } from '../records.js';
 import { effectsOf, live, rootProductOf } from '../tree.js';
 import { CliError } from '../util.js';
 import { envelope, finishWrite, render, validateOrUndo } from '../write.js';

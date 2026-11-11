@@ -14,7 +14,7 @@ import { changeContext, formatChangeContext } from './commands/view.js';
 import { sessionBriefed } from './commands/session.js';
 import { notesOf } from './commands/note.js';
 import { effectsOf, live } from './tree.js';
-import { CliError, notFound } from './util.js';
+import { notFound } from './util.js';
 
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 

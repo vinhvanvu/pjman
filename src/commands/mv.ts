@@ -7,7 +7,7 @@ import path from 'node:path';
 import { readUserConfig, writeUserConfig, type Store } from '../config.js';
 import { gitMv, isTracked, toplevel } from '../git.js';
 import { aspectKey, parseDecisionRest, parseKey, parseScopedRest, SLUG_RE } from '../keys.js';
-import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
+import { loadStore, resolve, unresolvedError, type Loaded, type Rec, type RecordType } from '../records.js';
 import { CliError, usageError, notFound } from '../util.js';
 import { envelope, finishWrite, render, validateOrUndo } from '../write.js';
 import { noteReshaping } from '../store-index.js';

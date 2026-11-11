@@ -3,7 +3,7 @@
 // one event on the change, so progress, the next step and the activity are read off the steps and nothing is parsed.
 import fs from 'node:fs';
 import type { Store } from '../config.js';
-import { loadStore, resolve, unresolved, unresolvedError, type Rec } from '../records.js';
+import { loadStore, resolve, unresolvedError, type Rec } from '../records.js';
 import { CliError, nowIso, usageError } from '../util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 import { formatStep, nextStep, planProgress, stepsOf, type Step } from '../foundation.js';

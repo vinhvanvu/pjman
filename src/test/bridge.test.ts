@@ -12,7 +12,7 @@ import { sessionBind, sessionLog } from '../commands/session.js';
 import { set } from '../commands/set.js';
 import { findStore, type Store } from '../config.js';
 import { loadStore } from '../records.js';
-import { accept, change, decisionRec, next } from './shape.js';
+import { accept, change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-bridge-'));
 let store: Store;

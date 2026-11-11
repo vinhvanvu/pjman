@@ -4,7 +4,7 @@ import type { Store } from '../config.js';
 import { parseRecord, sections } from '../frontmatter.js';
 import { findReferences } from '../graph.js';
 import { computeBrief, type Brief } from '../hydrate.js';
-import { findSession, forget, fullKey, loadStore, resolve, unresolved, unresolvedError, type Rec } from '../records.js';
+import { findSession, forget, fullKey, loadStore, resolve, unresolvedError, type Rec } from '../records.js';
 import { CliError, localDate, nowIso, notFound } from '../util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../write.js';
 import { EDGES } from '../validate.js';

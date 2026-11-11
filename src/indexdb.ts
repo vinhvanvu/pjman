@@ -61,10 +61,6 @@ function existingIds(file: string): Map<string, string> {
   return ids;
 }
 
-function list(v: unknown): string[] {
-  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
-}
-
 /** Rebuild index.db from the records. Ids already minted for a key are kept. */
 export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): IndexReport {
   const file = indexPath(store);

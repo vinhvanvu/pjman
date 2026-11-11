@@ -20,7 +20,6 @@ import { scope } from '../scope.js';
 import { validate } from '../validate.js';
 import { decisionState, formatDecisionState, needsOf, nextStep, pointsOf, rungsOf, stepsOf, threadOf } from '../foundation.js';
 import { syncLinear } from '../sync/linear.js';
-import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-foundation-'));
 const home = path.join(tmp, 'home');

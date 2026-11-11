@@ -90,10 +90,6 @@ export function beginBatch(): void {
   batch = [];
 }
 
-export function inBatch(): boolean {
-  return batch !== null;
-}
-
 /** The events held since beginBatch, in order; the batch ends. */
 export function endBatch(): EventInput[] {
   const held = batch ?? [];

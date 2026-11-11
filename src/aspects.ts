@@ -3,7 +3,7 @@
 // at, and its body is the fork, only what differs there (empty: the base as it is). A place is read as the base, then
 // the forks of the places above it on the tree, then its own, each marked with where it came from. The store holds no
 // shape for either text: the aspect skill shapes them.
-import { EFFECTS, type EffectName } from './tree.js';
+import { type EffectName } from './tree.js';
 import { parseKey } from './keys.js';
 import { resolve, type Loaded, type Rec } from './records.js';
 import { threadOf } from './foundation.js';

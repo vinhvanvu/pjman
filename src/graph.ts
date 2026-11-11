@@ -1,11 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Store } from './config.js';
 import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } from './keys.js';
 import { ambiguous, notFound } from './util.js';
 import { keyFromUrl, mentions, scopeOf, shortForms, slugFor, trackerOf } from './refs.js';
 export { keyFromUrl, repoOf } from './refs.js';
-import { memo, ofType, push, resolve, type Loaded, type Rec } from './records.js';
+import { memo, push, resolve, type Loaded, type Rec } from './records.js';
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { parseAspectEffect } from './aspects.js';

@@ -8,7 +8,6 @@ import { before, test } from 'node:test';
 import { init } from '../commands/init.js';
 import { newRecord } from '../commands/new.js';
 import { note, notesOf } from '../commands/note.js';
-import { set } from '../commands/set.js';
 import { sessionBind } from '../commands/session.js';
 import { findStore, type Store } from '../config.js';
 import { readEvents, rebuildEvents } from '../events.js';

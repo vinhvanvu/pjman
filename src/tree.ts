@@ -24,8 +24,6 @@ export function parseEffect(raw: unknown): Effect | null {
   return { effect: (m[1] as EffectName | undefined) ?? 'changes', key: key.raw };
 }
 
-export const formatEffect = (e: Effect): string => (e.effect === 'changes' ? e.key : `${e.effect} ${e.key}`);
-
 /** The effects a change declares on features. */
 export function effectsOf(rec: Rec): Effect[] {
   return Array.isArray(rec.data.features) ? rec.data.features.map(parseEffect).filter((e): e is Effect => e !== null) : [];

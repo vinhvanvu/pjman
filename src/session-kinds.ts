@@ -24,11 +24,6 @@ export const DEFAULT_SESSION_KINDS: readonly SessionKindSeed[] = [
 
 export const sessionKindKey = (slug: string): string => `session-kind:${slug}`;
 
-/** The kinds the store holds. */
-export function sessionKindsOf(loaded: Loaded): Rec[] {
-  return loaded.records.filter((r) => r.type === 'session-kind' && r.valid);
-}
-
 /** The default kinds the store lacks (by key or former name). */
 export function missingSessionKinds(loaded: Loaded): SessionKindSeed[] {
   return DEFAULT_SESSION_KINDS.filter((k) => !loaded.byKey.has(sessionKindKey(k.slug)) && !loaded.aliases.has(sessionKindKey(k.slug)));
