@@ -441,16 +441,25 @@ export function LensPage({ lens, node, following }: LensPageProps) {
     );
   }
 
-  // the badge floats over the structure pane whenever something is selected: one way to clear it in every lens.
-  // Not at narrow width: the record stands alone there and its header names the selection and closes it
-  const primary = (
+  const splitId = `pjman.split.${lens}.tree`;
+  // the badge floats over the structure pane whenever something is selected: one way to clear it in every lens. The
+  // structure scrolls in its own box and the badge stands outside it, so an overflowing map scrolls beneath the badge
+  // (change:map-selection-close-floats). Not at narrow width: the record stands alone there and its header names the
+  // selection and closes it
+  const primary = wide ? (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {structure}
-      {wide && sel && selectedLabel && <SelectionBadge label={selectedLabel} kind={selectedKind} onClear={clear} />}
+      <div
+        className="flex min-h-0 flex-1 flex-col overflow-auto"
+        data-scroll-restoration-id={`${splitId}.structure`}
+      >
+        {structure}
+      </div>
+      {sel && selectedLabel && <SelectionBadge label={selectedLabel} kind={selectedKind} onClear={clear} />}
     </div>
+  ) : (
+    <div className="relative flex min-h-0 flex-1 flex-col">{structure}</div>
   );
 
-  const splitId = `pjman.split.${lens}.tree`;
   // width decides panes, never routes (change:dashboard-v2; decision phone-width-record-pane/pane-replaces-map-when-narrow):
   // two panes wide; narrow, one column holding the record when something is selected (its close returns to the
   // structure), else the structure
