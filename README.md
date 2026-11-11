@@ -129,7 +129,7 @@ kind: bug · severity nuisance
 …
 ```
 
-Issues come in from GitHub and Linear through `pjman sync`: each becomes a source in the store and, when no change has it yet, a change with the ticket in its origin.
+Issues come in from GitHub through `pjman sync`: each becomes a source in the store and, when no change has it yet, a change with the ticket in its origin.
 
 ### Decisions you make, not the agent
 
