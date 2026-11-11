@@ -6,7 +6,7 @@ The record of a software product, kept in git by the agents that build it.
 
 A change, a decision, a feature, a session and a release are records in one git store, under one schema. Coding agents read the record at the start of every session and write back through one command. You read it on a dashboard and make the decisions.
 
-> Works best in [cmux](#works-best-in-cmux-and-rex) and [Rex](#works-best-in-cmux-and-rex): the dashboard docks beside the session and follows it. Any terminal works.
+> Works best in [cmux](https://cmux.com) and [Rex](https://www.superlogical.com): the dashboard docks beside the session and follows it. Any terminal works.
 
 ## Getting started
 
@@ -43,7 +43,7 @@ When it worked you have four things: a store of your own at `~/.pjman/store`, th
 
 ## Works best in cmux and Rex
 
-pjman runs in any terminal. In a terminal it knows, the session and the dashboard become one workspace.
+pjman runs in any terminal. In [cmux](https://cmux.com) and [Rex](https://www.superlogical.com), the session and the dashboard become one workspace.
 
 ![A real day in cmux: eight sessions in the sidebar, each labelled with its change and its step; the session in the middle; the dock on the right following it on the session's page, with the change it is on, its plan, its sources and its timeline](assets/docked.png)
 
