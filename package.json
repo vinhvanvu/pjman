@@ -1,6 +1,6 @@
 {
   "name": "@vinhvanvu/pjman",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "A context graph for product development: typed records in git under one schema, and the tool that is the schema.",
   "keywords": [
     "context-graph",

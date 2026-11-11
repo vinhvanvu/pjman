@@ -2,6 +2,22 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.4.0 — 2026-11-11
+
+### Changed
+
+- **Plugin follows brew upgrades**: Under Homebrew, pjman registers the Claude Code plugin at the stable opt path, so brew upgrade never strands it (change:pjman-18)
+- **Switch installs without loss**: pjman init points the plugin at the install it runs from, and the adapter keeps its files where removing the plugin cannot reach them (change:pjman-15)
+- **Homebrew install docs**: The Homebrew install written down: trusting the tap, an npm copy that shadows the brew one, outdated Command Line Tools, and upgrading (change:pjman-17)
+- **pjman doctor**: A read-only check of the install that names each problem with the command that fixes it (change:pjman-19)
+- **Follow window**: One browser window that follows the session in focus, opened by itself when a Rex session starts and none is open (change:follow-window)
+- **README showcase**: The README opens with getting started and what init shows, says it works best in cmux and Rex, and shows the four lenses and the docked view in a real session (change:readme-showcase)
+
+### Fixed
+
+- **Refused write haunts index**: A refused create stays in the per-machine index cache: validate reports a file that does not exist and the write cannot be retried (change:refused-write-leaves-index-entry)
+- **Dashboard keeps its port**: A restarted dashboard comes back on the port it had, so the docks already open keep working (change:pjman-16)
+
 ## 0.3.1 — 2026-11-10
 
 ### Changed
