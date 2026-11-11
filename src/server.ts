@@ -26,6 +26,7 @@ import { HostWatch } from './host-watch.js';
 import { hostHere, hostLaunch, hostOpen } from './commands/host.js';
 import { hostOfRecord, type HostAdapter, type HostId, type HostStatus } from './host.js';
 import { sessionLogOf } from './session-state.js';
+import { FollowState } from './follow.js';
 
 /** The kinds a `kinds=` filter may name; anything else is ignored. */
 const ROW_KINDS: ReadonlySet<RowKind> = new Set<RowKind>(['write', 'decision', 'line', 'file', 'switch', 'bind']);
@@ -103,7 +104,7 @@ class HttpError extends Error {
 
 /** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
 /** The routes that write; everything else reads. */
-const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch'];
+const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch', '/follow', '/follow/ensure'];
 
 /** The API's index, as data (GET /api/v1): one style throughout (change:interface-audit). A collection's member is
  *  named in the path (/records/{kind}/{rest}, /products/{slug}/…, /projects/{slug}/…, /sessions/{id}/…); a view over
@@ -125,11 +126,14 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
   { method: 'GET', path: '/products/{slug}/bridge', query: ['days'], about: "the product's changes in motion and their sessions" },
   { method: 'GET', path: '/products/{slug}/timeline', query: ['from', 'to', 'after'], about: "the product's events over a window, always as of now" },
   { method: 'GET', path: '/events', query: ['since', 'until'], about: 'the event stream; live as server-sent events with Accept: text/event-stream' },
+  { method: 'GET', path: '/follow', about: 'the session the follow window shows (the one the person last prompted) and how many follow windows are open; as server-sent events (Accept: text/event-stream or stream=1) the follow window\'s own stream, counted while open, a `follow` frame each time the session moves' },
   { method: 'POST', path: '/order', body: '{change, before|after|first|last|later}', about: "move a change in its product's order, as pjman order" },
   { method: 'POST', path: '/decide', body: '{decision, option?, words?}', about: 'a proposed decision accepted by the person signed in' },
   { method: 'POST', path: '/reopen', body: '{decision}', about: 'a decided decision back to proposed' },
   { method: 'POST', path: '/open', body: '{session}', about: "a session's block brought to the front on the host it runs in" },
   { method: 'POST', path: '/launch', body: '{change}', about: "a session for a change launched on the host this machine runs, the harness in the change's worktree" },
+  { method: 'POST', path: '/follow', body: '{session}', about: 'the person is on this session: the follow windows move to it (held in memory, not written to the store)' },
+  { method: 'POST', path: '/follow/ensure', about: 'whether the caller opens a follow window: yes to one caller while none is open or being opened' },
 ];
 
 const CONVENTIONS = {
@@ -204,6 +208,14 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const stopSweeping = follow(store, lastSeq(store), () => sweepSoon());
   sweepSoon();
   const hostStates = (): ReadonlyMap<string, HostStatus> => watch.states();
+  // the follow window (change:follow-window): the session the person is on, sent to every stream as `event: follow`
+  const followFrame = (f: { session: string; at: string; by: string }) => `event: follow\ndata: ${JSON.stringify({ op: 'follow', type: 'session', key: f.session, at: f.at, by: f.by })}\n\n`;
+  // a follow window holds a stream of its own, apart from the store's: the store's is shared by every page of a
+  // browser (one per browser, through a worker), so it cannot say whether a follow window is open
+  const followStreams = new Set<http.ServerResponse>();
+  const following = new FollowState((f) => {
+    for (const res of followStreams) res.write(followFrame(f));
+  });
   // the host this machine runs, asked once: a session can be launched on it from the dashboard
   let hostHereMemo: ReturnType<typeof hostHere> | undefined;
   const hostOnMachine = () => (hostHereMemo === undefined ? (hostHereMemo = hostHere()) : hostHereMemo);
@@ -244,6 +256,23 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       try {
         const body = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
         const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
+        if (route === '/follow') {
+          // not a write to the store: the person is on this session (decision follow-window/the-signal)
+          const given = s(body.session);
+          if (!given) throw new HttpError(400, 'bad-request', 'session is required');
+          const key = given.startsWith('session:') ? given : `session:${given}`;
+          const r = resolve(current(), key);
+          if ((r.status !== 'ok' && r.status !== 'alias') || r.rec.type !== 'session') throw new HttpError(404, 'not-found', `no session ${key}`);
+          return send(res, 200, { data: { ...following.set(r.rec.key), windows: following.windows } });
+        }
+        if (route === '/follow/ensure') {
+          // a server just started gives a window that was open its reconnect before answering, so none opens twice
+          const wait = following.waitFor();
+          const answer = () => send(res, 200, { data: following.ensure() });
+          if (wait > 0) setTimeout(answer, wait);
+          else answer();
+          return;
+        }
         const writer = readUserConfig().actor;
         if (!writer) throw new HttpError(403, 'no-actor', 'no person is signed in: set actor in ~/.pjman/config.yaml');
         if (route === '/open') {
@@ -293,6 +322,24 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     const getOpts = { cwd: store.projectDir ?? process.cwd(), projectDir: store.projectDir, project: store.project };
     let m: RegExpExecArray | null;
 
+    if (route === '/follow') {
+      if ((req.headers.accept ?? '').includes('text/event-stream') || url.searchParams.get('stream') === '1') {
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive' });
+        res.write(`retry: 2000\n\n`);
+        const f = following.get();
+        if (f) res.write(followFrame(f));
+        const beat = setInterval(() => res.write(': keep-alive\n\n'), 15000);
+        followStreams.add(res);
+        following.connected();
+        req.on('close', () => {
+          clearInterval(beat);
+          followStreams.delete(res);
+          following.disconnected();
+        });
+        return;
+      }
+      return send(res, 200, { data: { followed: following.get(), windows: following.windows } });
+    }
     if (route === '/store') {
       const cfg = store.config;
       return send(res, 200, { data: {

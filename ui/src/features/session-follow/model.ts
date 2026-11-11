@@ -23,6 +23,18 @@ export function followState(session: Pick<SessionFacts, 'state'> | undefined, st
 /** The person is not looking at what the session is on: another page, a selection, another tab. The way back shows. */
 export const away = (standing: Standing): boolean => !standing.onSessionRoute || standing.looking;
 
+/** What the follow window does when the person prompts a session (decision follow-window/steered-window): the same
+ *  session is nothing to do; another one is gone to while the window follows (or follows nothing yet, or its session
+ *  ended), and held as the way back's offer while the person is looking around. */
+export function onPrompted(home: string | undefined, prompted: string, standing: Standing): 'same' | 'go' | 'hold' {
+  if (home === prompted) return 'same';
+  if (!home || !away(standing)) return 'go';
+  return 'hold';
+}
+
+/** A session's id from its key, as the session route takes it. */
+export const sessionId = (key: string): string => (key.startsWith('session:') ? key.slice('session:'.length) : key);
+
 /** What the pill calls the session: the change it is on, else the product it is in, else the id's first letters.
  *  Never the uuid alone when anything better is known. */
 export function followName(session: Pick<SessionFacts, 'on' | 'product'> | undefined, id: string): string {

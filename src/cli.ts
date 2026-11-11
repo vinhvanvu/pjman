@@ -5,6 +5,7 @@ import { findStore, globalStore, globalStorePath, readUserConfig, requireStore }
 import { BRIEF } from './commands/brief.js';
 import { start, stop } from './commands/start.js';
 import { openPage, openUrl } from './commands/open.js';
+import { openWindow } from './commands/follow-window.js';
 import { withStoreLock } from './lock.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
 import { buildIndex, query } from './indexdb.js';
@@ -695,6 +696,14 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       throw usageError('usage: pjman host [label [--clear] | send <text> | open | status] <session-id> · pjman host launch <change>');
     }
     case 'open': {
+      if (v.follow) {
+        // the follow window (change:follow-window): a window of its own, never docked, at the session the person is on
+        const s = start({ cwd, log: out });
+        const url = `${s.address.url}/follow`;
+        const plan = openWindow(url, readUserConfig().follow_browser);
+        out(`opened the follow window ${url} in ${plan.browser}${plan.how === 'app' ? ' (app window)' : plan.how === 'window' ? ' (new window)' : ''}${s.started ? ' (dashboard started)' : ''}`);
+        return 0;
+      }
       const session = v.session || process.env.PJMAN_SESSION || undefined;
       if (session) {
         // a session the store does not hold would open an empty page: say so instead

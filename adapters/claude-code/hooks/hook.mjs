@@ -39,6 +39,12 @@
 //   to the terminal: it closes at session end, and a /clear keeps it, sent back to the bridge from whatever page it showed and
 //   parked there for the next session to take over the same way. Elsewhere, and whenever the pane was closed, `pjman open --session` brings the page back; the
 //   session's id is exported to the agent's shell as PJMAN_SESSION.
+//
+//   The follow window (change:follow-window). Every prompt in a main session tells a running dashboard that the person is on
+//   this session, and the follow window goes there. In a host with no dock (Rex), a session's start opens that window when
+//   none is open: a detached copy of this hook (FollowWindow) starts the dashboard if none runs, tells it the session, asks
+//   it whether to open one (yes to one caller only, so sessions started together never open two) and runs
+//   `pjman open --follow`. `follow_window: false` in ~/.pjman/config.yaml turns the opening off.
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -354,6 +360,55 @@ async function ensureServer(cwd) {
   }
   note('pjman serve did not come up in time');
   return null;
+}
+
+/** A POST to the dashboard's API: its data, or null when it is not running, refuses, or takes longer than `ms`. */
+async function postServer(server, route, body, ms = 1500) {
+  try {
+    const res = await fetch(`${server.url}/api/v1${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+    if (!res.ok) return null;
+    return (await res.json()).data ?? null;
+  } catch {
+    return null;
+  }
+}
+/** Rex, when the session runs inside it: its blocks are terminals only, so the view is a follow window, not a dock. */
+const inRex = () => Boolean(process.env.REX_SESSION);
+/** The user config says follow_window: false. Read as text: the hook has no YAML parser. */
+function followWindowOff() {
+  try {
+    const file = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml');
+    return /^follow_window:\s*false\s*$/m.test(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+/** The person is on this session (they prompted it): a running dashboard moves the follow window to it. */
+async function followPrompted(sid) {
+  const server = readServeAddress();
+  if (server) await postServer(server, '/follow', { session: sid }, 800);
+}
+/** At a session's start in Rex: the follow window opened, unless one is open, detached so the start does not wait. */
+function startFollowWindow(sid, cwd) {
+  if (!inRex() || followWindowOff()) return;
+  try {
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'FollowWindow'], { cwd, detached: true, stdio: 'ignore', env: { ...process.env, PJMAN_FOLLOW_SESSION: sid } });
+    child.unref();
+  } catch (e) {
+    note(`follow window: ${e.message}`);
+  }
+}
+/** The detached half: the dashboard up, told the session, asked whether to open the window, and the window opened. */
+async function followWindow(sid, cwd) {
+  const server = await ensureServer(cwd);
+  if (!server) return;
+  await postServer(server, '/follow', { session: sid });
+  // a dashboard just started waits a moment for a window that was open to reconnect before it answers
+  const r = await postServer(server, '/follow/ensure', {}, 8000);
+  if (!r?.open) return note(`follow window: ${r ? (r.reason === 'open' ? 'one is open' : 'another session is opening one') : 'the dashboard did not answer'}`);
+  const [cmd, ...pre] = PJMAN;
+  const out = await runAsync(cmd, [...pre, 'open', '--follow'], { cwd });
+  note(out.ok ? `follow window: ${out.out.trim()}` : `follow window: pjman open --follow failed: ${out.err}`);
 }
 
 /** cmux, when the session runs inside it: its socket CLI docks the view and names the change in the sidebar. */
@@ -735,6 +790,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     return;
   }
   if (main) exportToShell(env);
+  if (main) startFollowWindow(sid, cwd);
   if (st.seq === undefined) st.seq = read.receipt?.seq ?? 0; // receipts start from here
   if (start.bound) st.bound = start.bound;
   if (st.bound) taken(st, st.bound);
@@ -768,6 +824,12 @@ async function promiseObject(obj) {
 
 // --- main ---------------------------------------------------------------------------------------
 async function main() {
+  // the detached half of a session start in Rex (startFollowWindow): no stdin, the session in the environment
+  if (EVENT === 'FollowWindow') {
+    const sid = process.env.PJMAN_FOLLOW_SESSION;
+    if (sid) await followWindow(sid, process.cwd());
+    return;
+  }
   const input = readStdin();
   const mainSid = input.session_id;
   if (!mainSid) return;
@@ -842,6 +904,7 @@ async function main() {
       if (b) parts.push(b);
       emitContext(EVENT, parts.join('\n---\n'));
       saveState(sid, st);
+      if (!input.agent_id) await followPrompted(sid); // the person is on this session: the follow window goes there
       return;
     }
     case 'PostToolUse': {

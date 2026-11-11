@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './../routes/__root'
 import { Route as IndexRouteImport } from './../routes/index'
+import { Route as FollowRouteImport } from './../routes/follow'
 import { Route as LensSplatRouteImport } from './../routes/$lens.$'
 import { Route as BridgeSplatRouteImport } from './../routes/bridge.$'
 import { Route as ChangeSplatRouteImport } from './../routes/change.$'
@@ -20,6 +21,11 @@ import { Route as SessionIdRouteImport } from './../routes/session.$id'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FollowRoute = FollowRouteImport.update({
+  id: '/follow',
+  path: '/follow',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LensSplatRoute = LensSplatRouteImport.update({
@@ -55,6 +61,7 @@ const SessionIdRoute = SessionIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/follow': typeof FollowRoute
   '/$lens/$': typeof LensSplatRoute
   '/bridge/$': typeof BridgeSplatRoute
   '/change/$': typeof ChangeSplatRoute
@@ -64,6 +71,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/follow': typeof FollowRoute
   '/$lens/$': typeof LensSplatRoute
   '/bridge/$': typeof BridgeSplatRoute
   '/change/$': typeof ChangeSplatRoute
@@ -74,6 +82,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/follow': typeof FollowRoute
   '/$lens/$': typeof LensSplatRoute
   '/bridge/$': typeof BridgeSplatRoute
   '/change/$': typeof ChangeSplatRoute
@@ -85,6 +94,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/follow'
     | '/$lens/$'
     | '/bridge/$'
     | '/change/$'
@@ -94,6 +104,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/follow'
     | '/$lens/$'
     | '/bridge/$'
     | '/change/$'
@@ -103,6 +114,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/follow'
     | '/$lens/$'
     | '/bridge/$'
     | '/change/$'
@@ -113,6 +125,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FollowRoute: typeof FollowRoute
   LensSplatRoute: typeof LensSplatRoute
   BridgeSplatRoute: typeof BridgeSplatRoute
   ChangeSplatRoute: typeof ChangeSplatRoute
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/follow': {
+      id: '/follow'
+      path: '/follow'
+      fullPath: '/follow'
+      preLoaderRoute: typeof FollowRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$lens/$': {
@@ -177,6 +197,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FollowRoute: FollowRoute,
   LensSplatRoute: LensSplatRoute,
   BridgeSplatRoute: BridgeSplatRoute,
   ChangeSplatRoute: ChangeSplatRoute,

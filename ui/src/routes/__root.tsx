@@ -5,6 +5,7 @@ import { createRootRouteWithContext, Outlet, retainSearchParams } from '@tanstac
 import { z } from 'zod';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useLiveInvalidation } from '@/data/live';
+import { useFollowWindow } from '@/features/session-follow';
 import { useApplyTheme } from '@/features/theme';
 import { MotionRoot } from '@/lib/motion';
 import { atSearch, eventSearch } from './-search';
@@ -24,6 +25,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function Root() {
   useApplyTheme();
   useLiveInvalidation();
+  useFollowWindow();
   return (
     <MotionRoot>
       <TooltipProvider delayDuration={300}>
