@@ -79,6 +79,14 @@ export function indexFileOf(store: Store): string {
   return path.join(userDir(), 'index', `${createHash('sha1').update(root).digest('hex').slice(0, 16)}.db`);
 }
 
+/** Throw away the store's index on this machine, so the next load reads every file again: what clears any drift
+ *  between the index and the files (pjman index). */
+export function resetIndex(store: Store): void {
+  const file = indexFileOf(store);
+  for (const f of [file, `${file}-wal`, `${file}-shm`]) fs.rmSync(f, { force: true });
+  lastRead.delete(store.root);
+}
+
 type Sqlite = typeof import('node:sqlite');
 let sqlite: Sqlite | undefined;
 

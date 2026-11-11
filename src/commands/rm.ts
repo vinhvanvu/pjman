@@ -10,7 +10,7 @@ import { canon } from '../graph.js';
 import { parseKey } from '../keys.js';
 import { eventKeysOf, loadStore, resolve, unresolved, unresolvedError, type Rec } from '../records.js';
 import { CliError } from '../util.js';
-import { envelope, errorsAt, finishWrite, render } from '../write.js';
+import { envelope, errorsAt, finishWrite, render, settleIndex } from '../write.js';
 import { noteReshaping } from '../store-index.js';
 
 export interface Detached {
@@ -116,6 +116,7 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, text);
     }
+    settleIndex(store, before.keys());
   };
   if (dir !== null) fs.rmSync(path.join(store.root, dir), { recursive: true, force: true });
   else fs.rmSync(rec.abs, { force: true });

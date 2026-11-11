@@ -12,6 +12,7 @@ import { findStore, type Store } from '../config.js';
 import { diskSource, loadStore, type Loaded } from '../records.js';
 import { indexFileOf, notePending, SqliteIndex } from '../store-index.js';
 import { change } from './shape.js';
+import { settleIndex } from '../write.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-index-'));
 let store: Store;
@@ -123,4 +124,64 @@ test('PJMAN_INDEX=0 reads the disk', () => {
   } finally {
     delete process.env.PJMAN_INDEX;
   }
+});
+
+test('a refused create leaves no entry behind for the next process (change:refused-write-leaves-index-entry)', () => {
+  same(store);
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli.js');
+  const run = (...args: string[]) => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath, [cli, ...args], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+    } catch (e) {
+      const err = e as { status?: number; stdout?: string; stderr?: string };
+      return { code: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+    }
+  };
+  const fields = ['--name', 'Ghost', '--gist', 'A change refused once', '--origin', 'a test', '--intent', 'Nothing.', '--done-when', 'Never.'];
+  const refused = run('new', 'change', 'ghost', ...fields, '--links', 'change:web/card-form');
+  assert.equal(refused.code, 1, refused.out);
+  assert.match(refused.out, /would not validate/);
+  assert.ok(!fs.existsSync(path.join(store.root, 'products/web/changes/ghost')));
+  // another process reads the store as the disk has it: no phantom, nothing to report, and the create goes through
+  const checked = run('validate');
+  assert.equal(checked.code, 0, checked.out);
+  assert.doesNotMatch(checked.out, /ghost/);
+  const again = run('new', 'change', 'ghost', ...fields);
+  assert.equal(again.code, 0, again.out);
+  same(store);
+});
+
+test('an undo settled through the index is not read back by the next process (rm and apply undo this way)', () => {
+  same(store);
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli.js');
+  const rel = 'products/web/changes/undone/change.md';
+  const abs = path.join(store.root, rel);
+  const file = loadStore(store).byKey.get('change:web/card-form')![0];
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, fs.readFileSync(file.abs, 'utf8'));
+  notePending(store, [rel]);
+  loadStore(store); // the write as validation reads it: into the index
+  fs.rmSync(path.dirname(abs), { recursive: true });
+  settleIndex(store, [rel]);
+  const out = execFileSync(process.execPath, [cli, 'ls', 'change'], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8' });
+  assert.doesNotMatch(out, /undone/);
+  same(store);
+});
+
+test('pjman index reads every file again, clearing an entry whose file is gone', () => {
+  same(store);
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli.js');
+  const rel = 'products/web/changes/drifted/change.md';
+  const abs = path.join(store.root, rel);
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, fs.readFileSync(loadStore(store).byKey.get('change:web/card-form')![0].abs, 'utf8'));
+  notePending(store, [rel]);
+  loadStore(store);
+  fs.rmSync(path.dirname(abs), { recursive: true }); // gone with no event: the index drifts
+  const ls = () => execFileSync(process.execPath, [cli, 'ls', 'change'], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8' });
+  assert.match(ls(), /drifted/);
+  execFileSync(process.execPath, [cli, 'index'], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8' });
+  assert.doesNotMatch(ls(), /drifted/);
+  settleIndex(store, [rel]);
+  same(store);
 });

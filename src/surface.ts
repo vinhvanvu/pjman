@@ -257,7 +257,7 @@ export const COMMANDS: Command[] = [
   { name: 'migrate', group: 'maintenance', line: 'the one move the store still waits for',
     about: "the one move the store still waits for, one commit, one event, pjman undo <commit> reverts it: the layout (every product a folder holding its features and changes, keys under the product), the foundation (every change and decision mapped into its shape, nothing dropped, each marked migrated until it is next written), then the stamp (pjman.yaml names the format the store is in, so a store from a newer pjman is refused by an older one)",
     usage: ['pjman migrate'], flags: [], args: 0 },
-  { name: 'index', group: 'maintenance', line: 'rebuild index.db (exit 1 on conflicts)', about: 'rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'], flags: [], args: 0 },
+  { name: 'index', group: 'maintenance', line: 'read every file again and rebuild index.db (exit 1 on conflicts)', about: 'read every file again (the index this machine keeps of the store is thrown away and rebuilt) and rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)', usage: ['pjman index [--json]'], flags: [], args: 0 },
   { name: 'query', group: 'maintenance', line: 'a read-only SQL query against the index', about: 'run a read-only SQL query against the index; the answer is JSON', usage: ['pjman query "<sql>"'], flags: [], args: 1 },
 ];
 
