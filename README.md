@@ -69,7 +69,9 @@ Four places, one per question.
 
 ### The bridge: what needs you now
 
-The picture at the top. The day's writes on one timeline, every live session, and the changes in motion grouped by what each needs from you. Drag the playhead and the whole board reads as it stood at that moment: the picture is a busy afternoon, replayed.
+![The bridge on a busy afternoon, replayed: the timeline of the day's writes with the playhead at 3:40 PM, two changes working now, four stopped with the next step set, one in review](assets/hero.png)
+
+The day's writes on one timeline, every live session, and the changes in motion grouped by what each needs from you. Drag the playhead and the whole board reads as it stood at that moment: the picture is a busy afternoon, replayed.
 
 ### The product map: what the product is
 
