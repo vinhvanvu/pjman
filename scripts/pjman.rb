@@ -15,6 +15,14 @@ class Pjman < Formula
     bin.install_symlink Dir["#{libexec}/bin/*"]
   end
 
+  def caveats
+    <<~EOS
+      Run `pjman init` in a repository to set it up and install the Claude Code plugin.
+      After `brew upgrade pjman` the plugin refreshes itself at the next Claude Code session;
+      run `pjman migrate` when pjman asks for it.
+    EOS
+  end
+
   test do
     assert_match version.to_s, shell_output("#{bin}/pjman --version")
   end

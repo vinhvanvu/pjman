@@ -12,7 +12,7 @@ import { seedSessionKinds } from '../session-kinds.js';
 import { set } from './set.js';
 import { installBrief, type BriefTarget } from './brief.js';
 import { FORMAT_VERSION } from './migrate.js';
-import { packageRoot, start } from './start.js';
+import { stableRoot, start } from './start.js';
 import { HANDLE_KINDS, checkersFor, formatIdentity, identity, machineName, type Checker } from '../identity.js';
 import { describeInventory, inventory, mapGuidance } from '../inventory.js';
 import { execFileSync } from 'node:child_process';
@@ -38,7 +38,9 @@ export interface InitOpts {
   checkers?: Checker[];
 }
 
-/** Install the Claude Code plugin from this checkout at user scope, when `claude` is on PATH. Idempotent; never throws. */
+/** Install the Claude Code plugin from this install at user scope, when `claude` is on PATH, registering the marketplace
+ *  at the install's stable path (stableRoot: under Homebrew, the opt path that follows upgrades); an installed plugin is
+ *  refreshed from it, so a rerun after an upgrade loads the new hooks. Idempotent; never throws. */
 export function installClaudeAdapter(): string {
   const run = (args: string[]) => execFileSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 });
   try {
@@ -46,7 +48,7 @@ export function installClaudeAdapter(): string {
   } catch {
     return 'no harness found on PATH (claude); the adapter is not installed';
   }
-  const root = packageRoot();
+  const root = stableRoot();
   const soft = (args: string[]) => {
     try {
       return run(args);
@@ -59,7 +61,14 @@ export function installClaudeAdapter(): string {
   try {
     soft(['plugin', 'marketplace', 'add', root]);
     const out = soft(['plugin', 'install', 'pjman@pjman', '--scope', 'user']);
-    return /already/i.test(out) ? 'Claude Code: the pjman plugin is installed (hooks, skill, brief, Linear MCP)' : 'Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins';
+    if (!/already/i.test(out)) return 'Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins';
+    try {
+      run(['plugin', 'marketplace', 'update', 'pjman']);
+      run(['plugin', 'update', 'pjman@pjman']);
+    } catch {
+      // the installed copy stays; the session-start hook refreshes it when its version falls behind
+    }
+    return 'Claude Code: the pjman plugin is installed (hooks, skill, brief, Linear MCP)';
   } catch (e) {
     return `Claude Code: the plugin could not be installed (${(e as Error).message}); run: claude plugin marketplace add ${root} && claude plugin install pjman@pjman`;
   }

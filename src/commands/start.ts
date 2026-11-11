@@ -11,6 +11,28 @@ export function packageRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 }
 
+/** The path that names this install across upgrades: a package under a Homebrew Cellar's versioned folder
+ *  (<prefix>/Cellar/pjman/<version>/…) is named through <prefix>/opt/pjman/…, which brew repoints at each upgrade, when
+ *  that path leads to the same folder; any other path is its own stable name. What the plugin marketplace is registered
+ *  at, so brew upgrade and its cleanup never leave it pointing at a removed folder. */
+export function stableRoot(root: string = packageRoot()): string {
+  let real = root;
+  try {
+    real = fs.realpathSync(root);
+  } catch {
+    return root;
+  }
+  const m = /^(.*)\/Cellar\/([^/]+)\/[^/]+\/(.*)$/.exec(real);
+  if (!m) return root;
+  const opt = path.join(m[1], 'opt', m[2], m[3]);
+  try {
+    if (fs.realpathSync(opt) === real) return opt;
+  } catch {
+    // no opt link (a keg brew has not linked): the Cellar path is the only name
+  }
+  return root;
+}
+
 const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /** True when the dashboard's built assets exist, building them from ui/ when the checkout has the source but no build. */

@@ -668,6 +668,30 @@ function briefText(st, b) {
  *  receipt's watermark, the branch's change, the done changes for the worktree scan, the open pull request); then the
  *  writes one after another (the session record, its log line, the binding from the branch, the session's brief). The
  *  stale worktrees, matched from the store's done changes, go ahead of the board so the harness's cap cannot cut them. */
+/** The plugin refreshes itself after an upgrade of the install it was copied from (brew upgrade, a new npm copy): Claude
+ *  Code runs a cached copy, so when the marketplace's folder carries another version than this copy, the refresh runs
+ *  detached, once per version, and the session is told the new hooks load at the next session or /reload-plugins. */
+function refreshPlugin() {
+  try {
+    const own = JSON.parse(fs.readFileSync(path.join(here, '..', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+    const known = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'known_marketplaces.json');
+    const src = JSON.parse(fs.readFileSync(known, 'utf8')).pjman?.source?.path;
+    if (!src || path.resolve(src) === path.resolve(here, '..', '..', '..')) return ''; // loaded in place: nothing cached
+    const next = JSON.parse(fs.readFileSync(path.join(src, 'adapters', 'claude-code', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+    if (!own || !next || own === next) return '';
+    const marker = path.join(dataDir, 'refreshed-to');
+    if (fs.existsSync(marker) && fs.readFileSync(marker, 'utf8').trim() === next) return '';
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(marker, next + '\n');
+    const child = spawn('sh', ['-c', 'claude plugin marketplace update pjman; claude plugin update pjman@pjman'], { detached: true, stdio: 'ignore' });
+    child.unref();
+    note(`plugin ${own} → ${next}: refresh started`);
+    return `The pjman plugin is refreshing from ${own} to ${next} (the install was upgraded); the new hooks load at the next session or /reload-plugins.\n\n`;
+  } catch (e) {
+    note(`plugin refresh skipped: ${e.message}`);
+    return '';
+  }
+}
 async function sessionStart(input, store, sid, env, st, cwd) {
   const main = !input.agent_id;
   const source = input.source || 'startup';
@@ -705,6 +729,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (st.bound) taken(st, st.bound);
   if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
   let text = (read.brief ?? '') + `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
+  if (main && (source === 'startup' || source === 'clear')) text += refreshPlugin();
   if (st.unscoped) text += `This session started outside any registered repository (${input.cwd || process.cwd()}). It is recorded with no project until a tool call lands in one: edit a file there or \`cd\` into it in a shell command, and the session is resolved to that project. Run pjman from inside the repository you work in, so its writes resolve to that project.\n\n`;
   const stale = main ? staleWorktreesText(staleWorktrees(cwd, read.done ?? [])) : '';
   if (stale) text += `${stale}\n---\n`;
