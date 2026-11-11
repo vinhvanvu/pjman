@@ -71,9 +71,9 @@ after(() => {
 const post = (route: string, body: unknown = {}) => fetch(`${base}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 /** An open stream and a way to wait for what it says. */
-async function stream(query: string) {
+async function stream(route: string) {
   const ctl = new AbortController();
-  const res = await fetch(`${base}/events?stream=1${query}`, { signal: ctl.signal });
+  const res = await fetch(`${base}${route}?stream=1`, { signal: ctl.signal });
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let seen = '';
@@ -95,25 +95,26 @@ async function stream(query: string) {
   return { until, close: () => ctl.abort() };
 }
 
-test('a prompt moves every stream to the session; a follow window is counted and told at once on connecting', async () => {
-  const page = await stream('');
+test('a prompt moves the follow windows to the session; a window is counted, and told at once on connecting', async () => {
+  const page = await stream('/follow');
   assert.equal((await post('/follow', { session: 'one' })).status, 200);
   await page.until((s) => /event: follow\ndata: \{[^\n]*"key":"session:one"/.test(s));
   assert.equal((await post('/follow', { session: 'nobody' })).status, 404);
   assert.equal((await post('/follow', {})).status, 400);
-  const win = await stream('&follow=1');
+  page.close();
+  await new Promise((r) => setTimeout(r, 100));
+  const win = await stream('/follow');
   await win.until((s) => /event: follow\ndata: \{[^\n]*"key":"session:one"/.test(s));
   const got = (await (await fetch(`${base}/follow`)).json()) as { data: { followed: Followed; windows: number } };
   assert.equal(got.data.followed.session, 'session:one');
   assert.equal(got.data.windows, 1);
   await post('/follow', { session: 'session:two' });
   await win.until((s) => s.includes('"key":"session:two"'));
-  page.close();
   win.close();
 });
 
 test('ensure: while a window is open nobody opens one; once it closes one caller is told to, the next is not', async () => {
-  const win = await stream('&follow=1');
+  const win = await stream('/follow');
   await new Promise((r) => setTimeout(r, 100));
   const ensure = async () => ((await (await post('/follow/ensure')).json()) as { data: { open: boolean; reason?: string } }).data;
   // a server just started answers after a window that was open has had its reconnect

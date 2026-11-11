@@ -3,7 +3,7 @@
 // returns; once the session ends it says so. The close forgets the session. It names the change, never the uuid.
 import { useMatch, useNavigate, useSearch } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { Play, X } from 'lucide-react';
+import { ArrowRight, Play, X } from 'lucide-react';
 import { useSessionView } from '@/data/queries';
 import { Pulse } from '@/components/presence/Presence';
 import type { PageSearch } from '@/routes/-search';
@@ -19,6 +19,9 @@ const WORDS = { following: 'following', paused: 'paused on', ended: 'ended' } as
 export function FollowPill({ className }: { className?: string }) {
   const home = useFollow((s) => s.home);
   const forget = useFollow((s) => s.forget);
+  // the follow window held while the person looked around: the session prompted since, offered (change:follow-window)
+  const next = useFollow((s) => s.next);
+  const { data: nextView } = useSessionView(next);
   const match = useMatch({ from: '/session/$id', shouldThrow: false });
   const search = useSearch({ strict: false }) as PageSearch;
   const navigate = useNavigate();
@@ -36,6 +39,8 @@ export function FollowPill({ className }: { className?: string }) {
   const state = followState(session, standing);
   const name = followName(session, home);
   const back = () => void navigate({ to: '/session/$id', params: { id: home }, search: {} });
+  const offered = next && next !== home ? next : undefined;
+  const toNext = () => offered && void navigate({ to: '/session/$id', params: { id: offered }, search: {} });
   return (
     <div
       className={cn(
@@ -60,6 +65,18 @@ export function FollowPill({ className }: { className?: string }) {
       </span>
       <span className="shrink-0 text-ink-muted">{WORDS[state]}</span>
       <span className="min-w-0 truncate font-medium text-ink">{name}</span>
+      {offered && (
+        <button
+          type="button"
+          onClick={toNext}
+          aria-label={`Go to the session you are on now: ${followName(nextView?.session, offered)}`}
+          title="You prompted this session since"
+          className="inline-flex h-6 min-w-0 shrink items-center gap-1 rounded-full bg-primary px-2 text-primary-foreground hover:opacity-90"
+        >
+          <ArrowRight className="size-3 shrink-0" />
+          <span className="truncate">{followName(nextView?.session, offered)}</span>
+        </button>
+      )}
       {away(standing) && (
         <button
           type="button"

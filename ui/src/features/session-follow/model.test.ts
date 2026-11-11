@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { away, followName, followState, livenessWords, newestLines } from './model';
+import { away, followName, followState, livenessWords, newestLines, onPrompted, sessionId } from './model';
 
 describe('followState', () => {
   it('follows on the session route with nothing else open', () => {
@@ -51,5 +51,24 @@ describe('livenessWords', () => {
   it('copes without a last instant', () => {
     expect(livenessWords({ state: 'quiet' }, now)).toBe('quiet');
     expect(livenessWords(undefined, now)).toBe('');
+  });
+});
+
+describe('onPrompted (the follow window, decision follow-window/steered-window)', () => {
+  const following = { onSessionRoute: true, looking: false };
+  it('goes to the session prompted while it follows, or while it follows nothing yet', () => {
+    expect(onPrompted('a', 'b', following)).toBe('go');
+    expect(onPrompted(undefined, 'b', { onSessionRoute: false, looking: false })).toBe('go');
+  });
+  it('holds while the person looks around: a selection, a tab, another page', () => {
+    expect(onPrompted('a', 'b', { onSessionRoute: true, looking: true })).toBe('hold');
+    expect(onPrompted('a', 'b', { onSessionRoute: false, looking: false })).toBe('hold');
+  });
+  it('the session it already shows is nothing to do', () => {
+    expect(onPrompted('a', 'a', { onSessionRoute: false, looking: true })).toBe('same');
+  });
+  it('a key and an id name the same session', () => {
+    expect(sessionId('session:abc')).toBe('abc');
+    expect(sessionId('abc')).toBe('abc');
   });
 });
