@@ -83,6 +83,17 @@ and where to read on. The agents with a waking adapter are listed in `src/comman
 harness adapter that gains a wake module adds its agent there. The decision's result lists each delivery and whether
 the host took it.
 
+## The follow window
+
+A host with no browser pane to dock the session's page in (Rex: its blocks are terminals only) gets the follow window
+instead (change:follow-window): one browser window, its own and never a tab (an app window on a Chromium browser, a new
+window in Safari and Firefox), at the dashboard's `/follow`, that shows the session the person last prompted. The
+harness adapter tells the dashboard at each prompt (`POST /follow`); the window holds `GET /follow` as a stream, which the
+dashboard counts as an open window, and goes to each session it names, or, while the person looks around, holds and
+offers it. A session's start in such a host asks `POST /follow/ensure` and opens the window (`pjman open --follow`) only
+when told to: never while one is open, and to one caller only. Once a host reports which block has the person's focus,
+that will move the window too; a host's dock, where it has one (cmux), stays as it is.
+
 ## Adding a host
 
 One object in `src/host.ts` implementing `HostAdapter`, with its manifest, added to `HOSTS`; a fake command in

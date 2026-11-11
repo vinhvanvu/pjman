@@ -389,7 +389,8 @@ pjman start [--port <n>] [--open]
     the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL
 
 pjman open [--session <id>]
-    the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere
+pjman open --follow
+    the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere. --follow opens the follow window instead: a window of its own that shows the session the person last prompted (an app window on a Chromium browser, a new window in Safari and Firefox; follow_browser in ~/.pjman/config.yaml names another browser)
 
 pjman stop
     stop the dashboard server

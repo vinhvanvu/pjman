@@ -41,7 +41,8 @@ before(() => {
   process.env.PJMAN_HOME = env.PJMAN_HOME;
   fs.mkdirSync(path.join(project, 'src'), { recursive: true });
   fs.mkdirSync(env.PJMAN_HOME, { recursive: true });
-  fs.writeFileSync(path.join(env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
+  // no follow window opened by a session started in Rex, unless a test turns it on (it would start a real dashboard)
+  fs.writeFileSync(path.join(env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nfollow_window: false\nstores: []\n');
   execFileSync('git', ['init', '-q'], { cwd: project });
   init({ checkers: [], cwd: project, inProject: true });
   store = findStore(project)!;
@@ -592,5 +593,56 @@ esac
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });
+  }
+});
+
+test('the follow window: a prompt tells the dashboard the session; the start in Rex opens one window when told to (change:follow-window)', async () => {
+  const { createServer } = await import('node:http');
+  const { promisify } = await import('node:util');
+  const { execFile } = await import('node:child_process');
+  const run = promisify(execFile);
+  const posts: { route: string; body: Record<string, unknown> }[] = [];
+  let answer = { open: true };
+  const dash = createServer((req, res) => {
+    let text = '';
+    req.on('data', (c: Buffer) => (text += c.toString()));
+    req.on('end', () => {
+      const route = (req.url ?? '').replace('/api/v1', '');
+      posts.push({ route, body: text ? (JSON.parse(text) as Record<string, unknown>) : {} });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: route === '/follow/ensure' ? answer : {} }));
+    });
+  });
+  await new Promise<void>((r) => dash.listen(0, '127.0.0.1', () => r()));
+  const url = `http://127.0.0.1:${(dash.address() as { port: number }).port}`;
+  const cfg = path.join(env.PJMAN_HOME, 'config.yaml');
+  const savedCfg = fs.readFileSync(cfg, 'utf8');
+  const serve = path.join(env.PJMAN_HOME, 'serve.json');
+  const savedServe = fs.existsSync(serve) ? fs.readFileSync(serve, 'utf8') : null;
+  const opened = path.join(tmp, 'opened.jsonl');
+  try {
+    fs.writeFileSync(cfg, savedCfg.replace('follow_window: false\n', ''));
+    fs.writeFileSync(serve, JSON.stringify({ pid: process.pid, url }));
+    // a prompt in a main session: the person is on it
+    const prompt = execFile(process.execPath, [HOOK, 'UserPromptSubmit'], { env, encoding: 'utf8' });
+    prompt.stdin?.end(JSON.stringify({ cwd: project, session_id: 'sess-a', prompt: 'hello' }));
+    await new Promise((r) => prompt.on('exit', r));
+    assert.deepEqual(posts.filter((p) => p.route === '/follow').map((p) => p.body.session), ['sess-a']);
+    // the detached half of a start in Rex: told to open, it opens the window at /follow
+    posts.length = 0;
+    const fw = { ...env, PJMAN_FOLLOW_SESSION: 'sess-a', PJMAN_OPEN_LOG: opened, REX_SESSION: 'session:r1' };
+    await run(process.execPath, [HOOK, 'FollowWindow'], { cwd: project, env: fw, encoding: 'utf8' });
+    assert.deepEqual(posts.map((p) => p.route), ['/follow', '/follow/ensure']);
+    const lines = fs.readFileSync(opened, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as { url: string });
+    assert.deepEqual(lines.map((l) => l.url), [`${url}/follow`]);
+    // one is open already: nothing more is opened
+    answer = { open: false, reason: 'open' } as unknown as { open: true };
+    await run(process.execPath, [HOOK, 'FollowWindow'], { cwd: project, env: fw, encoding: 'utf8' });
+    assert.equal(fs.readFileSync(opened, 'utf8').trim().split('\n').length, 1);
+  } finally {
+    fs.writeFileSync(cfg, savedCfg);
+    if (savedServe === null) fs.rmSync(serve, { force: true });
+    else fs.writeFileSync(serve, savedServe);
+    dash.close();
   }
 });
