@@ -9,20 +9,20 @@ import { cn } from 'cn';
 import { AlertTriangle, Check, ChevronRight, FileText, Link2 } from 'lucide-react';
 import { m } from 'motion/react';
 import { useState } from 'react';
-import type { ChangeContext, Lens, SessionFacts, WaitingDecision } from '@/data/contract';
-import type { useDecideAction } from '@/data/queries';
+import type { ChangeContext, Lens, RailRowKind, SessionFacts, WaitingDecision } from '@/data/contract';
+import { type useDecideAction, useRail } from '@/data/queries';
 import { KeyText } from '@/components/chips/Chip';
 import { fromRow, fromWaiting } from '@/components/decisions/model';
 import { DecisionGroup } from '@/components/decisions/DecisionGroup';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Pulse } from '@/components/presence/Presence';
 import { planView, RISE, SegmentBar, shippedWords } from '@/features/change';
-import { agoWords } from '@/lib/format';
+import { ago, agoWords } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Wash } from '@/lib/motion';
 import { statusTone } from '@/lib/tones';
 import type { DockArrivals } from './model';
-import { bandOf, type Band, type BandTone, planRead, sourcePlace, sourcesRead } from './calm';
+import { bandOf, type Band, type BandTone, planRead, sourcePlace, sourcesRead, writeWords } from './calm';
 
 type Decide = ReturnType<typeof useDecideAction>;
 type Source = ChangeContext['sources'][number];
@@ -100,8 +100,6 @@ export interface CalmDockProps {
   onLink: (key: string | undefined) => void;
   /** The way to the session's terminal, when a host holds it. */
   host?: { name: string; open: () => void; busy: boolean };
-  /** Now (steps 5 and 6 of change:dock-redesign): drawn under the step in work. */
-  now?: React.ReactNode;
 }
 
 const NO_WAITING: readonly WaitingDecision[] = [];
@@ -122,9 +120,9 @@ export function CalmDock({
   linked,
   onLink,
   host,
-  now,
 }: CalmDockProps) {
   const c = ctx.change;
+  const now = <Now change={c.key} session={session} working={working} moment={moment} />;
   const milestone = c.data.kind === 'milestone';
   const beneath = waitingBeneath.filter((d) => d.change !== c.key).map(fromWaiting);
   const decisions = [...ctx.decisions.map((d) => fromRow(d, c.key)), ...beneath];
@@ -170,7 +168,14 @@ export function CalmDock({
         </section>
       )}
 
-      {milestone ? milestoneSlot : <Plan ctx={ctx} working={working} now={now} />}
+      {milestone ? (
+        <div className="flex flex-col gap-3">
+          {milestoneSlot}
+          {now}
+        </div>
+      ) : (
+        <Plan ctx={ctx} working={working} now={now} />
+      )}
 
       <Sources sources={ctx.sources} lens={lens} />
 
@@ -266,6 +271,67 @@ function Head({ label, figure }: { label: string; figure?: string }) {
     <div className="flex items-baseline gap-2">
       <span className="text-[11px] font-semibold tracking-[.07em] text-ink-faint uppercase">{label}</span>
       {figure && <span className="ml-auto text-xs text-ink-muted">{figure}</span>}
+    </div>
+  );
+}
+
+/** The newest write to the change, as the rail reads it; the live stream refetches it as writes land. */
+const LATEST = { limit: 1, kinds: ['write', 'decision', 'file'] as RailRowKind[] };
+
+/** Now (decision calm-dock): two lines, each the latest only and replaced in place. The agent's: a spinner while the
+ *  session works, a grey dot and when it stopped at rest (its action in words lands with decision agent-signal). pjman's:
+ *  the newest write to the change behind a diamond, washed when a new one lands. */
+function Now({
+  change,
+  session,
+  working,
+  moment,
+}: {
+  change: string;
+  session: SessionFacts;
+  working: boolean;
+  moment?: string;
+}) {
+  const rail = useRail(change, LATEST);
+  const row = rail.data?.rows.at(-1);
+  // the first row read is where the page came in; only a newer one is an arrival, and never while a moment is held
+  const [first, setFirst] = useState<number>();
+  if (row && first === undefined) setFirst(row.seq);
+  const arrived = !moment && row && first !== undefined && row.seq !== first ? row.seq : undefined;
+  const words = row && writeWords(row);
+  const ended = session.state === 'ended';
+  return (
+    <div
+      aria-label="Now"
+      aria-live="polite"
+      className="flex flex-col rounded-lg border border-line bg-surface px-3 py-0.5 text-[12.5px]"
+    >
+      <div className="grid min-h-[32px] grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2">
+        {working ? (
+          <span
+            aria-hidden="true"
+            className="size-2.5 animate-spin rounded-full border-[1.5px] border-live/30 border-t-live motion-reduce:animate-none"
+          />
+        ) : (
+          <span aria-hidden="true" className="ml-px size-2 rounded-full bg-line-strong" />
+        )}
+        <span className="truncate text-ink-muted">{working ? 'Working' : ended ? 'The session ended' : 'Stopped'}</span>
+        <span className="text-[11px] text-ink-faint">{working ? 'now' : ago(session.last)}</span>
+      </div>
+      {row && words && (
+        <div className="relative grid min-h-[32px] grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 border-t border-line">
+          <Wash arrival={arrived} className="-inset-x-3 rounded-none bg-primary/15" />
+          <span aria-hidden="true" className="relative ml-0.5 size-2 rotate-45 rounded-[2px] bg-primary" />
+          <span
+            className="relative truncate text-ink-muted"
+            title={[words.verb, words.object].filter(Boolean).join(' ')}
+          >
+            {words.verb}
+            {words.object && <span className="font-medium text-ink"> {words.object}</span>}
+          </span>
+          <span className="relative text-[11px] text-ink-faint">{ago(row.at)}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -3,7 +3,7 @@
 // overrides the status, done is the one solid band, and the aside says what the session is doing or how it ended. The
 // plan reads as done of total, the step in work and the one after it; the sources as links before files, a few out and
 // the rest behind a count.
-import type { ChangeContext } from '@/data/contract';
+import type { ChangeContext, RailRow } from '@/data/contract';
 import { agoWords, durationWords, plural } from '@/lib/format';
 
 export type BandTone = 'live' | 'waits' | 'alarm' | 'done' | 'active' | 'planning' | 'open' | 'dropped';
@@ -145,6 +145,60 @@ export function sourcesRead(sources: readonly Source[], keep = SOURCES_SHOWN): S
     shown: ordered.slice(0, keep),
     rest: ordered.slice(keep),
   };
+}
+
+/** pjman's line in now: the newest write to the change, in words, the thing it names apart so it can be set in
+ *  the ink. A decision by its name, a file by its path, a status by where it went, a plan by what the step did. */
+export interface WriteWords {
+  verb: string;
+  object?: string;
+}
+
+const STEP_VERBS: [string, string][] = [
+  ['step start', 'Started a step'],
+  ['step done', 'Finished a step'],
+  ['step note', 'Noted a step'],
+  ['step add', 'Added steps'],
+  ['step drop', 'Dropped a step'],
+  ['step reopen', 'Reopened a step'],
+  ['step edit', 'Reworded a step'],
+  ['step move', 'Moved a step'],
+];
+const FIELD_VERBS: [string, string][] = [
+  ['notes', 'Left a note'],
+  ['links', 'Linked a source'],
+  ['name', 'Renamed it'],
+  ['gist', 'Reworded the gist'],
+  ['blocked-on', 'Set what it is blocked on'],
+  ['depends-on', 'Set what it depends on'],
+];
+
+export function writeWords(r: Pick<RailRow, 'kind' | 'op' | 'label' | 'value' | 'fields' | 'files'>): WriteWords {
+  if (r.kind === 'decision') {
+    const verb =
+      r.op === 'created'
+        ? 'Proposed'
+        : r.value === 'decided'
+          ? 'Decided'
+          : r.value === 'superseded'
+            ? 'Superseded'
+            : r.value === 'proposed'
+              ? 'Reopened'
+              : 'Added to';
+    return { verb, object: r.label };
+  }
+  if (r.kind === 'file') {
+    const files = r.files ?? [];
+    const more = files.length > 1 ? ` and ${plural(files.length - 1, 'more')}` : '';
+    return { verb: 'Linked', object: files[0] ? `${files[0]}${more}` : undefined };
+  }
+  if (r.op === 'created') return { verb: 'Filed the change' };
+  const fields = r.fields ?? [];
+  if (fields.includes('status') && r.value) return { verb: 'Status', object: `→ ${r.value}` };
+  for (const [f, verb] of STEP_VERBS) if (fields.some((x) => x.startsWith(f))) return { verb };
+  if (fields.includes('plan')) return { verb: 'Updated the plan' };
+  for (const [f, verb] of FIELD_VERBS) if (fields.includes(f)) return { verb };
+  return { verb: fields.length ? `Set ${fields.join(', ')}` : 'Wrote to it' };
 }
 
 /** A link's place, as a row says it: the host of its URL, else the kind in its key. */

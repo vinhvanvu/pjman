@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ChangeContext } from '@/data/contract';
-import { bandOf, planRead, sourcePlace, sourcesRead } from './calm';
+import type { ChangeContext, RailRow } from '@/data/contract';
+import { bandOf, planRead, sourcePlace, sourcesRead, writeWords } from './calm';
 
 const NOW = Date.parse('2026-11-11T12:00:00Z');
 const minsAgo = (m: number) => new Date(NOW - m * 60_000).toISOString();
@@ -114,6 +114,43 @@ describe('sourcesRead', () => {
   });
   it('says none yet when there are none', () => {
     expect(sourcesRead([]).sum).toBe('none yet');
+  });
+});
+
+describe('writeWords', () => {
+  const row = (o: Partial<RailRow>): RailRow => ({
+    seq: 1,
+    at: '',
+    lane: null,
+    kind: 'write',
+    op: 'set',
+    key: 'change:p/x',
+    type: 'change',
+    ...o,
+  });
+  it('names a decision by what happened to it', () => {
+    expect(writeWords(row({ kind: 'decision', op: 'created', label: 'Agent signal' }))).toEqual({
+      verb: 'Proposed',
+      object: 'Agent signal',
+    });
+    expect(writeWords(row({ kind: 'decision', value: 'decided', label: 'Calm dock' }))).toEqual({
+      verb: 'Decided',
+      object: 'Calm dock',
+    });
+  });
+  it('names the first file linked and counts the rest', () => {
+    expect(writeWords(row({ kind: 'file', files: ['src/a.ts', 'src/b.ts'] }))).toEqual({
+      verb: 'Linked',
+      object: 'src/a.ts and 1 more',
+    });
+  });
+  it('reads a status by where it went and a plan write by what the step did', () => {
+    expect(writeWords(row({ fields: ['status'], value: 'done' }))).toEqual({ verb: 'Status', object: '→ done' });
+    expect(writeWords(row({ fields: ['plan', 'step done', '3 steps'] })).verb).toBe('Finished a step');
+    expect(writeWords(row({ fields: ['plan', 'step note'] })).verb).toBe('Noted a step');
+    expect(writeWords(row({ fields: ['notes'] })).verb).toBe('Left a note');
+    expect(writeWords(row({ op: 'created' })).verb).toBe('Filed the change');
+    expect(writeWords(row({ fields: ['owners'] })).verb).toBe('Set owners');
   });
 });
 
