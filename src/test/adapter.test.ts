@@ -1056,6 +1056,45 @@ esac
       [`close-surface --surface ${surface}`],
       'a parked pane closes with the session that ends without binding',
     );
+    // a session with no project opens no pane, since there is no product to show; once a tool call resolves it to a
+    // project and it binds a change, it gets its pane (change:pjman-24)
+    const loose = fs.mkdtempSync(path.join(tmp, 'loose-'));
+    const auto = path.join(tmp, 'auto');
+    execFileSync(
+      process.execPath,
+      [
+        pjmanBin,
+        'new',
+        'change',
+        'loose-work',
+        '--name',
+        'Loose work',
+        '--gist',
+        'g',
+        '--origin',
+        'o',
+        '--intent',
+        'i',
+        '--done-when',
+        'd',
+      ],
+      { cwd: auto, env },
+    );
+    at('T3', 'SessionStart', { cwd: loose, session_id: 'dock-12', source: 'startup' });
+    assert.equal(seen().length, 22, 'a session with no project opens no pane');
+    at('T3', 'PostToolUse', {
+      cwd: loose,
+      session_id: 'dock-12',
+      tool_name: 'Bash',
+      tool_input: { command: `cd ${auto} && ls` },
+    });
+    at('T3', 'UserPromptSubmit', { cwd: loose, session_id: 'dock-12', prompt: 'work on change:loose-work' });
+    assert.deepEqual(
+      seen().slice(22),
+      ['browser open http://dash.test/session/dock-12'],
+      'resolved to a project and bound to a change, the session gets its pane',
+    );
+    at('T3', 'SessionEnd', { cwd: loose, session_id: 'dock-12', reason: 'logout' });
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });

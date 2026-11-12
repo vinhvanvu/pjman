@@ -566,8 +566,14 @@ async function openPane(url) {
 /** The view docked at a session's start: the terminal's pane on the product's bridge, parked, until the session binds a
  *  change (change:start-on-the-bridge). A pane already on this session (resumed, compacted) or already parked is left as it
  *  is; one on another session is pointed at the bridge; a terminal with no pane, or whose pane the person closed, gets one. */
-async function parkView(sid, cwd, store) {
+async function parkView(sid, cwd, store, st) {
   if (!inCmux()) return;
+  // a session with no project opens no pane: there is no product to show (change:pjman-24); it gets one if it later
+  // binds a change, once a tool call has resolved it to a project
+  if (!store?.project) {
+    st.paneless = true;
+    return;
+  }
   const dock = loadDock();
   if (dock?.sid === sid || dock?.sid === null) return;
   const server = await ensureServer(cwd);
@@ -591,9 +597,12 @@ async function dockView(sid, cwd) {
   const pane = await openPane(url);
   if (pane) saveDock({ pane, sid });
 }
-/** A parked pane follows the session the moment it binds a change: pointed at the session's page. */
-async function followView(sid, cwd) {
-  if (inCmux() && parkedPane()) await dockView(sid, cwd);
+/** A parked pane follows the session the moment it binds a change: pointed at the session's page. A session that started
+ *  with no project, and so opened no pane, gets its pane then. */
+async function followView(sid, cwd, st) {
+  if (!inCmux()) return;
+  if (parkedPane() || (st.paneless && !loadDock()?.pane)) await dockView(sid, cwd);
+  st.paneless = false;
 }
 /** At session end the pane closes; cleared, it is parked on the product's bridge instead, for the next session in this
  *  terminal to take over once it has a change. A pane parked by an earlier clear closes with the session too. */
@@ -950,7 +959,7 @@ function refreshPlugin() {
 async function sessionStart(input, store, sid, env, st, cwd) {
   const isMain = !input.agent_id;
   const source = input.source || 'startup';
-  const docking = isMain ? parkView(sid, cwd, store) : Promise.resolve();
+  const docking = isMain ? parkView(sid, cwd, store, st) : Promise.resolve();
   const branch = isMain ? currentBranch(cwd) : null;
   const read = await promiseObject({
     brief: pjmanAsync(['brief'], { cwd }),
@@ -1030,7 +1039,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (isMain) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
     await docking;
-    if (st.bound) await followView(sid, cwd); // the session has its subject (the branch's change, or one bound before): the parked pane follows it
+    if (st.bound) await followView(sid, cwd, st); // the session has its subject (the branch's change, or one bound before): the parked pane follows it
     if (st.bound) hostLabel(sid, cwd, env);
     saveState(sid, st);
   }
@@ -1124,7 +1133,7 @@ async function main() {
           st.bound = taken(st, found.key);
           hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);
-          if (!input.agent_id) await followView(sid, cwd); // the first subject: a pane parked by a clear follows now
+          if (!input.agent_id) await followView(sid, cwd, st); // the first subject: a pane parked by a clear follows now
         }
       }
       // a prompt that binds nothing but names a source (a PR to review, a branch): the session reads it, recorded on the
@@ -1171,7 +1180,7 @@ async function main() {
           st.bound = taken(st, last);
           hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);
-          if (!input.agent_id) await followView(sid, cwd);
+          if (!input.agent_id) await followView(sid, cwd, st);
         }
       }
       if (
