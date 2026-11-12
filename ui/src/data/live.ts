@@ -90,8 +90,9 @@ export function useLiveInvalidation(): LiveState {
     const unsubscribe = subscribe(`${BASE}/events`, (f) => {
       if (f.kind === 'open') setState((s) => ({ ...s, connected: true }));
       else if (f.kind === 'error') setState((s) => ({ ...s, connected: false }));
-      else if (f.kind === 'host') {
-        // a session's host spoke: no record moved, every page that shows the session reads it again
+      else if (f.kind === 'host' || f.kind === 'prompted') {
+        // a session's host spoke, or the person prompted it: no record moved, every page that shows the session reads
+        // it again
         reached = null;
         timer ??= setTimeout(flush, Math.max(150, last + 1000 - Date.now()));
       } else if (f.kind === 'now') {

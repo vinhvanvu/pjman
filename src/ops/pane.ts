@@ -35,6 +35,9 @@ export interface ViewOpts extends GetOpts {
   session?: string;
   /** What each hosted session's program reports, by session key, as the server follows it (host-watch.ts). */
   hostStates?: ReadonlyMap<string, HostStatus>;
+  /** When the person last prompted each session, by session key, as the server heard it (POST /follow); held in
+   *  memory, never in the store (decision pjman-24/name-the-shown-session). */
+  prompted?: ReadonlyMap<string, string>;
 }
 
 export interface View {
@@ -77,6 +80,8 @@ export interface SessionFacts {
   sources: SessionSource[];
   /** Where it runs, when a host holds it: the host's name and version, and whether the adapter validated that version. */
   host?: SessionHostFacts;
+  /** When the person last prompted it, while the dashboard that heard it runs; absent before the first prompt it heard. */
+  prompted?: string;
 }
 
 export interface SessionSource {
@@ -159,6 +164,7 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
     kind,
     sources,
     host: hostFactsOf(rec.data, host),
+    prompted: opts.prompted?.get(rec.key),
   };
 }
 

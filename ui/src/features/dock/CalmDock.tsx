@@ -24,7 +24,16 @@ import { Wash } from '@/lib/motion';
 import { statusTone } from '@/lib/tones';
 import { stands, useNowAction } from '@/state/now';
 import type { DockArrivals } from './model';
-import { bandOf, type Band, type BandTone, planRead, sourcePlace, sourcesRead, writeWords } from './calm';
+import {
+  bandOf,
+  type Band,
+  type BandTone,
+  planRead,
+  shownSessionWords,
+  sourcePlace,
+  sourcesRead,
+  writeWords,
+} from './calm';
 
 type Decide = ReturnType<typeof useDecideAction>;
 type Source = ChangeContext['sources'][number];
@@ -139,6 +148,7 @@ export function CalmDock({
     blockedOn: ctx.sections['Blocked on'],
   });
   const kind = c.data.kind === 'bug' ? 'bug' : milestone ? 'milestone' : 'change';
+  const shown = shownSessionWords(session.started, session.prompted);
   return (
     <m.div {...RISE} className="flex flex-col gap-8 px-5 pb-5">
       <section aria-label="Where the change stands" className="flex flex-col gap-[22px]">
@@ -151,6 +161,8 @@ export function CalmDock({
           )}
           {/* the change's id, copied as a prompt or a command names it (change:dock-now-lines) */}
           <CopyKey refKey={`change:${short(c.key)}`} className="self-start" />
+          {/* which session the pane shows: a cmux workspace's sessions share one (decision pjman-24/name-the-shown-session) */}
+          {shown && <p className="text-xs text-ink-faint">{shown}</p>}
         </div>
       </section>
 

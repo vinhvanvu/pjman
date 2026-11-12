@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeContext, RailRow } from '@/data/contract';
-import { bandOf, planRead, sourcePlace, sourcesRead, writeWords } from './calm';
+import { bandOf, planRead, shownSessionWords, sourcePlace, sourcesRead, writeWords } from './calm';
 
 const NOW = Date.parse('2026-11-11T12:00:00Z');
 const minsAgo = (m: number) => new Date(NOW - m * 60_000).toISOString();
@@ -173,5 +173,17 @@ describe('sourcePlace', () => {
   it('names a link by its host, else by the kind in its key', () => {
     expect(sourcePlace({ key: 'url:x', url: 'https://www.code.claude.com/docs' })).toBe('code.claude.com');
     expect(sourcePlace({ key: 'linear:ABC-1234' })).toBe('linear');
+  });
+});
+
+describe('shownSessionWords', () => {
+  it('names the session by when it started and when the person last prompted it', () => {
+    const w = shownSessionWords(minsAgo(90), minsAgo(6), NOW);
+    expect(w).toMatch(/^this session · started .+ · last prompted 6 min ago$/);
+  });
+  it('says only what it knows, and nothing when it knows neither', () => {
+    expect(shownSessionWords(minsAgo(90), undefined, NOW)).toMatch(/^this session · started [^·]+$/);
+    expect(shownSessionWords(undefined, minsAgo(0), NOW)).toBe('this session · last prompted just now');
+    expect(shownSessionWords(undefined, undefined, NOW)).toBe('');
   });
 });

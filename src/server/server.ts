@@ -362,6 +362,10 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     string,
     { op: 'now'; type: 'session'; key: string; at: string; text?: string; tool?: string }
   >();
+  // when the person last prompted each session (decision pjman-24/name-the-shown-session): heard with the follow signal,
+  // held here and nowhere else, handed to the session's page beside its record and told to open streams as a
+  // `prompted` frame so the page reads it again. A restart forgets it.
+  const promptedOf = new Map<string, string>();
   const nowFrame = (n: { key: string }) => `event: now\ndata: ${JSON.stringify(n)}\n\n`;
   const setNow = (key: string, text: string | undefined, tool: string | undefined) => {
     const n = { op: 'now' as const, type: 'session' as const, key, at: new Date().toISOString(), text, tool };
@@ -438,6 +442,10 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           const r = resolve(current(), key);
           if ((r.status !== 'ok' && r.status !== 'alias') || r.rec.type !== 'session')
             throw new HttpError(404, 'not-found', `no session ${key}`);
+          const at = new Date().toISOString();
+          promptedOf.set(r.rec.key, at);
+          const frame = JSON.stringify({ op: 'prompted', type: 'session', key: r.rec.key, at });
+          for (const out of streams) out.write(`event: prompted\ndata: ${frame}\n\n`);
           return sendJson(res, 200, { data: { ...following.set(r.rec.key), windows: following.windows } });
         }
         if (route === '/now') {
@@ -706,7 +714,9 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       // its own code, since a session the store does not hold yet is one the page waits for: the pane is pointed at
       // the page before the record is written (change:session-page-before-record)
       if (resolve(loaded, key).status !== 'ok') throw new HttpError(404, 'no-session', `${key} resolves to nothing`);
-      return send(res, 200, { data: viewData(store, { session: id, hostStates: hostStates(), ...getOpts }, loaded) });
+      return send(res, 200, {
+        data: viewData(store, { session: id, hostStates: hostStates(), prompted: promptedOf, ...getOpts }, loaded),
+      });
     }
     if ((m = /^\/projects\/([a-z0-9][a-z0-9-]*)\/board$/.exec(route))) {
       return send(res, 200, { data: storeContext(store, { project: `project:${m[1]}` }, loaded) });

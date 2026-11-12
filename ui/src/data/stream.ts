@@ -26,18 +26,20 @@ export type Frame =
   | { kind: 'error' }
   | { kind: 'event'; data: string }
   | { kind: 'host'; data: string }
-  | { kind: 'now'; data: string };
+  | { kind: 'now'; data: string }
+  | { kind: 'prompted'; data: string };
 
-/** The frames beside the store's own: what a session's host says its program is doing (change:rex-adapter), and what
- *  its agent is doing now (decision dock-redesign/agent-signal). */
-export const LIVE_EVENTS = ['host', 'now'] as const;
+/** The frames beside the store's own: what a session's host says its program is doing (change:rex-adapter), what
+ *  its agent is doing now (decision dock-redesign/agent-signal), and that the person prompted it (decision
+ *  pjman-24/name-the-shown-session). */
+export const LIVE_EVENTS = ['host', 'now', 'prompted'] as const;
 /** What a page sends the worker: the stream it wants, or that it is leaving. */
 export type Request = { kind: 'start'; url: string } | { kind: 'leave' };
 
 /** An EventSource on `url`, each of its happenings as a frame; returns its close. */
 export function openStream(url: string, emit: (f: Frame) => void): () => void {
   const es = new EventSource(url);
-  const relay = (kind: 'event' | 'host' | 'now') => (ev: Event) => {
+  const relay = (kind: 'event' | (typeof LIVE_EVENTS)[number]) => (ev: Event) => {
     if (ev instanceof MessageEvent && typeof ev.data === 'string') emit({ kind, data: ev.data });
   };
   for (const op of OPS) es.addEventListener(op, relay('event'));
