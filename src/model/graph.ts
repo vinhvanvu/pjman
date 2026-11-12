@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE, typedRef } from '../store/keys.js';
 import { ambiguous, notFound } from '../store/util.js';
-import { keyFromUrl, mentions, scopeOf, shortForms, trackerOf } from './refs.js';
+import { grammarOf, keyFromUrl, mentions, scopeOf, shortForms, trackerOf } from './refs.js';
 import { slugsOfBranch } from './branch.js';
 export { keyFromUrl, repoOf } from './refs.js';
 import { memo, push, resolve, type Loaded, type Rec } from '../store/records.js';
@@ -524,7 +524,7 @@ export interface Reference {
   change?: string;
   /** For a source: how that change relates to it (binds, links, observed). */
   relation?: Relation;
-  /** A ticket of the project's tracker with no record yet: the tracker can be asked and the sync would create the change. */
+  /** A ticket of the project's tracker that no change binds: the tracker can be asked and the sync would create the change. */
   creatable: boolean;
   /** Too ambiguous to act on (a bare `#1`): listed with what it would lead to, never binding a session or creating a change. */
   weak: boolean;
@@ -547,15 +547,18 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
     const resolution = resolveRef(loaded, m.shape === 'slug' ? m.text.toLowerCase() : m.text, opts);
     if (resolution.status === 'none' || !resolution.key) continue;
     const key = resolution.key;
+    const kind = key.slice(0, key.indexOf(':'));
+    // a tracker's ticket leads only to the change that binds it: a change that merely links it (a follow-up it filed)
+    // is not its work, and the ticket is to be read and synced instead (change:pjman-21)
+    const ticket = kind === tracker || !!grammarOf(kind)?.ticket;
     let change: string | undefined;
     let relation: Relation | undefined;
     if (key.startsWith('change:')) change = key;
     else {
       const n = get(loaded, key, opts);
-      change = n.changes[0]?.change.key;
+      change = (ticket ? n.changes.filter((c) => n.relation[c.change.key] === 'binds') : n.changes)[0]?.change.key;
       if (change) relation = n.relation[change];
     }
-    const kind = key.slice(0, key.indexOf(':'));
     if (!change && kind === 'branch') {
       // no record links the branch yet: the name itself says which change it was cut for
       for (const slug of slugsOfBranch(key.slice('branch:'.length))) {
@@ -575,7 +578,9 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
       key,
       change,
       relation,
-      creatable: !weak && !change && resolution.status === 'key' && kind === tracker,
+      // a ticket no change binds, recorded or not: the sync creates its change
+      creatable:
+        !weak && !change && (resolution.status === 'key' || resolution.status === 'record') && kind === tracker,
       weak,
     });
   }
