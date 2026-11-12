@@ -396,7 +396,7 @@ export const COMMANDS: Command[] = [
     group: 'reading',
     line: 'anything in (key, slug, ticket, URL, file): the record, its edges, the changes in reach',
     about:
-      'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out',
+      "the getter: a key (full, short or former), a source key, a URL, a ticket id, <change>/<slug>, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out. Every command's argument resolves the same way. A bare ticket id (ABC-12) resolves only where exactly one tracker of the project claims its prefix (ext.linear.team, or a change of the project binding a ticket of that prefix); elsewhere write the prefixed key (linear:ABC-12) or the URL",
     usage: ['pjman get <ref> [--json]'],
     flags: [],
     args: 1,

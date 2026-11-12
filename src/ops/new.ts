@@ -470,6 +470,7 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
   if (
     originKey &&
     !/\s/.test(flags.origin!.trim()) &&
+    !/^https?:\/\//i.test(originKey.raw) &&
     !RECORD_KINDS.has(originKey.kind) &&
     !links.includes(originKey.raw)
   )

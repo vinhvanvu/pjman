@@ -140,7 +140,7 @@ test('a prompt naming several changes binds none and says so; the turn shows the
   const said = context(at({ prompt: 'compare change:eight-week-test with change:other-work' }));
   assert.match(
     said,
-    /names several changes \(change:(project\/)?eight-week-test, change:(project\/)?other-work\); none was bound/,
+    /names several changes \(change:eight-week-test, change:other-work\); none was bound/, // printed by the tool
   );
   assert.equal(loadStore(store).byKey.get('session:sess-m')![0].data.changes, undefined);
   const full = context(at({ prompt: 'now change:other-work' }));
@@ -451,6 +451,9 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   assert.equal(at('look at ABC-1234 and UTF-8'), '');
   assert.ok(!loadStore(g).byKey.has('change:work/abc-1234'));
   set(g, 'project:work', ['tracker=linear'], {});
+  // a bare id resolves only where one tracker of the project claims its prefix (decision pjman-22/bare-ticket-ids)
+  assert.equal(at('start ABC-1234 please'), '');
+  set(g, 'project:work', ['ext.linear.team=ABC'], {});
   // a ticket of the tracker with no record: nothing is created from the pattern; the agent is told to read and sync it
   const hint = context(at('start ABC-1234 please, mind UTF-8'));
   assert.match(hint, /ABC-1234 is linear:ABC-1234; the store has no record/);
@@ -679,7 +682,7 @@ test('SessionStart names the worktrees whose change is done and whose branch is 
   const oldDir = fs.realpathSync(path.join(trees, '.claude', 'worktrees', 'old-thing')); // git prints the real path
   assert.ok(
     ctx.includes(
-      `- ${oldDir} (change:trees/old-thing, worktree-old-thing): git worktree remove ${oldDir} && git branch -d worktree-old-thing`,
+      `- ${oldDir} (change:old-thing, worktree-old-thing): git worktree remove ${oldDir} && git branch -d worktree-old-thing`,
     ),
     ctx.slice(at, at + 600),
   );

@@ -123,7 +123,8 @@ test('a record argument resolves as get resolves it: the slug alone, ambiguity r
   assert.equal(r.code, 1);
   assert.match(
     r.err,
-    /checkout is ambiguous: .*change:app\/checkout.*feature:app\/checkout|checkout is ambiguous: .*feature:app\/checkout.*change:app\/checkout/,
+    // printed as every key is inside the project: the slug alone (decision pjman-22/key-form)
+    /checkout is ambiguous: .*change:checkout.*feature:checkout|checkout is ambiguous: .*feature:checkout.*change:checkout/,
   );
   assert.equal(pj(['set', 'login', 'notes=from a slug']).code, 0);
   assert.match(record('change:app/login').sections.get('Notes') ?? '', /from a slug/);
@@ -145,6 +146,68 @@ test('a record argument resolves as get resolves it: the slug alone, ambiguity r
   const row = JSON.parse(pj(['show', 'login', '--json']).out) as { type: string; key: string; body: string };
   assert.equal(row.type, 'change');
   assert.equal(row.key, 'change:app/login');
+});
+
+test('a key prints in one form on every view: the slug alone inside its product, the full key outside it, printed beside the key in JSON (decision pjman-22/key-form)', () => {
+  // another product, with a change of its own, read from this project (whose product is app)
+  newRecord(store, 'product', 'far', { title: 'Far things are kept', name: 'Far' });
+  newRecord(store, 'project', 'far', { title: 'Far', product: 'product:far' });
+  let r = filed('remote', ['--project', 'project:far']);
+  assert.equal(r.code, 0, r.err);
+  r = filed('near', [
+    '--depends-on',
+    'change:far/remote',
+    '--links',
+    'https://linear.app/acme/issue/APP-3/near',
+    '--origin',
+    'https://github.com/acme/app/issues/5',
+  ]);
+  assert.equal(r.code, 0, r.err);
+  // a ticket's URL in a field or the origin is written as the ticket's key, the one resolver's answer
+  const links = record('change:app/near').data.links as string[];
+  assert.ok(links.includes('linear:APP-3'), links.join(', '));
+  assert.ok(links.includes('github-issue:acme/app#5'), links.join(', '));
+  // text: get, context and refs print this product's key short and the other product's in full
+  const get = pj(['get', 'near']).out;
+  assert.match(get, /^near → change:near \(slug; change\)/);
+  assert.match(get, /- depends_on change:far\/remote\b/);
+  assert.doesNotMatch(get, /change:app\//);
+  const context = pj(['context', 'near']).out;
+  assert.match(context, /^# change:near — near/);
+  assert.match(context, /change:far\/remote/);
+  assert.match(context, /## Sources\n(- (binds|links) \S+.*\n)*- links linear:APP-3/);
+  assert.equal(
+    pj(['refs', 'change:near and change:far/remote']).out,
+    'change:near → change:near (change) · change:near\nchange:far/remote → change:far/remote (change) · change:far/remote\n',
+  );
+  // JSON keeps the full key and carries the printed form beside it where a program relays it
+  const refs = JSON.parse(pj(['refs', 'change:near and change:far/remote', '--json']).out) as {
+    change: string;
+    printed: string;
+  }[];
+  assert.deepEqual(
+    refs.map((x) => [x.change, x.printed]),
+    [
+      ['change:app/near', 'change:near'],
+      ['change:far/remote', 'change:far/remote'],
+    ],
+  );
+  const rest = JSON.parse(pj(['rest', 'near', '--json']).out) as { key: string; printed: string };
+  assert.deepEqual([rest.key, rest.printed], ['change:app/near', 'change:near']);
+  const rows = JSON.parse(pj(['ls', 'change', '--json']).out) as { key: string; printed: string }[];
+  assert.equal(rows.find((x) => x.key === 'change:app/near')?.printed, 'change:near');
+  assert.equal(rows.find((x) => x.key === 'change:far/remote')?.printed, 'change:far/remote');
+  // the receipt's lines are read by the person: printed the same way
+  const receipt = JSON.parse(pj(['events', '--receipt', '--json']).out) as { lines: string[] };
+  assert.ok(
+    receipt.lines.some((l) => /\bchange:near\b/.test(l)),
+    receipt.lines.join('\n'),
+  );
+  assert.ok(!receipt.lines.some((l) => /change:app\//.test(l)), receipt.lines.join('\n'));
+  // a refusal on stderr too
+  r = pj(['step', 'near', 'done', '9']);
+  assert.match(r.err, /^pjman: change:near: the plan is empty/);
+  assert.doesNotMatch(r.err, /change:app\//);
 });
 
 test('step add takes several texts as one commit, or lines on stdin; edit rewrites a text; words left unquoted are refused', () => {
@@ -337,7 +400,7 @@ test('what a fresh agent tripped on: a slug in a flag or a field, a bare URL as 
   assert.equal(r.code, 0, r.err);
   r = pj(['decision', 'login/storag', '--comment', 'hi']);
   assert.equal(r.code, 2);
-  assert.match(r.err, /decision:app\/login\/storag does not exist yet, and a new decision needs --name/);
+  assert.match(r.err, /decision:login\/storag does not exist yet, and a new decision needs --name/);
   // a feature lists by the status the tree shows
   assert.ok(
     JSON.parse(pj(['ls', 'feature', '--status', 'planned', '--json']).out).some(

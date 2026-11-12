@@ -377,7 +377,7 @@ function staleWorktrees(cwd, done) {
       (sh('git', ['branch', '--merged', trunk, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
     );
     if (!merged.has(w.branch)) continue;
-    out.push({ dir: w.dir, branch: w.branch, change: c.key });
+    out.push({ dir: w.dir, branch: w.branch, change: c.printed ?? c.key });
   }
   return out;
 }
@@ -674,21 +674,18 @@ function restVerdict(key, cwd) {
   }
 }
 
-/** A key as the project prints it: the product segment of the project's own product dropped. */
-function shortKey(k, store) {
-  const product = store.product ? String(store.product).replace(/^product:/, '') : null;
-  return product ? k.replace(new RegExp(`^(feature|change|decision):${product}/`), '$1:') : k;
-}
+// A key in a message is printed by the tool, never formed here (decision pjman-22/hook-printed-keys): the JSON the hook
+// reads carries `printed` beside each key it relays (rest, refs, brief, ls), and the receipt's lines come printed.
 
-/** The change as `pjman decision` takes it ahead of a decision's slug: the key without its `change:` prefix, the product
- *  segment kept for a change of another product (`<change>/<slug>`, or `<product>/<change>/<slug>`). */
+/** The change as `pjman decision` takes it ahead of a decision's slug: the printed key without its `change:` prefix, the
+ *  product segment kept for a change of another product (`<change>/<slug>`, or `<product>/<change>/<slug>`). */
 function decisionHead(key) {
   return key.replace(/^change:/, '');
 }
 
 /** Why the stop is refused, for the agent: the change, the open steps, and the three ways the record lets it stop. */
-function restRefusal(r, store) {
-  const key = shortKey(r.key, store);
+function restRefusal(r) {
+  const key = r.printed ?? r.key;
   const steps = r.open
     .map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`)
     .join('\n');
@@ -852,7 +849,7 @@ function promptChange(prompt, { cwd, env }) {
   const named = [...new Set(refs.filter((r) => !r.weak && r.change).map((r) => r.change))];
   if (named.length > 1)
     return {
-      hint: `This prompt names several changes (${named.join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.`,
+      hint: `This prompt names several changes (${named.map((c) => refs.find((r) => r.change === c).printed ?? c).join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.`,
       sources,
     };
   for (const r of refs.toReversed()) {
@@ -898,7 +895,13 @@ function briefText(st, b) {
   if (!b || b.mode === 'none' || !b.text) return '';
   st.briefs = [
     ...(st.briefs ?? []),
-    { mode: b.mode, change: b.change, lines: b.size.lines, tokens: b.size.tokens, cut: b.text.length > CONTEXT_MAX },
+    {
+      mode: b.mode,
+      change: b.printed ?? b.change,
+      lines: b.size.lines,
+      tokens: b.size.tokens,
+      cut: b.text.length > CONTEXT_MAX,
+    },
   ];
   return b.text;
 }
@@ -1212,14 +1215,18 @@ async function main() {
       // question through the harness's prompt, while no decision was opened or added this turn, is sent back once to record them.
       if (EVENT === 'Stop' && !input.agent_id && st.bound && !input.stop_hook_active) {
         const reasons = [];
+        let r = null;
         if ((st.edited ?? 0) > 0) {
-          const r = restVerdict(st.bound, cwd);
-          if (r && !r.rests) reasons.push(restRefusal(r, store));
+          r = restVerdict(st.bound, cwd);
+          if (r && !r.rests) reasons.push(restRefusal(r));
         }
         if (!(st.decided ?? 0)) {
           const questions = choiceQuestions(input.last_assistant_message);
+          // the change as the tool prints it, from its verdict (read here when the turn wrote no code)
           if (questions.length || st.asked)
-            reasons.push(questionsRefusal(shortKey(st.bound, store), questions, (st.asked ?? 0) > 0));
+            reasons.push(
+              questionsRefusal((r ?? restVerdict(st.bound, cwd))?.printed ?? st.bound, questions, (st.asked ?? 0) > 0),
+            );
         }
         if (reasons.length) {
           process.stdout.write(JSON.stringify({ decision: 'block', reason: reasons.join('\n\n') }));
@@ -1264,16 +1271,12 @@ async function main() {
           { cwd, json: true },
         );
         if (r) {
-          // the receipt is read by the person inside the project: the product segment of the project's product is dropped
-          const product = store.product ? String(store.product).replace(/^product:/, '') : null;
-          const trim = (l) =>
-            product ? l.replace(new RegExp(`\\b(feature|change|decision):${product}/`, 'g'), '$1:') : l;
-          const lines = r.lines.map(trim);
+          // the receipt is read by the person inside the project: its lines and the briefs' changes come printed by the tool
+          const lines = r.lines;
           // what the agent was handed this turn, by size (the brief has no ceiling; the person sees what it cost)
-          const briefed = (st.briefs ?? []).map((b) =>
-            trim(
+          const briefed = (st.briefs ?? []).map(
+            (b) =>
               `${b.mode === 'full' ? 'full context' : 'what changed'} on ${b.change}: ${b.lines} line${b.lines === 1 ? '' : 's'}, ~${b.tokens} tokens${b.cut ? ' (cut by the harness at 10,000 characters)' : ''}`,
-            ),
           );
           const blocks = [];
           if (briefed.length) blocks.push(`pjman briefed:\n${briefed.map((l) => `- ${l}`).join('\n')}`);

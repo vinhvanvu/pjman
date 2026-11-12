@@ -325,7 +325,7 @@ pjman context [<change> | project:<slug> | product:<slug> | feature:<slug>] [--a
     what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions; a product or a feature with its tree and activity
 
 pjman get <ref> [--json]
-    the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out
+    the getter: a key (full, short or former), a source key, a URL, a ticket id, <change>/<slug>, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out. Every command's argument resolves the same way. A bare ticket id (ABC-12) resolves only where exactly one tracker of the project claims its prefix (ext.linear.team, or a change of the project binding a ticket of that prefix); elsewhere write the prefixed key (linear:ABC-12) or the URL
 
 pjman tree [<product>|<feature>] [--json]
     the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature
