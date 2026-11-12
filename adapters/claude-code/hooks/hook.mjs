@@ -12,7 +12,8 @@
 //                     observed, the brief (the bound change's context in full on resume/compact/clear); the stale worktrees named
 //                     ahead of the board
 //   UserPromptSubmit  a prompt naming one change, a ticket or a URL binds the change it leads to (pjman refs); one naming several binds none and
-//                     the agent is told the candidates; a ticket of the project's tracker with no record is read from the tracker and created
+//                     the agent is told the candidates; a ticket leads only to the change that binds it, and one of the project's tracker that
+//                     no change binds is read from the tracker and created
 //                     through the sync (gh for GitHub), or the agent is told to; a source it names that leads to no change (a PR, a branch)
 //                     is observed on the session itself while nothing is bound, and the session is then named from its own record
 //                     (pjman session name: a PR reads review); then the brief (pjman brief --session): the bound change's
@@ -20,7 +21,7 @@
 //   PostToolUse       an edit, or a shell call that writes the store, marks the turn as having acted; a file write in the project records an
 //                     observed `links` edge from the bound change and marks the turn as having written code; a shell call that writes a
 //                     decision marks the turn as having recorded one, and the harness's own question prompt marks it as having asked the person;
-//                     a shell call that may bind (filing a change, `pjman session bind`) reads the session's binding, and a moved one is taken up as a prompt's bind is
+//                     a shell call that may bind (filing a change, a sync, `pjman session bind`) reads the session's binding, and a moved one is taken up as a prompt's bind is
 //   Stop              a turn that wrote code for the bound change may end only where the change rests (pjman rest: a decision proposed, a
 //                     blocker recorded, a status a person set, the plan run to its end); elsewhere the stop is refused once, with the open
 //                     steps and the ways out, and the turn goes on (change:run-to-the-end). A reply on a bound change that asks the person
@@ -832,7 +833,8 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
 }
 
 /** What a prompt is about: the last reference in it that leads to a change and is not weak. The tool scans the text (`pjman refs`); the
- *  hook knows no shapes. A ticket of the project's tracker with no record is read from the tracker and applied through
+ *  hook knows no shapes, and a ticket leads only to the change that binds it, never to one that links it. A ticket of the
+ *  project's tracker that no change binds is read from the tracker and applied through
  *  the sync, which creates the change with its real title; where the hook has no reader for the tracker, the agent is
  *  told to read and sync it. A pattern match alone never creates a record. */
 function promptChange(prompt, { cwd, env }) {
@@ -861,7 +863,7 @@ function promptChange(prompt, { cwd, env }) {
     if (created) return { key: created, sources, via: r.key };
     const sync = r.key.startsWith('github-issue:') ? 'github' : r.key.slice(0, r.key.indexOf(':'));
     return {
-      hint: `${r.text} is ${r.key}; the store has no record of it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound when you name it).`,
+      hint: `${r.text} is ${r.key}; no change binds it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound to this session).`,
       sources,
     };
   }
@@ -1142,9 +1144,9 @@ async function main() {
       if (input.tool_name === 'Bash' && decisionWrite.test(String(input.tool_input?.command ?? '')))
         st.decided = (st.decided ?? 0) + 1;
       if (input.tool_name === 'AskUserQuestion') st.asked = (st.asked ?? 0) + 1;
-      // the agent's own bind (filing a change binds the run to it, or `pjman session bind`) gives the session its subject as a
+      // the agent's own bind (filing or syncing a change binds the run to it, or `pjman session bind`) gives the session its subject as a
       // prompt's does: the sidebar names it and a parked pane follows (change:bind-moves-the-dock)
-      const bindingWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:new|session|apply)\b/;
+      const bindingWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:new|session|apply|sync)\b/;
       if (input.tool_name === 'Bash' && bindingWrite.test(String(input.tool_input?.command ?? ''))) {
         const rec = tryPjman(['show', `session:${sid}`, '--json'], { cwd, json: true })?.data;
         const changes = rec ? (Array.isArray(rec.changes) ? rec.changes : []) : null; // null: the record could not be read

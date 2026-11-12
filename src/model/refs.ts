@@ -36,6 +36,8 @@ export interface Grammar {
   href?: (rest: string) => string | undefined;
   /** The change slug a ticket of this kind implies. */
   slug?: (rest: string) => string;
+  /** A tracker's ticket: it leads only to the change that binds it, never to one that merely links it. */
+  ticket?: boolean;
 }
 
 const REPO = '[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+';
@@ -68,6 +70,7 @@ export const GRAMMARS: Grammar[] = [
         : undefined;
     },
     slug: (rest) => rest.toLowerCase(),
+    ticket: true,
   },
   {
     kind: 'github-issue',
@@ -82,6 +85,7 @@ export const GRAMMARS: Grammar[] = [
     },
     href: (rest) => githubHref(rest, 'issues'),
     slug: (rest) => `${repoName(rest.slice(0, rest.indexOf('#')))}-${rest.slice(rest.indexOf('#') + 1)}`,
+    ticket: true,
   },
   {
     kind: 'github-pr',

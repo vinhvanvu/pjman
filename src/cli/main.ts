@@ -167,6 +167,21 @@ function batch(
   );
 }
 
+/** The one change a sync created, bound to the session the sync ran within (reason created); null when it created
+ *  none or several, or runs within no session the store has. */
+function syncBind(
+  store: ReturnType<typeof requireStore>,
+  session: string | undefined,
+  created: string[],
+): { session: string; change: string } | null {
+  if (!session || created.length !== 1) return null;
+  try {
+    return sessionBind(store, session, created[0], 'created').added ? { session, change: created[0] } : null;
+  } catch {
+    return null; // no such session record: nothing to bind
+  }
+}
+
 function main(argv: string[]): number {
   const { values: v, positionals: pos } = parse(argv);
   const cmd = pos[0];
@@ -332,8 +347,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           flags.links = [...new Set([...(flags.links ?? []), k.raw])];
       }
       const r = newRecord(store, type, ident, flags);
-      // a change the session creates is the session's work: it binds (decision hydration/binding-follows-writes). Only
-      // here, where a person or an agent files it; a sync or a batch that creates changes binds nothing
+      // a change the session creates is the session's work: it binds (decision hydration/binding-follows-writes), here
+      // where a person or an agent files it and in a sync that creates one change; a batch binds nothing
       const session = envelope({ session: v.session }).session;
       if (r.type === 'change' && session) {
         try {
@@ -1176,11 +1191,16 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         pos[1] === 'linear'
           ? syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session })
           : syncGithub(store, { project: v.project, repo: v.repo, from: v.from, session: v.session });
-      if (v.json) json(r);
+      // the change a sync creates is the running session's work, as one it files is: it binds with reason created
+      // (change:pjman-21). Only a single one: a sync that creates several is an import, and binds none
+      // (decision pjman-21/sync-binds-one, proposed)
+      const bound = syncBind(store, envelope({ session: v.session }).session, r.created);
+      if (v.json) json({ ...r, bound });
       else
         out(
           `${pos[1]} ${r.team} → ${r.project}: ${plural(r.issues, 'issue')}; ${plural(r.created.length, 'change')} created, ${r.updated.length} updated, ${r.unchanged.length} unchanged${r.skipped.length ? `; skipped ${r.skipped.map((s) => `${s.id} (${s.reason})`).join(', ')}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
         );
+      if (!v.json && bound) out(`note: bound ${bound.session} to ${bound.change} (created)`);
       return 0;
     }
     case 'index': {

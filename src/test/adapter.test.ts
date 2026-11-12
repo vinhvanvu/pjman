@@ -17,6 +17,7 @@ import { accept, change, decisionRec } from './shape.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const HOOK = path.resolve(here, '..', '..', 'adapters', 'claude-code', 'hooks', 'hook.mjs');
+const BIN = path.resolve(here, '..', '..', 'bin', 'pjman.js');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-adapter-'));
 const project = path.join(tmp, 'project');
 const env = {
@@ -440,6 +441,61 @@ test('compaction rehydrates the bound change; the store stays valid; a non-pjman
   assert.equal(hook('SessionStart', { cwd: os.tmpdir(), session_id: 'zzz', source: 'startup' }), '');
 });
 
+test('a ticket a change only links binds nothing and is to be synced; the sync binds the one change it creates (change:pjman-21)', () => {
+  const work = path.join(tmp, 'follow-up');
+  fs.mkdirSync(work, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: work });
+  init({ checkers: [], cwd: work, name: 'follow-up' });
+  const g = findStore(work)!;
+  set(g, 'project:follow-up', ['tracker=linear', 'ext.linear.team=ABC'], {});
+  // change:abc-1 is done, and links ABC-2, the follow-up ticket it filed; no change binds ABC-2
+  change(g, 'abc-1', {
+    title: 'One',
+    summary: 's',
+    project: 'project:follow-up',
+    binds: ['linear:ABC-1'],
+    links: ['linear:ABC-2'],
+  });
+  set(g, 'change:follow-up/abc-1', ['status=done'], {});
+  const url = 'https://linear.app/acme/issue/ABC-2/follow-up';
+  const refs = execFileSync(process.execPath, [BIN, 'refs', url], { cwd: work, encoding: 'utf8', env });
+  assert.doesNotMatch(refs, /change:abc-1/);
+  assert.match(refs, /no change yet: ask the tracker/);
+  hook('SessionStart', { cwd: work, session_id: 'sess-f', source: 'startup' });
+  const ctx = context(hook('UserPromptSubmit', { cwd: work, session_id: 'sess-f', prompt: `pick up ${url}` }));
+  assert.match(ctx, /linear:ABC-2; no change binds it/);
+  assert.match(ctx, /pjman sync linear --from -/);
+  assert.doesNotMatch(ctx, /bound to change:abc-1/);
+  assert.equal(loadStore(g).byKey.get('session:sess-f')![0].data.changes, undefined);
+  // the sync the agent runs creates the ticket's change and binds it to the session it runs in, with reason created
+  const sync = (issues: unknown, ...flags: string[]) =>
+    execFileSync(process.execPath, [BIN, 'sync', 'linear', '--from', '-', ...flags], {
+      cwd: work,
+      input: JSON.stringify(issues),
+      encoding: 'utf8',
+      env: { ...env, PJMAN_SESSION: 'session:sess-f' },
+    });
+  const synced = sync({ identifier: 'ABC-2', title: 'Follow-up', state: { name: 'Todo', type: 'unstarted' } });
+  assert.match(synced, /bound session:sess-f to change:abc-2 \(created\)/);
+  const sess = loadStore(g).byKey.get('session:sess-f')![0];
+  assert.deepEqual(sess.data.changes, ['change:follow-up/abc-2']);
+  assert.match(sess.sections.get('Log')!, /bound change:follow-up\/abc-2 \(created\)/);
+  // a sync that creates several changes is an import: it binds none
+  const many = JSON.parse(
+    sync(
+      ['ABC-3', 'ABC-4'].map((identifier) => ({ identifier, title: identifier, state: { name: 'Todo' } })),
+      '--json',
+    ),
+  ) as { created: string[]; bound: unknown };
+  assert.equal(many.created.length, 2);
+  assert.equal(many.bound, null);
+  assert.deepEqual(loadStore(g).byKey.get('session:sess-f')![0].data.changes, ['change:follow-up/abc-2']);
+  assert.deepEqual(
+    validate(loadStore(g)).filter((p) => p.level === 'error'),
+    [],
+  );
+});
+
 test('a ticket id or URL in the prompt binds the change that binds it; in a project with a tracker a new ticket gets a change', () => {
   const work = path.join(tmp, 'work');
   fs.mkdirSync(work, { recursive: true });
@@ -456,7 +512,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   set(g, 'project:work', ['ext.linear.team=ABC'], {});
   // a ticket of the tracker with no record: nothing is created from the pattern; the agent is told to read and sync it
   const hint = context(at('start ABC-1234 please, mind UTF-8'));
-  assert.match(hint, /ABC-1234 is linear:ABC-1234; the store has no record/);
+  assert.match(hint, /ABC-1234 is linear:ABC-1234; no change binds it/);
   assert.match(hint, /pjman sync linear --from -/);
   assert.ok(!loadStore(g).byKey.has('change:work/abc-1234'));
   assert.ok(!loadStore(g).byKey.has('change:work/utf-8'));
@@ -512,10 +568,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
     'change:work/abc-1234',
     'change:work/app-12',
   ]);
-  assert.match(
-    context(atGh('fix acme/app#13 too')),
-    /acme\/app#13 is github-issue:acme\/app#13; the store has no record/,
-  ); // gh knows no 13
+  assert.match(context(atGh('fix acme/app#13 too')), /acme\/app#13 is github-issue:acme\/app#13; no change binds it/); // gh knows no 13
   // the receipt at the end of the turn: what this session and the ones it spawned wrote, nothing from another session
   hook('SubagentStart', { cwd: work, session_id: 'sess-t', agent_id: 'sess-t-child', agent_type: 'Explore' });
   assert.equal(loadStore(g).byKey.get('session:sess-t-child')![0].data.parent, 'session:sess-t');
