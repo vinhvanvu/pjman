@@ -399,7 +399,7 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   });
   const chips = changeContext(store, 'change:project/chips').sources;
   assert.deepEqual(
-    chips.map((x) => [x.via, x.key, x.url]),
+    chips.map((x) => [x.relation, x.key, x.url]),
     [
       ['binds', 'github-issue:acme/app#8', 'https://github.com/acme/app/issues/8'],
       ['links', 'github-pr:acme/app#7', 'https://github.com/acme/app/pull/7'],

@@ -208,6 +208,10 @@ test('a key prints in one form on every view: the slug alone inside its product,
   r = pj(['step', 'near', 'done', '9']);
   assert.match(r.err, /^pjman: change:near: the plan is empty/);
   assert.doesNotMatch(r.err, /change:app\//);
+  // context's sources name the relation in the field relation (decision pjman-22/relation-field)
+  const cx = JSON.parse(pj(['context', 'near', '--json']).out) as { sources: { key: string; relation: string }[] };
+  assert.equal(cx.sources.find((x) => x.key === 'linear:APP-3')?.relation, 'links');
+  assert.ok(cx.sources.every((x) => !('via' in x)));
 });
 
 test('step add takes several texts as one commit, or lines on stdin; edit rewrites a text; words left unquoted are refused', () => {
