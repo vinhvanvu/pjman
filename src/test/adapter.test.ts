@@ -252,7 +252,7 @@ test('run to the end: a turn that wrote code may stop only where the change rest
     refused.reason,
     /^pjman: change:run-it is not at a resting point\. This turn wrote code for it and its plan still has 2 steps open:\n- 1\. first\n- 2\. second\n/,
   );
-  assert.match(refused.reason, /pjman decision change:run-it\/<slug>/);
+  assert.match(refused.reason, /pjman decision run-it\/<slug>/);
   assert.match(refused.reason, /pjman set change:run-it blocked-on=/);
   assert.match(refused.reason, /committed on the worktree for review/);
   // the retry the harness marks passes, and the turn is logged once
@@ -330,7 +330,7 @@ test('questions become decisions: a reply that asks the person to choose is sent
     reason,
     /^pjman: this reply asks the person to choose and no decision was opened or added to this turn:\n- Does the plan sit above or below the decisions\?\n- Is a done step hidden, or shown struck through\?\n- Who sees the sessions list\?\n/,
   );
-  assert.match(reason, /pjman decision change:ask-it\/<slug>/);
+  assert.match(reason, /pjman decision ask-it\/<slug>/);
   assert.ok(!/is this code/.test(reason), 'a question inside a code block is not one');
   assert.ok(!/can the plan go first/.test(reason), "the person's quoted words are not one");
   assert.ok(!/not at a resting point/.test(reason), 'a turn that wrote no code is not judged on the plan');
@@ -1074,4 +1074,65 @@ test('the follow window: a prompt tells the dashboard the session; the start in 
     else fs.writeFileSync(serve, savedServe);
     dash.close();
   }
+});
+
+// last: the changes it files lengthen the board every later start injects
+test('the refusals print a decision command that runs; after an unbind the hook follows the record, a change taken before included (change:pjman-23)', () => {
+  const cli = (...args: string[]) =>
+    execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), ...args], {
+      cwd: project,
+      encoding: 'utf8',
+      env,
+    });
+  for (const slug of ['abc-1', 'abc-2']) {
+    change(store, slug, { title: slug, summary: 's', writer: 'person:tester' });
+    step(store, `change:${slug}`, 'add', undefined, { text: 'first' });
+  }
+  const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-ub', ...input });
+  const shell = (...args: string[]) => {
+    cli(...args);
+    at('PostToolUse', { tool_name: 'Bash', tool_input: { command: `pjman ${args.join(' ')}` } });
+  };
+  const wrote = () =>
+    at('PostToolUse', { tool_name: 'Write', tool_input: { file_path: path.join(project, 'src/ub.ts') } });
+  at('SessionStart', { source: 'startup' });
+  at('UserPromptSubmit', { prompt: 'work change:abc-1' });
+  // the agent binds a second change, then backs it out: the hook goes back to the first, which it had taken before
+  shell('session', 'bind', 'sess-ub', 'change:abc-2');
+  at('UserPromptSubmit', { prompt: 'go' });
+  wrote();
+  let reason = (JSON.parse(at('Stop', { last_assistant_message: 'Wrote.' })) as { reason: string }).reason;
+  assert.match(reason, /^pjman: change:abc-2 is not at a resting point/);
+  at('Stop', { last_assistant_message: 'Wrote.', stop_hook_active: true });
+  shell('session', 'unbind', 'sess-ub', 'change:abc-2');
+  at('UserPromptSubmit', { prompt: 'go' });
+  wrote();
+  reason = (JSON.parse(at('Stop', { last_assistant_message: 'Which one?\n- a\n- b' })) as { reason: string }).reason;
+  assert.match(reason, /^pjman: change:abc-1 is not at a resting point/);
+  // both refusals print the decision command as the tool takes it, and it runs as printed
+  const printed = [...reason.matchAll(/pjman decision (\S+)\/<slug>/g)].map((m) => m[1]);
+  assert.deepEqual(printed, ['abc-1', 'abc-1']);
+  cli(
+    'decision',
+    `${printed[0]}/which-one`,
+    '--name',
+    'Which one',
+    '--gist',
+    'g',
+    '--question',
+    'q',
+    '--option',
+    'a=A',
+    '--option',
+    'b=B',
+    '--recommend',
+    'a=why',
+  );
+  assert.ok(loadStore(store).byKey.has('decision:project/abc-1/which-one'));
+  at('Stop', { last_assistant_message: 'Which one?\n- a\n- b', stop_hook_active: true });
+  // the last change backed out: the hook holds none, and a turn that wrote code is not judged on a change
+  shell('session', 'unbind', 'sess-ub', 'change:abc-1');
+  at('UserPromptSubmit', { prompt: 'go' });
+  wrote();
+  assert.ok(!/"decision":"block"/.test(at('Stop', { last_assistant_message: 'Wrote more.' })));
 });

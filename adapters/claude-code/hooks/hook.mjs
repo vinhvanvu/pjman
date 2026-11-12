@@ -680,6 +680,12 @@ function shortKey(k, store) {
   return product ? k.replace(new RegExp(`^(feature|change|decision):${product}/`), '$1:') : k;
 }
 
+/** The change as `pjman decision` takes it ahead of a decision's slug: the key without its `change:` prefix, the product
+ *  segment kept for a change of another product (`<change>/<slug>`, or `<product>/<change>/<slug>`). */
+function decisionHead(key) {
+  return key.replace(/^change:/, '');
+}
+
 /** Why the stop is refused, for the agent: the change, the open steps, and the three ways the record lets it stop. */
 function restRefusal(r, store) {
   const key = shortKey(r.key, store);
@@ -689,7 +695,7 @@ function restRefusal(r, store) {
   return [
     `pjman: ${key} is not at a resting point. This turn wrote code for it and its plan still has ${r.open.length === 1 ? 'a step' : `${r.open.length} steps`} open:`,
     steps,
-    `Carry on until the plan runs to its end; mark each step as it lands (pjman step ${key} done <n>). Stop only where the record lets you: a choice that forecloses options opened as a decision, proposed (pjman decision ${key}/<slug> …); an outside blocker recorded (pjman set ${key} blocked-on="…"); or every step done and the work committed on the worktree for review. If the person asked you to stop here, leave the plan where it stands (pjman step ${key} note <n> "…") and end the turn again.`,
+    `Carry on until the plan runs to its end; mark each step as it lands (pjman step ${key} done <n>). Stop only where the record lets you: a choice that forecloses options opened as a decision, proposed (pjman decision ${decisionHead(key)}/<slug> …); an outside blocker recorded (pjman set ${key} blocked-on="…"); or every step done and the work committed on the worktree for review. If the person asked you to stop here, leave the plan where it stands (pjman step ${key} note <n> "…") and end the turn again.`,
   ].join('\n');
 }
 
@@ -757,7 +763,7 @@ function questionsRefusal(key, questions, asked) {
       `pjman: this turn put a question to the person through the prompt and no decision was opened or added to record it.`,
     );
   parts.push(
-    `A question laid out with options is a decision: record each as proposed, with its options and one recommended (pjman decision ${key}/<slug> --name "…" --gist "…" --question "…" --option <id>="…" --option <id>="…" --recommend <id>="why"), and where the person already chose, add their words (--accept <id>="…" --by person:<handle>). Then end the turn again, saying which decisions are open. A question that is not a choice (a fact only the person knows) is asked as it is; end the turn again.`,
+    `A question laid out with options is a decision: record each as proposed, with its options and one recommended (pjman decision ${decisionHead(key)}/<slug> --name "…" --gist "…" --question "…" --option <id>="…" --option <id>="…" --recommend <id>="why"), and where the person already chose, add their words (--accept <id>="…" --by person:<handle>). Then end the turn again, saying which decisions are open. A question that is not a choice (a fact only the person knows) is asked as it is; end the turn again.`,
   );
   return parts.join('\n');
 }
@@ -1125,11 +1131,18 @@ async function main() {
       // prompt's does: the sidebar names it and a parked pane follows (change:bind-moves-the-dock)
       const bindingWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:new|session|apply)\b/;
       if (input.tool_name === 'Bash' && bindingWrite.test(String(input.tool_input?.command ?? ''))) {
-        const changes = tryPjman(['show', `session:${sid}`, '--json'], { cwd, json: true })?.data?.changes;
+        const rec = tryPjman(['show', `session:${sid}`, '--json'], { cwd, json: true })?.data;
+        const changes = rec ? (Array.isArray(rec.changes) ? rec.changes : []) : null; // null: the record could not be read
         // the newest binding, unless the hook has taken it up before (a prompt can bind an earlier change again, which
         // leaves the record's order as it was)
-        const last = Array.isArray(changes) ? changes.at(-1) : null;
-        if (last && last !== st.bound && !st.taken?.includes(last)) {
+        const last = changes?.at(-1) ?? null;
+        // the hook's change no longer on the record (a session unbind backed it out): the record's newest change is
+        // followed even when taken before, and none when the record has none left (change:pjman-23)
+        const unbound = Boolean(st.bound && changes && !changes.includes(st.bound));
+        if (unbound && !last) {
+          st.bound = null;
+          hostLabel(sid, cwd, env, { clear: true });
+        } else if (last && last !== st.bound && (unbound || !st.taken?.includes(last))) {
           st.bound = taken(st, last);
           hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);
