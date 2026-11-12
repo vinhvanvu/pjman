@@ -577,6 +577,24 @@ test('a session in an unregistered git repository registers it and gets the brie
   const rec = () => loadStore(global).records.find((r) => r.type === 'session' && r.sessionId === 'sess-plain')!;
   assert.ok(rec(), 'the session record exists in the global store');
   assert.equal(rec().data.project, undefined);
+  // the agent's own shell finds that store from there too, with no --store, so the brief's commands run as written
+  // (decision pjman-25/store-outside-a-project); an unregistered repository still finds none, so it can register itself
+  const cli = (cwd: string, ...args: string[]) =>
+    execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), ...args], {
+      cwd,
+      encoding: 'utf8',
+      env: { ...env, PJMAN_SESSION: 'session:sess-plain' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  const where = JSON.parse(cli(plain, 'where', '--json')) as { root: string; project?: string | null };
+  assert.equal(fs.realpathSync(where.root), fs.realpathSync(global.root));
+  assert.equal(where.project ?? null, null);
+  cli(plain, 'session', 'name', 'sess-plain', 'Loose notes', '--kind', 'chat');
+  assert.equal(rec().data.name, 'Loose notes');
+  assert.throws(
+    () => cli(quiet, 'where', '--json'),
+    (e: { stdout?: string }) => /no store found/.test(String(e.stdout)),
+  );
   // a tool call that lands in a registered repository resolves the session to that project, once
   hook('PostToolUse', { cwd: plain, session_id: 'sess-plain', tool_name: 'Bash', tool_input: { command: 'ls -la' } });
   assert.equal(rec().data.project, undefined, 'a command that names no repository resolves nothing');

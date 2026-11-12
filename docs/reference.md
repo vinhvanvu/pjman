@@ -6,7 +6,7 @@ The tool in full: the store, `pjman init`, every command, the product tree, trac
 
 One global store per person: `~/.pjman/store`, its own git repository. `pjman init` in a repository creates the store the first time, registers the repository as a project (`project:<folder-name>`, or `--name`), and maps the repository's path to that project in `~/.pjman/config.yaml`. The tool commits every write it makes there. A change belongs to the project of the directory it was created from; `pjman context` is that project's board, `--all` every project's.
 
-Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root or a `.pjman/` walking up; else the user map, which also names the current project.
+Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root or a `.pjman/` walking up; else the user map, which also names the current project; else, outside any git repository, the global store with no project.
 
 A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): the source kind of its tickets. A ticket id or ticket URL then resolves through the getter to the change that binds it, and the adapter binds a session to that change, creating it when none binds the ticket.
 
