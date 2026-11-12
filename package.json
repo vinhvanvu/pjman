@@ -50,7 +50,7 @@
     "build:ui": "npm run build && npm --prefix ui run build",
     "install:local": "node scripts/install-local.mjs",
     "test": "npm run build && node --test dist/test/*.test.js",
-    "lint": "oxlint --type-aware --deny-warnings",
+    "lint": "oxlint --type-aware --deny-warnings src scripts bin adapters",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "check": "npm run lint && npm run fmt:check && npm test",
