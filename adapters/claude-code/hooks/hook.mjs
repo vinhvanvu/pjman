@@ -149,6 +149,9 @@ function runAsync(cmd, args, { cwd, env = {}, input } = {}) {
         });
       },
     );
+    // a child that exits before reading its input closes the pipe: the write fails with EPIPE, which must not crash
+    // the hook; the child's own result still arrives through the callback
+    child.stdin?.on('error', () => {});
     child.stdin?.end(input ?? '');
   });
 }
