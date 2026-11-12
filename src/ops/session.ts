@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../store/config.js';
 import { parseRecord, sections } from '../store/frontmatter.js';
-import { findReferences } from '../model/graph.js';
+import { findReferences, get } from '../model/graph.js';
 import { computeBrief, type Brief } from './hydrate.js';
 import { findSession, forget, fullKey, loadStore, resolve, unresolvedError, type Rec } from '../store/records.js';
 import { CliError, localDate, nowIso, notFound } from '../store/util.js';
@@ -303,12 +303,15 @@ export function sessionName(store: Store, id: string, flags: NameFlags): NameRes
  *  person or agent bound it by hand. Every bind says which, as a line in `## Log`. */
 export type BindReason = 'prompt' | 'created' | 'branch' | 'by hand';
 
-/** Append a change key to `changes`, in order, once; the reason is a line in `## Log`. */
+/** Append a change key to `changes`, in order, once; the reason is a line in `## Log`. `via` is the source that led to
+ *  the change (a ticket the prompt named): the line says how the change relates to it, `bound change:x (prompt; binds
+ *  linear:ABC-1234)`, the way refs and get name it. */
 export function sessionBind(
   store: Store,
   id: string,
   changeKey: string,
   reason: BindReason = 'by hand',
+  via?: string,
 ): { path: string; commit: string | null; added: boolean } {
   const { loaded, rec } = load(store, id);
   const raw = changeKey.startsWith('change:') ? changeKey : `change:${changeKey}`;
@@ -318,11 +321,14 @@ export function sessionBind(
   const changes = Array.isArray(rec.data.changes) ? [...(rec.data.changes as string[])] : [];
   if (changes.includes(key)) return { path: rec.path, commit: null, added: false };
   changes.push(key);
+  const n = via ? get(loaded, via, { projectDir: store.projectDir, project: store.project }) : undefined;
+  const relation = n?.resolution.key ? n.relation[key] : undefined;
+  const how = relation ? `; ${relation} ${n!.resolution.key}` : '';
   const commit = save(
     store,
     rec,
     { ...rec.data, changes },
-    withLogLine(rec, `bound ${key} (${reason})`),
+    withLogLine(rec, `bound ${key} (${reason}${how})`),
     `pjman: session bind ${rec.key} ${key}`,
     'bind',
     key,

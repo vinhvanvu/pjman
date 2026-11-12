@@ -97,6 +97,7 @@ export const FLAG_TYPES = {
   follow: { type: 'boolean' },
   receipt: { type: 'boolean' },
   reason: { type: 'string' },
+  via: { type: 'string' },
   log: { type: 'string' },
   branch: { type: 'string' },
   before: { type: 'string' },
@@ -493,7 +494,7 @@ export const COMMANDS: Command[] = [
     usage: [
       'pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]',
       'pjman session log <id> <text>',
-      'pjman session bind <id> <change> [--reason prompt|created|branch]',
+      'pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)',
       'pjman session unbind <id> <change>',
       'pjman session observe <id> <edge> <from> <to>',
       'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)',
@@ -503,7 +504,7 @@ export const COMMANDS: Command[] = [
     flags: {
       start: ['agent', 'on-behalf-of', 'parent', 'log', 'branch', 'full', 'no-host'],
       log: [],
-      bind: ['reason'],
+      bind: ['reason', 'via'],
       unbind: [],
       observe: [],
       focus: [],

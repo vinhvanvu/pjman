@@ -22,7 +22,7 @@ import {
   storeContext,
 } from '../model/view.js';
 import { findStore, readUserConfig, writeStoreConfig, type Store } from '../store/config.js';
-import { findReferences, get, keyFromUrl } from '../model/graph.js';
+import { findReferences, formatNeighbourhood, formatReferences, get, keyFromUrl } from '../model/graph.js';
 import { renderView, viewData } from '../ops/pane.js';
 import { BRIEF, installBrief } from '../cli/brief.js';
 import { start, stop } from '../cli/start.js';
@@ -447,6 +447,68 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   );
   assert.equal(findReferences(loaded, 'nothing here', { project: 'project:project' }).length, 0);
   fs.rmSync(path.join(store.root, 'products/project/changes/abc'), { recursive: true });
+});
+
+test('refs and get name how each change in reach of a source relates to it: binds, links, observed', () => {
+  change(store, 'rel-bind', { title: 'Binds', summary: 's', binds: ['linear:REL-1'], links: ['linear:REL-1'] });
+  change(store, 'rel-link', { title: 'Links', summary: 's', links: ['linear:REL-1'] });
+  change(store, 'rel-seen', { title: 'Seen', summary: 's' });
+  newRecord(store, 'session', 'sess-rel', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'linear:REL-1');
+  sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'github-pr:acme/app#90');
+  sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-link', 'linear:REL-1');
+  const loaded = loadStore(store);
+
+  // the strongest relation wins whichever edge came first: bound and linked is binds, linked and observed is links
+  const n = get(loaded, 'linear:REL-1');
+  assert.deepEqual(n.relation, {
+    'change:project/rel-bind': 'binds',
+    'change:project/rel-link': 'links',
+    'change:project/rel-seen': 'observed',
+  });
+  assert.equal(n.via['change:project/rel-bind'], 'binds');
+  assert.equal(n.via['change:project/rel-link'], 'links');
+  assert.equal(n.via['change:project/rel-seen'], 'links (observed)');
+  const text = formatNeighbourhood(n, formatChangeContext);
+  assert.match(text, /referenced by:\n- binds change:project\/rel-bind\n/);
+  assert.match(text, /- links change:project\/rel-seen \(observed by session:sess-rel/);
+  assert.match(text, /reached change:project\/rel-bind through binds\n/);
+  assert.match(text, /reached change:project\/rel-link through links\n/);
+  assert.match(text, /reached change:project\/rel-seen through links \(observed\)\n/);
+  // a record reached from a record that is not a source has no relation to name
+  assert.deepEqual(get(loaded, 'change:project/rel-bind').relation, {});
+
+  // refs: the relation stands before the change each reference leads to, in the text and in --json
+  const refs = findReferences(loaded, 'REL-1, https://github.com/acme/app/pull/90 and rel-link', {
+    project: 'project:project',
+  });
+  assert.deepEqual(
+    refs.map((r) => [r.key, r.change, r.relation]),
+    [
+      ['linear:REL-1', 'change:project/rel-bind', 'binds'],
+      ['github-pr:acme/app#90', 'change:project/rel-seen', 'observed'],
+      ['change:project/rel-link', 'change:project/rel-link', undefined],
+    ],
+  );
+  assert.equal(
+    formatReferences(refs),
+    [
+      'REL-1 → linear:REL-1 (linear, no record) · binds change:project/rel-bind',
+      'https://github.com/acme/app/pull/90 → github-pr:acme/app#90 (url, no record) · observed change:project/rel-seen',
+      'rel-link → change:project/rel-link (slug) · change:project/rel-link',
+    ].join('\n'),
+  );
+  // a session bound through a source says in its record how the change relates to it; a bind with no source says only why
+  sessionBind(store, 'sess-rel', 'change:project/rel-link', 'prompt', 'REL-1');
+  sessionBind(store, 'sess-rel', 'change:project/rel-seen', 'prompt', 'https://github.com/acme/app/pull/90');
+  sessionBind(store, 'sess-rel', 'change:project/rel-bind', 'by hand');
+  const log = loadStore(store).byKey.get('session:sess-rel')![0].sections.get('Log') ?? '';
+  assert.match(log, /bound change:project\/rel-link \(prompt; links linear:REL-1\)/);
+  assert.match(log, /bound change:project\/rel-seen \(prompt; observed github-pr:acme\/app#90\)/);
+  assert.match(log, /bound change:project\/rel-bind \(by hand\)/);
+  rm(store, 'session:sess-rel', {});
+  for (const c of ['rel-bind', 'rel-link', 'rel-seen'])
+    fs.rmSync(path.join(store.root, 'products/project/changes', c), { recursive: true });
 });
 
 test('a change may have a parent change: any depth, no cycles, children derived, progress derived, the board nests', () => {

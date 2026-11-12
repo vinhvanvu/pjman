@@ -465,6 +465,9 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
     /^pjman brief: this session is bound to change:abc-1234; its context in full\.\n\n# change:abc-1234 — ABC-1234/,
   );
   assert.deepEqual(loadStore(g).byKey.get('session:sess-t')![0].data.changes, ['change:work/abc-1234']);
+  // the record says how the change relates to the ticket that led to it, as refs and get name it
+  const logOf = () => loadStore(g).byKey.get('session:sess-t')![0].sections.get('Log') ?? '';
+  assert.match(logOf(), /bound change:work\/abc-1234 \(prompt; binds linear:ABC-1234\)/);
   assert.equal(at('see https://linear.app/acme/issue/ABC-1234/the-title.'), '');
   assert.equal(loadStore(g).records.filter((r) => r.type === 'change' && r.data.project === 'project:work').length, 1);
   // a GitHub project: acme/app#12 or its URL in the prompt is an issue; the hook reads it with gh and the sync creates the change
@@ -493,6 +496,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
     /^pjman brief: this session is bound to change:app-12; its context in full\.\n\n# change:app-12 — Twelve/,
   );
   const twelve = loadStore(g).byKey.get('change:work/app-12')![0];
+  assert.match(logOf(), /bound change:work\/app-12 \(prompt; binds github-issue:acme\/app#12\)/);
   assert.deepEqual(twelve.data.binds, ['github-issue:acme/app#12']);
   assert.equal(twelve.data.writer, 'agent:github-sync');
   assert.equal(atGh('and https://github.com/acme/app/issues/12 again'), ''); // already hydrated: bound, no second injection

@@ -857,10 +857,11 @@ function promptChange(prompt, { cwd, env }) {
     };
   for (const r of refs.toReversed()) {
     if (r.weak) continue; // a bare #1: as often a list item as an issue
-    if (r.change) return { key: r.change, sources };
+    // a source that led to the change goes with the bind, so the record says how the change relates to it
+    if (r.change) return { key: r.change, sources, via: r.relation ? r.key : undefined };
     if (!r.creatable) continue;
     const created = createFromTracker(r, { cwd, env });
-    if (created) return { key: created, sources };
+    if (created) return { key: created, sources, via: r.key };
     const sync = r.key.startsWith('github-issue:') ? 'github' : r.key.slice(0, r.key.indexOf(':'));
     return {
       hint: `${r.text} is ${r.key}; the store has no record of it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound when you name it).`,
@@ -1105,7 +1106,8 @@ async function main() {
       const parts = [];
       if (found?.hint) parts.push(found.hint);
       else if (found?.key && st.bound !== found.key) {
-        if (tryPjman(['session', 'bind', sid, found.key, '--reason', 'prompt'], { cwd, env }) !== null) {
+        const via = found.via ? ['--via', found.via] : [];
+        if (tryPjman(['session', 'bind', sid, found.key, '--reason', 'prompt', ...via], { cwd, env }) !== null) {
           st.bound = taken(st, found.key);
           hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);

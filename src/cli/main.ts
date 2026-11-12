@@ -480,11 +480,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         out(`logged to ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'bind') {
         if (!id || !rest[0])
-          throw usageError('usage: pjman session bind <id> <change> [--reason prompt|created|branch]');
+          throw usageError('usage: pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]');
         const reasons = ['prompt', 'created', 'branch', 'by hand'] as const;
         const reason = (v.reason ?? 'by hand') as BindReason;
         if (!reasons.includes(reason)) throw new CliError(`--reason takes ${reasons.join(', ')}`);
-        const r = sessionBind(store, id, rest[0], reason);
+        const r = sessionBind(store, id, rest[0], reason, v.via);
         out(r.added ? `bound in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `already bound in ${r.path}`);
       } else if (sub === 'unbind') {
         if (!id || !rest[0]) throw usageError('usage: pjman session unbind <id> <change>');

@@ -188,8 +188,20 @@ export interface Neighbourhood {
   changes: ChangeContext[];
   /** change key → how it was reached (`binds`, `decision:x/y links`, `session:… changes`, `self`). */
   via: Record<string, string>;
+  /** For a source: change key → how the change relates to it, the strongest that holds (binds over links over observed). */
+  relation: Record<string, Relation>;
   /** A project's changes, a session's children, an actor's sessions: rows, not contexts. */
   members: Row[];
+}
+
+/** How a change relates to a source in its reach: it binds it, it (or one of its decisions) links it, or a session
+ *  observed it linking it. */
+export type Relation = 'binds' | 'links' | 'observed';
+const RELATION_RANK: Record<Relation, number> = { observed: 1, links: 2, binds: 3 };
+
+/** The relation an edge between a change (or its decision) and a source makes. */
+function relationOf(e: Edge): Relation {
+  return e.observed ? 'observed' : e.edge === 'binds' ? 'binds' : 'links';
 }
 
 export interface GetOpts {
@@ -346,7 +358,16 @@ export function resolveArg(loaded: Loaded, raw: string, opts: GetOpts & { kinds?
 /** The getter: a reference in, the record and its neighbourhood out. */
 export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbourhood {
   const resolution = resolveRef(loaded, input, opts);
-  const result: Neighbourhood = { input, resolution, in: [], out: [], changes: [], via: {}, members: [] };
+  const result: Neighbourhood = {
+    input,
+    resolution,
+    in: [],
+    out: [],
+    changes: [],
+    via: {},
+    relation: {},
+    members: [],
+  };
   if (resolution.status === 'none' || !resolution.key) return result;
   const key = resolution.key;
   const rec = loaded.byKey.get(key)?.[0];
@@ -368,20 +389,35 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
   if (rec?.type === 'change') add(key, 'self');
   else if (rec?.type === 'decision' && rec.changeKey) add(rec.changeKey, 'in');
   else if (rec?.type === 'session') for (const k of list(rec.data.changes)) add(canon(k), 'changes');
+  // a source names how each change in its reach relates to it: the strongest edge wins, whichever came first
+  const parsedKey = parseKey(key);
+  const source = rec?.type === 'source' || (!!parsedKey && !RECORD_KINDS.has(parsedKey.kind));
+  const relation = new Map<string, Relation>();
+  const relate = (c: string, e: Edge, how: string) => {
+    add(c, how);
+    if (!source || !reach.has(c)) return;
+    const r = relationOf(e);
+    const was = relation.get(c);
+    if (was && RELATION_RANK[was] >= RELATION_RANK[r]) return;
+    relation.set(c, r);
+    reach.set(c, how);
+  };
   if (rec?.type !== 'project' && rec?.type !== 'actor') {
     for (const e of result.in) {
       const c = changeOf(e.from);
-      if (c) add(c, c === e.from ? `${e.edge}${e.observed ? ' (observed)' : ''}` : `${e.from} ${e.edge}`);
+      if (c) relate(c, e, c === e.from ? `${e.edge}${e.observed ? ' (observed)' : ''}` : `${e.from} ${e.edge}`);
     }
     for (const e of result.out) {
       const c = changeOf(e.to);
-      if (c && e.edge !== 'session' && e.edge !== 'writer') add(c, e.edge);
+      if (c && e.edge !== 'session' && e.edge !== 'writer') relate(c, e, e.edge);
     }
   }
   for (const [k, how] of reach) {
     try {
       result.changes.push(changeContext(loaded.store, k, loaded));
       result.via[k] = how;
+      const r = relation.get(k);
+      if (r) result.relation[k] = r;
     } catch {
       // an unresolvable change in reach is reported by validate, not here
     }
@@ -418,10 +454,7 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
   const line = (e: Edge, other: string) =>
     `- ${e.edge} ${other}${
       e.observed
-        ? ` (observed by ${e.on
-            .replace(/^sessions\//, 'session:')
-            .replace(/^\d{4}-\d{2}-\d{2}-/, '')
-            .replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})`
+        ? ` (observed by ${e.on.replace(/^sessions\/(\d{4}-\d{2}-\d{2}-)?/, 'session:').replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})`
         : ''
     }`;
   const inbound = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
@@ -454,6 +487,8 @@ export interface Reference {
   key: string;
   /** The change it leads to: itself, the change that binds it, or the nearest change in reach. */
   change?: string;
+  /** For a source: how that change relates to it (binds, links, observed). */
+  relation?: Relation;
   /** A ticket of the project's tracker with no record yet: the tracker can be asked and the sync would create the change. */
   creatable: boolean;
   /** Too ambiguous to act on (a bare `#1`): listed with what it would lead to, never binding a session or creating a change. */
@@ -478,10 +513,12 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
     if (resolution.status === 'none' || !resolution.key) continue;
     const key = resolution.key;
     let change: string | undefined;
+    let relation: Relation | undefined;
     if (key.startsWith('change:')) change = key;
     else {
       const n = get(loaded, key, opts);
       change = n.changes[0]?.change.key;
+      if (change) relation = n.relation[change];
     }
     const kind = key.slice(0, key.indexOf(':'));
     if (!change && kind === 'branch') {
@@ -502,6 +539,7 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
       resolution,
       key,
       change,
+      relation,
       creatable: !weak && !change && resolution.status === 'key' && kind === tracker,
       weak,
     });
@@ -514,7 +552,7 @@ export function formatReferences(refs: Reference[]): string {
   return refs
     .map(
       (r) =>
-        `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''}${r.weak ? ', bare: never binds' : ''})${r.change ? ` · ${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`,
+        `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''}${r.weak ? ', bare: never binds' : ''})${r.change ? ` · ${r.relation ? `${r.relation} ` : ''}${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`,
     )
     .join('\n');
 }

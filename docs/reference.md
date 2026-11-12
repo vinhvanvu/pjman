@@ -357,7 +357,7 @@ pjman follow [--since <seq>] [--json]
 
 pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]
 pjman session log <id> <text>
-pjman session bind <id> <change> [--reason prompt|created|branch]
+pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)
 pjman session unbind <id> <change>
 pjman session observe <id> <edge> <from> <to>
 pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)
