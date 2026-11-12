@@ -52,10 +52,10 @@ const git = (...args) => run('git', args);
 
 say('building the tool…');
 run('npm', ['run', 'build'], { stdio: ['ignore', 'ignore', 'inherit'] });
-const { MIGRATIONS } = await import(path.join(root, 'dist', 'commands', 'migrate.js'));
-const { compareVersions } = await import(path.join(root, 'dist', 'version.js'));
-const { VERSION_RE } = await import(path.join(root, 'dist', 'keys.js'));
-const { RELEASE_LEVELS } = await import(path.join(root, 'dist', 'validate.js'));
+const { MIGRATIONS } = await import(path.join(root, 'dist', 'ops', 'migrate.js'));
+const { compareVersions } = await import(path.join(root, 'dist', 'store', 'version.js'));
+const { VERSION_RE } = await import(path.join(root, 'dist', 'store', 'keys.js'));
+const { RELEASE_LEVELS } = await import(path.join(root, 'dist', 'model', 'validate.js'));
 const pjman = (args, opts = {}) => run(process.execPath, [path.join(root, 'bin', 'pjman.js'), ...args], opts);
 
 // ---- the Homebrew formula: scripts/pjman.rb with the version and the checksum of the package npm serves, written to the
