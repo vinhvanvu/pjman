@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { defaultStaticDir, installedTool, readServeAddress, serveAddressPath, type ServeAddress } from '../server/server.js';
 import { CliError } from '../store/util.js';
 
-/** The tool's own checkout or install root (dist/commands → root). */
+/** The tool's own checkout or install root (dist/cli → root). */
 export function packageRoot(): string {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 }
