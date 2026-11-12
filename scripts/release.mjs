@@ -221,7 +221,7 @@ if (!ok('gh', ['auth', 'status'])) fail('gh is not signed in; the release is cre
 if (!ok('npm', ['whoami'])) fail('npm is not signed in (npm login); the release publishes the package to npm');
 if (!ok('gh', ['api', `repos/${TAP}`])) fail(`the tap ${TAP} is not reachable; the release writes ${FORMULA} there`);
 
-// ---- the build, so the commit carries the built app -----------------------------------------------------------------
+// ---- the build, so the package carries the built app ----------------------------------------------------------------
 
 say('building the app…');
 run('npm', ['run', 'build:ui'], { stdio: ['ignore', 'ignore', 'inherit'] });
