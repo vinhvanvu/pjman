@@ -16,7 +16,7 @@
     "types": ["vite/client", "node"],
     "paths": {
       "@/*": ["./src/*"],
-      "@contract/*": ["../dist/*"]
+      "@contract": ["../dist/server/contract"]
     }
   },
   "include": ["src", "vite.config.ts"]

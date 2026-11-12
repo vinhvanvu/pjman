@@ -1,42 +1,49 @@
-// The API's types come from the tool itself (its emitted declarations under dist), type-only, so the contract has one
-// definition. Build the tool first (`npm run build` at the root). The constants are repeated on purpose: a value import
-// would pull server code into the bundle.
+// The API's types come from the tool itself: its contract module (src/server/contract.ts), read type-only from the
+// emitted declarations under dist, so the contract has one definition. Build the tool first (`npm run build` at the
+// root). The constants are repeated on purpose: a value import would pull server code into the bundle.
 export type {
+  AspectAt,
+  AspectWhole,
+  Bridge,
+  BridgeChange,
+  BridgeMotion,
+  BridgeSession,
+  ChangeAspects,
+  ChangeContext,
   ChangeRow,
+  DecisionState,
   Health,
+  HostResult,
+  Layer,
+  LaunchResult,
   Lens,
   LiveSession,
+  Moment,
+  OptionState,
+  OrderResult,
+  PlaceLine,
+  Rail,
+  RailBucket,
+  RailLane,
+  RailRow,
+  RailRowKind,
+  RailSession,
+  RecordType,
+  Row,
   Scope,
   ScopeAspect,
   ScopeNode,
+  SessionFacts,
+  SessionState,
+  SetResult,
+  StoreEvent,
+  Timeline,
+  TimelineEvent,
+  Violation,
   WaitingDecision,
-} from '@contract/model/scope';
-export type { AspectAt, AspectWhole, ChangeAspects, Layer, PlaceLine } from '@contract/model/aspects';
-export type { Violation } from '@contract/model/roadmap';
-export type { Bridge, BridgeChange, BridgeMotion, BridgeSession, SessionState } from '@contract/model/bridge';
-export type { OrderResult } from '@contract/ops/order';
-export type { SetResult } from '@contract/ops/set';
-export type { ChangeContext, Row } from '@contract/model/view';
-export type { SessionFacts } from '@contract/ops/pane';
-export type { HostResult, LaunchResult } from '@contract/ops/host';
-export type { StoreEvent } from '@contract/store/events';
-export type { Moment } from '@contract/model/moment';
-export type { Timeline, TimelineEvent } from '@contract/model/timeline';
-export type {
-  Rail,
-  Lane as RailLane,
-  Row as RailRow,
-  Bucket as RailBucket,
-  RowKind as RailRowKind,
-  RailSession,
-} from '@contract/model/rail';
-export type { RecordType } from '@contract/store/records';
-export type { DecisionState, OptionState } from '@contract/model/foundation';
+} from '@contract';
 
-import type { SessionFacts } from '@contract/ops/pane';
-import type { Row } from '@contract/model/view';
-import type { Lens } from '@contract/model/scope';
-import type { RowKind as RailRowKind } from '@contract/model/rail';
+import type { Lens, RailRowKind, Row, SessionFacts } from '@contract';
 
 /** The lenses the dashboard shows: what the product is (the map), and in what order it comes (the roadmap). The
  *  server also answers `project` and `milestone`; the dashboard treats a project as a chip on cards and a record on
