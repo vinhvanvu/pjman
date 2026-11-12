@@ -6,11 +6,11 @@ import type http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { sessionStart } from '../commands/session.js';
-import { findStore, type Store } from '../config.js';
-import { CLAIM_MS, FollowState, RECONNECT_MS, type Followed } from '../follow.js';
-import { startServer } from '../server.js';
+import { init } from '../cli/init.js';
+import { sessionStart } from '../ops/session.js';
+import { findStore, type Store } from '../store/config.js';
+import { CLAIM_MS, FollowState, RECONNECT_MS, type Followed } from '../hosts/follow.js';
+import { startServer } from '../server/server.js';
 
 test('one caller opens a window: the next waits on its claim, a connected window answers all, a closed one lets the next open', () => {
   const t0 = 1_000_000;

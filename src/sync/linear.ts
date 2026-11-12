@@ -1,8 +1,8 @@
 // Linear: the translation from what Linear's tools answer (read by whoever holds the connection) to tickets.
-import { CANONICAL_STATUSES, type Store } from '../config.js';
-import { loadStore, resolve } from '../records.js';
-import { CliError, notFound } from '../util.js';
-import { slugFor } from '../refs.js';
+import { CANONICAL_STATUSES, type Store } from '../store/config.js';
+import { loadStore, resolve } from '../store/records.js';
+import { CliError, notFound } from '../store/util.js';
+import { slugFor } from '../model/refs.js';
 import { applyTickets, itemsIn, obj, readObserved, type SyncResult, type Ticket } from './apply.js';
 
 export const WRITER = 'agent:linear-sync';

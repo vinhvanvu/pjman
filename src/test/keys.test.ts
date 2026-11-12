@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { canonicalSourceKey, decisionKey, parseDecisionRest, parseKey, parseScopedRest, productOfKey, shortenText, shortKey, slugify, sourceFileSlug } from '../keys.js';
+import { canonicalSourceKey, decisionKey, parseDecisionRest, parseKey, parseScopedRest, productOfKey, shortenText, shortKey, slugify, sourceFileSlug } from '../store/keys.js';
 
 test('keys split at the first colon', () => {
   assert.deepEqual(parseKey('url:https://x.y/z'), { kind: 'url', rest: 'https://x.y/z', raw: 'url:https://x.y/z' });

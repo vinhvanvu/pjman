@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { findStore, type Store } from '../config.js';
-import { holdsLock, lockPath, lockStore, unlockStore, withStoreLock } from '../lock.js';
+import { init } from '../cli/init.js';
+import { findStore, type Store } from '../store/config.js';
+import { holdsLock, lockPath, lockStore, unlockStore, withStoreLock } from '../store/lock.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-lock-'));
 const home = path.join(tmp, 'home');
@@ -22,7 +22,7 @@ const bin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 /** A child process that holds the store's lock for `ms` milliseconds. */
 const holder = (root: string, ms: number) =>
-  spawn(process.execPath, ['--input-type=module', '-e', `import { lockStore } from ${JSON.stringify(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'lock.js'))}; lockStore(${JSON.stringify(root)}); process.stdout.write('held\\n'); setTimeout(() => {}, ${ms});`], { env: process.env, stdio: ['ignore', 'pipe', 'inherit'] });
+  spawn(process.execPath, ['--input-type=module', '-e', `import { lockStore } from ${JSON.stringify(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'store', 'lock.js'))}; lockStore(${JSON.stringify(root)}); process.stdout.write('held\\n'); setTimeout(() => {}, ${ms});`], { env: process.env, stdio: ['ignore', 'pipe', 'inherit'] });
 const onceHeld = (child: ReturnType<typeof spawn>) => new Promise<void>((res) => child.stdout!.once('data', () => res()));
 
 let store: Store;

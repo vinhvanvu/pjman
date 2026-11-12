@@ -1,7 +1,7 @@
 // The follow window's opening (change:follow-window, decision follow-window/window-not-tab): a window of its own.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handlerOf, windowPlan } from '../commands/follow-window.js';
+import { handlerOf, windowPlan } from '../cli/follow-window.js';
 
 const URL_ = 'http://127.0.0.1:7331/follow';
 

@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { set } from '../commands/set.js';
-import { step } from '../commands/step.js';
-import { findStore, type Store } from '../config.js';
-import { loadStore } from '../records.js';
-import { formatRest, restOf } from '../rest.js';
+import { init } from '../cli/init.js';
+import { set } from '../ops/set.js';
+import { step } from '../ops/step.js';
+import { findStore, type Store } from '../store/config.js';
+import { loadStore } from '../store/records.js';
+import { formatRest, restOf } from '../model/rest.js';
 import { accept, change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-rest-'));

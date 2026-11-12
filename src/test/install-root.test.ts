@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { installClaudeAdapter } from '../commands/init.js';
-import { stableRoot } from '../commands/start.js';
+import { installClaudeAdapter } from '../cli/init.js';
+import { stableRoot } from '../cli/start.js';
 
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-root-')));
 const pkg = 'libexec/lib/node_modules/@vinhvanvu/pjman';

@@ -10,18 +10,18 @@ export type {
   ScopeAspect,
   ScopeNode,
   WaitingDecision,
-} from '@contract/scope';
-export type { AspectAt, AspectWhole, ChangeAspects, Layer, PlaceLine } from '@contract/aspects';
-export type { Violation } from '@contract/roadmap';
-export type { Bridge, BridgeChange, BridgeMotion, BridgeSession, SessionState } from '@contract/bridge';
-export type { OrderResult } from '@contract/commands/order';
-export type { SetResult } from '@contract/commands/set';
-export type { ChangeContext, Row } from '@contract/commands/view';
-export type { SessionFacts } from '@contract/commands/pane';
-export type { HostResult, LaunchResult } from '@contract/commands/host';
-export type { StoreEvent } from '@contract/events';
-export type { Moment } from '@contract/moment';
-export type { Timeline, TimelineEvent } from '@contract/timeline';
+} from '@contract/model/scope';
+export type { AspectAt, AspectWhole, ChangeAspects, Layer, PlaceLine } from '@contract/model/aspects';
+export type { Violation } from '@contract/model/roadmap';
+export type { Bridge, BridgeChange, BridgeMotion, BridgeSession, SessionState } from '@contract/model/bridge';
+export type { OrderResult } from '@contract/ops/order';
+export type { SetResult } from '@contract/ops/set';
+export type { ChangeContext, Row } from '@contract/model/view';
+export type { SessionFacts } from '@contract/ops/pane';
+export type { HostResult, LaunchResult } from '@contract/ops/host';
+export type { StoreEvent } from '@contract/store/events';
+export type { Moment } from '@contract/model/moment';
+export type { Timeline, TimelineEvent } from '@contract/model/timeline';
 export type {
   Rail,
   Lane as RailLane,
@@ -29,14 +29,14 @@ export type {
   Bucket as RailBucket,
   RowKind as RailRowKind,
   RailSession,
-} from '@contract/rail';
-export type { RecordType } from '@contract/records';
-export type { DecisionState, OptionState } from '@contract/foundation';
+} from '@contract/model/rail';
+export type { RecordType } from '@contract/store/records';
+export type { DecisionState, OptionState } from '@contract/model/foundation';
 
-import type { SessionFacts } from '@contract/commands/pane';
-import type { Row } from '@contract/commands/view';
-import type { Lens } from '@contract/scope';
-import type { RowKind as RailRowKind } from '@contract/rail';
+import type { SessionFacts } from '@contract/ops/pane';
+import type { Row } from '@contract/model/view';
+import type { Lens } from '@contract/model/scope';
+import type { RowKind as RailRowKind } from '@contract/model/rail';
 
 /** The lenses the dashboard shows: what the product is (the map), and in what order it comes (the roadmap). The
  *  server also answers `project` and `milestone`; the dashboard treats a project as a chip on cards and a record on

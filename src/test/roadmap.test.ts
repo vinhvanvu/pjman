@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { effectiveTarget, violations, worstSeverity, type RoadmapRow } from '../roadmap.js';
+import { effectiveTarget, violations, worstSeverity, type RoadmapRow } from '../model/roadmap.js';
 
 const row = (key: string, r: Partial<RoadmapRow> = {}): RoadmapRow => ({ key: `change:${key}`, dependsOn: [], ...r });
 const TODAY = '2026-10-26';

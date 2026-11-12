@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { sessionProject, sessionStart } from '../commands/session.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents } from '../events.js';
-import { findSession, loadStore } from '../records.js';
-import { validate } from '../validate.js';
+import { init } from '../cli/init.js';
+import { sessionProject, sessionStart } from '../ops/session.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents } from '../store/events.js';
+import { findSession, loadStore } from '../store/records.js';
+import { validate } from '../model/validate.js';
 import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-session-start-'));

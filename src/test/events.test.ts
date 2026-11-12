@@ -7,12 +7,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { sessionBind, sessionFocus } from '../commands/session.js';
-import { set } from '../commands/set.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents, rebuildEvents, type StoreEvent } from '../events.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { sessionBind, sessionFocus } from '../ops/session.js';
+import { set } from '../ops/set.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents, rebuildEvents, type StoreEvent } from '../store/events.js';
 import { accept, change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-events-'));

@@ -4,15 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { rm } from '../commands/rm.js';
-import { set } from '../commands/set.js';
-import { findStore, type Store } from '../config.js';
-import { diskSource, loadStore, type Loaded } from '../records.js';
-import { indexFileOf, notePending, SqliteIndex } from '../store-index.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { rm } from '../ops/rm.js';
+import { set } from '../ops/set.js';
+import { findStore, type Store } from '../store/config.js';
+import { diskSource, loadStore, type Loaded } from '../store/records.js';
+import { indexFileOf, notePending, SqliteIndex } from '../store/store-index.js';
 import { change } from './shape.js';
-import { settleIndex } from '../write.js';
+import { settleIndex } from '../ops/write.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-index-'));
 let store: Store;
@@ -128,7 +128,7 @@ test('PJMAN_INDEX=0 reads the disk', () => {
 
 test('a refused create leaves no entry behind for the next process (change:refused-write-leaves-index-entry)', () => {
   same(store);
-  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli.js');
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli', 'main.js');
   const run = (...args: string[]) => {
     try {
       return { code: 0, out: execFileSync(process.execPath, [cli, ...args], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
@@ -153,7 +153,7 @@ test('a refused create leaves no entry behind for the next process (change:refus
 
 test('an undo settled through the index is not read back by the next process (rm and apply undo this way)', () => {
   same(store);
-  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli.js');
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli', 'main.js');
   const rel = 'products/web/changes/undone/change.md';
   const abs = path.join(store.root, rel);
   const file = loadStore(store).byKey.get('change:web/card-form')![0];
@@ -170,7 +170,7 @@ test('an undo settled through the index is not read back by the next process (rm
 
 test('pjman index reads every file again, clearing an entry whose file is gone', () => {
   same(store);
-  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli.js');
+  const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli', 'main.js');
   const rel = 'products/web/changes/drifted/change.md';
   const abs = path.join(store.root, rel);
   fs.mkdirSync(path.dirname(abs), { recursive: true });

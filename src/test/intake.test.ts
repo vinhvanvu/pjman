@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { set } from '../commands/set.js';
-import { findStore, type Store } from '../config.js';
-import { formatIntake, intake, words } from '../intake.js';
-import { loadStore } from '../records.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { set } from '../ops/set.js';
+import { findStore, type Store } from '../store/config.js';
+import { formatIntake, intake, words } from '../model/intake.js';
+import { loadStore } from '../store/records.js';
 import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-intake-'));

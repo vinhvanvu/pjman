@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { needsQuote, parseRecord, repairFrontmatter, sections, stringifyRecord, violatesRule } from '../frontmatter.js';
+import { needsQuote, parseRecord, repairFrontmatter, sections, stringifyRecord, violatesRule } from '../store/frontmatter.js';
 
 test('the YAML rule: colon-space, hash, special leading characters', () => {
   assert.equal(violatesRule('Schema v3: keys'), "contains ': '");

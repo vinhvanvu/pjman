@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { referenceMarkdown } from '../dist/surface.js';
+import { referenceMarkdown } from '../dist/cli/surface.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const file = path.join(root, 'docs', 'reference.md');

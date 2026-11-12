@@ -4,13 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { set } from '../commands/set.js';
-import { globalStore, readUserConfig, type Store } from '../config.js';
-import { cached, formatIdentity, identity, machineName, type Checker } from '../identity.js';
-import { slugify } from '../keys.js';
-import { loadStore } from '../records.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { set } from '../ops/set.js';
+import { globalStore, readUserConfig, type Store } from '../store/config.js';
+import { cached, formatIdentity, identity, machineName, type Checker } from '../model/identity.js';
+import { slugify } from '../store/keys.js';
+import { loadStore } from '../store/records.js';
 
 // Each scenario is a person on a fresh machine: its own home, its own global config for the committer name, no writer
 // in the environment, and a fake forge. Commits need a committer, which the environment gives without touching the

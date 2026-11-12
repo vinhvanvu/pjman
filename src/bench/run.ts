@@ -6,10 +6,10 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { openStore } from '../config.js';
-import { loadStore } from '../records.js';
-import { set } from '../commands/set.js';
-import { createServer } from '../server.js';
+import { openStore } from '../store/config.js';
+import { loadStore } from '../store/records.js';
+import { set } from '../ops/set.js';
+import { createServer } from '../server/server.js';
 import { generateStore, type Generated } from './generate.js';
 
 export interface Timing {

@@ -4,18 +4,18 @@
 // ticket's title, its status as the ticket stood then, and nothing else; afterwards the sync writes the source record,
 // the binding and the owners, never a name, a status or a parent onto a change that exists.
 import path from 'node:path';
-import { readUserConfig, type Store } from '../config.js';
-import type { EventInput } from '../events.js';
-import { sourceFileSlug } from '../keys.js';
-import { loadStore, type Rec } from '../records.js';
-import { productOfProject } from '../commands/new.js';
-import { personOf } from '../refs.js';
-import { localDate, nowIso } from '../util.js';
-import { finishWrite, render, validateOrUndo, writeFile } from '../write.js';
-import { newSession, originText } from '../commands/new.js';
-import { sessionLog } from '../commands/session.js';
-import { foundationHash, foundationOf, stepsOf } from '../foundation.js';
-import { sections as parseSections } from '../frontmatter.js';
+import { readUserConfig, type Store } from '../store/config.js';
+import type { EventInput } from '../store/events.js';
+import { sourceFileSlug } from '../store/keys.js';
+import { loadStore, type Rec } from '../store/records.js';
+import { productOfProject } from '../ops/new.js';
+import { personOf } from '../model/refs.js';
+import { localDate, nowIso } from '../store/util.js';
+import { finishWrite, render, validateOrUndo, writeFile } from '../ops/write.js';
+import { newSession, originText } from '../ops/new.js';
+import { sessionLog } from '../ops/session.js';
+import { foundationHash, foundationOf, stepsOf } from '../model/foundation.js';
+import { sections as parseSections } from '../store/frontmatter.js';
 
 /** One observed ticket, already translated to pjman's terms by the tracker's module. */
 export interface Ticket {

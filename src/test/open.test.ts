@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { inCmux, openUrl } from '../commands/open.js';
+import { inCmux, openUrl } from '../cli/open.js';
 
 const address = { url: 'http://127.0.0.1:7331', host: '127.0.0.1', port: 7331, pid: 1, store: '/s', started: '' };
 

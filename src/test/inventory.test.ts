@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { describeInventory, inventory, mapGuidance } from '../inventory.js';
+import { describeInventory, inventory, mapGuidance } from '../model/inventory.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-inventory-'));
 const make = (name: string, files: Record<string, string>): string => {

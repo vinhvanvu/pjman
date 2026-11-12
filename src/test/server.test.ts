@@ -5,11 +5,11 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { sessionBind, sessionLog } from '../commands/session.js';
-import { findStore, type Store } from '../config.js';
-import { lastPortPath, readLastPort, readServeAddress, serveAddressPath, startServer } from '../server.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { sessionBind, sessionLog } from '../ops/session.js';
+import { findStore, type Store } from '../store/config.js';
+import { lastPortPath, readLastPort, readServeAddress, serveAddressPath, startServer } from '../server/server.js';
 import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-server-'));
@@ -215,7 +215,7 @@ test('the event stream: a list, and server-sent events with ids', async () => {
     void pump();
   });
   change(store, 'signup', { title: 'Signup', summary: 's' });
-  const { set } = await import('../commands/set.js');
+  const { set } = await import('../ops/set.js');
   set(store, 'change:signup', ['status=active'], {});
   await done;
   await reader.cancel();

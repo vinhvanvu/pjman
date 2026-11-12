@@ -1,8 +1,8 @@
 // GitHub issues: the translation from what `gh issue list --json …` or GitHub's API answers to tickets.
-import { CANONICAL_STATUSES, type Store } from '../config.js';
-import { loadStore, resolve } from '../records.js';
-import { repoOf, slugFor } from '../refs.js';
-import { CliError, notFound } from '../util.js';
+import { CANONICAL_STATUSES, type Store } from '../store/config.js';
+import { loadStore, resolve } from '../store/records.js';
+import { repoOf, slugFor } from '../model/refs.js';
+import { CliError, notFound } from '../store/util.js';
 import { applyTickets, itemsIn, obj, readObserved, type SyncResult, type Ticket } from './apply.js';
 
 export const WRITER = 'agent:github-sync';

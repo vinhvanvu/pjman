@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import type { Store } from '../config.js';
-import { readEvents, tailEvents } from '../events.js';
+import type { Store } from '../store/config.js';
+import { readEvents, tailEvents } from '../store/events.js';
 
 /** A store folder holding only a stream of `n` events, every tenth with a field long enough to cross a read's chunk. */
 function streamOf(n: number): Store {

@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { doctor, formatFindings, type Finding } from '../commands/doctor.js';
-import { TOOL_VERSION } from '../version.js';
+import { doctor, formatFindings, type Finding } from '../cli/doctor.js';
+import { TOOL_VERSION } from '../store/version.js';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-doctor-')));
 const home = path.join(tmp, 'home');
