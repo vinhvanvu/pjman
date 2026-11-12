@@ -15,17 +15,21 @@ const QUICK_EXITS = 5;
 // one follower at a time: a new session (after a /clear) starts the next generation, and ending one kills its child
 let generation = 0;
 let follower: HookStream<ProcessSpawnChunk, ProcessSpawnResult> | undefined;
+/** The session the running generation follows; undefined once stopped. */
+let followed: string | undefined;
 
 function stop(): void {
   generation++;
   void follower?.return({ code: null, signal: null });
   follower = undefined;
+  followed = undefined;
 }
 
 async function start($: EngineInterface): Promise<void> {
   stop();
   const mine = generation;
   const sid = await $.session.id();
+  followed = sid;
   // the tool beside the plugin, as the command hook uses it; `pjman` on PATH otherwise
   const bin = `${$.plugin.root}/../../bin/pjman.js`;
   let argv: string[];
@@ -103,6 +107,15 @@ export const register: Register = (on) => {
     // interactive sessions only: a headless run has nobody to wake it for
     if (e.isInteractive) void start($);
     return started;
+  });
+
+  // the desktop app hosts its session through the SDK, which starts with nobody at the prompt; its window joins after,
+  // as an attached surface, and from then a person is there to wake it for (change:desktop-app). Once per session:
+  // a second window, or the same one again, finds the follower already running.
+  on('session.attach', async ($, e, next) => {
+    const attached = await next(e);
+    if (e.surface === 'desktop' && followed !== (await $.session.id())) void start($);
+    return attached;
   });
 
   on('session.end', async ($, e, next) => {

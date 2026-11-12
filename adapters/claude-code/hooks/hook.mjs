@@ -210,6 +210,21 @@ function sh(cmd, args, cwd) {
   }
 }
 const gitTop = (cwd) => sh('git', ['rev-parse', '--show-toplevel'], cwd);
+/** The checkout a directory sits in and the repository it belongs to: its top level and its common git directory, both
+ *  real paths, so a worktree and its main checkout share the second; null outside any repository. */
+function checkoutOf(dir) {
+  const out = sh('git', ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'], dir);
+  const [top, common] = out ? out.split('\n') : [];
+  if (!top || !common) return null;
+  const real = (p) => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return p;
+    }
+  };
+  return { top: real(top), common: real(common) };
+}
 
 /** The user config says auto_register: false. Read as text: the hook has no YAML parser. */
 function autoRegisterOff() {
@@ -1134,7 +1149,15 @@ async function main() {
           }
         };
         const abs = real(path.resolve(cwd, file));
-        const project = real(st.projectDir || process.env.CLAUDE_PROJECT_DIR || cwd);
+        // the file's path is read against the checkout it sits in when that is a worktree of the project's repository:
+        // the desktop app's hooks run from the main checkout (CLAUDE_PROJECT_DIR) while its session edits a worktree under
+        // it, whose files link as file:src/…, never by the worktree's path inside the main checkout (change:desktop-app)
+        const projectDir = real(st.projectDir || process.env.CLAUDE_PROJECT_DIR || cwd);
+        let dir = path.dirname(abs);
+        while (!fs.existsSync(dir) && dir !== path.dirname(dir)) dir = path.dirname(dir);
+        const own = checkoutOf(dir);
+        const ofProject = own && checkoutOf(projectDir);
+        const project = own && ofProject && own.common === ofProject.common ? own.top : projectDir;
         const rel = path.relative(project, abs);
         const inProject = rel && !rel.startsWith('..') && !path.isAbsolute(rel);
         const inStore = !path.relative(real(store.root), abs).startsWith('..');
