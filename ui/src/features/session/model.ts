@@ -62,7 +62,13 @@ export function hostWords(host: SessionFacts['host'] | undefined): string {
 
 /** What the program is blocked on, as the host says it: a question for the person, a permission, a login. */
 export function blockedWords(kind: string | undefined): string {
-  return kind === 'question' ? 'asks you a question' : kind === 'permission' ? 'asks your permission' : kind === 'auth' ? 'needs you to sign in' : 'blocked, needs you';
+  return kind === 'question'
+    ? 'asks you a question'
+    : kind === 'permission'
+      ? 'asks your permission'
+      : kind === 'auth'
+        ? 'needs you to sign in'
+        : 'blocked, needs you';
 }
 
 /** The session bar's parts, in order: who for whom, and where it runs; working for how long, or quiet or ended since

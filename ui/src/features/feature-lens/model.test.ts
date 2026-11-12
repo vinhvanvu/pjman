@@ -157,9 +157,9 @@ describe('the product map', () => {
     expect(nav.children.map((n) => n.key)).toEqual(['feature:auto-navigation', 'change:v2']);
     // the text names the change alone: its node is kept for it, the other changes left out
     const byChange = filterTree(tree, { q: 'v2' });
-    expect(
-      byChange[0]!.children.find((n) => n.key === 'feature:navigation')!.children.map((n) => n.key),
-    ).toEqual(['change:v2']);
+    expect(byChange[0]!.children.find((n) => n.key === 'feature:navigation')!.children.map((n) => n.key)).toEqual([
+      'change:v2',
+    ]);
     expect(byChange[0]!.children.filter((n) => n.type === 'change')).toEqual([]);
     // a state filter keeps the changes with the node it keeps
     const live = { ...feature('live', [change('on-live')]), derived: 'live' };

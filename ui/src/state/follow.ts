@@ -47,6 +47,10 @@ export const useFollow = create<Follow>()(
       becomeWindow: () => set({ window: true }),
       offer: (next) => set({ next }),
     }),
-    { name: 'pjman.follow', storage: createJSONStorage(tabStorage), partialize: (s) => ({ home: s.home, window: s.window }) },
+    {
+      name: 'pjman.follow',
+      storage: createJSONStorage(tabStorage),
+      partialize: (s) => ({ home: s.home, window: s.window }),
+    },
   ),
 );

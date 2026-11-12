@@ -36,7 +36,9 @@ function FollowPage() {
       <div className="max-w-sm space-y-2">
         <h1 className="text-sm font-medium text-ink">Follow window</h1>
         <p className="text-xs text-ink-muted">
-          {asked ? 'Waiting for a prompt: this window shows the session you type into next.' : 'Finding the session you are on…'}
+          {asked
+            ? 'Waiting for a prompt: this window shows the session you type into next.'
+            : 'Finding the session you are on…'}
         </p>
       </div>
     </main>

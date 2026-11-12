@@ -104,7 +104,11 @@ export function ChangeView({
             live={scope.sessions}
             last={last}
             waits={waits}
-            launch={store?.host && !at && c.data.status !== 'done' && c.data.status !== 'dropped' ? { host: store.host.name, run: () => launch.mutate({ change: c.key }), busy: launch.isPending } : undefined}
+            launch={
+              store?.host && !at && c.data.status !== 'done' && c.data.status !== 'dropped'
+                ? { host: store.host.name, run: () => launch.mutate({ change: c.key }), busy: launch.isPending }
+                : undefined
+            }
           />
         )
       }

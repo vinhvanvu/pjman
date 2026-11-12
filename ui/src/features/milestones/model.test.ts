@@ -102,9 +102,21 @@ describe('the children as the plan', () => {
 
 describe('what is beneath a milestone', () => {
   const rows = rowsOf(
-    row('m', { kind: 'milestone', children: 2, progress: { done: 1, total: 2 }, moved: '2026-11-06T00:00:00Z', target: '2026-12-01' }),
+    row('m', {
+      kind: 'milestone',
+      children: 2,
+      progress: { done: 1, total: 2 },
+      moved: '2026-11-06T00:00:00Z',
+      target: '2026-12-01',
+    }),
     row('a', { parent: 'change:p/m', status: 'done', moved: '2026-11-07T00:00:00Z' }),
-    row('n', { parent: 'change:p/m', kind: 'milestone', children: 1, status: 'blocked', moved: '2026-11-05T00:00:00Z' }),
+    row('n', {
+      parent: 'change:p/m',
+      kind: 'milestone',
+      children: 1,
+      status: 'blocked',
+      moved: '2026-11-05T00:00:00Z',
+    }),
     row('g', { parent: 'change:p/n', status: 'active', moved: '2026-11-08T00:00:00Z' }),
     row('x', { status: 'active' }),
   );
@@ -152,12 +164,30 @@ describe('what is beneath a milestone', () => {
 
 describe('the index', () => {
   const changes = [
-    row('m', { kind: 'milestone', children: 2, status: 'open', progress: { done: 1, total: 2 }, moved: '2026-11-06T00:00:00Z' }),
+    row('m', {
+      kind: 'milestone',
+      children: 2,
+      status: 'open',
+      progress: { done: 1, total: 2 },
+      moved: '2026-11-06T00:00:00Z',
+    }),
     row('a', { parent: 'change:p/m', status: 'done' }),
     row('b', { parent: 'change:p/m', status: 'active', position: 1, live: true }),
-    row('k', { kind: 'milestone', children: 1, status: 'active', progress: { done: 0, total: 1 }, moved: '2026-11-08T00:00:00Z' }),
+    row('k', {
+      kind: 'milestone',
+      children: 1,
+      status: 'active',
+      progress: { done: 0, total: 1 },
+      moved: '2026-11-08T00:00:00Z',
+    }),
     row('c', { parent: 'change:p/k', status: 'planning' }),
-    row('old', { kind: 'milestone', children: 1, status: 'done', progress: { done: 1, total: 1 }, moved: '2026-11-01T00:00:00Z' }),
+    row('old', {
+      kind: 'milestone',
+      children: 1,
+      status: 'done',
+      progress: { done: 1, total: 1 },
+      moved: '2026-11-01T00:00:00Z',
+    }),
     row('o', { parent: 'change:p/old', status: 'done' }),
     row('leaf', { status: 'active' }),
   ];

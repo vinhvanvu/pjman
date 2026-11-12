@@ -81,26 +81,26 @@ export function RecordHeader({
       {/* one tab is no tab (decision feature-detail/one-node-record): a node's record is read whole, the tabs stay
           for a milestone */}
       {tabs.length > 1 && (
-      <nav aria-label="Record tabs" className="-mb-px flex gap-4">
-        {tabs.map((t) => (
-          <Link
-            key={t}
-            to="."
-            search={(prev: Record<string, unknown>) => ({ ...prev, tab: t === 'overview' ? undefined : t })}
-            replace
-            aria-current={t === tab ? 'page' : undefined}
-            className={cn(
-              'flex h-8 items-center gap-1.5 border-b-2 text-xs font-medium',
-              t === tab ? 'border-primary text-ink' : 'border-transparent text-ink-muted hover:text-ink',
-            )}
-          >
-            {TAB_LABEL[t]}
-            {tabCounts?.[t] ? (
-              <span className="rounded-chip bg-raised px-1.5 text-[11px] text-ink-faint">{tabCounts[t]}</span>
-            ) : null}
-          </Link>
-        ))}
-      </nav>
+        <nav aria-label="Record tabs" className="-mb-px flex gap-4">
+          {tabs.map((t) => (
+            <Link
+              key={t}
+              to="."
+              search={(prev: Record<string, unknown>) => ({ ...prev, tab: t === 'overview' ? undefined : t })}
+              replace
+              aria-current={t === tab ? 'page' : undefined}
+              className={cn(
+                'flex h-8 items-center gap-1.5 border-b-2 text-xs font-medium',
+                t === tab ? 'border-primary text-ink' : 'border-transparent text-ink-muted hover:text-ink',
+              )}
+            >
+              {TAB_LABEL[t]}
+              {tabCounts?.[t] ? (
+                <span className="rounded-chip bg-raised px-1.5 text-[11px] text-ink-faint">{tabCounts[t]}</span>
+              ) : null}
+            </Link>
+          ))}
+        </nav>
       )}
     </div>
   );

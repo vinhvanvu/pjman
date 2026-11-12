@@ -162,7 +162,13 @@ export function ActivityRail({
         <>
           {/* keyed on the fixed lane: a new lane is a new list, so the hold takes it as it stands and no row of the last
               lane stays on */}
-          <Rows key={fixedLanes.length ? fixedLanes.join(',') : 'all'} rows={liveRuns.rows} heads={liveRuns.heads} lens={lens} held={held} />
+          <Rows
+            key={fixedLanes.length ? fixedLanes.join(',') : 'all'}
+            rows={liveRuns.rows}
+            heads={liveRuns.heads}
+            lens={lens}
+            held={held}
+          />
           {older.length > 0 && <Rows rows={olderRuns.rows} heads={olderRuns.heads} lens={lens} />}
         </>
       ) : (

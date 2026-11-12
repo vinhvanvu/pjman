@@ -135,7 +135,11 @@ export function SessionTree({
       parts={bar.parts}
       waits={bar.waits}
       alarm={bar.alarm}
-      host={session.host && session.state !== 'ended' ? { name: session.host.name, open: () => openHost.mutate({ session: session.key }), busy: openHost.isPending } : undefined}
+      host={
+        session.host && session.state !== 'ended'
+          ? { name: session.host.name, open: () => openHost.mutate({ session: session.key }), busy: openHost.isPending }
+          : undefined
+      }
     />
   );
   const header = (
@@ -310,7 +314,19 @@ export function SessionTree({
 /** The session bar: a separator travels with the word after it, so a wrapped line never ends in a dot. */
 /** The bar; with a host, the way to the session's block: one button that asks the host to bring it to the front
  *  (change:rex-adapter). */
-function SessionBar({ live, parts, waits, alarm, host }: { live: boolean; parts: string[]; waits: string; alarm: boolean; host?: { name: string; open: () => void; busy: boolean } }) {
+function SessionBar({
+  live,
+  parts,
+  waits,
+  alarm,
+  host,
+}: {
+  live: boolean;
+  parts: string[];
+  waits: string;
+  alarm: boolean;
+  host?: { name: string; open: () => void; busy: boolean };
+}) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-ink-muted">
       {live && <Pulse />}
