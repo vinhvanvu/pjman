@@ -175,8 +175,11 @@ function syncBind(
   created: string[],
 ): { session: string; change: string } | null {
   if (!session || created.length !== 1) return null;
+  // the line names the ticket the change binds, as a prompt's bind does (aspect key-printing)
+  const ticket = loadStore(store).byKey.get(created[0])?.[0]?.data.binds;
+  const via = Array.isArray(ticket) && typeof ticket[0] === 'string' ? ticket[0] : undefined;
   try {
-    return sessionBind(store, session, created[0], 'created').added ? { session, change: created[0] } : null;
+    return sessionBind(store, session, created[0], 'created', via).added ? { session, change: created[0] } : null;
   } catch {
     return null; // no such session record: nothing to bind
   }

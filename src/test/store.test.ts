@@ -559,7 +559,8 @@ test('one resolver: every alias of a ticket and of a change resolves to one key,
     ['acme/app#31', 'github-issue:acme/app#31'],
   ])
     assert.equal(resolveArg(loaded, alias, opts), want, alias);
-  // the text scanner too: each alias leads to the change, and says how it relates to it
+  // the text scanner too: each alias leads to the change that binds it, and says how it relates to it; a ticket the
+  // change only links leads to none, to be read and synced (change:pjman-21)
   assert.deepEqual(
     findReferences(loaded, 'ONE-7, https://linear.app/acme/issue/ONE-7/x and acme/app#31', opts).map((r) => [
       r.key,
@@ -569,7 +570,7 @@ test('one resolver: every alias of a ticket and of a change resolves to one key,
     [
       ['linear:ONE-7', 'change:project/one-name', 'binds'],
       ['linear:ONE-7', 'change:project/one-name', 'binds'],
-      ['github-issue:acme/app#31', 'change:project/one-name', 'links'],
+      ['github-issue:acme/app#31', undefined, undefined],
     ],
   );
   // a bare id whose prefix no tracker of the project claims is asked for, never guessed

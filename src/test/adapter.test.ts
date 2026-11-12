@@ -479,7 +479,7 @@ test('a ticket a change only links binds nothing and is to be synced; the sync b
   assert.match(synced, /bound session:sess-f to change:abc-2 \(created\)/);
   const sess = loadStore(g).byKey.get('session:sess-f')![0];
   assert.deepEqual(sess.data.changes, ['change:follow-up/abc-2']);
-  assert.match(sess.sections.get('Log')!, /bound change:follow-up\/abc-2 \(created\)/);
+  assert.match(sess.sections.get('Log')!, /bound change:follow-up\/abc-2 \(created; binds linear:ABC-2\)/);
   // a sync that creates several changes is an import: it binds none
   const many = JSON.parse(
     sync(
@@ -555,7 +555,8 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
     /^pjman brief: this session is bound to change:app-12; its context in full\.\n\n# change:app-12 — Twelve/,
   );
   const twelve = loadStore(g).byKey.get('change:work/app-12')![0];
-  assert.match(logOf(), /bound change:work\/app-12 \(prompt; binds github-issue:acme\/app#12\)/);
+  // the hook syncs the new ticket and the sync binds its one change (reason created, change:pjman-21); the line names the ticket
+  assert.match(logOf(), /bound change:work\/app-12 \(created; binds github-issue:acme\/app#12\)/);
   assert.deepEqual(twelve.data.binds, ['github-issue:acme/app#12']);
   assert.equal(twelve.data.writer, 'agent:github-sync');
   assert.equal(atGh('and https://github.com/acme/app/issues/12 again'), ''); // already hydrated: bound, no second injection
