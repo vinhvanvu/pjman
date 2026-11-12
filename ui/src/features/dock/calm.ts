@@ -4,6 +4,7 @@
 // plan reads as done of total, the step in work and the one after it; the sources as links before files, a few out and
 // the rest behind a count.
 import type { ChangeContext, RailRow } from '@/data/contract';
+import { clock } from '@/features/moment/model';
 import { agoWords, durationWords, plural } from '@/lib/format';
 
 export type BandTone = 'live' | 'waits' | 'alarm' | 'done' | 'active' | 'planning' | 'open' | 'dropped';
@@ -231,4 +232,14 @@ export function sourcePlace(s: Pick<Source, 'key' | 'url'>): string {
   }
   const i = s.key.indexOf(':');
   return i > 0 ? s.key.slice(0, i) : '';
+}
+
+/** The quiet line that says which session the dock shows, since a cmux workspace's sessions share one pane (decision
+ *  pjman-24/name-the-shown-session): when it started and when the person last prompted it. Empty when neither is known. */
+export function shownSessionWords(started: string | undefined, prompted: string | undefined, now = Date.now()): string {
+  const parts = [
+    started ? `started ${clock(started, now)}` : '',
+    prompted ? `last prompted ${agoWords(prompted, now)}` : '',
+  ].filter(Boolean);
+  return parts.length ? `this session · ${parts.join(' · ')}` : '';
 }

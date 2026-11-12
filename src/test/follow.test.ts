@@ -156,3 +156,20 @@ test("now: a session's latest action is held in memory, sent on the stream and t
   // nothing reached the store
   assert.equal(fs.existsSync(events) ? fs.readFileSync(events, 'utf8') : '', written);
 });
+
+test("prompted: a prompt is held in memory as the session's last prompt, told to open pages, and read on its page (decision pjman-24/name-the-shown-session)", async () => {
+  const events = path.join(store.root, 'events.jsonl');
+  const written = fs.existsSync(events) ? fs.readFileSync(events, 'utf8') : '';
+  const view = async () =>
+    ((await (await fetch(`${base}/sessions/two/view`)).json()) as { data: { session?: { prompted?: string } } }).data
+      .session?.prompted;
+  const page = await stream('/events');
+  const before = Date.now();
+  assert.equal((await post('/follow', { session: 'two' })).status, 200);
+  await page.until((s) => /event: prompted\ndata: \{[^\n]*"key":"session:two"/.test(s));
+  page.close();
+  const prompted = await view();
+  assert.ok(prompted && Date.parse(prompted) >= before - 1000, `prompted: ${prompted}`);
+  // nothing reached the store
+  assert.equal(fs.existsSync(events) ? fs.readFileSync(events, 'utf8') : '', written);
+});
