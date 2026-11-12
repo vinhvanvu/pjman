@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } from '../store/keys.js';
 import { ambiguous, notFound } from '../store/util.js';
-import { keyFromUrl, mentions, scopeOf, shortForms, slugFor, trackerOf } from './refs.js';
+import { keyFromUrl, mentions, scopeOf, shortForms, trackerOf } from './refs.js';
+import { slugsOfBranch } from './branch.js';
 export { keyFromUrl, repoOf } from './refs.js';
 import { memo, push, resolve, type Loaded, type Rec } from '../store/records.js';
 import { supersedesOf } from './supersede.js';
@@ -485,8 +486,13 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
     const kind = key.slice(0, key.indexOf(':'));
     if (!change && kind === 'branch') {
       // no record links the branch yet: the name itself says which change it was cut for
-      const r = resolveRef(loaded, `change:${slugFor('branch', key.slice('branch:'.length))}`, opts);
-      if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) change = r.key;
+      for (const slug of slugsOfBranch(key.slice('branch:'.length))) {
+        const r = resolveRef(loaded, `change:${slug}`, opts);
+        if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) {
+          change = r.key;
+          break;
+        }
+      }
     }
     const weak = !!m.weak;
     out.push({

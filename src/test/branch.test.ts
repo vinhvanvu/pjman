@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { branchNameFor, slugOfBranch, worktreeNameFor } from '../model/branch.js';
+import { branchNameFor, slugOfBranch, slugsOfBranch, worktreeNameFor } from '../model/branch.js';
 import { init } from '../cli/init.js';
 import { newRecord } from '../ops/new.js';
 import { sessionObserve } from '../ops/session.js';
@@ -54,6 +54,23 @@ test("a branch key leads to the change its name was cut for; the harness's workt
     assert.equal(refs[0].change, 'change:app/card-export', b);
   }
   assert.equal(findReferences(loaded, 'branch:nothing-here', opts)[0]?.change, undefined);
+});
+
+test("the desktop app's worktree branch leads to the change less its random suffix, only when the name as written leads nowhere", () => {
+  assert.deepEqual(slugsOfBranch('claude/card-export-af891f'), ['card-export-af891f', 'card-export']);
+  assert.deepEqual(slugsOfBranch('card-export'), ['card-export']);
+  assert.deepEqual(slugsOfBranch('claude/card-export-v2'), ['card-export-v2']);
+  const opts = { cwd: project, projectDir: project, project: store.project };
+  assert.equal(
+    findReferences(loadStore(store), 'branch:claude/card-export-af891f', opts)[0]?.change,
+    'change:app/card-export',
+  );
+  // a change whose own slug ends in six hex digits is found as written, before the suffix is tried off
+  change(store, 'card-export-c0ffee', { title: 'Card export, the coffee one', summary: 'Export.' });
+  assert.equal(
+    findReferences(loadStore(store), 'branch:claude/card-export-c0ffee', opts)[0]?.change,
+    'change:app/card-export-c0ffee',
+  );
 });
 
 test('the context shows the recommended branch until a session is seen on one', () => {

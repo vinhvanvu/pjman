@@ -202,6 +202,29 @@ test('a file write records an observed edge; a store write does not; a turn that
   assert.ok(!/Read only/.test(log));
 });
 
+test("a file written in a worktree of the project links by its path in that worktree, as the desktop app's sessions write", () => {
+  // the desktop app runs a worktree session's hooks with CLAUDE_PROJECT_DIR on the main checkout and the worktree under it
+  const git = (...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd: project, stdio: 'ignore' });
+  git('commit', '-q', '--allow-empty', '-m', 'init');
+  const wt = path.join(project, '.claude', 'worktrees', 'eight-week-test-af891f');
+  git('worktree', 'add', '-q', '-b', 'claude/eight-week-test-af891f', wt);
+  const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-wt', ...input });
+  at('SessionStart', { source: 'startup' });
+  at('UserPromptSubmit', { prompt: 'on change:eight-week-test' });
+  at('PostToolUse', { tool_name: 'Write', tool_input: { file_path: path.join(wt, 'src', 'deep', 'b.ts') } });
+  // a file in another repository altogether is not the project's
+  const other = path.join(tmp, 'other');
+  fs.mkdirSync(other, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: other });
+  at('PostToolUse', { tool_name: 'Write', tool_input: { file_path: path.join(other, 'c.ts') } });
+  const rec = loadStore(store).byKey.get('session:sess-wt')![0];
+  assert.deepEqual(
+    (rec.data.observed as { to: string }[]).map((o) => o.to).filter((to) => to.startsWith('file:')),
+    ['file:src/deep/b.ts'],
+  );
+});
+
 test('run to the end: a turn that wrote code may stop only where the change rests', () => {
   change(store, 'run-it', { title: 'Run it', summary: 's', writer: 'person:tester' });
   step(store, 'change:run-it', 'add', undefined, { text: 'first' });
