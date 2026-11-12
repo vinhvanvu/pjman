@@ -181,7 +181,8 @@ function isWithin(parent: string, child: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-/** Resolution: `--store` or PJMAN_STORE; else a `.pjman/` walking up; else the user map; else null. */
+/** Resolution: `--store` or PJMAN_STORE; else a `.pjman/` walking up; else the user map; else, outside any git
+ *  repository, the global store with no project; else null. */
 export function findStore(cwd: string, override?: string): Store | null {
   const explicit = override || process.env.PJMAN_STORE;
   if (explicit) return openStore(explicit);
@@ -230,7 +231,22 @@ export function findStore(cwd: string, override?: string): Store | null {
       project: best.binding.project,
       projectDir: path.resolve(best.binding.path),
     };
+  // outside any git repository: the global store, with no project, where a session started there is recorded
+  // (decision pjman-25/store-outside-a-project). An unregistered repository still finds none: the adapter registers a
+  // repository when nothing resolves in it.
+  if (!inGitRepository(cwd)) return globalStore();
   return null;
+}
+
+/** Whether a directory sits in a git checkout: a `.git` (a folder, or a worktree's file) here or above. */
+function inGitRepository(cwd: string): boolean {
+  let dir = path.resolve(cwd);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, '.git'))) return true;
+    const parent = path.dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
 }
 
 /** The global store on its own, for commands that serve every project. */

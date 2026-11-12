@@ -107,7 +107,7 @@ working it.
    the work is a change you did not create and the prompt did not name, bind it: `pjman session bind <session-id>
    change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`.
    Work that belongs to no change (a review, a backlog pass, a planning chat) is still recorded: the session is named
-   with a kind, `pjman session name <session-id> "<name>" --kind review|backlog|chat|other` (a kind the store lacks is
+   with a kind, `pjman session name <session-id> "<one to four words>" --kind review|backlog|chat|other` (a kind the store lacks is
    created; `pjman ls session-kind` lists them). A PR the person's prompt names does this by itself; name the session
    yourself as soon as the person's words make the work clear, and it keeps the name if it later binds a change.
    On every prompt the harness hands you the brief: what others changed on your bound change, its milestone, its

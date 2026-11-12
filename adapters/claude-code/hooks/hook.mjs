@@ -1067,6 +1067,14 @@ async function main() {
   let root = null;
   try {
     store = pjman(['where', '--json'], { cwd, json: true });
+    // outside any repository the tool finds the global store with no project (decision pjman-25/store-outside-a-project):
+    // the session is the person's, recorded there with no project until a tool call lands in a registered repository
+    const global = globalStore();
+    if (!store.project && global && path.resolve(store.root) === path.resolve(global) && !gitTop(cwd)) {
+      if (EVENT !== 'SessionStart' && !st.unscoped) return;
+      root = global;
+      st.unscoped = true;
+    }
   } catch {
     // only a start, or a session already known to stand outside any project, has anything to do here
     if (EVENT !== 'SessionStart' && !st.unscoped) return;

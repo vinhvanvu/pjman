@@ -6,7 +6,7 @@ The tool in full: the store, `pjman init`, every command, the product tree, trac
 
 One global store per person: `~/.pjman/store`, its own git repository. `pjman init` in a repository creates the store the first time, registers the repository as a project (`project:<folder-name>`, or `--name`), and maps the repository's path to that project in `~/.pjman/config.yaml`. The tool commits every write it makes there. A change belongs to the project of the directory it was created from; `pjman context` is that project's board, `--all` every project's.
 
-Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root or a `.pjman/` walking up; else the user map, which also names the current project.
+Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root or a `.pjman/` walking up; else the user map, which also names the current project; else, outside any git repository, the global store with no project.
 
 A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): the source kind of its tickets. A ticket id or ticket URL then resolves through the getter to the change that binds it, and the adapter binds a session to that change, creating it when none binds the ticket.
 
@@ -362,7 +362,7 @@ pjman session unbind <id> <change>
 pjman session observe <id> <edge> <from> <to>
 pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)
 pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in)
-pjman session name <id> ["<name>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)
+pjman session name <id> ["<one to four words>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)
     a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did
 
 pjman brief
