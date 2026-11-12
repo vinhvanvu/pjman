@@ -32,7 +32,8 @@ export interface StoreEvent {
   /** Names of the fields or sections that changed; absent on `created`. */
   fields?: string[];
   /** On a set that moved a change's or a decision's `status` (or, that aside, its `decided_by`): the new value. On a
-   *  session's `bind` or a set of its `focus`: the key of the change. Absent otherwise, so a reader can say what a
+   *  session's `bind` or a set of its `focus`: the key of the change. On a change's step write: the numbers of the steps
+   *  it touched, comma separated ("3", "2,4"). Absent otherwise, so a reader can say what a
    *  move was, not only that a field moved. */
   value?: string;
   writer?: string;
@@ -533,6 +534,8 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       }
       if (type === 'session' && (op === 'bind' || (op === 'set' && fields?.includes('focus'))))
         value = rest.split(' ')[2] || undefined;
+      // a step write names the steps it touched: `step <change> <verb> <n,n>`
+      if (verb === 'step' && type === 'change' && value === undefined) value = rest.split(' ')[2] || undefined;
       events.push({ seq: ++seq, at, op, key, type, path: p, fields, value, writer, session, commit: short });
     }
     // a batch or its undo closes with the event that names what it was for

@@ -150,7 +150,22 @@ describe('writeWords', () => {
     expect(writeWords(row({ fields: ['plan', 'step note'] })).verb).toBe('Noted a step');
     expect(writeWords(row({ fields: ['notes'] })).verb).toBe('Left a note');
     expect(writeWords(row({ op: 'created' })).verb).toBe('Filed the change');
-    expect(writeWords(row({ fields: ['owners'] })).verb).toBe('Set owners');
+    expect(writeWords(row({ fields: ['owners'] }))).toEqual({ verb: 'Set', object: 'owners' });
+  });
+  it('names the step a step write touched, with its text from the plan', () => {
+    const plan = [{ text: 'Find the cause' }, { text: 'Fix the line' }];
+    expect(writeWords(row({ fields: ['plan', 'step done'], value: '1' }), plan)).toEqual({
+      verb: 'Finished step 1',
+      object: 'Find the cause',
+    });
+    expect(writeWords(row({ fields: ['plan', 'step note'], value: '2' }), plan)).toEqual({
+      verb: 'Noted on step 2',
+      object: 'Fix the line',
+    });
+    expect(writeWords(row({ fields: ['plan', 'step add', '2 steps'], value: '3,4' }), plan)).toEqual({
+      verb: 'Added steps',
+      object: '3, 4',
+    });
   });
 });
 

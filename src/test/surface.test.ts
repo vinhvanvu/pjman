@@ -158,6 +158,7 @@ test('step add takes several texts as one commit, or lines on stdin; edit rewrit
     .filter((e) => e.fields?.includes('step add'));
   assert.equal(adds.length, 1);
   assert.deepEqual(adds[0].fields, ['plan', 'step add', '2 steps']);
+  assert.equal(adds[0].value, '1,2');
   r = pj(['step', 'login', 'add', '--from', '-', '--first'], 'Design the mail\n\nWrite the copy\n');
   assert.equal(r.code, 0, r.err);
   assert.deepEqual(

@@ -53,18 +53,40 @@ export interface Port {
   start?(): void;
 }
 
+/** The session a `now` frame is about, and whether it still names an action (no text clears it). */
+function nowOf(data: string): { key: string; standing: boolean } | undefined {
+  try {
+    const n: unknown = JSON.parse(data);
+    if (typeof n !== 'object' || n === null) return undefined;
+    const key: unknown = Reflect.get(n, 'key');
+    const text: unknown = Reflect.get(n, 'text');
+    return typeof key === 'string' ? { key, standing: typeof text === 'string' && text !== '' } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The worker's state: the pages attached and the one stream they share. The stream opens with the first page's start
- * and closes when the last page leaves; a page attaching to an open stream is told so at once.
+ * and closes when the last page leaves; a page attaching to an open stream is told so at once, with each session's
+ * standing action: the server sends those only when a stream opens, so a page joining the shared one later would
+ * otherwise read none until the agent's next call (change:dock-now-lines).
  */
 export function createHub(open: (url: string, emit: (f: Frame) => void) => () => void) {
   const ports = new Set<Port>();
   let close: (() => void) | undefined;
   let connected = false;
+  /** The latest `now` frame of each session whose action stands, as the stream carried it. */
+  const standing = new Map<string, Frame>();
 
   const broadcast = (f: Frame) => {
     if (f.kind === 'open') connected = true;
     else if (f.kind === 'error') connected = false;
+    else if (f.kind === 'now') {
+      const n = nowOf(f.data);
+      if (n?.standing) standing.set(n.key, f);
+      else if (n) standing.delete(n.key);
+    }
     // a MessagePort: it takes no target origin
     // oxlint-disable-next-line unicorn/require-post-message-target-origin
     for (const p of ports) p.postMessage(f);
@@ -77,13 +99,17 @@ export function createHub(open: (url: string, emit: (f: Frame) => void) => () =>
         if (req.kind === 'start') {
           ports.add(port);
           if (!close) close = open(req.url, broadcast);
-          else if (connected) port.postMessage({ kind: 'open' });
+          else if (connected) {
+            port.postMessage({ kind: 'open' });
+            for (const f of standing.values()) port.postMessage(f);
+          }
         } else if (req.kind === 'leave') {
           ports.delete(port);
           if (!ports.size && close) {
             close();
             close = undefined;
             connected = false;
+            standing.clear();
           }
         }
       });

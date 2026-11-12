@@ -194,6 +194,7 @@ export function step(store: Store, ref: string, verb: string, n: number | undefi
       type: 'change',
       path: rec.path,
       fields: ['plan', `step ${verb}`, ...(count > 1 ? [`${count} steps`] : [])],
+      value: which,
       writer: env.writer,
     },
   ]);

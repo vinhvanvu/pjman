@@ -558,6 +558,10 @@ test('every write appends one event per record to the stream; follow delivers ne
     all.slice(-6).map((e) => [e.op, e.key]),
   );
   assert.equal(again.at(-1)!.commit, all.at(-1)!.commit);
+  // a step write names its steps, live and rebuilt alike
+  const stepOf = (es: typeof all) => es.findLast((e) => e.fields?.includes('step add'))?.value;
+  assert.equal(stepOf(all), '1');
+  assert.equal(stepOf(again), '1');
   fs.rmSync(path.join(store.root, 'products/project/changes/evented'), { recursive: true });
 });
 
