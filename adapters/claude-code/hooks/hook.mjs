@@ -768,6 +768,14 @@ function questionsRefusal(key, questions, asked) {
   return parts.join('\n');
 }
 
+/** Why the stop is refused when the session works on no change and has no name: the command that names it. */
+function unnamedRefusal(sid) {
+  return [
+    `pjman: this session is bound to no change and has no name, so the record cannot say what it was for.`,
+    `Name it for the work it did, one to four words, with its kind: pjman session name ${sid} "…" --kind review|backlog|chat|other. If the work belongs to a change, bind it instead (pjman session bind ${sid} <change>). Then end the turn again.`,
+  ].join('\n');
+}
+
 function firstLine(text, max = 200) {
   const lines = String(text ?? '')
     .split('\n')
@@ -1092,6 +1100,7 @@ async function main() {
       st.edited = 0; // a new turn: what the last one wrote has been judged
       st.decided = 0;
       st.asked = 0;
+      st.tools = 0;
       const found = promptChange(prompt, { cwd, env });
       const parts = [];
       if (found?.hint) parts.push(found.hint);
@@ -1121,6 +1130,7 @@ async function main() {
       const storeWrite =
         /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|note|session|mv|rm|fmt|sync|order|apply|undo|migrate)\b/;
       if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
+      st.tools = (st.tools ?? 0) + 1; // the turn ran a tool: a session bound to nothing is named before it stops (Stop)
       // a decision written this turn answers the questions the reply may end on (Stop); the harness's own question prompt is a
       // question put to the person, to be recorded the same way
       const decisionWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:decision|apply)\b/;
@@ -1215,9 +1225,29 @@ async function main() {
           return;
         }
       }
+      // A session bound to no change is named (change:pjman-20): a turn that ran a tool while the session has no change and
+      // no name is sent back once with the command that names it. Named is read from the session's own record (name and
+      // kind are written together), so a name the agent gave through the shell counts; once named, the record is not read again.
+      if (
+        EVENT === 'Stop' &&
+        !input.agent_id &&
+        !st.bound &&
+        !st.named &&
+        (st.tools ?? 0) > 0 &&
+        !input.stop_hook_active
+      ) {
+        const rec = tryPjman(['show', `session:${sid}`, '--json'], { cwd, json: true })?.data;
+        if (rec && (rec.name || rec.kind)) st.named = rec.kind ?? true;
+        else if (rec) {
+          process.stdout.write(JSON.stringify({ decision: 'block', reason: unnamedRefusal(sid) }));
+          saveState(sid, st); // tools stays: the retry passes on stop_hook_active and resets it
+          return;
+        }
+      }
       st.edited = 0;
       st.asked = 0;
       st.decided = 0;
+      st.tools = 0;
       if (st.acted > 0) {
         const line = firstLine(input.last_assistant_message);
         if (line) tryPjman(['session', 'log', sid, line], { cwd, env });
