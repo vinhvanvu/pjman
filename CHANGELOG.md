@@ -2,6 +2,18 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.5.0 — 2026-11-12
+
+### Changed
+
+- **Repo hygiene**: A first hygiene pass on the now-public repository: dead files and code gone, src in clear layers that import only downward (change:repo-hygiene)
+- **Desktop app**: pjman works in Claude Code's desktop app as it does in the terminal: record, brief, wake, receipt and a view beside the session (change:desktop-app)
+- **Dock redesign**: Rethink the dock's design so a working session reads at a glance: a clear order, room to breathe, the change's state unmistakable (change:dock-redesign)
+
+### Fixed
+
+- **Selection close floats**: The selected feature's close overlay on the product map scrolls away with an overflowing map instead of staying put (change:map-selection-close-floats)
+
 ## 0.4.0 — 2026-11-11
 
 ### Changed
