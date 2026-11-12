@@ -2,12 +2,14 @@
 // place a shape lives; the getter, the text scanner and the syncs read it, and adapters hold no pattern of their own.
 import { slugOfBranch } from './branch.js';
 import { SLUG_RE } from '../store/keys.js';
-import type { Loaded } from '../store/records.js';
+import { memo, type Loaded } from '../store/records.js';
 
-/** What a project names for its tracker's short forms: a repository for `#12`, a team for a Linear id. */
+/** What a project names for its trackers' short forms: a repository for `#12`; for a bare ticket id (`ABC-12`), the
+ *  trackers that claim its prefix (decision pjman-22/bare-ticket-ids). */
 export interface Scope {
   repo?: string;
-  team?: string;
+  /** Prefix → the source kinds of the project that claim it. */
+  claims?: Map<string, Set<string>>;
 }
 
 export interface Grammar {
@@ -23,8 +25,11 @@ export interface Grammar {
   /** Whether the match is too ambiguous to act on (`#1` is as often a list item as an issue): listed and resolved,
    *  never binding a session or creating a change. Default: never. */
   weak?: (m: RegExpExecArray) => boolean;
-  /** Whether the project's scope admits the match (its team, its repository). Default: always. */
+  /** Whether the project's scope admits the match (its repository). Default: always. */
   inScope?: (m: RegExpExecArray, scope: Scope) => boolean;
+  /** For a bare id a tracker claims by its prefix (`ABC` of `ABC-12`): the prefix. A match with one resolves only where
+   *  exactly one tracker of the project claims it (decision pjman-22/bare-ticket-ids). */
+  prefix?: (m: RegExpExecArray) => string;
   /** The key rest a URL of this kind names. */
   url?: (u: URL) => string | undefined;
   /** The URL a key rest of this kind opens, the reverse of `url`: for a source whose record carries none. */
@@ -52,7 +57,7 @@ export const GRAMMARS: Grammar[] = [
     id: /\b[A-Z][A-Z0-9]*-\d+\b/g,
     not: /^(UTF|SHA|ISO|RFC|CVE|MD|AES|RSA|HTTP|TLS|ES|HTML|CSS|PEP|ECMA|IPV|X)-/,
     rest: (m) => m[0],
-    inScope: (m, scope) => !scope.team || m[0].slice(0, m[0].indexOf('-')) === scope.team.toUpperCase(),
+    prefix: (m) => m[0].slice(0, m[0].indexOf('-')),
     url: (u) => {
       const seg = u.pathname.split('/').filter(Boolean);
       return u.hostname.toLowerCase() === 'linear.app' &&
@@ -165,12 +170,44 @@ export function trackerOf(loaded: Loaded, project?: string): string | undefined 
   return rec && typeof rec.data.tracker === 'string' ? rec.data.tracker : undefined;
 }
 
+/** The prefixes the project's trackers claim (decision pjman-22/bare-ticket-ids), prefix → the kinds claiming it. A
+ *  tracker claims what the project binds it to (`ext.linear.team: ABC`, the team the sync pulls) and the prefix of every
+ *  ticket of its kind a change of the project binds (what a sync, or a person, already bound). Nothing else claims. */
+export function claimsOf(loaded: Loaded, project?: string): Map<string, Set<string>> {
+  if (!project) return new Map();
+  return memo(loaded, `claims\u0000${project}`, () => claimsOnce(loaded, project));
+}
+
+function claimsOnce(loaded: Loaded, project: string): Map<string, Set<string>> {
+  const claims = new Map<string, Set<string>>();
+  const claim = (prefix: string, kind: string) => {
+    const at = claims.get(prefix.toUpperCase());
+    if (at) at.add(kind);
+    else claims.set(prefix.toUpperCase(), new Set([kind]));
+  };
+  const prefixed = GRAMMARS.filter((g) => g.id && g.prefix);
+  const ext = obj(loaded.byKey.get(project)?.[0]?.data.ext);
+  for (const g of prefixed) {
+    const team = obj(ext?.[g.kind])?.team;
+    if (typeof team === 'string' && team.trim()) claim(team.trim(), g.kind);
+  }
+  for (const r of loaded.records) {
+    if (r.type !== 'change' || !r.valid || r.data.project !== project || !Array.isArray(r.data.binds)) continue;
+    for (const k of r.data.binds as unknown[]) {
+      if (typeof k !== 'string') continue;
+      const i = k.indexOf(':');
+      const g = prefixed.find((x) => x.kind === k.slice(0, i));
+      const m = g && anchored(g).exec(k.slice(i + 1));
+      if (g && m) claim(g.prefix!(m), g.kind);
+    }
+  }
+  return claims;
+}
+
 /** What the project names for short forms. */
 export function scopeOf(loaded: Loaded, project?: string): Scope {
   if (!project) return {};
-  const rec = loaded.byKey.get(project)?.[0];
-  const team = obj(obj(rec?.data.ext)?.linear)?.team;
-  return { repo: repoOf(loaded, project), team: typeof team === 'string' ? team : undefined };
+  return { repo: repoOf(loaded, project), claims: claimsOf(loaded, project) };
 }
 
 export interface ShortForm {
@@ -183,17 +220,47 @@ export interface ShortForm {
   inScope: boolean;
   /** Why no key: the scope the short form needs. */
   needs?: string;
+  /** A prefixed id (`ABC-12`) one tracker of the project claims: it resolves, record or not. */
+  claimed?: boolean;
 }
 
-const anchored = (g: Grammar): RegExp => new RegExp(`^(?:${g.id!.source})$`);
+function anchored(g: Grammar): RegExp {
+  return new RegExp(`^(?:${g.id!.source})$`);
+}
 
-/** The short forms one word could be, one per grammar whose pattern matches it. */
+/** Whether a word is a kind's short form as a whole (`ABC-12` for linear). */
+export function isShortForm(kind: string, word: string): boolean {
+  const g = grammarOf(kind);
+  return !!g?.id && !g.not?.test(word) && anchored(g).test(word);
+}
+
+/** The short forms one word could be, one per grammar whose pattern matches it. A prefixed id (`ABC-12`) has a key only
+ *  where exactly one tracker of the project claims its prefix, and that tracker is the grammar's kind. */
 export function shortForms(word: string, scope: Scope): ShortForm[] {
   const out: ShortForm[] = [];
   for (const g of GRAMMARS) {
     if (!g.id || g.not?.test(word)) continue;
     const m = anchored(g).exec(word);
     if (!m) continue;
+    if (g.prefix) {
+      const prefix = g.prefix(m).toUpperCase();
+      const kinds = [...(scope.claims?.get(prefix) ?? [])].toSorted();
+      const claimed = kinds.length === 1 && kinds[0] === g.kind;
+      const rest = claimed ? g.rest?.(m, scope) : undefined;
+      out.push({
+        kind: g.kind,
+        key: rest ? `${g.kind}:${rest}` : undefined,
+        qualified: false,
+        inScope: claimed,
+        claimed,
+        needs: rest
+          ? undefined
+          : kinds.length > 1
+            ? `one tracker to claim ${prefix}; ${kinds.join(' and ')} do: write the prefixed key (${kinds.map((k) => `${k}:${word}`).join(', ')}) or the URL`
+            : `a tracker of the project to claim ${prefix} (ext.${g.kind}.team=${prefix}, or a change binding a ${prefix} ticket): else write ${g.kind}:${word} or the URL`,
+      });
+      continue;
+    }
     const rest = g.rest?.(m, scope);
     out.push({
       kind: g.kind,

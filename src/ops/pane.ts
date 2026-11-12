@@ -182,7 +182,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
   const facts: string[] = [`**${c.change.status ?? '?'}**`];
   if (typeof d.project === 'string') facts.push(d.project);
   if (c.parent) facts.push(`part of \`${c.parent.key}\``);
-  for (const s of c.sources.filter((src) => src.via === 'binds')) facts.push(`binds ${link(s.key, s.url)}`);
+  for (const s of c.sources.filter((src) => src.relation === 'binds')) facts.push(`binds ${link(s.key, s.url)}`);
   out.push(facts.join(' · '));
   for (const l of readinessLines(c, 'change')) out.push(`\n> ${esc(l)}`);
   if (c.next) out.push(`\n> **next:** ${esc(nextLine(c.next))}`);
@@ -207,7 +207,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
     out.push('\n### Children');
     for (const ch of c.children) out.push(`- \`${ch.key}\` **${ch.status ?? '?'}** — ${esc(lineOfRow(ch))}`);
   }
-  const links = c.sources.filter((s) => s.via === 'links');
+  const links = c.sources.filter((s) => s.relation === 'links');
   if (links.length) {
     out.push('\n### Sources');
     for (const s of links) out.push(`- ${link(s.key, s.url, s.record?.title)}`);

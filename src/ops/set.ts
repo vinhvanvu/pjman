@@ -5,7 +5,8 @@ import { loadStore, resolve, unresolvedError, type RecordType } from '../store/r
 import { resolveSupersedes, supersedesOf } from '../model/supersede.js';
 import { markSuperseded, unmark, type Marked } from './supersede.js';
 import { CliError, usageError } from '../store/util.js';
-import { fieldKind, typedRef } from '../store/keys.js';
+import { fieldKind } from '../store/keys.js';
+import { fieldRef } from '../model/graph.js';
 import { reachOfBase } from '../model/aspects.js';
 import {
   CHANGE_FOUNDATION,
@@ -103,6 +104,7 @@ export function set(
   const env = envelope(opts);
   let marked: Marked | undefined;
   const notes: string[] = [];
+  const refOpts = { projectDir: store.projectDir, project: store.project };
   for (const pair of pairs) {
     const m = /^([a-z_][a-z0-9_.-]*?)([+-])?=([\s\S]*)$/.exec(pair);
     if (!m) throw usageError(`'${pair}' is not field=value, field+=item or field-=item`);
@@ -117,7 +119,7 @@ export function set(
         .split(',')
         .map((x) => x.trim())
         .filter(Boolean)
-        .map((x) => (kind ? typedRef(x, kind) : x));
+        .map((x) => (kind ? fieldRef(loaded, kind, x, refOpts) : x));
       if (!items.length) throw usageError(`${field}${op}= needs an item`);
       // the items as the store writes them (full keys), so a short form finds its stored twin
       const given: Record<string, unknown> = { [field]: items };
@@ -207,9 +209,9 @@ export function set(
     else if (SECTIONS[field]) body = replaceSection(body, SECTIONS[field], value);
     else if (value === '') delete data[field];
     else {
-      // a slug alone names a record of the kind the field holds; a bare URL in links is a url: source
+      // a slug alone names a record of the kind the field holds; a source resolves as get resolves it
       const kind = fieldKind(rec.type, field);
-      const typed = (x: string) => (kind ? typedRef(x, kind) : x);
+      const typed = (x: string) => (kind ? fieldRef(loaded, kind, x, refOpts) : x);
       data[field] = LISTS.has(field)
         ? value
             .split(',')

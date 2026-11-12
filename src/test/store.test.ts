@@ -22,7 +22,16 @@ import {
   storeContext,
 } from '../model/view.js';
 import { findStore, readUserConfig, writeStoreConfig, type Store } from '../store/config.js';
-import { findReferences, get, keyFromUrl } from '../model/graph.js';
+import {
+  fieldRef,
+  findReferences,
+  formatNeighbourhood,
+  formatReferences,
+  get,
+  keyFromUrl,
+  resolveArg,
+} from '../model/graph.js';
+import { claimsOf, shortForms } from '../model/refs.js';
 import { renderView, viewData } from '../ops/pane.js';
 import { BRIEF, installBrief } from '../cli/brief.js';
 import { start, stop } from '../cli/start.js';
@@ -356,7 +365,12 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
 
   change(store, 'abc', { title: 'ABC', summary: 's', binds: ['linear:ABC-1234'] });
   loaded = loadStore(store);
-  const byTicket = get(loaded, 'ABC-1234');
+  // a bare id resolves where one tracker of the project claims its prefix: here a change of the project binds ABC-1234
+  // (decision pjman-22/bare-ticket-ids); with no project nothing claims it, and the prefixed key or the URL is asked for
+  const unclaimed = get(loaded, 'ABC-1234');
+  assert.equal(unclaimed.resolution.status, 'none');
+  assert.match(unclaimed.resolution.tried.join('; '), /write linear:ABC-1234 or the URL/);
+  const byTicket = get(loaded, 'ABC-1234', { project: 'project:project' });
   assert.equal(byTicket.resolution.status, 'key');
   assert.equal(byTicket.resolution.key, 'linear:ABC-1234');
   assert.deepEqual(
@@ -385,7 +399,7 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   });
   const chips = changeContext(store, 'change:project/chips').sources;
   assert.deepEqual(
-    chips.map((x) => [x.via, x.key, x.url]),
+    chips.map((x) => [x.relation, x.key, x.url]),
     [
       ['binds', 'github-issue:acme/app#8', 'https://github.com/acme/app/issues/8'],
       ['links', 'github-pr:acme/app#7', 'https://github.com/acme/app/pull/7'],
@@ -396,13 +410,17 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   assert.equal(changeContext(store, 'change:project/abc').sources[0].url, undefined); // a Linear key builds none: its record carries the URL
   rm(store, 'change:project/chips', {});
 
-  // a bare id nothing references resolves only through the project's tracker
+  // a bare id of a prefix no tracker of the project claims resolves to nothing, tracker or not; the team the project
+  // binds its Linear tracker to claims it
   assert.equal(get(loaded, 'XYZ-9', { project: 'project:project' }).resolution.status, 'none');
   assert.throws(() => set(store, 'project:project', ['tracker=nope'], {}), /not in source_kinds/);
   set(store, 'project:project', ['tracker=linear'], {});
+  assert.equal(get(loadStore(store), 'XYZ-9', { project: 'project:project' }).resolution.status, 'none');
+  set(store, 'project:project', ['ext.linear.team=XYZ'], {});
   const viaTracker = get(loadStore(store), 'XYZ-9', { project: 'project:project' });
   assert.equal(viaTracker.resolution.status, 'key');
   assert.equal(viaTracker.resolution.key, 'linear:XYZ-9');
+  set(store, 'project:project', ['ext.linear.team='], {});
 
   // GitHub issue references: owner/repo#n anywhere, bare #n through the project's repository and tracker
   assert.equal(get(loadStore(store), '#5', { project: 'project:project' }).resolution.status, 'none');
@@ -447,6 +465,140 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   );
   assert.equal(findReferences(loaded, 'nothing here', { project: 'project:project' }).length, 0);
   fs.rmSync(path.join(store.root, 'products/project/changes/abc'), { recursive: true });
+});
+
+test('refs and get name how each change in reach of a source relates to it: binds, links, observed', () => {
+  change(store, 'rel-bind', { title: 'Binds', summary: 's', binds: ['linear:REL-1'], links: ['linear:REL-1'] });
+  change(store, 'rel-link', { title: 'Links', summary: 's', links: ['linear:REL-1'] });
+  change(store, 'rel-seen', { title: 'Seen', summary: 's' });
+  newRecord(store, 'session', 'sess-rel', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'linear:REL-1');
+  sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'github-pr:acme/app#90');
+  sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-link', 'linear:REL-1');
+  const loaded = loadStore(store);
+
+  // the strongest relation wins whichever edge came first: bound and linked is binds, linked and observed is links
+  const n = get(loaded, 'linear:REL-1');
+  assert.deepEqual(n.relation, {
+    'change:project/rel-bind': 'binds',
+    'change:project/rel-link': 'links',
+    'change:project/rel-seen': 'observed',
+  });
+  assert.equal(n.via['change:project/rel-bind'], 'binds');
+  assert.equal(n.via['change:project/rel-link'], 'links');
+  assert.equal(n.via['change:project/rel-seen'], 'links (observed)');
+  const text = formatNeighbourhood(n, formatChangeContext);
+  assert.match(text, /referenced by:\n- binds change:project\/rel-bind\n/);
+  assert.match(text, /- links change:project\/rel-seen \(observed by session:sess-rel/);
+  assert.match(text, /reached change:project\/rel-bind through binds\n/);
+  assert.match(text, /reached change:project\/rel-link through links\n/);
+  assert.match(text, /reached change:project\/rel-seen through links \(observed\)\n/);
+  // a record reached from a record that is not a source has no relation to name
+  assert.deepEqual(get(loaded, 'change:project/rel-bind').relation, {});
+
+  // refs: the relation stands before the change each reference leads to, in the text and in --json
+  const refs = findReferences(loaded, 'REL-1, https://github.com/acme/app/pull/90 and rel-link', {
+    project: 'project:project',
+  });
+  assert.deepEqual(
+    refs.map((r) => [r.key, r.change, r.relation]),
+    [
+      ['linear:REL-1', 'change:project/rel-bind', 'binds'],
+      ['github-pr:acme/app#90', 'change:project/rel-seen', 'observed'],
+      ['change:project/rel-link', 'change:project/rel-link', undefined],
+    ],
+  );
+  assert.equal(
+    formatReferences(refs),
+    [
+      'REL-1 → linear:REL-1 (linear, no record) · binds change:project/rel-bind',
+      'https://github.com/acme/app/pull/90 → github-pr:acme/app#90 (url, no record) · observed change:project/rel-seen',
+      'rel-link → change:project/rel-link (slug) · change:project/rel-link',
+    ].join('\n'),
+  );
+  // a session bound through a source says in its record how the change relates to it; a bind with no source says only why
+  sessionBind(store, 'sess-rel', 'change:project/rel-link', 'prompt', 'REL-1');
+  sessionBind(store, 'sess-rel', 'change:project/rel-seen', 'prompt', 'https://github.com/acme/app/pull/90');
+  sessionBind(store, 'sess-rel', 'change:project/rel-bind', 'by hand');
+  const log = loadStore(store).byKey.get('session:sess-rel')![0].sections.get('Log') ?? '';
+  assert.match(log, /bound change:project\/rel-link \(prompt; links linear:REL-1\)/);
+  assert.match(log, /bound change:project\/rel-seen \(prompt; observed github-pr:acme\/app#90\)/);
+  assert.match(log, /bound change:project\/rel-bind \(by hand\)/);
+  rm(store, 'session:sess-rel', {});
+  for (const c of ['rel-bind', 'rel-link', 'rel-seen'])
+    fs.rmSync(path.join(store.root, 'products/project/changes', c), { recursive: true });
+});
+
+test('one resolver: every alias of a ticket and of a change resolves to one key, for get, refs, an argument and a field', () => {
+  change(store, 'one-name', {
+    title: 'One name',
+    summary: 's',
+    binds: ['linear:ONE-7'],
+    links: ['github-issue:acme/app#31'],
+  });
+  decisionRec(store, 'one-name/which-way', { title: 'Which way', decision: 'This way.', why: 'w' });
+  const loaded = loadStore(store);
+  const opts = { project: 'project:project', projectDir: project, cwd: project };
+  const key = (alias: string) => get(loaded, alias, opts).resolution.key;
+  // a change: its full key, its short key, its slug; a decision by <change>/<slug>, its kind left off
+  for (const alias of ['change:project/one-name', 'change:one-name', 'one-name'])
+    assert.equal(key(alias), 'change:project/one-name', alias);
+  assert.equal(key('one-name/which-way'), 'decision:project/one-name/which-way');
+  // a ticket: its URL, its prefixed key, its bare id (a change of the project binds ONE-7, so the project claims ONE)
+  for (const alias of ['https://linear.app/acme/issue/ONE-7/one-name', 'linear:ONE-7', 'ONE-7'])
+    assert.equal(key(alias), 'linear:ONE-7', alias);
+  for (const alias of ['https://github.com/acme/app/issues/31', 'github-issue:acme/app#31', 'acme/app#31', '#31'])
+    assert.equal(key(alias), 'github-issue:acme/app#31', alias);
+  assert.deepEqual([...(claimsOf(loaded, 'project:project').get('ONE') ?? [])], ['linear']);
+  // a command's argument goes through the same resolver: every alias that is not already a key
+  for (const [alias, want] of [
+    ['one-name', 'change:project/one-name'],
+    ['one-name/which-way', 'decision:project/one-name/which-way'],
+    ['https://linear.app/acme/issue/ONE-7/x', 'linear:ONE-7'],
+    ['ONE-7', 'linear:ONE-7'],
+    ['acme/app#31', 'github-issue:acme/app#31'],
+  ])
+    assert.equal(resolveArg(loaded, alias, opts), want, alias);
+  // the text scanner too: each alias leads to the change, and says how it relates to it
+  assert.deepEqual(
+    findReferences(loaded, 'ONE-7, https://linear.app/acme/issue/ONE-7/x and acme/app#31', opts).map((r) => [
+      r.key,
+      r.change,
+      r.relation,
+    ]),
+    [
+      ['linear:ONE-7', 'change:project/one-name', 'binds'],
+      ['linear:ONE-7', 'change:project/one-name', 'binds'],
+      ['github-issue:acme/app#31', 'change:project/one-name', 'links'],
+    ],
+  );
+  // a bare id whose prefix no tracker of the project claims is asked for, never guessed
+  const asked = get(loaded, 'TWO-1', opts).resolution;
+  assert.equal(asked.status, 'none');
+  assert.match(asked.tried.join('; '), /a tracker of the project to claim TWO .*write linear:TWO-1 or the URL/);
+  assert.throws(() => resolveArg(loaded, 'TWO-1', opts), /write linear:TWO-1 or the URL/);
+  assert.deepEqual(findReferences(loaded, 'see TWO-1', opts), []);
+  // two trackers claiming one prefix: neither is picked
+  const two = shortForms('ONE-7', { claims: new Map([['ONE', new Set(['linear', 'jira'])]]) });
+  assert.equal(two[0].key, undefined);
+  assert.match(two[0].needs!, /one tracker to claim ONE; jira and linear do/);
+  // a value written where a source is meant resolves the same way: a ticket's URL or id is its key, any other URL url:
+  for (const [value, want] of [
+    ['https://linear.app/acme/issue/ONE-7/x', 'linear:ONE-7'],
+    ['ONE-8', 'linear:ONE-8'],
+    ['https://github.com/acme/app/pull/90', 'github-pr:acme/app#90'],
+    ['acme/app#31', 'github-issue:acme/app#31'],
+    ['https://example.com/a', 'url:https://example.com/a'],
+    ['linear:ONE-9', 'linear:ONE-9'],
+    ['TWO-1', 'TWO-1'],
+  ])
+    assert.equal(fieldRef(loaded, 'source', value, opts), want, value);
+  assert.equal(fieldRef(loaded, 'change', 'one-name', opts), 'change:one-name');
+  set(store, 'change:project/one-name', ['links+=https://linear.app/acme/issue/ONE-8/x'], {});
+  assert.ok(
+    (loadStore(store).byKey.get('change:project/one-name')![0].data.links as string[]).includes('linear:ONE-8'),
+  );
+  fs.rmSync(path.join(store.root, 'products/project/changes/one-name'), { recursive: true });
 });
 
 test('a change may have a parent change: any depth, no cycles, children derived, progress derived, the board nests', () => {

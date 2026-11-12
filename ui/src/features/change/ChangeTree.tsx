@@ -525,7 +525,7 @@ export function Sources({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: L
       {v.links.map((s) => (
         <SourceRow key={s.key} label="link">
           <SourceLink s={s} lens={lens} mode={mode} />
-          <span className="text-meta text-ink-faint">· {s.via === 'binds' ? 'bound' : 'linked'}</span>
+          <span className="text-meta text-ink-faint">· {s.relation === 'binds' ? 'bound' : 'linked'}</span>
         </SourceRow>
       ))}
       {v.files.length === 0 ? (

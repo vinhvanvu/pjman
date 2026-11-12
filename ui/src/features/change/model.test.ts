@@ -35,7 +35,7 @@ describe('the path and the sources', () => {
     expect(effectsOf(undefined)).toEqual([]);
   });
   it('sums the sources as the branch, the links and the files', () => {
-    const src = (key: string) => ({ key, via: 'links' as const });
+    const src = (key: string) => ({ key, relation: 'links' as const });
     const v = sourcesView({
       sources: [src('url:https://x'), src('file:a.ts'), src('file:b.ts')],
       branch: { name: 'detail-pages', worktree: 'detail-pages', observed: false },

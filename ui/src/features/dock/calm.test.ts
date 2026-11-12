@@ -7,7 +7,7 @@ const minsAgo = (m: number) => new Date(NOW - m * 60_000).toISOString();
 type Step = ChangeContext['plan'][number];
 const step = (text: string, state: Step['state']): Step => ({ text, state });
 type Source = ChangeContext['sources'][number];
-const src = (key: string, url?: string): Source => ({ key, via: 'links', url });
+const src = (key: string, url?: string): Source => ({ key, relation: 'links', url });
 
 describe('bandOf', () => {
   it('reads done as the one solid band, with the release it shipped in', () => {

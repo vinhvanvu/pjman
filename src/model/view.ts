@@ -399,7 +399,9 @@ export interface ChangeContext {
   migrated?: string;
   decisions: DecisionRow[];
   /** Each source once: a key both bound and linked is listed as bound. `url` is where it opens outside the store. */
-  sources: { key: string; record?: Row; via: 'binds' | 'links'; url?: string }[];
+  /** Each source the change binds or links, once, bound before linked; `relation` names which (decision
+   *  pjman-22/relation-field). */
+  sources: { key: string; record?: Row; relation: 'binds' | 'links'; url?: string }[];
   /** The change's branch: one a session was seen on (observed), else the recommended name derived from the key. */
   branch?: { name: string; worktree: string; observed: boolean };
   sessions: (Row & { last?: string })[];
@@ -554,12 +556,12 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
 
   const sources: ChangeContext['sources'] = [];
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  for (const via of ['binds', 'links'] as const) {
-    for (const k of list(rec.data[via])) {
+  for (const relation of ['binds', 'links'] as const) {
+    for (const k of list(rec.data[relation])) {
       if (sources.some((s) => s.key === k)) continue;
       const r = resolve(loaded, k);
       const record = r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? row(r.rec) : undefined;
-      sources.push({ key: k, via, record, url: urlOf(k, record?.data.url) });
+      sources.push({ key: k, relation, record, url: urlOf(k, record?.data.url) });
     }
   }
   const sessions = sessionsOf(loaded, rec.key).map((r) => {
@@ -726,7 +728,7 @@ export function formatChangeContext(c: ChangeContext): string {
     for (const s of c.sources) {
       const t = s.record?.title ? ` — ${s.record.title}` : '';
       const u = s.url && s.url !== s.key.slice('url:'.length) ? ` (${s.url})` : '';
-      out.push(`- ${s.via} ${s.key}${t}${u}`);
+      out.push(`- ${s.relation} ${s.key}${t}${u}`);
     }
   }
   const line = (ch: Row) => `- ${ch.key} [${ch.status ?? '?'}] — ${nameAndLine(ch)}`;

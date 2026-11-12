@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE } from '../store/keys.js';
+import { canonicalSourceKey, canonicalUrl, parseKey, RECORD_KINDS, SLUG_RE, typedRef } from '../store/keys.js';
 import { ambiguous, notFound } from '../store/util.js';
 import { keyFromUrl, mentions, scopeOf, shortForms, trackerOf } from './refs.js';
 import { slugsOfBranch } from './branch.js';
@@ -173,6 +173,8 @@ export interface Resolution {
   key?: string;
   via?: string;
   shape?: Shape;
+  /** Two or more records answer to the reference (a slug, `<change>/<slug>`): none is picked. */
+  candidates?: string[];
   /** What was tried, for a reference that matched nothing. */
   tried: string[];
 }
@@ -188,8 +190,20 @@ export interface Neighbourhood {
   changes: ChangeContext[];
   /** change key → how it was reached (`binds`, `decision:x/y links`, `session:… changes`, `self`). */
   via: Record<string, string>;
+  /** For a source: change key → how the change relates to it, the strongest that holds (binds over links over observed). */
+  relation: Record<string, Relation>;
   /** A project's changes, a session's children, an actor's sessions: rows, not contexts. */
   members: Row[];
+}
+
+/** How a change relates to a source in its reach: it binds it, it (or one of its decisions) links it, or a session
+ *  observed it linking it. */
+export type Relation = 'binds' | 'links' | 'observed';
+const RELATION_RANK: Record<Relation, number> = { observed: 1, links: 2, binds: 3 };
+
+/** The relation an edge between a change (or its decision) and a source makes. */
+function relationOf(e: Edge): Relation {
+  return e.observed ? 'observed' : e.edge === 'binds' ? 'binds' : 'links';
 }
 
 export interface GetOpts {
@@ -200,8 +214,22 @@ export interface GetOpts {
   project?: string;
 }
 
-/** Resolve one reference to a key, in the fixed order: record key, source key, URL, ticket id, slug, file path. Never writes. */
-export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): Resolution {
+export interface ResolveOpts extends GetOpts {
+  /** A command's argument (decision interface-audit/key-arguments): a slug is asked of every kind of record it can name
+   *  and two records answering to it are refused by name rather than one picked; `<a>/<b>` names a decision or an
+   *  aspect's place and nothing else. */
+  strict?: boolean;
+  /** A command that takes one kind (a product, a feature) asks only those of a slug: a product and its project often
+   *  share a name. */
+  kinds?: string[];
+}
+
+/** The one resolver: every alias of a record or a source to its key (change:pjman-22). In a fixed order: a record key
+ *  (full, short or former); a URL; a source key; a ticket's short form (a bare id only where one tracker of the project
+ *  claims its prefix); a decision or place key with its kind left off (`<change>/<slug>`); a slug; a file path; a
+ *  decision slug or session id prefix. The getter, the text scanner and every command's argument go through it. Never
+ *  writes. */
+export function resolveRef(loaded: Loaded, input: string, opts: ResolveOpts = {}): Resolution {
   const store = loaded.store;
   const ref = input.trim();
   const tried: string[] = [];
@@ -220,6 +248,24 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     if (rec) return { status: rec.valid ? 'record' : 'invalid', key, shape, tried };
     return { status: 'key', key, shape, tried };
   };
+
+  /** The keys that name a record, each through its scope and aliases: one is the answer, several are refused. */
+  const named = (keys: string[], also: string[] = []): Resolution => {
+    const hits = new Map<string, Resolution>();
+    for (const k of keys) {
+      const hit = fromRecord(k, 'slug');
+      if (hit?.key && !hits.has(hit.key)) hits.set(hit.key, hit);
+    }
+    for (const k of also) if (!hits.has(k)) hits.set(k, fromRecord(k, 'slug')!);
+    if (hits.size === 1) return [...hits.values()][0];
+    if (hits.size > 1) {
+      tried.push(`${ref} names ${hits.size}: ${[...hits.keys()].join(', ')}`);
+      return { status: 'none', candidates: [...hits.keys()], tried };
+    }
+    return { status: 'none', tried };
+  };
+  const decisionsNamed = (slug: string): string[] =>
+    loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === slug).map((r) => r.key);
 
   const parsed = parseKey(ref);
   if (parsed && RECORD_KINDS.has(parsed.kind)) {
@@ -244,8 +290,14 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     tried.push(`source key ${ref}`);
     return sourceKey(ref, 'source key');
   }
-  // a short form (ABC-1234, #12, owner/repo#12): only through its own kind's grammar. The project's tracker admits one it
-  // has no record of; any kind the store already references resolves one that exists; a qualified form resolves anywhere.
+  if (opts.kinds && SLUG_RE.test(ref)) {
+    tried.push(...opts.kinds.map((k) => `${k}:${ref}`));
+    return named(opts.kinds.map((k) => `${k}:${ref}`));
+  }
+  // a short form (ABC-1234, #12, owner/repo#12): only through its own kind's grammar. A bare prefixed id resolves where
+  // exactly one tracker of the project claims its prefix, and nowhere else (decision pjman-22/bare-ticket-ids); for `#12`
+  // the project's tracker admits one it has no record of, any the store already references resolves, and a qualified
+  // form resolves anywhere.
   const forms = shortForms(ref, scopeOf(loaded, opts.project));
   if (forms.length) {
     const tracker = trackerOf(loaded, opts.project);
@@ -257,16 +309,30 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
         continue;
       }
       tried.push(`${f.kind} short form ${f.key}`);
-      if (loaded.byKey.has(f.key) || referenced(f.key)) return sourceKey(f.key, 'ticket id');
+      if (f.claimed || loaded.byKey.has(f.key) || referenced(f.key)) return sourceKey(f.key, 'ticket id');
       if (f.qualified || (f.kind === tracker && f.inScope))
         return { status: 'key', key: f.key, shape: 'ticket id', tried };
     }
-    if (!tracker)
+    if (!tracker && forms.some((f) => f.key))
       tried.push(
         `a ticket through the project's tracker (${opts.project ? `${opts.project} names none` : 'no current project'})`,
       );
   }
-  if (SLUG_RE.test(ref)) {
+  // a decision or an aspect's place with its kind left off: `<change>/<slug>`, `<aspect>/<place>`
+  if (/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(ref)) {
+    tried.push(`decision:${ref}`, `aspect:${ref}`);
+    const hit = named([`decision:${ref}`, `aspect:${ref}`]);
+    if (opts.strict || hit.key || hit.candidates) return hit;
+  }
+  if (SLUG_RE.test(ref) && opts.strict) {
+    // a command's argument: every kind a slug names, and a decision of that slug; several are refused, none goes on
+    tried.push('change, project, feature, product, aspect, decision named so');
+    const hit = named(
+      ['change', 'project', 'feature', 'product', 'aspect'].map((k) => `${k}:${ref}`),
+      decisionsNamed(ref),
+    );
+    if (hit.key || hit.candidates) return hit;
+  } else if (SLUG_RE.test(ref)) {
     tried.push(`change:${ref}, project:${ref}`);
     const hit = fromRecord(`change:${ref}`, 'slug') ?? fromRecord(`project:${ref}`, 'slug');
     if (hit) return hit;
@@ -283,7 +349,7 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     if (hit.status === 'record' || referenced(hit.key!)) return hit;
     if (fs.existsSync(abs)) return hit;
   }
-  if (SLUG_RE.test(ref)) {
+  if (SLUG_RE.test(ref) && !opts.strict) {
     const decisions = loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === ref);
     tried.push(
       `a decision named ${ref}${decisions.length > 1 ? ` (${decisions.length} match: ${decisions.map((r) => r.key).join(', ')})` : ''}`,
@@ -301,52 +367,42 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
 }
 
 /** A command's record argument as a key (decision interface-audit/key-arguments): a key passes through for the command
- *  to resolve; a slug resolves the way get resolves one, except that two records answering to it are refused by name
- *  rather than one picked; `<change>/<slug>` names a decision; anything else (a ticket id, a URL, a file) goes through
- *  the getter. Nothing found is refused with what was tried. */
+ *  to resolve; anything else goes through the one resolver as an argument (`strict`): a slug two records answer to is
+ *  refused by name rather than one picked. Nothing found is refused with what was tried. */
 export function resolveArg(loaded: Loaded, raw: string, opts: GetOpts & { kinds?: string[] } = {}): string {
   const ref = raw.trim();
   if (parseKey(ref) && !/^https?:\/\//i.test(ref)) return ref;
-  const live = (k: string): string | null => {
-    const r = resolve(loaded, k);
-    return r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? r.rec.key : null;
-  };
-  // a command that takes one kind (a product, a feature) asks only those: a product and its project often share a name
-  if (opts.kinds && SLUG_RE.test(ref)) {
-    const hits = [...new Set(opts.kinds.map((k) => live(`${k}:${ref}`)).filter((k): k is string => !!k))];
-    if (hits.length === 1) return hits[0];
-    if (hits.length > 1) throw ambiguous(ref, hits);
-    throw notFound(ref, { as: opts.kinds.join(' or '), tried: opts.kinds.map((k) => `${k}:${ref}`) });
-  }
-  if (/^[a-z0-9][a-z0-9-]*\/[a-z0-9][a-z0-9-]*$/.test(ref)) {
-    const hits = [...new Set([live(`decision:${ref}`), live(`aspect:${ref}`)].filter((k): k is string => !!k))];
-    if (hits.length === 1) return hits[0];
-    if (hits.length > 1) throw ambiguous(ref, hits);
-    throw notFound(ref, { tried: [`decision:${ref}`, `aspect:${ref}`] });
-  }
-  if (SLUG_RE.test(ref)) {
-    const kinds = ['change', 'project', 'feature', 'product', 'aspect'];
-    const hits = new Set(kinds.map((k) => live(`${k}:${ref}`)).filter((k): k is string => !!k));
-    for (const d of loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === ref)) hits.add(d.key);
-    if (hits.size === 1) return [...hits][0];
-    if (hits.size > 1) throw ambiguous(ref, [...hits]);
-  }
-  const res = resolveRef(loaded, ref, opts);
+  const res = resolveRef(loaded, ref, { ...opts, strict: true });
+  if (res.candidates) throw ambiguous(ref, res.candidates);
   if (res.key && res.status !== 'none') return res.key;
-  throw notFound(ref, {
-    tried: SLUG_RE.test(ref)
-      ? [
-          'change, project, feature, product, aspect, decision named so',
-          ...res.tried.filter((t) => !t.startsWith('change:')),
-        ]
-      : res.tried,
-  });
+  throw notFound(ref, { as: opts.kinds?.join(' or '), tried: res.tried });
+}
+
+/** A value written into a field that names records of `kind` (`fieldKind`), as the key the store writes: a slug alone
+ *  gains the kind (`typedRef`); where a source is meant, the value goes through the one resolver, so a ticket's URL, its
+ *  bare id or `#12` is written as the ticket's key, a file path as `file:`, any other URL as `url:`. A key passes as it
+ *  is; what resolves to no source is left as written, for the write's own check to refuse. */
+export function fieldRef(loaded: Loaded, kind: string, value: string, opts: GetOpts = {}): string {
+  const v = value.trim();
+  if (kind !== 'source' || (parseKey(v) && !/^https?:\/\//i.test(v))) return typedRef(v, kind);
+  const r = resolveRef(loaded, v, opts);
+  const k = r.status !== 'none' && r.key ? parseKey(r.key) : null;
+  return k && !RECORD_KINDS.has(k.kind) ? k.raw : typedRef(v, kind);
 }
 
 /** The getter: a reference in, the record and its neighbourhood out. */
 export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbourhood {
   const resolution = resolveRef(loaded, input, opts);
-  const result: Neighbourhood = { input, resolution, in: [], out: [], changes: [], via: {}, members: [] };
+  const result: Neighbourhood = {
+    input,
+    resolution,
+    in: [],
+    out: [],
+    changes: [],
+    via: {},
+    relation: {},
+    members: [],
+  };
   if (resolution.status === 'none' || !resolution.key) return result;
   const key = resolution.key;
   const rec = loaded.byKey.get(key)?.[0];
@@ -368,20 +424,35 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
   if (rec?.type === 'change') add(key, 'self');
   else if (rec?.type === 'decision' && rec.changeKey) add(rec.changeKey, 'in');
   else if (rec?.type === 'session') for (const k of list(rec.data.changes)) add(canon(k), 'changes');
+  // a source names how each change in its reach relates to it: the strongest edge wins, whichever came first
+  const parsedKey = parseKey(key);
+  const source = rec?.type === 'source' || (!!parsedKey && !RECORD_KINDS.has(parsedKey.kind));
+  const relation = new Map<string, Relation>();
+  const relate = (c: string, e: Edge, how: string) => {
+    add(c, how);
+    if (!source || !reach.has(c)) return;
+    const r = relationOf(e);
+    const was = relation.get(c);
+    if (was && RELATION_RANK[was] >= RELATION_RANK[r]) return;
+    relation.set(c, r);
+    reach.set(c, how);
+  };
   if (rec?.type !== 'project' && rec?.type !== 'actor') {
     for (const e of result.in) {
       const c = changeOf(e.from);
-      if (c) add(c, c === e.from ? `${e.edge}${e.observed ? ' (observed)' : ''}` : `${e.from} ${e.edge}`);
+      if (c) relate(c, e, c === e.from ? `${e.edge}${e.observed ? ' (observed)' : ''}` : `${e.from} ${e.edge}`);
     }
     for (const e of result.out) {
       const c = changeOf(e.to);
-      if (c && e.edge !== 'session' && e.edge !== 'writer') add(c, e.edge);
+      if (c && e.edge !== 'session' && e.edge !== 'writer') relate(c, e, e.edge);
     }
   }
   for (const [k, how] of reach) {
     try {
       result.changes.push(changeContext(loaded.store, k, loaded));
       result.via[k] = how;
+      const r = relation.get(k);
+      if (r) result.relation[k] = r;
     } catch {
       // an unresolvable change in reach is reported by validate, not here
     }
@@ -418,10 +489,7 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
   const line = (e: Edge, other: string) =>
     `- ${e.edge} ${other}${
       e.observed
-        ? ` (observed by ${e.on
-            .replace(/^sessions\//, 'session:')
-            .replace(/^\d{4}-\d{2}-\d{2}-/, '')
-            .replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})`
+        ? ` (observed by ${e.on.replace(/^sessions\/(\d{4}-\d{2}-\d{2}-)?/, 'session:').replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})`
         : ''
     }`;
   const inbound = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
@@ -454,6 +522,8 @@ export interface Reference {
   key: string;
   /** The change it leads to: itself, the change that binds it, or the nearest change in reach. */
   change?: string;
+  /** For a source: how that change relates to it (binds, links, observed). */
+  relation?: Relation;
   /** A ticket of the project's tracker with no record yet: the tracker can be asked and the sync would create the change. */
   creatable: boolean;
   /** Too ambiguous to act on (a bare `#1`): listed with what it would lead to, never binding a session or creating a change. */
@@ -478,10 +548,12 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
     if (resolution.status === 'none' || !resolution.key) continue;
     const key = resolution.key;
     let change: string | undefined;
+    let relation: Relation | undefined;
     if (key.startsWith('change:')) change = key;
     else {
       const n = get(loaded, key, opts);
       change = n.changes[0]?.change.key;
+      if (change) relation = n.relation[change];
     }
     const kind = key.slice(0, key.indexOf(':'));
     if (!change && kind === 'branch') {
@@ -502,6 +574,7 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
       resolution,
       key,
       change,
+      relation,
       creatable: !weak && !change && resolution.status === 'key' && kind === tracker,
       weak,
     });
@@ -514,7 +587,7 @@ export function formatReferences(refs: Reference[]): string {
   return refs
     .map(
       (r) =>
-        `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''}${r.weak ? ', bare: never binds' : ''})${r.change ? ` · ${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`,
+        `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''}${r.weak ? ', bare: never binds' : ''})${r.change ? ` · ${r.relation ? `${r.relation} ` : ''}${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`,
     )
     .join('\n');
 }

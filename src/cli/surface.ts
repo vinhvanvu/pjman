@@ -97,6 +97,7 @@ export const FLAG_TYPES = {
   follow: { type: 'boolean' },
   receipt: { type: 'boolean' },
   reason: { type: 'string' },
+  via: { type: 'string' },
   log: { type: 'string' },
   branch: { type: 'string' },
   before: { type: 'string' },
@@ -395,7 +396,7 @@ export const COMMANDS: Command[] = [
     group: 'reading',
     line: 'anything in (key, slug, ticket, URL, file): the record, its edges, the changes in reach',
     about:
-      'the getter: a key, a source key, a URL, a ticket id, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out',
+      "the getter: a key (full, short or former), a source key, a URL, a ticket id, <change>/<slug>, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out. Every command's argument resolves the same way. A bare ticket id (ABC-12) resolves only where exactly one tracker of the project claims its prefix (ext.linear.team, or a change of the project binding a ticket of that prefix); elsewhere write the prefixed key (linear:ABC-12) or the URL",
     usage: ['pjman get <ref> [--json]'],
     flags: [],
     args: 1,
@@ -493,7 +494,7 @@ export const COMMANDS: Command[] = [
     usage: [
       'pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]',
       'pjman session log <id> <text>',
-      'pjman session bind <id> <change> [--reason prompt|created|branch]',
+      'pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)',
       'pjman session unbind <id> <change>',
       'pjman session observe <id> <edge> <from> <to>',
       'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)',
@@ -503,7 +504,7 @@ export const COMMANDS: Command[] = [
     flags: {
       start: ['agent', 'on-behalf-of', 'parent', 'log', 'branch', 'full', 'no-host'],
       log: [],
-      bind: ['reason'],
+      bind: ['reason', 'via'],
       unbind: [],
       observe: [],
       focus: [],

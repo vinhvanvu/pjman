@@ -14,7 +14,8 @@ import { loadStore, resolve, storeScope, unresolvedError } from '../store/record
 import { ambiguous, CliError, notFound, plural, usageError } from '../store/util.js';
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from '../model/validate.js';
-import { findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
+import { trackerOf } from '../model/refs.js';
+import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
 import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from '../store/events.js';
 import { installedTool, readServeAddress, startServer } from '../server/server.js';
@@ -67,7 +68,7 @@ import { TOOL_VERSION } from '../store/version.js';
 import { sessionHost } from '../hosts/host.js';
 import { hostHere, hostLabel, hostLaunch, hostOpen, hostSend, hostStatus } from '../ops/host.js';
 import { formatIdentity, identity } from '../model/identity.js';
-import { fieldKind, shortenText, typedRef } from '../store/keys.js';
+import { fieldKind, parseKey, RECORD_KINDS, shortenText, shortKey, typedRef } from '../store/keys.js';
 
 const PARSE_OPTIONS = FLAG_TYPES;
 
@@ -133,6 +134,9 @@ const out = (s: string) => {
 };
 // JSON keeps the full keys: it is read by programs, and the product segment is part of the key
 const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '\n');
+// a key as it prints inside the project (the one formatter, decision pjman-22/key-form), carried in JSON as `printed`
+// beside the full key where a program relays it to a person or an agent (decision pjman-22/hook-printed-keys)
+const printed = (key: string): string => shortKey(key, scopeProduct);
 
 /** An existing decision named by its slug alone: refused when none or several have it (a new decision is keyed
  *  <change>/<slug>, which says where it lives). */
@@ -161,13 +165,6 @@ function batch(
     run,
     { session: v.session, writer: v.writer },
   );
-}
-
-/** The current project's tracker (its ticket source kind), or null. */
-function trackerOf(store: ReturnType<typeof requireStore>): string | null {
-  if (!store.project) return null;
-  const rec = loadStore(store).byKey.get(store.project)?.[0];
-  return rec && typeof rec.data.tracker === 'string' ? rec.data.tracker : null;
 }
 
 function main(argv: string[]): number {
@@ -307,10 +304,15 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         writer: v.writer,
         session: v.session,
       };
-      // a value naming a record takes the slug alone, as an argument does; a bare URL in --links is a url: source
+      // a value naming a record takes the slug alone, as an argument does; a source resolves as get resolves it (a
+      // ticket's URL or id is the ticket's key, any other URL a url: source)
+      let refLoaded: ReturnType<typeof loadStore> | undefined;
       const typed = (value: string | undefined, field: string) => {
         const kind = value === undefined ? null : fieldKind(type, field);
-        return kind ? typedRef(value!, kind) : value;
+        if (!kind) return value;
+        if (kind !== 'source') return typedRef(value!, kind);
+        refLoaded ??= loadStore(store);
+        return fieldRef(refLoaded, kind, value!, { cwd, projectDir: store.projectDir, project: store.project });
       };
       const typedAll = (vs: string[] | undefined, field: string) => vs?.map((x) => typed(x, field)!);
       Object.assign(flags, {
@@ -322,6 +324,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         links: typedAll(flags.links, 'links'),
         binds: typedAll(flags.binds, 'binds'),
       });
+      // an origin that is one reference to a source (a ticket's URL or id, a key) is linked as the key it resolves to
+      const origin = flags.origin?.trim();
+      if (type === 'change' && origin && !/\s/.test(origin)) {
+        const k = parseKey(typed(origin, 'links'));
+        if (k && !RECORD_KINDS.has(k.kind) && store.config.source_kinds.includes(k.kind))
+          flags.links = [...new Set([...(flags.links ?? []), k.raw])];
+      }
       const r = newRecord(store, type, ident, flags);
       // a change the session creates is the session's work: it binds (decision hydration/binding-follows-writes). Only
       // here, where a person or an agent files it; a sync or a batch that creates changes binds nothing
@@ -469,7 +478,16 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         });
         // the brief's text is what the agent reads, named as the context names records; the rest keeps full keys
         if (v.json)
-          json({ ...r, brief: r.brief ? { ...r.brief, text: shortenText(r.brief.text, scopeProduct) } : null });
+          json({
+            ...r,
+            brief: r.brief
+              ? {
+                  ...r.brief,
+                  text: shortenText(r.brief.text, scopeProduct),
+                  ...(r.brief.change ? { printed: printed(r.brief.change) } : {}),
+                }
+              : null,
+          });
         else
           out(
             `${r.created ? 'created' : 'started'} ${r.key}${r.bound ? `, bound ${r.bound} (branch)` : ''}${r.brief ? `; ${formatBriefSize(r.brief)}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
@@ -480,11 +498,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         out(`logged to ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
       } else if (sub === 'bind') {
         if (!id || !rest[0])
-          throw usageError('usage: pjman session bind <id> <change> [--reason prompt|created|branch]');
+          throw usageError('usage: pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]');
         const reasons = ['prompt', 'created', 'branch', 'by hand'] as const;
         const reason = (v.reason ?? 'by hand') as BindReason;
         if (!reasons.includes(reason)) throw new CliError(`--reason takes ${reasons.join(', ')}`);
-        const r = sessionBind(store, id, rest[0], reason);
+        const r = sessionBind(store, id, rest[0], reason, v.via);
         out(r.added ? `bound in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}` : `already bound in ${r.path}`);
       } else if (sub === 'unbind') {
         if (!id || !rest[0]) throw usageError('usage: pjman session unbind <id> <change>');
@@ -608,7 +626,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         parent: at(v.parent, ['change', 'feature', 'product']),
         feature: at(v.feature, ['feature']),
       });
-      v.json ? json(rows) : out(formatLs(rows));
+      v.json ? json(rows.map((r) => ({ ...r, printed: printed(r.key) }))) : out(formatLs(rows));
       return 0;
     }
     case 'tree': {
@@ -689,7 +707,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         projectDir: store.projectDir,
         project: store.project,
       });
-      v.json ? json(refs) : out(formatReferences(refs));
+      v.json
+        ? json(refs.map((r) => (r.change ? { ...r, printed: printed(r.change) } : r)))
+        : out(formatReferences(refs));
       return 0;
     }
     case 'view': {
@@ -868,7 +888,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       // the argument resolves as every command's does: the slug alone names the project's change (change:rest-takes-the-slug)
       const loaded = loadStore(store);
       const r = restOf(loaded, resolveArg(loaded, pos[1], { kinds: ['change'] }));
-      v.json ? json(r) : out(formatRest(r));
+      v.json ? json({ ...r, printed: printed(r.key) }) : out(formatRest(r));
       return r.rests ? 0 : 1;
     }
     case 'lift': {
@@ -983,7 +1003,10 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         throw usageError('usage: pjman events [--since <seq>] [--session <key>] [--receipt] | pjman events rebuild');
       if (v.receipt) {
         const r = receipt(store, { since: v.since ? Number(v.since) : 0, session: v.session });
-        v.json ? json(r) : out(formatReceipt(r) || '(nothing recorded)');
+        // its lines are read by the person inside the project: printed as every key is
+        v.json
+          ? json({ ...r, lines: r.lines.map((l) => shortenText(l, scopeProduct)) })
+          : out(formatReceipt(r) || '(nothing recorded)');
         return 0;
       }
       const events = readEvents(store, v.since ? Number(v.since) : 0).filter(
@@ -1112,7 +1135,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const b = brief(store, v.session, { full: !!v.full });
       // the text is what the agent reads, so it names records as the context does inside the product; the rest of the
       // JSON keeps full keys
-      if (v.json) json({ ...b, text: shortenText(b.text, scopeProduct) });
+      if (v.json)
+        json({ ...b, text: shortenText(b.text, scopeProduct), ...(b.change ? { printed: printed(b.change) } : {}) });
       else if (b.mode === 'none') out('(nothing new for this session)');
       else
         out(`${b.text}
@@ -1195,7 +1219,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             project: store.project ?? null,
             product: scopeProduct ? `product:${scopeProduct}` : null,
             project_dir: store.projectDir ?? null,
-            tracker: trackerOf(store),
+            tracker: (store.project && trackerOf(loadStore(store), store.project)) || null,
             actor: readUserConfig().actor ?? null,
             source_kinds: store.config.source_kinds,
           })
@@ -1229,7 +1253,7 @@ try {
     const argv = process.argv.slice(2);
     if (argv.includes('--json'))
       json({ error: { code: e.code, message: e.message, ...(e.tried ? { tried: e.tried } : {}) } });
-    else process.stderr.write(`pjman: ${e.message}\n`);
+    else process.stderr.write(`pjman: ${shortenText(e.message, scopeProduct)}\n`);
     process.exitCode = e.exitCode;
   } else {
     throw e;
