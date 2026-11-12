@@ -53,7 +53,7 @@ import {
 export type RailRendering = 'rail' | 'list';
 
 /** The lane's colour, as the custom property the dots and words read. */
-const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
+const laneStyle = (colour: string): React.CSSProperties => ({ '--lane': colour });
 const rowKey = (r: RowView) => String(r.seq);
 const toggled = (list: readonly string[], id: string) =>
   list.includes(id) ? list.filter((x) => x !== id) : [...list, id];

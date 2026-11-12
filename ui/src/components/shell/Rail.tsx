@@ -31,7 +31,7 @@ const healthLine = (p: RailProduct): string =>
   [
     p.open !== undefined ? plural(p.open, 'open change') : '',
     p.inFlight ? `${p.inFlight} in flight` : '',
-    p.loud ? `${plural(p.loud, 'loud bug')}` : '',
+    p.loud ? plural(p.loud, 'loud bug') : '',
   ]
     .filter(Boolean)
     .join(' · ') || 'nothing open';

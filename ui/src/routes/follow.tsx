@@ -19,7 +19,11 @@ function FollowPage() {
     becomeWindow();
     let gone = false;
     void fetch(`${BASE}/follow`)
-      .then((r) => (r.ok ? (r.json() as Promise<{ data: { followed: { session: string } | null } }>) : null))
+      .then(async (r) => {
+        if (!r.ok) return null;
+        const body: { data: { followed: { session: string } | null } } = await r.json();
+        return body;
+      })
       .then((body) => {
         if (gone) return;
         const to = body?.data.followed?.session ?? (home ? `session:${home}` : undefined);

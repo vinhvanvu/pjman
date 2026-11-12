@@ -45,13 +45,13 @@ const NO_EVENTS: readonly StoreEvent[] = [];
 const LANES_QUERY = { limit: 1, fold: UNFOLDED } as const;
 const chipKey = (c: ChipView) => c.key;
 /** The lane's colour, as the custom property the chips, the bars and the dots read. */
-const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
+const laneStyle = (colour: string): React.CSSProperties => ({ '--lane': colour });
 const SLIDE = { duration: 0.18, ease: 'easeOut' as const };
 
 /** The page's two session parameters: the change held shown, and the decision open (decision one-shown-change,
  *  decision-card). Both live in the URL, so a link lands where the person was. */
 export function useSessionSearch() {
-  const search = useSearch({ strict: false }) as PageSearch;
+  const search = useSearch({ strict: false });
   const navigate = useNavigate();
   const set = (patch: Partial<Pick<PageSearch, 'show' | 'decision'>>) =>
     void navigate({

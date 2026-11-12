@@ -4,13 +4,15 @@ import { LENSES, type Lens } from '@/data/contract';
 import { LensPage } from './-LensPage';
 import { pageSearch } from '@/lib/search';
 
+const isLens = (s: string): s is Lens => (LENSES as readonly string[]).includes(s);
+
 export const Route = createFileRoute('/$lens/$')({
   params: {
     parse: (raw) => {
       // the milestone lens became the roadmap; old links still open
       const lens = raw.lens === 'milestone' ? 'roadmap' : raw.lens;
-      if (!(LENSES as readonly string[]).includes(lens)) throw notFound();
-      return { lens: lens as Lens, _splat: raw._splat ?? '' };
+      if (!isLens(lens)) throw notFound();
+      return { lens, _splat: raw._splat ?? '' };
     },
     stringify: (p) => ({ lens: p.lens, _splat: p._splat }),
   },

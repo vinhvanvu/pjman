@@ -6,7 +6,6 @@ import { cn } from 'cn';
 import { ArrowRight, Play, X } from 'lucide-react';
 import { useSessionView } from '@/data/queries';
 import { Pulse } from '@/components/presence/Presence';
-import type { PageSearch } from '@/lib/search';
 import { useFollow } from '@/state/follow';
 import { dockArrivals } from '@/features/dock/model';
 import { Flash } from '@/lib/motion';
@@ -23,7 +22,7 @@ export function FollowPill({ className }: { className?: string }) {
   const next = useFollow((s) => s.next);
   const { data: nextView } = useSessionView(next);
   const match = useMatch({ from: '/session/$id', shouldThrow: false });
-  const search = useSearch({ strict: false }) as PageSearch;
+  const search = useSearch({ strict: false });
   const navigate = useNavigate();
   const { data } = useSessionView(home);
   const fresh = useFreshEvents();

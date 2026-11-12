@@ -5,7 +5,7 @@ import { createHub, openStream } from './stream';
 declare const self: SharedWorkerGlobalScope;
 
 const hub = createHub(openStream);
-self.onconnect = (ev) => {
+self.addEventListener('connect', (ev) => {
   const port = ev.ports[0];
   if (port) hub.attach(port);
-};
+});

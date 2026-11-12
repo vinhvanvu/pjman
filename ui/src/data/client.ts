@@ -33,12 +33,11 @@ export class ApiError extends Error {
 
 export const BASE = '/api/v1';
 
-interface Envelope<T> {
-  seq: number;
-  moment?: Moment;
-  data?: T;
-  error?: { code: string; message: string; tried?: string[] };
-}
+/** The server's answer: the data, or an error saying what was tried. */
+type Envelope<T> = { seq: number; moment?: Moment } & (
+  | { data: T; error?: undefined }
+  | { data?: undefined; error: { code: string; message: string; tried?: string[] } }
+);
 
 /** A moment on a route: `at=` appended, so the server answers as of it. */
 const asOf = (route: string, at?: string) =>
@@ -46,9 +45,9 @@ const asOf = (route: string, at?: string) =>
 
 async function call<T>(route: string, at?: string): Promise<T> {
   const res = await fetch(BASE + asOf(route, at), { headers: { accept: 'application/json' } });
-  const body = (await res.json()) as Envelope<T>;
+  const body: Envelope<T> = await res.json();
   if (at && body.moment) useMoment.getState().setResolved(at, body.moment);
-  if (!res.ok || body.error) {
+  if (body.error || !res.ok) {
     throw new ApiError(
       res.status,
       body.error?.code ?? 'error',
@@ -56,7 +55,7 @@ async function call<T>(route: string, at?: string): Promise<T> {
       body.error?.tried,
     );
   }
-  return body.data as T;
+  return body.data;
 }
 
 async function post<T>(route: string, body: unknown): Promise<T> {
@@ -65,8 +64,8 @@ async function post<T>(route: string, body: unknown): Promise<T> {
     headers: { accept: 'application/json', 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const json = (await res.json()) as Envelope<T>;
-  if (!res.ok || json.error) {
+  const json: Envelope<T> = await res.json();
+  if (json.error || !res.ok) {
     throw new ApiError(
       res.status,
       json.error?.code ?? 'error',
@@ -74,13 +73,13 @@ async function post<T>(route: string, body: unknown): Promise<T> {
       json.error?.tried,
     );
   }
-  return json.data as T;
+  return json.data;
 }
 
 export const api = {
   store: (at?: string) => call<StoreInfo>('/store', at),
   records: (q: { type?: string; status?: string; project?: string } = {}, at?: string) => {
-    const p = new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][]);
+    const p = new URLSearchParams(Object.entries(q).filter(([, v]) => v));
     return call<Row[]>(`/records${p.size ? `?${p}` : ''}`, at);
   },
   resolve: (ref: string, at?: string) => call<Resolution>(`/resolve?ref=${encodeURIComponent(ref)}`, at),

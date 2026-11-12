@@ -32,7 +32,6 @@ import { useNow } from '@/hooks/useNow';
 import { productOf, short } from '@/lib/keys';
 import { usePreferences } from '@/state/preferences';
 import { freshScope, pageProduct } from '@/lib/identity';
-import type { PageSearch } from '@/lib/search';
 
 export interface LensPageProps {
   lens: Lens;
@@ -66,8 +65,17 @@ const narrowScope = (s: Scope | undefined, milestone?: string, aspect?: string):
 
 const list = (v: string | undefined): string[] | undefined => (v ? v.split(',').filter(Boolean) : undefined);
 
+const railProduct = (p: { key: string; title?: string; name?: string }, health?: ProductRow): RailProduct => ({
+  key: p.key,
+  name: p.name ?? health?.name ?? short(p.key),
+  title: p.title ?? health?.title,
+  open: health?.open,
+  inFlight: health?.inFlight,
+  loud: health?.loud,
+});
+
 export function LensPage({ lens, node, following }: LensPageProps) {
-  const search = useSearch({ strict: false }) as PageSearch;
+  const search = useSearch({ strict: false });
   const navigate = useNavigate();
   const wide = useWide();
   // width decides panes, never routes: the session's page at docked width is the dock column
@@ -213,14 +221,6 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   // the rail names the product, so the crumb starts beneath it; on the product's own page the bar names the lens
   const onProduct = fresh?.node?.key.startsWith('product:') ?? false;
   const crumbsBeneath = (fresh?.crumbs ?? []).filter((c) => !c.key.startsWith('product:'));
-  const railProduct = (p: { key: string; title?: string; name?: string }, health?: ProductRow): RailProduct => ({
-    key: p.key,
-    name: p.name ?? health?.name ?? short(p.key),
-    title: p.title ?? health?.title,
-    open: health?.open,
-    inFlight: health?.inFlight,
-    loud: health?.loud,
-  });
 
   const rail = (
     <Rail

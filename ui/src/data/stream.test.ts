@@ -3,8 +3,14 @@ import { createHub, type Frame, type Port, type Request } from './stream';
 
 function page() {
   const got: Frame[] = [];
-  const port: Port = { postMessage: (f) => got.push(f), onmessage: null };
-  const send = (r: Request) => port.onmessage?.({ data: r } as MessageEvent<Request>);
+  let listener: ((ev: MessageEvent<Request>) => void) | undefined;
+  const port: Port = {
+    postMessage: (f) => got.push(f),
+    addEventListener: (_type, l) => {
+      listener = l;
+    },
+  };
+  const send = (r: Request) => listener?.({ data: r } as MessageEvent<Request>);
   return { port, got, send };
 }
 

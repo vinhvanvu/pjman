@@ -35,10 +35,11 @@ export type Request = { kind: 'start'; url: string } | { kind: 'leave' };
 /** An EventSource on `url`, each of its happenings as a frame; returns its close. */
 export function openStream(url: string, emit: (f: Frame) => void): () => void {
   const es = new EventSource(url);
-  const onEvent = (ev: MessageEvent) => emit({ kind: 'event', data: ev.data as string });
-  for (const op of OPS) es.addEventListener(op, onEvent as EventListener);
-  for (const name of LIVE_EVENTS)
-    es.addEventListener(name, ((ev: MessageEvent) => emit({ kind: 'host', data: ev.data as string })) as EventListener);
+  const relay = (kind: 'event' | 'host') => (ev: Event) => {
+    if (ev instanceof MessageEvent && typeof ev.data === 'string') emit({ kind, data: ev.data });
+  };
+  for (const op of OPS) es.addEventListener(op, relay('event'));
+  for (const name of LIVE_EVENTS) es.addEventListener(name, relay('host'));
   es.addEventListener('open', () => emit({ kind: 'open' }));
   es.addEventListener('error', () => emit({ kind: 'error' }));
   return () => es.close();
@@ -46,7 +47,7 @@ export function openStream(url: string, emit: (f: Frame) => void): () => void {
 
 export interface Port {
   postMessage(f: Frame): void;
-  onmessage: ((ev: MessageEvent<Request>) => void) | null;
+  addEventListener(type: 'message', listener: (ev: MessageEvent<Request>) => void): void;
   start?(): void;
 }
 
@@ -62,12 +63,14 @@ export function createHub(open: (url: string, emit: (f: Frame) => void) => () =>
   const broadcast = (f: Frame) => {
     if (f.kind === 'open') connected = true;
     else if (f.kind === 'error') connected = false;
+    // a MessagePort: it takes no target origin
+    // oxlint-disable-next-line unicorn/require-post-message-target-origin
     for (const p of ports) p.postMessage(f);
   };
 
   return {
     attach(port: Port) {
-      port.onmessage = (ev) => {
+      port.addEventListener('message', (ev) => {
         const req = ev.data;
         if (req.kind === 'start') {
           ports.add(port);
@@ -81,7 +84,7 @@ export function createHub(open: (url: string, emit: (f: Frame) => void) => () =>
             connected = false;
           }
         }
-      };
+      });
       port.start?.();
     },
     get size() {

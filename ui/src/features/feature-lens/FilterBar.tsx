@@ -35,11 +35,12 @@ export interface FilterBarProps {
   className?: string;
 }
 
+const toggle = (list: string[] | undefined, v: string) =>
+  list?.includes(v) ? list.filter((x) => x !== v) : [...(list ?? []), v];
+
 export function FilterBar({ filter, onChange, matched, changes, aspects, className }: FilterBarProps) {
   const milestones = inFlight(changes);
   const chosen = filter.milestone ? changes.find((r) => r.key === filter.milestone) : undefined;
-  const toggle = (list: string[] | undefined, v: string) =>
-    list?.includes(v) ? list.filter((x) => x !== v) : [...(list ?? []), v];
   const active = isFiltering(filter);
   return (
     <div className={cn('flex flex-wrap items-center gap-2 px-5 pb-2', className)}>

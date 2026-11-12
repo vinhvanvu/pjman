@@ -149,7 +149,7 @@ export function changesHere(tree: ScopeNode[]): ChangeRow[] {
 }
 
 /** Changes beneath the node but filed under a feature below it, grouped by that feature's key. */
-export function changesBeneath(scope: Scope): { feature: ScopeNode; rows: ChangeRow[] }[] {
+export function changesBeneath(scope: Pick<Scope, 'tree'>): { feature: ScopeNode; rows: ChangeRow[] }[] {
   const here = new Set(changesHere(scope.tree).map((r) => r.key));
   const groups: { feature: ScopeNode; rows: ChangeRow[] }[] = [];
   const walk = (list: ScopeNode[]) => {
@@ -294,7 +294,7 @@ export function bodyOf(scope: Pick<Scope, 'node' | 'crumbs'>): Body {
  *  beneath is listed once. */
 export function allWork(scope: Pick<Scope, 'tree'>): ChangeRow[] {
   const seen = new Set<string>();
-  return [...changesHere(scope.tree), ...changesBeneath(scope as Scope).flatMap((g) => g.rows)].filter((r) =>
+  return [...changesHere(scope.tree), ...changesBeneath(scope).flatMap((g) => g.rows)].filter((r) =>
     seen.has(r.key) ? false : (seen.add(r.key), true),
   );
 }
@@ -331,9 +331,10 @@ export const byMotion = (features: ScopeNode[]): ScopeNode[] =>
     return lb.localeCompare(la) || (a.name ?? a.key).localeCompare(b.name ?? b.key);
   });
 
+const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
+
 /** Milestones in the scope that are not finished, nearest to done first. */
 export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
-  const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
   return changes
     .filter((r) => r.kind === 'milestone' && r.status !== 'done' && r.status !== 'dropped')
     .toSorted((a, b) => share(b) - share(a) || (a.gist ?? '').localeCompare(b.gist ?? ''));
