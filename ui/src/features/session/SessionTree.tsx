@@ -27,6 +27,7 @@ import { Pending } from '@/components/Pending';
 import { Label } from '@/components/chips/Chip';
 import { Pulse } from '@/components/presence/Presence';
 import { ChangeTree, featureNames, RISE, Sources } from '@/features/change';
+import { CalmDock } from '@/features/dock/CalmDock';
 import { dockArrivals } from '@/features/dock/model';
 import { beneathOf, frameOf, MilestoneChildren } from '@/features/milestones';
 import { ActivityRail } from '@/features/rail/ActivityRail';
@@ -45,7 +46,9 @@ const NO_EVENTS: readonly StoreEvent[] = [];
 const LANES_QUERY = { limit: 1, fold: UNFOLDED } as const;
 const chipKey = (c: ChipView) => c.key;
 /** The lane's colour, as the custom property the chips, the bars and the dots read. */
-const laneStyle = (colour: string): React.CSSProperties => ({ '--lane': colour });
+const laneStyle = (colour: string): React.CSSProperties => ({
+  '--lane': colour,
+});
 const SLIDE = { duration: 0.18, ease: 'easeOut' as const };
 
 /** The page's two session parameters: the change held shown, and the decision open (decision one-shown-change,
@@ -129,18 +132,42 @@ export function SessionTree({
   const shownChip = chips.find((c) => c.key === shown) ?? live.find((c) => c.key === shown);
 
   const openHost = useOpenHost();
+  const hostOpen =
+    session.host && session.state !== 'ended'
+      ? {
+          name: session.host.name,
+          open: () => openHost.mutate({ session: session.key }),
+          busy: openHost.isPending,
+        }
+      : undefined;
   const barRow = (
-    <SessionBar
-      live={session.state === 'live'}
-      parts={bar.parts}
-      waits={bar.waits}
-      alarm={bar.alarm}
-      host={
-        session.host && session.state !== 'ended'
-          ? { name: session.host.name, open: () => openHost.mutate({ session: session.key }), busy: openHost.isPending }
-          : undefined
-      }
-    />
+    <SessionBar live={session.state === 'live'} parts={bar.parts} waits={bar.waits} alarm={bar.alarm} host={hostOpen} />
+  );
+  const viewingBanner = isViewing && (
+    <m.div
+      key="viewing"
+      {...RISE}
+      role="status"
+      className={cn('flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-ink-muted', TONE.live.soft)}
+    >
+      <Pulse className="size-[7px]" />
+      <span className="min-w-0">
+        The session is on{' '}
+        <b className="font-semibold text-ink">{focusChip?.title ?? (focus ? short(focus) : 'no change')}</b> · you are
+        viewing <b className="font-semibold text-ink">{shownChip?.title ?? (shown ? short(shown) : '')}</b>
+      </span>
+      <button
+        type="button"
+        onClick={() => setPick(undefined)}
+        className={cn(
+          'ml-auto h-[26px] shrink-0 rounded-row border px-2.5 text-xs font-semibold',
+          TONE.live.line,
+          TONE.live.text,
+        )}
+      >
+        Back to it
+      </button>
+    </m.div>
   );
   const header = (
     <>
@@ -153,32 +180,7 @@ export function SessionTree({
           className={wide ? 'border-b border-line pb-3.5' : undefined}
         />
       )}
-      {isViewing && (
-        <m.div
-          key="viewing"
-          {...RISE}
-          role="status"
-          className={cn('flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] text-ink-muted', TONE.live.soft)}
-        >
-          <Pulse className="size-[7px]" />
-          <span className="min-w-0">
-            The session is on{' '}
-            <b className="font-semibold text-ink">{focusChip?.title ?? (focus ? short(focus) : 'no change')}</b> · you
-            are viewing <b className="font-semibold text-ink">{shownChip?.title ?? (shown ? short(shown) : '')}</b>
-          </span>
-          <button
-            type="button"
-            onClick={() => setPick(undefined)}
-            className={cn(
-              'ml-auto h-[26px] shrink-0 rounded-row border px-2.5 text-xs font-semibold',
-              TONE.live.line,
-              TONE.live.text,
-            )}
-          >
-            Back to it
-          </button>
-        </m.div>
-      )}
+      {viewingBanner}
     </>
   );
   const rail = (
@@ -205,7 +207,10 @@ export function SessionTree({
         >
           {barRow}
           <div className="flex flex-col gap-1.5">
-            <Label>session{session.kind ? ` · ${session.kind.name ?? session.kind.slug}` : ''}</Label>
+            <Label>
+              session
+              {session.kind ? ` · ${session.kind.name ?? session.kind.slug}` : ''}
+            </Label>
             <h1 className="text-[18px] font-semibold tracking-tight">{session.name ?? 'No change yet'}</h1>
             <p className="text-body text-ink-muted">
               {session.name
@@ -226,6 +231,23 @@ export function SessionTree({
     );
   }
 
+  const milestoneSlot =
+    ctx && frame ? (
+      <MilestoneChildren
+        ctx={ctx}
+        lens={lens}
+        mode={mode}
+        wide={wide}
+        frame={frame}
+        working={session.working}
+        decide={decide}
+        actor={actor}
+        linked={decision}
+        onLink={setDecision}
+        moment={at}
+        held={hold.held}
+      />
+    ) : undefined;
   const body = ctx ? (
     <ChangeTree
       key={subject}
@@ -246,24 +268,7 @@ export function SessionTree({
       held={hold.held}
       linked={decision}
       onLink={setDecision}
-      milestoneSlot={
-        frame ? (
-          <MilestoneChildren
-            ctx={ctx}
-            lens={lens}
-            mode={mode}
-            wide={wide}
-            frame={frame}
-            working={session.working}
-            decide={decide}
-            actor={actor}
-            linked={decision}
-            onLink={setDecision}
-            moment={at}
-            held={hold.held}
-          />
-        ) : undefined
-      }
+      milestoneSlot={milestoneSlot}
       waitingBeneath={frame ? waitingBeneath : undefined}
     />
   ) : (
@@ -294,19 +299,32 @@ export function SessionTree({
       </div>
     );
 
+  // docked, the calm dock (decision dock-redesign/calm-dock): the band, the name and gist, what waits, the plan, the
+  // sources out; the bar, the chips and the rail are the wide page's and the change page's
   return (
-    <article
-      className={cn('flex flex-col gap-[22px] px-4 pt-[18px] pb-4', className)}
-      style={laneStyle(colour)}
-      {...hold.props}
-    >
-      {barRow}
-      <section aria-label="The change the session is on now" className="flex flex-col gap-3">
-        {header}
-        {body}
-        {sources}
-      </section>
-      {rail}
+    <article className={cn('flex flex-col', className)} style={laneStyle(colour)} {...hold.props}>
+      {ctx ? (
+        <CalmDock
+          key={subject}
+          ctx={ctx}
+          session={session}
+          lens={lens}
+          banner={viewingBanner || undefined}
+          milestoneSlot={milestoneSlot}
+          waitingBeneath={frame ? waitingBeneath : undefined}
+          working={session.working && !isViewing}
+          arrivals={arrivals}
+          moment={at}
+          decide={decide}
+          actor={actor}
+          held={hold.held}
+          linked={decision}
+          onLink={setDecision}
+          host={hostOpen}
+        />
+      ) : (
+        <Pending />
+      )}
     </article>
   );
 }

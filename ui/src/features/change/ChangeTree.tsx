@@ -413,10 +413,13 @@ export function SegmentBar({
   segments,
   label,
   working = false,
+  thick = false,
 }: {
   segments: readonly string[];
   label: string;
   working?: boolean;
+  /** The calm dock's bar (decision dock-redesign/calm-dock): 6 px, where the plan is read at a glance. */
+  thick?: boolean;
 }) {
   const cls = (s: string) => (working && (s === 'on' || s === 'active') ? 'working-segment' : segmentClass(s));
   return (
@@ -426,7 +429,14 @@ export function SegmentBar({
       aria-label={working ? `${label} · a session working now` : label}
     >
       {segments.map((s, i) => (
-        <span key={i} className={cn('h-1 flex-1 rounded-sm transition-colors duration-200', cls(s))} />
+        <span
+          key={i}
+          className={cn(
+            'flex-1 transition-colors duration-200',
+            thick ? 'h-1.5 rounded-[3px]' : 'h-1 rounded-sm',
+            cls(s),
+          )}
+        />
       ))}
     </div>
   );
@@ -578,8 +588,16 @@ function SourceLink({ s, lens, mode, mono }: { s: Source; lens: Lens; mode: Mode
 function AspectChips({ aspects, lens }: { aspects: ChangeAspects; lens: Lens }) {
   const [open, setOpen] = useState<string | undefined>();
   const chips = [
-    ...aspects.named.map((n) => ({ key: n.aspect, named: true, forked: false })),
-    ...aspects.at.map((x) => ({ key: x.aspect, named: false, forked: x.layers.some((l) => l.from === x.place) })),
+    ...aspects.named.map((n) => ({
+      key: n.aspect,
+      named: true,
+      forked: false,
+    })),
+    ...aspects.at.map((x) => ({
+      key: x.aspect,
+      named: false,
+      forked: x.layers.some((l) => l.from === x.place),
+    })),
   ];
   if (!chips.length) return null;
   const named = aspects.named.find((n) => n.aspect === open);

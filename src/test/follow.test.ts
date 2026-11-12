@@ -138,3 +138,21 @@ test('ensure: while a window is open nobody opens one; once it closes one caller
   assert.deepEqual([a.open, b.open].toSorted(), [false, true]);
   assert.equal((a.open ? b : a).reason, 'opening');
 });
+
+test("now: a session's latest action is held in memory, sent on the stream and to a stream that opens; no text clears it (decision dock-redesign/agent-signal)", async () => {
+  const events = path.join(store.root, 'events.jsonl');
+  const written = fs.existsSync(events) ? fs.readFileSync(events, 'utf8') : '';
+  const page = await stream('/events');
+  assert.equal((await post('/now', { session: 'one', text: 'Reading src/a.ts', tool: 'Read' })).status, 200);
+  await page.until((s) => /event: now\ndata: \{[^\n]*"key":"session:one"[^\n]*"text":"Reading src\/a.ts"/.test(s));
+  page.close();
+  assert.equal((await post('/now', {})).status, 400);
+  // a page that opens mid-turn reads the action standing now
+  const late = await stream('/events');
+  await late.until((s) => s.includes('"text":"Reading src/a.ts"'));
+  await post('/now', { session: 'session:one' });
+  await late.until((s) => /event: now\ndata: \{"op":"now","type":"session","key":"session:one","at":"[^"]+"\}/.test(s));
+  late.close();
+  // nothing reached the store
+  assert.equal(fs.existsSync(events) ? fs.readFileSync(events, 'utf8') : '', written);
+});

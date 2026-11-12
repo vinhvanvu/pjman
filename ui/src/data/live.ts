@@ -5,11 +5,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useArrivals } from '@/state/arrivals';
+import { useNowStore } from '@/state/now';
 import { BASE } from './client';
 import type { StoreEvent } from './contract';
 import { queryKeys } from './queries';
 import { productOfKey, reaches } from './reach';
-import { type Frame, openStream, type Request } from './stream';
+import { type Frame, LIVE_EVENTS, openStream, type Request } from './stream';
 
 export interface LiveState {
   connected: boolean;
@@ -17,12 +18,17 @@ export interface LiveState {
   last?: StoreEvent;
 }
 
+/** The shared worker's name carries the frames it relays: a browser keeps a worker running while any pjman page is
+ *  open, so a page that reads a frame kind an older worker never listened for (the `now` frame, change:dock-redesign)
+ *  starts a worker of its own instead of attaching to the old one and hearing nothing. */
+const WORKER_NAME = `pjman-events/${LIVE_EVENTS.join('+')}`;
+
 /** Frames from the browser's shared stream, or from a stream of this page's own; returns the unsubscribe. */
 function subscribe(url: string, onFrame: (f: Frame) => void): () => void {
   if (typeof SharedWorker === 'undefined') return openStream(url, onFrame);
   let worker: SharedWorker;
   try {
-    worker = new SharedWorker(new URL('./stream.worker.ts', import.meta.url), { type: 'module', name: 'pjman-events' });
+    worker = new SharedWorker(new URL('./stream.worker.ts', import.meta.url), { type: 'module', name: WORKER_NAME });
   } catch {
     return openStream(url, onFrame);
   }
@@ -88,6 +94,9 @@ export function useLiveInvalidation(): LiveState {
         // a session's host spoke: no record moved, every page that shows the session reads it again
         reached = null;
         timer ??= setTimeout(flush, Math.max(150, last + 1000 - Date.now()));
+      } else if (f.kind === 'now') {
+        // the agent's latest action: held for the dock, no page reads anything again
+        useNowStore.getState().take(f.data);
       } else {
         const e: StoreEvent = JSON.parse(f.data);
         setState({ connected: true, last: e });
