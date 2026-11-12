@@ -154,15 +154,17 @@ export interface WriteWords {
   object?: string;
 }
 
-const STEP_VERBS: [string, string][] = [
-  ['step start', 'Started a step'],
-  ['step done', 'Finished a step'],
-  ['step note', 'Noted a step'],
-  ['step add', 'Added steps'],
-  ['step drop', 'Dropped a step'],
-  ['step reopen', 'Reopened a step'],
-  ['step edit', 'Reworded a step'],
-  ['step move', 'Moved a step'],
+/** A step write's verb: by itself when the event names no step (writes before change:dock-now-lines), else with the
+ *  step's number, its text set in the ink. */
+const STEP_VERBS: [string, string, string][] = [
+  ['step start', 'Started a step', 'Started'],
+  ['step done', 'Finished a step', 'Finished'],
+  ['step note', 'Noted a step', 'Noted on'],
+  ['step add', 'Added steps', 'Added'],
+  ['step drop', 'Dropped a step', 'Dropped'],
+  ['step reopen', 'Reopened a step', 'Reopened'],
+  ['step edit', 'Reworded a step', 'Reworded'],
+  ['step move', 'Moved a step', 'Moved'],
 ];
 const FIELD_VERBS: [string, string][] = [
   ['notes', 'Left a note'],
@@ -173,7 +175,17 @@ const FIELD_VERBS: [string, string][] = [
   ['depends-on', 'Set what it depends on'],
 ];
 
-export function writeWords(r: Pick<RailRow, 'kind' | 'op' | 'label' | 'value' | 'fields' | 'files'>): WriteWords {
+/** The steps a step write names, as their numbers ("3", "2,4"); none when the event names none. */
+const stepNumbers = (value: string | undefined): number[] =>
+  (value ?? '')
+    .split(',')
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+
+export function writeWords(
+  r: Pick<RailRow, 'kind' | 'op' | 'label' | 'value' | 'fields' | 'files'>,
+  plan: readonly Pick<ChangeContext['plan'][number], 'text'>[] = [],
+): WriteWords {
   if (r.kind === 'decision') {
     const verb =
       r.op === 'created'
@@ -195,10 +207,17 @@ export function writeWords(r: Pick<RailRow, 'kind' | 'op' | 'label' | 'value' | 
   if (r.op === 'created') return { verb: 'Filed the change' };
   const fields = r.fields ?? [];
   if (fields.includes('status') && r.value) return { verb: 'Status', object: `→ ${r.value}` };
-  for (const [f, verb] of STEP_VERBS) if (fields.some((x) => x.startsWith(f))) return { verb };
+  for (const [f, bare, verb] of STEP_VERBS) {
+    if (!fields.some((x) => x.startsWith(f))) continue;
+    const ns = stepNumbers(r.value);
+    if (!ns.length) return { verb: bare };
+    if (ns.length > 1) return { verb: `${verb} steps`, object: ns.join(', ') };
+    const text = plan[ns[0]! - 1]?.text;
+    return { verb: `${verb} step ${ns[0]}`, object: text };
+  }
   if (fields.includes('plan')) return { verb: 'Updated the plan' };
   for (const [f, verb] of FIELD_VERBS) if (fields.includes(f)) return { verb };
-  return { verb: fields.length ? `Set ${fields.join(', ')}` : 'Wrote to it' };
+  return fields.length ? { verb: 'Set', object: fields.join(', ') } : { verb: 'Wrote to it' };
 }
 
 /** A link's place, as a row says it: the host of its URL, else the kind in its key. */

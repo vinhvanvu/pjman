@@ -9,6 +9,7 @@ import { cn } from 'cn';
 import { AlertTriangle, Check, ChevronRight, FileText, Link2 } from 'lucide-react';
 import { m } from 'motion/react';
 import { useState } from 'react';
+import { CopyKey } from '@/components/links/CopyKey';
 import type { ChangeContext, Lens, RailRowKind, SessionFacts, WaitingDecision } from '@/data/contract';
 import { type useDecideAction, useRail } from '@/data/queries';
 import { KeyText } from '@/components/chips/Chip';
@@ -123,7 +124,7 @@ export function CalmDock({
   host,
 }: CalmDockProps) {
   const c = ctx.change;
-  const now = <Now change={c.key} session={session} working={working} moment={moment} />;
+  const now = <Now change={c.key} plan={ctx.plan} session={session} working={working} moment={moment} />;
   const milestone = c.data.kind === 'milestone';
   const beneath = waitingBeneath.filter((d) => d.change !== c.key).map(fromWaiting);
   const decisions = [...ctx.decisions.map((d) => fromRow(d, c.key)), ...beneath];
@@ -148,6 +149,8 @@ export function CalmDock({
           {c.name && c.gist && c.gist !== c.name && (
             <p className="text-[13.5px] leading-normal text-ink-muted">{c.gist}</p>
           )}
+          {/* the change's id, copied as a prompt or a command names it (change:dock-now-lines) */}
+          <CopyKey refKey={`change:${short(c.key)}`} className="self-start" />
         </div>
       </section>
 
@@ -287,11 +290,13 @@ const LATEST = { limit: 1, kinds: ['write', 'decision', 'file'] as RailRowKind[]
  *  the newest write to the change behind a diamond, washed when a new one lands. */
 function Now({
   change,
+  plan,
   session,
   working,
   moment,
 }: {
   change: string;
+  plan: ChangeContext['plan'];
   session: SessionFacts;
   working: boolean;
   moment?: string;
@@ -302,7 +307,7 @@ function Now({
   const [first, setFirst] = useState<number>();
   if (row && first === undefined) setFirst(row.seq);
   const arrived = !moment && row && first !== undefined && row.seq !== first ? row.seq : undefined;
-  const words = row && writeWords(row);
+  const words = row && writeWords(row, plan);
   const ended = session.state === 'ended';
   // the agent's latest action (decision agent-signal): a tool call is proof of work even when nothing reached the
   // store, so a fresh one keeps the spinner on while the session reads, searches or runs tests; held moments show none

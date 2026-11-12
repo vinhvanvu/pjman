@@ -54,6 +54,24 @@ describe('one stream per browser', () => {
     expect(b.got).toEqual([{ kind: 'open' }]);
   });
 
+  test("a page arriving on an open stream is given each session's standing action, not a cleared one", () => {
+    const { opened, open } = streams();
+    const hub = createHub(open);
+    const a = page();
+    hub.attach(a.port);
+    a.send({ kind: 'start', url: '/events' });
+    const now = (key: string, text?: string) => ({ kind: 'now' as const, data: JSON.stringify({ key, text }) });
+    opened[0]!.emit({ kind: 'open' });
+    opened[0]!.emit(now('session:a', 'Reading a.ts'));
+    opened[0]!.emit(now('session:a', 'Editing a.ts'));
+    opened[0]!.emit(now('session:b', 'Running the tests'));
+    opened[0]!.emit(now('session:b'));
+    const b = page();
+    hub.attach(b.port);
+    b.send({ kind: 'start', url: '/events' });
+    expect(b.got).toEqual([{ kind: 'open' }, now('session:a', 'Editing a.ts')]);
+  });
+
   test('the stream closes with the last page and opens again with the next', () => {
     const { opened, open } = streams();
     const hub = createHub(open);
