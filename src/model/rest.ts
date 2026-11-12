@@ -40,17 +40,26 @@ export function restOf(loaded: Loaded, raw: string): Rest {
 
 export function restOfRecord(loaded: Loaded, rec: Rec): Rest {
   const status = str(rec.data.status) ?? 'open';
-  const waiting = loaded.records.filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && d.changeKey === rec.key).map((d) => d.key);
+  const waiting = loaded.records
+    .filter((d) => d.type === 'decision' && d.valid && d.data.status === 'proposed' && d.changeKey === rec.key)
+    .map((d) => d.key);
   const blockedOn = rec.sections.get('Blocked on')?.trim() || undefined;
   const dependsOn = list(rec.data.depends_on)
     .map((k) => live(loaded, k))
     .filter((d): d is Rec => !!d && !['done', 'dropped'].includes(str(d.data.status) ?? 'open'))
     .map((d) => d.key);
   const steps = stepsOf(rec.data);
-  const open = steps.map((step, i) => ({ n: i + 1, step })).filter((s) => s.step.state === 'open' || s.step.state === 'active');
+  const open = steps
+    .map((step, i) => ({ n: i + 1, step }))
+    .filter((s) => s.step.state === 'open' || s.step.state === 'active');
   const base = { key: rec.key, waiting, blockedOn, dependsOn, open, status };
   if (HELD.has(status)) return { ...base, rests: true, because: `its status is ${status}` };
-  if (waiting.length) return { ...base, rests: true, because: `${waiting.join(', ')} ${waiting.length === 1 ? 'is' : 'are'} proposed and wait${waiting.length === 1 ? 's' : ''} on the person` };
+  if (waiting.length)
+    return {
+      ...base,
+      rests: true,
+      because: `${waiting.join(', ')} ${waiting.length === 1 ? 'is' : 'are'} proposed and wait${waiting.length === 1 ? 's' : ''} on the person`,
+    };
   if (blockedOn) return { ...base, rests: true, because: `it is blocked on: ${blockedOn.split('\n')[0]}` };
   if (dependsOn.length) return { ...base, rests: true, because: `it depends on ${dependsOn.join(', ')}, not done` };
   if (!steps.length) return { ...base, rests: true, because: 'it has no plan to run' };
@@ -61,5 +70,8 @@ export function restOfRecord(loaded: Loaded, rec: Rec): Rest {
 /** The verdict as a line and, when the change does not rest, the open steps beneath it. */
 export function formatRest(r: Rest): string {
   if (r.rests) return `${r.key} rests: ${r.because}`;
-  return [`${r.key} does not rest: ${r.open.length === 1 ? 'a step is' : `${r.open.length} steps are`} open`, ...r.open.map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`)].join('\n');
+  return [
+    `${r.key} does not rest: ${r.open.length === 1 ? 'a step is' : `${r.open.length} steps are`} open`,
+    ...r.open.map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`),
+  ].join('\n');
 }

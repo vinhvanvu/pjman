@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { canonicalSourceKey, decisionKey, parseDecisionRest, parseKey, parseScopedRest, productOfKey, shortenText, shortKey, slugify, sourceFileSlug } from '../store/keys.js';
+import {
+  canonicalSourceKey,
+  decisionKey,
+  parseDecisionRest,
+  parseKey,
+  parseScopedRest,
+  productOfKey,
+  shortenText,
+  shortKey,
+  slugify,
+  sourceFileSlug,
+} from '../store/keys.js';
 
 test('keys split at the first colon', () => {
   assert.deepEqual(parseKey('url:https://x.y/z'), { kind: 'url', rest: 'https://x.y/z', raw: 'url:https://x.y/z' });
@@ -13,7 +24,12 @@ test('keys split at the first colon', () => {
 });
 
 test('decision keys: under a change (in full or bare), at product level, or at store level', () => {
-  assert.deepEqual(parseDecisionRest('shop/schema/keys'), { head: 'shop', change: 'schema', slug: 'keys', segments: 3 });
+  assert.deepEqual(parseDecisionRest('shop/schema/keys'), {
+    head: 'shop',
+    change: 'schema',
+    slug: 'keys',
+    segments: 3,
+  });
   assert.deepEqual(parseDecisionRest('schema/keys'), { head: 'schema', change: null, slug: 'keys', segments: 2 });
   assert.deepEqual(parseDecisionRest('/keys'), { head: null, change: null, slug: 'keys', segments: 2 });
   assert.equal(parseDecisionRest('keys'), null);
@@ -33,7 +49,10 @@ test('scoped keys: a namespace and a slug; the short form inside the product', (
   assert.equal(shortKey('decision:shop/cards/why', 'product:shop'), 'decision:cards/why');
   assert.equal(shortKey('feature:other/checkout', 'shop'), 'feature:other/checkout');
   assert.equal(shortKey('project:shop', 'shop'), 'project:shop');
-  assert.equal(shortenText('see change:shop/cards and feature:other/x and decision:shop/cards/why', 'shop'), 'see change:cards and feature:other/x and decision:cards/why');
+  assert.equal(
+    shortenText('see change:shop/cards and feature:other/x and decision:shop/cards/why', 'shop'),
+    'see change:cards and feature:other/x and decision:cards/why',
+  );
   assert.equal(decisionKey('shop', 'cards', 'why'), 'decision:shop/cards/why');
   assert.equal(decisionKey('shop', null, 'why'), 'decision:shop/why');
   assert.equal(decisionKey(null, null, 'why'), 'decision:/why');

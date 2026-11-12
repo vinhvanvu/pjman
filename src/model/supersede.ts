@@ -19,10 +19,12 @@ export function resolveSupersedes(loaded: Loaded, keys: string[], scope: string 
   for (const raw of keys) {
     const res = resolve(loaded, raw, scope ?? undefined);
     if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`supersedes: ${unresolved(res, raw)}`);
-    if (res.rec.type !== 'decision') throw new CliError(`supersedes: ${res.rec.key} is a ${res.rec.type}, not a decision`);
+    if (res.rec.type !== 'decision')
+      throw new CliError(`supersedes: ${res.rec.key} is a ${res.rec.type}, not a decision`);
     if (self && res.rec.key === self.key) throw new CliError(`supersedes: a decision cannot supersede itself`);
     const by = supersededBy(loaded, res.rec.key).filter((r) => !self || r.key !== self.key);
-    if (by.length) throw new CliError(`supersedes: ${res.rec.key} is already superseded by ${by.map((r) => r.key).join(', ')}`);
+    if (by.length)
+      throw new CliError(`supersedes: ${res.rec.key} is already superseded by ${by.map((r) => r.key).join(', ')}`);
     if (!out.some((r) => r.key === res.rec.key)) out.push(res.rec);
   }
   return out;

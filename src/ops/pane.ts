@@ -2,12 +2,28 @@ import type { Store } from '../store/config.js';
 import { eventsBySession, follow, lastSeq, readEvents } from '../store/events.js';
 import { get, type GetOpts, type Neighbourhood } from '../model/graph.js';
 import { loadStore, resolve, type Loaded, type Rec } from '../store/records.js';
-import { hostFactsOf, lastActs, LIVE_MINUTES, sessionLogOf, sessionState, type SessionHostFacts } from '../model/session-state.js';
+import {
+  hostFactsOf,
+  lastActs,
+  LIVE_MINUTES,
+  sessionLogOf,
+  sessionState,
+  type SessionHostFacts,
+} from '../model/session-state.js';
 import type { HostStatus } from '../hosts/host.js';
 import { live, rootProductOf } from '../model/tree.js';
 import { focusOf } from './hydrate.js';
 import { notFound } from '../store/util.js';
-import { decisionLine, lineOfRow, nextLine, readinessLines, storeContext, type ChangeContext, type Row, type StoreContext } from '../model/view.js';
+import {
+  decisionLine,
+  lineOfRow,
+  nextLine,
+  readinessLines,
+  storeContext,
+  type ChangeContext,
+  type Row,
+  type StoreContext,
+} from '../model/view.js';
 import { formatStep, nextStep, stepsOf } from '../model/foundation.js';
 import { ownSources } from './session-kinds.js';
 import { urlOf } from '../model/refs.js';
@@ -88,7 +104,9 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
     .map((l) => LOG_LINE.exec(l.trim()))
     .filter((m): m is RegExpExecArray => !!m)
     .map((m) => ({ at: m[1], text: m[2] }));
-  const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : []).map((k) => live(loaded, k)).filter((r): r is Rec => !!r);
+  const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : [])
+    .map((k) => live(loaded, k))
+    .filter((r): r is Rec => !!r);
   const events = readEvents(store);
   const binding = bound[bound.length - 1];
   const on = live(loaded, focusOf(loaded, rec, events)?.change) ?? binding;
@@ -105,15 +123,43 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   // live by the stream's window, or by the host's word that its program is up (working, or blocked on the person)
   const up = host?.state === 'working' || host?.state === 'blocked';
   const state = ended ? 'ended' : up || (last && last >= liveSince) ? 'live' : 'quiet';
-  const working = sessionState({ ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false, host }, now) === 'working';
+  const working =
+    sessionState(
+      { ended: !!read.ended, line: read.line?.at, act: lastActs(events).get(rec.key), proposed: false, host },
+      now,
+    ) === 'working';
   const kindRec = live(loaded, rec.data.kind);
-  const kind = kindRec ? { key: kindRec.key, slug: kindRec.key.slice('session-kind:'.length), name: str(kindRec.data.name), gist: str(kindRec.data.gist) } : undefined;
+  const kind = kindRec
+    ? {
+        key: kindRec.key,
+        slug: kindRec.key.slice('session-kind:'.length),
+        name: str(kindRec.data.name),
+        gist: str(kindRec.data.gist),
+      }
+    : undefined;
   const sources: SessionSource[] = ownSources(rec).map((s) => {
     const r = resolve(loaded, s.to);
     const src = r.status === 'ok' || r.status === 'alias' ? r.rec : undefined;
     return { key: s.to, at: s.at, title: str(src?.data.title), url: urlOf(s.to, src?.data.url) };
   });
-  return { key: rec.key, agent: str(rec.data.agent), onBehalfOf: str(rec.data.on_behalf_of), started: str(rec.data.started), log, on: on?.key, bound: binding?.key, binds: bound.map((r) => r.key), product: product?.key, state, working, last, name: str(rec.data.name), kind, sources, host: hostFactsOf(rec.data, host) };
+  return {
+    key: rec.key,
+    agent: str(rec.data.agent),
+    onBehalfOf: str(rec.data.on_behalf_of),
+    started: str(rec.data.started),
+    log,
+    on: on?.key,
+    bound: binding?.key,
+    binds: bound.map((r) => r.key),
+    product: product?.key,
+    state,
+    working,
+    last,
+    name: str(rec.data.name),
+    kind,
+    sources,
+    host: hostFactsOf(rec.data, host),
+  };
 }
 
 const MARK: Record<string, string> = { proposed: '○', decided: '●', superseded: '◌', reverted: '⊘' };
@@ -144,12 +190,17 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
     if (k === 'Notes') continue;
     out.push(`\n### ${k}\n\n${v}`);
   }
-  if (c.plan.length) out.push(`\n### Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`);
+  if (c.plan.length)
+    out.push(
+      `\n### Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`,
+    );
   if (c.decisions.length) {
     out.push('\n### Decisions');
     for (const dec of c.decisions) {
       const slug = dec.key.slice(dec.key.indexOf('/') + 1);
-      out.push(`- ${MARK[dec.status ?? ''] ?? '•'} **${esc(dec.name ?? slug)}** \`${slug}\` — ${esc(lineOfRow(dec))} — ${decisionLine(dec)}`);
+      out.push(
+        `- ${MARK[dec.status ?? ''] ?? '•'} **${esc(dec.name ?? slug)}** \`${slug}\` — ${esc(lineOfRow(dec))} — ${decisionLine(dec)}`,
+      );
     }
   }
   if (c.children.length) {
@@ -170,7 +221,9 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
     for (const s of c.sessions.slice(-5)) {
       const rec = loaded.byKey.get(s.key)?.[0];
       const log = (rec?.sections.get('Log') ?? '').split('\n').filter((l) => l.trim()).length;
-      out.push(`- ${String(s.data.started).slice(0, 10)} \`${s.key.slice(0, 16)}\` ${String(s.data.agent)} for ${String(s.data.on_behalf_of)} · ${log} log line${log === 1 ? '' : 's'}${s.last ? `\n  - ${esc(s.last)}` : ''}`);
+      out.push(
+        `- ${String(s.data.started).slice(0, 10)} \`${s.key.slice(0, 16)}\` ${String(s.data.agent)} for ${String(s.data.on_behalf_of)} · ${log} log line${log === 1 ? '' : 's'}${s.last ? `\n  - ${esc(s.last)}` : ''}`,
+      );
     }
   }
   return out;
@@ -189,7 +242,9 @@ function boardDoc(store: Store, project: string | null): string[] {
     out.push(`\n### ${s}`);
     for (const r of rows) {
       const next = nextLine(nextStep(stepsOf(r.data)));
-      out.push(`- \`${r.key}\` — ${r.name ? `**${esc(r.name)}** ` : ''}${esc(lineOfRow(r))}${!c.project && r.data.project ? ` · ${String(r.data.project)}` : ''}${next ? `\n  - next: ${esc(next)}` : ''}`);
+      out.push(
+        `- \`${r.key}\` — ${r.name ? `**${esc(r.name)}** ` : ''}${esc(lineOfRow(r))}${!c.project && r.data.project ? ` · ${String(r.data.project)}` : ''}${next ? `\n  - next: ${esc(next)}` : ''}`,
+      );
     }
   }
   if (c.proposed.length) {
@@ -208,13 +263,23 @@ function neighbourhoodDoc(n: Neighbourhood, loaded: Loaded): string[] {
     if (c) out.push(...changeDoc(c, loaded));
   } else {
     out.push(`# ${r.key}`);
-    if (n.record) out.push(`## ${esc(lineOfRow(n.record) ?? n.record.type)}${n.record.status ? ` · ${n.record.status}` : ''}`);
+    if (n.record)
+      out.push(`## ${esc(lineOfRow(n.record) ?? n.record.type)}${n.record.status ? ` · ${n.record.status}` : ''}`);
     else out.push(`_${r.status === 'key' ? 'a source key with no record' : r.status}_`);
     const cite = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
     const refs = n.out.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
-    if (cite.length) out.push(`\n### Referenced by\n${cite.map((e) => `- ${e.edge} \`${e.from}\`${e.observed ? ' _(observed)_' : ''}`).join('\n')}`);
-    if (refs.length) out.push(`\n### Refers to\n${refs.map((e) => `- ${e.edge} \`${e.to}\`${e.observed ? ' _(observed)_' : ''}`).join('\n')}`);
-    if (n.members.length) out.push(`\n### Members\n${n.members.map((m) => `- \`${m.key}\`${m.status ? ` **${m.status}**` : ''} — ${esc(lineOfRow(m))}`).join('\n')}`);
+    if (cite.length)
+      out.push(
+        `\n### Referenced by\n${cite.map((e) => `- ${e.edge} \`${e.from}\`${e.observed ? ' _(observed)_' : ''}`).join('\n')}`,
+      );
+    if (refs.length)
+      out.push(
+        `\n### Refers to\n${refs.map((e) => `- ${e.edge} \`${e.to}\`${e.observed ? ' _(observed)_' : ''}`).join('\n')}`,
+      );
+    if (n.members.length)
+      out.push(
+        `\n### Members\n${n.members.map((m) => `- \`${m.key}\`${m.status ? ` **${m.status}**` : ''} — ${esc(lineOfRow(m))}`).join('\n')}`,
+      );
   }
   for (const c of n.changes) {
     if (c.change.key === n.record?.key) continue;

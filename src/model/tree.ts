@@ -26,7 +26,9 @@ export function parseEffect(raw: unknown): Effect | null {
 
 /** The effects a change declares on features. */
 export function effectsOf(rec: Rec): Effect[] {
-  return Array.isArray(rec.data.features) ? rec.data.features.map(parseEffect).filter((e): e is Effect => e !== null) : [];
+  return Array.isArray(rec.data.features)
+    ? rec.data.features.map(parseEffect).filter((e): e is Effect => e !== null)
+    : [];
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
@@ -49,7 +51,14 @@ interface TreeIndex {
 
 export function treeIndex(loaded: Loaded): TreeIndex {
   return memo(loaded, 'tree', () => {
-    const ix: TreeIndex = { features: new Map(), drawn: new Map(), parented: new Map(), projects: new Map(), naming: new Map(), inProject: new Map() };
+    const ix: TreeIndex = {
+      features: new Map(),
+      drawn: new Map(),
+      parented: new Map(),
+      projects: new Map(),
+      naming: new Map(),
+      inProject: new Map(),
+    };
     for (const f of ofType(loaded, 'feature')) {
       if (!f.valid) continue;
       const parent = live(loaded, f.data.parent);
@@ -65,7 +74,12 @@ export function treeIndex(loaded: Loaded): TreeIndex {
     }
     for (const c of ofType(loaded, 'change')) {
       if (!c.valid) continue;
-      for (const k of new Set(effectsOf(c).map((e) => live(loaded, e.key)?.key).filter((k): k is string => !!k))) push(ix.naming, k, c);
+      for (const k of new Set(
+        effectsOf(c)
+          .map((e) => live(loaded, e.key)?.key)
+          .filter((k): k is string => !!k),
+      ))
+        push(ix.naming, k, c);
       if (typeof c.data.project === 'string') push(ix.inProject, c.data.project, c);
     }
     return ix;
@@ -80,7 +94,8 @@ export function live(loaded: Loaded, raw: unknown): Rec | undefined {
 
 /** The structural parent of a node: a feature's parent feature or product; a project's parent project or product. */
 export function structuralParent(loaded: Loaded, rec: Rec): Rec | undefined {
-  if (rec.type === 'feature' || rec.type === 'project') return live(loaded, rec.data.parent) ?? live(loaded, rec.data.product);
+  if (rec.type === 'feature' || rec.type === 'project')
+    return live(loaded, rec.data.parent) ?? live(loaded, rec.data.product);
   return undefined;
 }
 
@@ -259,7 +274,10 @@ export function derivedStatus(loaded: Loaded, key: string): DerivedStatus {
 function derivedStatusOnce(loaded: Loaded, key: string): DerivedStatus {
   const ix = treeIndex(loaded);
   const affecting = ix.naming.get(key) ?? [];
-  const done = (e: EffectName) => affecting.filter((r) => r.data.status === 'done' && effectsOf(r).some((x) => x.effect === e && live(loaded, x.key)?.key === key));
+  const done = (e: EffectName) =>
+    affecting.filter(
+      (r) => r.data.status === 'done' && effectsOf(r).some((x) => x.effect === e && live(loaded, x.key)?.key === key),
+    );
   const removed = done('removes');
   if (removed.length) return { status: 'retired', because: `${removed[removed.length - 1].key} (removes) is done` };
   const added = done('adds');
@@ -276,8 +294,17 @@ function derivedStatusOnce(loaded: Loaded, key: string): DerivedStatus {
   if (childStates.includes('building')) return { status: 'building', because: 'a child is building' };
   // nothing to derive from: the authored status stands (a cold-started map is read from the documentation until a change decides it)
   const authored = loaded.byKey.get(key)?.[0]?.data.status;
-  if (typeof authored === 'string' && (FEATURE_STATUSES as readonly string[]).includes(authored)) return { status: authored as DerivedStatus['status'], because: affecting.length ? 'authored; nothing affecting it is done or in flight' : 'authored; no change affects it yet' };
-  return { status: 'planned', because: affecting.length ? 'nothing affecting it is done or in flight' : 'no change affects it yet' };
+  if (typeof authored === 'string' && (FEATURE_STATUSES as readonly string[]).includes(authored))
+    return {
+      status: authored as DerivedStatus['status'],
+      because: affecting.length
+        ? 'authored; nothing affecting it is done or in flight'
+        : 'authored; no change affects it yet',
+    };
+  return {
+    status: 'planned',
+    because: affecting.length ? 'nothing affecting it is done or in flight' : 'no change affects it yet',
+  };
 }
 
 export interface TreeNode {
@@ -305,20 +332,39 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
   const order = memo(loaded, 'record-order', () => new Map(loaded.records.map((r, i) => [r, i])));
   const node = (rec: Rec): TreeNode => {
     const children = (ix.drawn.get(rec.key) ?? []).map(node);
-    const subtree = new Set<string>([rec.key, ...children.flatMap(function all(n: TreeNode): string[] { return [n.key, ...n.children.flatMap(all)]; })]);
-    const inSubtree = [...new Set([...subtree].flatMap((k) => ix.naming.get(k) ?? []))].sort((a, b) => order.get(a)! - order.get(b)!);
+    const subtree = new Set<string>([
+      rec.key,
+      ...children.flatMap(function all(n: TreeNode): string[] {
+        return [n.key, ...n.children.flatMap(all)];
+      }),
+    ]);
+    const inSubtree = [...new Set([...subtree].flatMap((k) => ix.naming.get(k) ?? []))].sort(
+      (a, b) => order.get(a)! - order.get(b)!,
+    );
     const backlog: Record<string, number> = {};
     for (const c of inSubtree) backlog[String(c.data.status ?? '?')] = (backlog[String(c.data.status ?? '?')] ?? 0) + 1;
     const projects = [...new Set(inSubtree.map((c) => str(c.data.project)).filter((p): p is string => !!p))].sort();
     const eo = effectiveOwners(loaded, rec.key);
     const n: TreeNode = {
-      key: rec.key, type: rec.type as 'product' | 'feature', title: str(rec.data.title), level: levelOf(loaded, rec),
-      status: str(rec.data.status), derived: rec.type === 'feature' ? derivedStatus(loaded, rec.key) : undefined,
-      owners: eo.owners, ownersFrom: eo.from, children, backlog, projects,
+      key: rec.key,
+      type: rec.type as 'product' | 'feature',
+      title: str(rec.data.title),
+      level: levelOf(loaded, rec),
+      status: str(rec.data.status),
+      derived: rec.type === 'feature' ? derivedStatus(loaded, rec.key) : undefined,
+      owners: eo.owners,
+      ownersFrom: eo.from,
+      children,
+      backlog,
+      projects,
     };
     if (rec.type === 'product') {
-      const projectKeys = ofType(loaded, 'project').filter((p) => p.valid && rootProductOf(loaded, p)?.key === rec.key).map((p) => p.key);
-      n.unassigned = projectKeys.flatMap((p) => ix.inProject.get(p) ?? []).filter((c) => effectsOf(c).length === 0 && c.data.status !== 'done' && c.data.status !== 'dropped').length;
+      const projectKeys = ofType(loaded, 'project')
+        .filter((p) => p.valid && rootProductOf(loaded, p)?.key === rec.key)
+        .map((p) => p.key);
+      n.unassigned = projectKeys
+        .flatMap((p) => ix.inProject.get(p) ?? [])
+        .filter((c) => effectsOf(c).length === 0 && c.data.status !== 'done' && c.data.status !== 'dropped').length;
     }
     return n;
   };
@@ -327,17 +373,28 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
     if (!rec || (rec.type !== 'product' && rec.type !== 'feature')) return [];
     return [node(rec)];
   }
-  return ofType(loaded, 'product').filter((r) => r.valid).map(node);
+  return ofType(loaded, 'product')
+    .filter((r) => r.valid)
+    .map(node);
 }
 
 export function formatTree(nodes: TreeNode[], depth = 0): string {
   const out: string[] = [];
   for (const n of nodes) {
     const pad = '  '.repeat(depth);
-    const backlog = Object.entries(n.backlog).map(([s, c]) => `${c} ${s}`).join(', ');
-    const state = n.type === 'feature' ? ` [${n.status ?? n.derived?.status}${n.status && n.derived && n.status !== n.derived.status ? `; derived ${n.derived.status}` : ''}]` : '';
-    const owners = n.owners.length ? ` · ${n.owners.join(', ')}${n.ownersFrom && n.ownersFrom !== n.key ? ' (inherited)' : ''}` : '';
-    out.push(`${pad}- ${n.key} (${n.level})${state} — ${n.title ?? ''}${owners}${backlog ? `\n${pad}  changes: ${backlog}${n.projects.length ? ` in ${n.projects.join(', ')}` : ''}` : ''}${n.unassigned ? `\n${pad}  ${n.unassigned} open change${n.unassigned === 1 ? '' : 's'} under its projects name no feature` : ''}`);
+    const backlog = Object.entries(n.backlog)
+      .map(([s, c]) => `${c} ${s}`)
+      .join(', ');
+    const state =
+      n.type === 'feature'
+        ? ` [${n.status ?? n.derived?.status}${n.status && n.derived && n.status !== n.derived.status ? `; derived ${n.derived.status}` : ''}]`
+        : '';
+    const owners = n.owners.length
+      ? ` · ${n.owners.join(', ')}${n.ownersFrom && n.ownersFrom !== n.key ? ' (inherited)' : ''}`
+      : '';
+    out.push(
+      `${pad}- ${n.key} (${n.level})${state} — ${n.title ?? ''}${owners}${backlog ? `\n${pad}  changes: ${backlog}${n.projects.length ? ` in ${n.projects.join(', ')}` : ''}` : ''}${n.unassigned ? `\n${pad}  ${n.unassigned} open change${n.unassigned === 1 ? '' : 's'} under its projects name no feature` : ''}`,
+    );
     if (n.children.length) out.push(formatTree(n.children, depth + 1).trimEnd());
   }
   return out.join('\n') + (depth === 0 ? '\n' : '');

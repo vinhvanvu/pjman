@@ -36,21 +36,43 @@ function known(browser: string): { name: string; kind: 'chromium' | 'safari' | '
 }
 
 /** How a window is opened at `url` in `browser` (a name or a bundle id; none: the system's own opener) on `platform`. */
-export function windowPlan(url: string, browser: string | undefined, platform: NodeJS.Platform = process.platform): WindowPlan {
+export function windowPlan(
+  url: string,
+  browser: string | undefined,
+  platform: NodeJS.Platform = process.platform,
+): WindowPlan {
   if (platform !== 'darwin') {
     const cmd = platform === 'win32' ? 'start' : 'xdg-open';
     return { browser: 'default', how: 'default', cmd, args: [url] };
   }
   const b = browser ? known(browser) : undefined;
-  if (!b) return browser ? { browser, how: 'default', cmd: 'open', args: ['-a', browser, url] } : { browser: 'default', how: 'default', cmd: 'open', args: [url] };
+  if (!b)
+    return browser
+      ? { browser, how: 'default', cmd: 'open', args: ['-a', browser, url] }
+      : { browser: 'default', how: 'default', cmd: 'open', args: [url] };
   switch (b.kind) {
     case 'chromium':
       return { browser: b.name, how: 'app', cmd: 'open', args: ['-na', b.name, '--args', `--app=${url}`] };
     case 'safari':
-      return { browser: b.name, how: 'window', cmd: 'osascript', args: ['-e', `tell application "Safari" to make new document with properties {URL:${JSON.stringify(url)}}`, '-e', 'tell application "Safari" to activate'] };
+      return {
+        browser: b.name,
+        how: 'window',
+        cmd: 'osascript',
+        args: [
+          '-e',
+          `tell application "Safari" to make new document with properties {URL:${JSON.stringify(url)}}`,
+          '-e',
+          'tell application "Safari" to activate',
+        ],
+      };
     case 'firefox':
       // `open -n` refuses a Firefox already running; its own binary hands the window to the one running
-      return { browser: b.name, how: 'window', cmd: `/Applications/${b.name}.app/Contents/MacOS/firefox`, args: ['--new-window', url] };
+      return {
+        browser: b.name,
+        how: 'window',
+        cmd: `/Applications/${b.name}.app/Contents/MacOS/firefox`,
+        args: ['--new-window', url],
+      };
     case 'arc':
       return { browser: b.name, how: 'little', cmd: 'open', args: ['-a', b.name, url] };
   }
@@ -60,8 +82,15 @@ export function windowPlan(url: string, browser: string | undefined, platform: N
 export function defaultBrowser(): string | undefined {
   if (process.platform !== 'darwin') return undefined;
   try {
-    const plist = path.join(os.homedir(), 'Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist');
-    const out = execFileSync('plutil', ['-convert', 'json', '-o', '-', plist], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 });
+    const plist = path.join(
+      os.homedir(),
+      'Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist',
+    );
+    const out = execFileSync('plutil', ['-convert', 'json', '-o', '-', plist], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 3000,
+    });
     return handlerOf(JSON.parse(out) as { LSHandlers?: unknown });
   } catch {
     return undefined;

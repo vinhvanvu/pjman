@@ -60,10 +60,15 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // their dock (change:pjman-15). What an earlier version left there is carried across once, never over newer files.
 const dataDir = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'claude-code');
 const legacyDataDir = process.env.CLAUDE_PLUGIN_DATA;
-if (legacyDataDir && path.resolve(legacyDataDir) !== path.resolve(dataDir) && !fs.existsSync(path.join(dataDir, '.carried'))) {
+if (
+  legacyDataDir &&
+  path.resolve(legacyDataDir) !== path.resolve(dataDir) &&
+  !fs.existsSync(path.join(dataDir, '.carried'))
+) {
   try {
     fs.mkdirSync(dataDir, { recursive: true });
-    if (fs.existsSync(legacyDataDir)) fs.cpSync(legacyDataDir, dataDir, { recursive: true, force: false, errorOnExist: false });
+    if (fs.existsSync(legacyDataDir))
+      fs.cpSync(legacyDataDir, dataDir, { recursive: true, force: false, errorOnExist: false });
     fs.writeFileSync(path.join(dataDir, '.carried'), `${new Date().toISOString()} from ${legacyDataDir}\n`);
   } catch {}
 }
@@ -86,7 +91,10 @@ function pjman(args, { cwd, env = {}, json = false, input } = {}) {
   const t0 = performance.now();
   try {
     const out = execFileSync(cmd, [...pre, ...args], {
-      cwd, encoding: 'utf8', stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], input,
+      cwd,
+      encoding: 'utf8',
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+      input,
       env: { ...process.env, ...env },
     });
     return json ? JSON.parse(out) : out;
@@ -99,7 +107,13 @@ function tryPjman(args, opts) {
   try {
     return pjman(args, opts);
   } catch (e) {
-    note(`pjman ${args.join(' ')} failed: ${String(e.stderr || e.message).trim().split('\n')[0]}`);
+    note(
+      `pjman ${args.join(' ')} failed: ${
+        String(e.stderr || e.message)
+          .trim()
+          .split('\n')[0]
+      }`,
+    );
     return null;
   }
 }
@@ -112,10 +126,29 @@ const TIMING = Boolean(process.env.PJMAN_HOOK_TIMING);
 function runAsync(cmd, args, { cwd, env = {}, input } = {}) {
   const t0 = performance.now();
   return new Promise((resolve) => {
-    const child = execFile(cmd, args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, ...env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } }, (err, stdout, stderr) => {
-      if (TIMING) note(`${(performance.now() - t0).toFixed(0).padStart(5)} ms  ${(cmd === PJMAN[0] && args[0] === PJMAN[1] ? ['pjman', ...args.slice(PJMAN.length - 1)] : [cmd, ...args]).join(' ').slice(0, 80)}`);
-      resolve({ ok: !err, out: stdout ?? '', err: String(stderr || (err && err.message) || '').trim().split('\n')[0] });
-    });
+    const child = execFile(
+      cmd,
+      args,
+      {
+        cwd,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+        env: { ...process.env, ...env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
+      },
+      (err, stdout, stderr) => {
+        if (TIMING)
+          note(
+            `${(performance.now() - t0).toFixed(0).padStart(5)} ms  ${(cmd === PJMAN[0] && args[0] === PJMAN[1] ? ['pjman', ...args.slice(PJMAN.length - 1)] : [cmd, ...args]).join(' ').slice(0, 80)}`,
+          );
+        resolve({
+          ok: !err,
+          out: stdout ?? '',
+          err: String(stderr || (err && err.message) || '')
+            .trim()
+            .split('\n')[0],
+        });
+      },
+    );
     child.stdin?.end(input ?? '');
   });
 }
@@ -160,7 +193,13 @@ function saveState(sid, st) {
 function sh(cmd, args, cwd) {
   const t0 = performance.now();
   try {
-    return execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 8000, env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } }).trim();
+    return execFileSync(cmd, args, {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 8000,
+      env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
+    }).trim();
   } catch {
     return null;
   } finally {
@@ -191,8 +230,10 @@ function workedDir(input, cwd) {
   const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
   if (file) return path.dirname(path.resolve(cwd, file));
   if (input.tool_name !== 'Bash') return null;
-  const m = /(?:^|&&|;|\|)\s*cd\s+(?:--\s+)?(?:(["'])([^"']*)\1|([^\s"'&;|]+))/.exec(String(input.tool_input?.command ?? ''));
-  const dir = m ? m[2] ?? m[3] : null;
+  const m = /(?:^|&&|;|\|)\s*cd\s+(?:--\s+)?(?:(["'])([^"']*)\1|([^\s"'&;|]+))/.exec(
+    String(input.tool_input?.command ?? ''),
+  );
+  const dir = m ? (m[2] ?? m[3]) : null;
   return dir ? path.resolve(cwd, dir.replace(/^~(?=\/|$)/, os.homedir())) : null;
 }
 
@@ -215,7 +256,8 @@ function resolveProject(st, sid, input, env, cwd, root) {
   const ours = where?.project && where.project_dir && path.resolve(where.root) === path.resolve(root);
   if (!ours) {
     if (override !== undefined) process.env.PJMAN_STORE = override;
-    if (where?.project) note(`${dir} is ${where.project}'s, in another store (${where.root}); the session stays unscoped`);
+    if (where?.project)
+      note(`${dir} is ${where.project}'s, in another store (${where.root}); the session stays unscoped`);
     return false;
   }
   if (tryPjman(['session', 'project', sid, where.project], { cwd: where.project_dir, env }) === null) {
@@ -237,7 +279,10 @@ function taken(st, key) {
 function observeWork(st, sid, cwd, env) {
   const branch = currentBranch(cwd);
   // a pull request is asked of the forge only off the default branch: the call reaches the network
-  const prUrl = branch && store_sourceKinds().includes('github-pr') ? sh('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd) : null;
+  const prUrl =
+    branch && store_sourceKinds().includes('github-pr')
+      ? sh('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd)
+      : null;
   observeKeys(st, sid, cwd, env, workKeys(branch, prUrl));
 }
 /** The current branch, or null on the default branch or a detached head: nothing to observe there. */
@@ -287,7 +332,11 @@ function staleWorktrees(cwd, done) {
   if (!done.length) return [];
   const list = sh('git', ['worktree', 'list', '--porcelain'], cwd);
   if (!list) return [];
-  const main = sh('git', ['rev-parse', '--verify', '--quiet', 'main'], cwd) ? 'main' : sh('git', ['rev-parse', '--verify', '--quiet', 'master'], cwd) ? 'master' : null;
+  const main = sh('git', ['rev-parse', '--verify', '--quiet', 'main'], cwd)
+    ? 'main'
+    : sh('git', ['rev-parse', '--verify', '--quiet', 'master'], cwd)
+      ? 'master'
+      : null;
   if (!main) return [];
   const byBranch = new Map();
   const byName = new Map();
@@ -306,7 +355,9 @@ function staleWorktrees(cwd, done) {
     if (!c.branch) continue;
     const w = byBranch.get(c.branch.name) ?? byName.get(c.branch.worktree);
     if (!w || w.branch === main || out.some((o) => o.dir === w.dir)) continue;
-    merged ??= new Set((sh('git', ['branch', '--merged', main, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean));
+    merged ??= new Set(
+      (sh('git', ['branch', '--merged', main, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
+    );
     if (!merged.has(w.branch)) continue;
     out.push({ dir: w.dir, branch: w.branch, change: c.key });
   }
@@ -365,7 +416,12 @@ async function ensureServer(cwd) {
 /** A POST to the dashboard's API: its data, or null when it is not running, refuses, or takes longer than `ms`. */
 async function postServer(server, route, body, ms = 1500) {
   try {
-    const res = await fetch(`${server.url}/api/v1${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(ms) });
+    const res = await fetch(`${server.url}/api/v1${route}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(ms),
+    });
     if (!res.ok) return null;
     return (await res.json()).data ?? null;
   } catch {
@@ -392,7 +448,12 @@ async function followPrompted(sid) {
 function startFollowWindow(sid, cwd) {
   if (!inRex() || followWindowOff()) return;
   try {
-    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'FollowWindow'], { cwd, detached: true, stdio: 'ignore', env: { ...process.env, PJMAN_FOLLOW_SESSION: sid } });
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'FollowWindow'], {
+      cwd,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, PJMAN_FOLLOW_SESSION: sid },
+    });
     child.unref();
   } catch (e) {
     note(`follow window: ${e.message}`);
@@ -405,7 +466,10 @@ async function followWindow(sid, cwd) {
   await postServer(server, '/follow', { session: sid });
   // a dashboard just started waits a moment for a window that was open to reconnect before it answers
   const r = await postServer(server, '/follow/ensure', {}, 8000);
-  if (!r?.open) return note(`follow window: ${r ? (r.reason === 'open' ? 'one is open' : 'another session is opening one') : 'the dashboard did not answer'}`);
+  if (!r?.open)
+    return note(
+      `follow window: ${r ? (r.reason === 'open' ? 'one is open' : 'another session is opening one') : 'the dashboard did not answer'}`,
+    );
   const [cmd, ...pre] = PJMAN;
   const out = await runAsync(cmd, [...pre, 'open', '--follow'], { cwd });
   note(out.ok ? `follow window: ${out.out.trim()}` : `follow window: pjman open --follow failed: ${out.err}`);
@@ -418,7 +482,13 @@ function cmux(args) {
   try {
     return execFileSync('cmux', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000 });
   } catch (e) {
-    note(`cmux ${args.join(' ')} failed: ${String(e.stderr || e.message).trim().split('\n')[0]}`);
+    note(
+      `cmux ${args.join(' ')} failed: ${
+        String(e.stderr || e.message)
+          .trim()
+          .split('\n')[0]
+      }`,
+    );
     return null;
   }
 }
@@ -480,7 +550,8 @@ async function parkView(sid, cwd, store) {
   const server = await ensureServer(cwd);
   if (!server) return; // no dashboard, no dock; `pjman open --session` brings it back once one runs
   const url = bridgeUrl(server, store);
-  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok) return saveDock({ pane: dock.pane, sid: null });
+  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok)
+    return saveDock({ pane: dock.pane, sid: null });
   const pane = await openPane(url);
   if (pane) saveDock({ pane, sid: null });
 }
@@ -492,7 +563,8 @@ async function dockView(sid, cwd) {
   const server = await ensureServer(cwd);
   if (!server) return;
   const url = `${server.url}/session/${encodeURIComponent(sid)}`;
-  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok) return saveDock({ pane: dock.pane, sid });
+  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok)
+    return saveDock({ pane: dock.pane, sid });
   const pane = await openPane(url);
   if (pane) saveDock({ pane, sid });
 }
@@ -553,7 +625,10 @@ const CONTEXT_MAX = 9500;
 
 function emitContext(event, text) {
   if (!text) return;
-  const capped = text.length > CONTEXT_MAX ? text.slice(0, CONTEXT_MAX) + '\n…(cut by the harness; run pjman context for the rest)\n' : text;
+  const capped =
+    text.length > CONTEXT_MAX
+      ? text.slice(0, CONTEXT_MAX) + '\n…(cut by the harness; run pjman context for the rest)\n'
+      : text;
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: capped } }));
 }
 
@@ -566,7 +641,13 @@ function restVerdict(key, cwd) {
     try {
       if (e.stdout) return JSON.parse(e.stdout);
     } catch {}
-    note(`pjman rest ${key} failed: ${String(e.stderr || e.message).trim().split('\n')[0]}`);
+    note(
+      `pjman rest ${key} failed: ${
+        String(e.stderr || e.message)
+          .trim()
+          .split('\n')[0]
+      }`,
+    );
     return null;
   }
 }
@@ -580,7 +661,9 @@ function shortKey(k, store) {
 /** Why the stop is refused, for the agent: the change, the open steps, and the three ways the record lets it stop. */
 function restRefusal(r, store) {
   const key = shortKey(r.key, store);
-  const steps = r.open.map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`).join('\n');
+  const steps = r.open
+    .map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`)
+    .join('\n');
   return [
     `pjman: ${key} is not at a resting point. This turn wrote code for it and its plan still has ${r.open.length === 1 ? 'a step' : `${r.open.length} steps`} open:`,
     steps,
@@ -599,21 +682,37 @@ function choiceQuestions(text) {
   const isItem = (l) => /^\s*(?:[-*+•]|\d+[.)]|[a-z][.)])\s+\S/i.test(l);
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    if (/^\s*(```|~~~)/.test(raw)) { inCode = !inCode; continue; }
+    if (/^\s*(```|~~~)/.test(raw)) {
+      inCode = !inCode;
+      continue;
+    }
     if (inCode) continue;
     const line = raw.trim();
     if (!line) continue;
     if (/^>/.test(line)) continue; // the person's words, quoted
-    if (/^#/.test(line)) { underHeading = /open questions?/i.test(line); continue; }
-    if (/^(?:\*\*)?open questions?(?:\*\*)?:?$/i.test(line)) { underHeading = true; continue; }
-    const plain = line.replace(/^[>*\-+•\d.)\s]+/, '').replace(/\*\*/g, '').trim();
+    if (/^#/.test(line)) {
+      underHeading = /open questions?/i.test(line);
+      continue;
+    }
+    if (/^(?:\*\*)?open questions?(?:\*\*)?:?$/i.test(line)) {
+      underHeading = true;
+      continue;
+    }
+    const plain = line
+      .replace(/^[>*\-+•\d.)\s]+/, '')
+      .replace(/\*\*/g, '')
+      .trim();
     if (!/\?\s*$/.test(plain)) continue;
     let options = 0;
     for (let j = i + 1; j < lines.length && j <= i + 6; j++) {
       const l = lines[j];
       if (/^\s*(```|~~~)/.test(l)) break;
-      if (!l.trim()) { if (options) break; continue; }
-      if (isItem(l)) options += 1; else break;
+      if (!l.trim()) {
+        if (options) break;
+        continue;
+      }
+      if (isItem(l)) options += 1;
+      else break;
     }
     const alternatives = /\b(?:or|either|versus|vs\.?)\b/i.test(plain);
     out.push({ text: plain, choice: alternatives || options >= 2 || underHeading });
@@ -631,7 +730,10 @@ function questionsRefusal(key, questions, asked) {
     parts.push(`pjman: this reply asks the person to choose and no decision was opened or added to this turn:`);
     parts.push(questions.map((q) => `- ${short(q)}`).join('\n'));
   }
-  if (asked) parts.push(`pjman: this turn put a question to the person through the prompt and no decision was opened or added to record it.`);
+  if (asked)
+    parts.push(
+      `pjman: this turn put a question to the person through the prompt and no decision was opened or added to record it.`,
+    );
   parts.push(
     `A question laid out with options is a decision: record each as proposed, with its options and one recommended (pjman decision ${key}/<slug> --name "…" --gist "…" --question "…" --option <id>="…" --option <id>="…" --recommend <id>="why"), and where the person already chose, add their words (--accept <id>="…" --by person:<handle>). Then end the turn again, saying which decisions are open. A question that is not a choice (a fact only the person knows) is asked as it is; end the turn again.`,
   );
@@ -639,8 +741,19 @@ function questionsRefusal(key, questions, asked) {
 }
 
 function firstLine(text, max = 200) {
-  const lines = String(text ?? '').split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
-  const body = lines.filter((l) => !l.startsWith('#') && !/^```/.test(l)).map((l) => l.replace(/^[>*\-\d.)\s]+/, '').replace(/\*\*/g, '').trim()).find((l) => l.length > 0);
+  const lines = String(text ?? '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const body = lines
+    .filter((l) => !l.startsWith('#') && !/^```/.test(l))
+    .map((l) =>
+      l
+        .replace(/^[>*\-\d.)\s]+/, '')
+        .replace(/\*\*/g, '')
+        .trim(),
+    )
+    .find((l) => l.length > 0);
   const line = body ?? (lines[0] ?? '').replace(/^#+\s*/, '');
   return line.length > max ? line.slice(0, max - 1) + '…' : line;
 }
@@ -676,7 +789,9 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
     pjman(sessionArgs(store, sid, parent), { cwd, env });
     return true;
   } catch (e) {
-    const err = String(e.stderr || e.message).trim().split('\n')[0];
+    const err = String(e.stderr || e.message)
+      .trim()
+      .split('\n')[0];
     if (EXISTS.test(err)) return true;
     note(`pjman new session failed: ${err}`);
     return false;
@@ -690,10 +805,20 @@ function ensureSession(store, sid, env, { parent, cwd } = {}) {
 function promptChange(prompt, { cwd, env }) {
   const refs = tryPjman(['refs', '-', '--json'], { cwd, json: true, input: prompt }) ?? [];
   // the sources the prompt names that lead to no change (a PR, a branch, a URL): what a session with no change reads
-  const sources = [...new Set(refs.filter((r) => !r.weak && !r.change && !r.creatable && typeof r.key === 'string' && !r.key.startsWith('file:')).map((r) => r.key))];
+  const sources = [
+    ...new Set(
+      refs
+        .filter((r) => !r.weak && !r.change && !r.creatable && typeof r.key === 'string' && !r.key.startsWith('file:'))
+        .map((r) => r.key),
+    ),
+  ];
   // a prompt naming several changes is about none of them for certain: nothing binds, the agent is told the candidates
   const named = [...new Set(refs.filter((r) => !r.weak && r.change).map((r) => r.change))];
-  if (named.length > 1) return { hint: `This prompt names several changes (${named.join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.`, sources };
+  if (named.length > 1)
+    return {
+      hint: `This prompt names several changes (${named.join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.`,
+      sources,
+    };
   for (const r of refs.reverse()) {
     if (r.weak) continue; // a bare #1: as often a list item as an issue
     if (r.change) return { key: r.change, sources };
@@ -701,7 +826,10 @@ function promptChange(prompt, { cwd, env }) {
     const created = createFromTracker(r, { cwd, env });
     if (created) return { key: created, sources };
     const sync = r.key.startsWith('github-issue:') ? 'github' : r.key.slice(0, r.key.indexOf(':'));
-    return { hint: `${r.text} is ${r.key}; the store has no record of it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound when you name it).`, sources };
+    return {
+      hint: `${r.text} is ${r.key}; the store has no record of it. Read it with the tracker's tools and apply the answer: pjman sync ${sync} --from - (the change it creates is bound when you name it).`,
+      sources,
+    };
   }
   return sources.length ? { sources } : null;
 }
@@ -710,7 +838,11 @@ function promptChange(prompt, { cwd, env }) {
 function createFromTracker(r, { cwd, env }) {
   const m = /^github-issue:([^#]+)#(\d+)$/.exec(r.key);
   if (!m) return null;
-  const issue = sh('gh', ['issue', 'view', m[2], '-R', m[1], '--json', 'number,title,url,state,stateReason,labels,milestone'], cwd);
+  const issue = sh(
+    'gh',
+    ['issue', 'view', m[2], '-R', m[1], '--json', 'number,title,url,state,stateReason,labels,milestone'],
+    cwd,
+  );
   if (!issue) return null;
   if (tryPjman(['sync', 'github', '--from', '-', '--json'], { cwd, env, input: issue }) === null) return null;
   const n = tryPjman(['get', r.key, '--json'], { cwd, json: true });
@@ -720,11 +852,17 @@ function createFromTracker(r, { cwd, env }) {
 /** The brief for this session: what the store has for it since its last brief, composed and recorded by the tool. Its
  *  size is kept for the person, shown with the receipt when the turn ends. */
 function briefFor(st, sid, cwd, env, full = false) {
-  return briefText(st, tryPjman(['brief', '--session', sid, '--json', ...(full ? ['--full'] : [])], { cwd, env, json: true }));
+  return briefText(
+    st,
+    tryPjman(['brief', '--session', sid, '--json', ...(full ? ['--full'] : [])], { cwd, env, json: true }),
+  );
 }
 function briefText(st, b) {
   if (!b || b.mode === 'none' || !b.text) return '';
-  st.briefs = [...(st.briefs ?? []), { mode: b.mode, change: b.change, lines: b.size.lines, tokens: b.size.tokens, cut: b.text.length > CONTEXT_MAX }];
+  st.briefs = [
+    ...(st.briefs ?? []),
+    { mode: b.mode, change: b.change, lines: b.size.lines, tokens: b.size.tokens, cut: b.text.length > CONTEXT_MAX },
+  ];
   return b.text;
 }
 
@@ -740,16 +878,25 @@ function briefText(st, b) {
 function refreshPlugin() {
   try {
     const own = JSON.parse(fs.readFileSync(path.join(here, '..', '.claude-plugin', 'plugin.json'), 'utf8')).version;
-    const known = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'known_marketplaces.json');
+    const known = path.join(
+      process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
+      'plugins',
+      'known_marketplaces.json',
+    );
     const src = JSON.parse(fs.readFileSync(known, 'utf8')).pjman?.source?.path;
     if (!src || path.resolve(src) === path.resolve(here, '..', '..', '..')) return ''; // loaded in place: nothing cached
-    const next = JSON.parse(fs.readFileSync(path.join(src, 'adapters', 'claude-code', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+    const next = JSON.parse(
+      fs.readFileSync(path.join(src, 'adapters', 'claude-code', '.claude-plugin', 'plugin.json'), 'utf8'),
+    ).version;
     if (!own || !next || own === next) return '';
     const marker = path.join(dataDir, 'refreshed-to');
     if (fs.existsSync(marker) && fs.readFileSync(marker, 'utf8').trim() === next) return '';
     fs.mkdirSync(dataDir, { recursive: true });
     fs.writeFileSync(marker, next + '\n');
-    const child = spawn('sh', ['-c', 'claude plugin marketplace update pjman; claude plugin update pjman@pjman'], { detached: true, stdio: 'ignore' });
+    const child = spawn('sh', ['-c', 'claude plugin marketplace update pjman; claude plugin update pjman@pjman'], {
+      detached: true,
+      stdio: 'ignore',
+    });
     child.unref();
     note(`plugin ${own} → ${next}: refresh started`);
     return `The pjman plugin is refreshing from ${own} to ${next} (the install was upgraded); the new hooks load at the next session or /reload-plugins.\n\n`;
@@ -767,9 +914,15 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     brief: pjmanAsync(['brief'], { cwd }),
     context: pjmanAsync(['context'], { cwd }),
     receipt: st.seq === undefined ? pjmanAsync(['events', '--receipt', '--json'], { cwd, json: true }) : null,
-    who: main && (source === 'startup' || source === 'clear') ? pjmanAsync(['whoami', '--verify', '--json'], { cwd, json: true }) : null,
+    who:
+      main && (source === 'startup' || source === 'clear')
+        ? pjmanAsync(['whoami', '--verify', '--json'], { cwd, json: true })
+        : null,
     done: main ? pjmanAsync(['ls', 'change', '--status', 'done', '--json'], { cwd, json: true }) : null,
-    pr: main && branch && store_sourceKinds().includes('github-pr') ? shAsync('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd) : null,
+    pr:
+      main && branch && store_sourceKinds().includes('github-pr')
+        ? shAsync('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd)
+        : null,
   });
   if (!store.actor) {
     note('no actor in ~/.pjman/config.yaml; session record not created');
@@ -779,10 +932,31 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   // the one write (decision session-start-fast/start-as-one-write): the record unless it exists, the start line, the
   // change the branch names bound and its edge observed (the ground the session stands on binds it before any prompt
   // does), and the brief: in full when the conversation lost what it had been told (resumed, compacted, cleared)
-  const started = { startup: 'session started', clear: 'session started after /clear', resume: 'session resumed; context rehydrated', compact: 'context compacted and rehydrated', fork: 'session forked; context rehydrated' };
+  const started = {
+    startup: 'session started',
+    clear: 'session started after /clear',
+    resume: 'session resumed; context rehydrated',
+    compact: 'context compacted and rehydrated',
+    fork: 'session forked; context rehydrated',
+  };
   const rehydrated = source === 'resume' || source === 'compact' || source === 'clear';
   const start = await pjmanAsync(
-    ['session', 'start', sid, '--agent', AGENT, '--on-behalf-of', store.actor, '--writer', AGENT, '--log', started[source] ?? `session started (${source})`, ...(main && !st.bound && branch ? ['--branch', branch] : []), ...(rehydrated && st.bound ? ['--full'] : []), '--json'],
+    [
+      'session',
+      'start',
+      sid,
+      '--agent',
+      AGENT,
+      '--on-behalf-of',
+      store.actor,
+      '--writer',
+      AGENT,
+      '--log',
+      started[source] ?? `session started (${source})`,
+      ...(main && !st.bound && branch ? ['--branch', branch] : []),
+      ...(rehydrated && st.bound ? ['--full'] : []),
+      '--json',
+    ],
     { cwd, env, json: true },
   );
   if (!start) {
@@ -795,9 +969,12 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (start.bound) st.bound = start.bound;
   if (st.bound) taken(st, st.bound);
   if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
-  let text = (read.brief ?? '') + `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
+  let text =
+    (read.brief ?? '') +
+    `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
   if (main && (source === 'startup' || source === 'clear')) text += refreshPlugin();
-  if (st.unscoped) text += `This session started outside any registered repository (${input.cwd || process.cwd()}). It is recorded with no project until a tool call lands in one: edit a file there or \`cd\` into it in a shell command, and the session is resolved to that project. Run pjman from inside the repository you work in, so its writes resolve to that project.\n\n`;
+  if (st.unscoped)
+    text += `This session started outside any registered repository (${input.cwd || process.cwd()}). It is recorded with no project until a tool call lands in one: edit a file there or \`cd\` into it in a shell command, and the session is resolved to that project. Run pjman from inside the repository you work in, so its writes resolve to that project.\n\n`;
   const stale = main ? staleWorktreesText(staleWorktrees(cwd, read.done ?? [])) : '';
   if (stale) text += `${stale}\n---\n`;
   text += read.context ?? '';
@@ -805,7 +982,8 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (b) text += `\n---\n${start.bound ? 'Bound from the branch.\n' : ''}${b}`;
   // who the person is, checked against the apps once a day (the tool caches): only what is off is said, with the
   // command that resolves it; a rename is the person's act, offered and never run unasked
-  if (read.who?.notices?.length) text += `\n---\nIdentity (pjman whoami --verify):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person and never run a rename or a claim unasked.\n`;
+  if (read.who?.notices?.length)
+    text += `\n---\nIdentity (pjman whoami --verify):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person and never run a rename or a claim unasked.\n`;
   emitContext(EVENT, text);
   if (main) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
@@ -838,7 +1016,8 @@ async function main() {
   // a subagent of a session that started outside any project stands where its parent stands
   if (input.agent_id && st.unscoped === undefined && !st.projectDir) {
     const parent = loadState(mainSid);
-    if (parent.unscoped || parent.projectDir) Object.assign(st, { unscoped: parent.unscoped, projectDir: parent.projectDir });
+    if (parent.unscoped || parent.projectDir)
+      Object.assign(st, { unscoped: parent.unscoped, projectDir: parent.projectDir });
   }
   // a session resolved to a project after starting outside one runs from that repository from then on
   const cwd = st.projectDir && fs.existsSync(st.projectDir) ? st.projectDir : input.cwd || process.cwd();
@@ -898,7 +1077,8 @@ async function main() {
       }
       // a prompt that binds nothing but names a source (a PR to review, a branch): the session reads it, recorded on the
       // session itself, and is named from what it read (change:unbound-sessions)
-      if (!st.bound && found?.sources?.length && observeKeys(st, sid, cwd, env, found.sources) > 0) nameUnbound(st, sid, cwd, env);
+      if (!st.bound && found?.sources?.length && observeKeys(st, sid, cwd, env, found.sources) > 0)
+        nameUnbound(st, sid, cwd, env);
       // the brief: in full when the binding moved, else what changed since the last one; nothing when nothing did
       const b = briefFor(st, sid, cwd, env);
       if (b) parts.push(b);
@@ -910,12 +1090,14 @@ async function main() {
     case 'PostToolUse': {
       if (st.unscoped && root) resolveProject(st, sid, input, env, cwd, root);
       // a shell call counts only when it writes the store; reads, builds and tests leave no log line
-      const storeWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|note|session|mv|rm|fmt|sync|order|apply|undo|migrate)\b/;
+      const storeWrite =
+        /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:init|new|set|note|session|mv|rm|fmt|sync|order|apply|undo|migrate)\b/;
       if (input.tool_name !== 'Bash' || storeWrite.test(String(input.tool_input?.command ?? ''))) st.acted += 1;
       // a decision written this turn answers the questions the reply may end on (Stop); the harness's own question prompt is a
       // question put to the person, to be recorded the same way
       const decisionWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:decision|apply)\b/;
-      if (input.tool_name === 'Bash' && decisionWrite.test(String(input.tool_input?.command ?? ''))) st.decided = (st.decided ?? 0) + 1;
+      if (input.tool_name === 'Bash' && decisionWrite.test(String(input.tool_input?.command ?? '')))
+        st.decided = (st.decided ?? 0) + 1;
       if (input.tool_name === 'AskUserQuestion') st.asked = (st.asked ?? 0) + 1;
       // the agent's own bind (filing a change binds the run to it, or `pjman session bind`) gives the session its subject as a
       // prompt's does: the sidebar names it and a parked pane follows (change:bind-moves-the-dock)
@@ -932,13 +1114,21 @@ async function main() {
           if (!input.agent_id) await followView(sid, cwd);
         }
       }
-      if (input.tool_name === 'Bash' && /\bgit\s+(checkout|switch)\b|\bgh\s+pr\s+create\b/.test(String(input.tool_input?.command ?? ''))) observeWork(st, sid, cwd, env);
+      if (
+        input.tool_name === 'Bash' &&
+        /\bgit\s+(checkout|switch)\b|\bgh\s+pr\s+create\b/.test(String(input.tool_input?.command ?? ''))
+      )
+        observeWork(st, sid, cwd, env);
       const file = input.tool_input?.file_path || input.tool_input?.notebook_path;
       if (file && st.bound) {
         // real path of p, or of its nearest existing ancestor (a file may not exist yet)
         const real = (p) => {
           p = path.resolve(p);
-          try { return fs.realpathSync(p); } catch { return p === path.dirname(p) ? p : path.join(real(path.dirname(p)), path.basename(p)); }
+          try {
+            return fs.realpathSync(p);
+          } catch {
+            return p === path.dirname(p) ? p : path.join(real(path.dirname(p)), path.basename(p));
+          }
         };
         const abs = real(path.resolve(cwd, file));
         const project = real(st.projectDir || process.env.CLAUDE_PROJECT_DIR || cwd);
@@ -949,7 +1139,8 @@ async function main() {
         if (inProject && !inStore && store.source_kinds.includes('file')) {
           const edge = `${st.bound}|file:${rel}`;
           if (!st.observed.includes(edge)) {
-            if (tryPjman(['session', 'observe', sid, 'links', st.bound, `file:${rel}`], { cwd, env }) !== null) st.observed.push(edge);
+            if (tryPjman(['session', 'observe', sid, 'links', st.bound, `file:${rel}`], { cwd, env }) !== null)
+              st.observed.push(edge);
           }
         }
       }
@@ -972,7 +1163,8 @@ async function main() {
         }
         if (!(st.decided ?? 0)) {
           const questions = choiceQuestions(input.last_assistant_message);
-          if (questions.length || st.asked) reasons.push(questionsRefusal(shortKey(st.bound, store), questions, (st.asked ?? 0) > 0));
+          if (questions.length || st.asked)
+            reasons.push(questionsRefusal(shortKey(st.bound, store), questions, (st.asked ?? 0) > 0));
         }
         if (reasons.length) {
           process.stdout.write(JSON.stringify({ decision: 'block', reason: reasons.join('\n\n') }));
@@ -992,17 +1184,26 @@ async function main() {
       }
       // the receipt: what this session and the sessions it spawned wrote since the last turn, composed by the tool, shown to the person
       if (EVENT === 'Stop') {
-        const r = tryPjman(['events', '--receipt', '--since', String(st.seq ?? 0), '--session', `session:${sid}`, '--json'], { cwd, json: true });
+        const r = tryPjman(
+          ['events', '--receipt', '--since', String(st.seq ?? 0), '--session', `session:${sid}`, '--json'],
+          { cwd, json: true },
+        );
         if (r) {
           // the receipt is read by the person inside the project: the product segment of the project's product is dropped
           const product = store.product ? String(store.product).replace(/^product:/, '') : null;
-          const trim = (l) => (product ? l.replace(new RegExp(`\\b(feature|change|decision):${product}/`, 'g'), '$1:') : l);
+          const trim = (l) =>
+            product ? l.replace(new RegExp(`\\b(feature|change|decision):${product}/`, 'g'), '$1:') : l;
           const lines = r.lines.map(trim);
           // what the agent was handed this turn, by size (the brief has no ceiling; the person sees what it cost)
-          const briefed = (st.briefs ?? []).map((b) => trim(`${b.mode === 'full' ? 'full context' : 'what changed'} on ${b.change}: ${b.lines} line${b.lines === 1 ? '' : 's'}, ~${b.tokens} tokens${b.cut ? ' (cut by the harness at 10,000 characters)' : ''}`));
+          const briefed = (st.briefs ?? []).map((b) =>
+            trim(
+              `${b.mode === 'full' ? 'full context' : 'what changed'} on ${b.change}: ${b.lines} line${b.lines === 1 ? '' : 's'}, ~${b.tokens} tokens${b.cut ? ' (cut by the harness at 10,000 characters)' : ''}`,
+            ),
+          );
           const blocks = [];
           if (briefed.length) blocks.push(`pjman briefed:\n${briefed.map((l) => `- ${l}`).join('\n')}`);
-          if (lines.length && st.seq !== undefined) blocks.push(`pjman recorded:\n${lines.map((l) => `- ${l}`).join('\n')}`);
+          if (lines.length && st.seq !== undefined)
+            blocks.push(`pjman recorded:\n${lines.map((l) => `- ${l}`).join('\n')}`);
           if (blocks.length) process.stdout.write(JSON.stringify({ systemMessage: blocks.join('\n') }));
           st.seq = r.seq;
           st.briefs = [];

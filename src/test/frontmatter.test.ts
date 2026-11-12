@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { needsQuote, parseRecord, repairFrontmatter, sections, stringifyRecord, violatesRule } from '../store/frontmatter.js';
+import {
+  needsQuote,
+  parseRecord,
+  repairFrontmatter,
+  sections,
+  stringifyRecord,
+  violatesRule,
+} from '../store/frontmatter.js';
 
 test('the YAML rule: colon-space, hash, special leading characters', () => {
   assert.equal(violatesRule('Schema v3: keys'), "contains ': '");
@@ -24,7 +31,14 @@ test('parse reports unquoted scalars and missing frontmatter', () => {
 
 test('stringify orders fields, quotes by the rule, and round-trips', () => {
   const text = stringifyRecord(
-    { created: '2026-10-13', title: 'A: b', status: 'open', ext: { x: { y: 1 } }, links: ['github-pr:acme/app#1'], custom: 'z' },
+    {
+      created: '2026-10-13',
+      title: 'A: b',
+      status: 'open',
+      ext: { x: { y: 1 } },
+      links: ['github-pr:acme/app#1'],
+      custom: 'z',
+    },
     '\n\n## Summary\n\nhello\n\n\n',
     ['title', 'status', 'links', 'created', 'ext'],
   );

@@ -32,8 +32,17 @@ export function fmt(store: Store, opts: { check?: boolean; session?: string }): 
     if (!opts.check) fs.writeFileSync(r.abs, next);
   }
   const env = envelope(opts);
-  const commit = !opts.check && changed.length
-    ? finishWrite(store, 'pjman: fmt', env.session, changed.map((p) => { const r = loaded.records.find((x) => x.path === p)!; return { op: 'formatted' as const, key: r.key, type: r.type, path: p, writer: env.writer }; }))
-    : null;
+  const commit =
+    !opts.check && changed.length
+      ? finishWrite(
+          store,
+          'pjman: fmt',
+          env.session,
+          changed.map((p) => {
+            const r = loaded.records.find((x) => x.path === p)!;
+            return { op: 'formatted' as const, key: r.key, type: r.type, path: p, writer: env.writer };
+          }),
+        )
+      : null;
   return { changed, skipped, commit };
 }

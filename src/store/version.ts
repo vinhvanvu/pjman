@@ -3,7 +3,8 @@
 import { createRequire } from 'node:module';
 
 /** The version of this pjman, as the package declares it. */
-export const TOOL_VERSION: string = (createRequire(import.meta.url)('../../package.json') as { version: string }).version;
+export const TOOL_VERSION: string = (createRequire(import.meta.url)('../../package.json') as { version: string })
+  .version;
 
 /** The format a store with no `version` in pjman.yaml is in: the one before the field existed. */
 export const UNSTAMPED_VERSION = '0.1.0';

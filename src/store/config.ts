@@ -22,7 +22,16 @@ export type Holds = (typeof HOLDS)[number];
 export const SEVERITIES = ['product', 'feature', 'capability', 'nuisance', 'cosmetic'] as const;
 export const LAYERS = ['core', 'sources', 'work'] as const;
 export const DEFAULT_SOURCE_KINDS = [
-  'file', 'url', 'doc', 'git-repo', 'branch', 'github-pr', 'github-issue', 'linear', 'jira', 'thread',
+  'file',
+  'url',
+  'doc',
+  'git-repo',
+  'branch',
+  'github-pr',
+  'github-issue',
+  'linear',
+  'jira',
+  'thread',
   ...['github-user', 'linear-user', 'email', 'git-author'],
 ];
 /** The accounts a person holds, keyed as the outside world keys them; a person record links them. */
@@ -99,7 +108,9 @@ export function readUserConfig(): UserConfig {
   const stores = (Array.isArray(raw?.stores) ? raw!.stores : []).map((s) => {
     const st = s as { name?: string; path?: string; projects?: unknown };
     const projects = (Array.isArray(st.projects) ? st.projects : []).map((p): ProjectBinding =>
-      typeof p === 'string' ? { path: p } : { path: String((p as ProjectBinding).path), project: (p as ProjectBinding).project },
+      typeof p === 'string'
+        ? { path: p }
+        : { path: String((p as ProjectBinding).path), project: (p as ProjectBinding).project },
     );
     return { name: String(st.name ?? ''), path: String(st.path ?? ''), projects };
   });
@@ -128,10 +139,18 @@ export function loadStoreConfig(root: string): StoreConfig {
     for (const [k, v] of Object.entries(raw.vocabulary as Record<string, unknown>)) vocabulary[k] = String(v);
   }
   const source_kinds = Array.isArray(raw.source_kinds) ? raw.source_kinds.map(String) : [...DEFAULT_SOURCE_KINDS];
-  const tree_levels = Array.isArray(raw.tree_levels) && raw.tree_levels.length ? raw.tree_levels.map(String) : [...DEFAULT_TREE_LEVELS];
+  const tree_levels =
+    Array.isArray(raw.tree_levels) && raw.tree_levels.length ? raw.tree_levels.map(String) : [...DEFAULT_TREE_LEVELS];
   // kept as written, even when YAML read it as a number: validate refuses a stamp that is not semver
   const version = raw.version === undefined || raw.version === null ? undefined : String(raw.version);
-  return { name: typeof raw.name === 'string' ? raw.name : path.basename(root), layers, vocabulary, source_kinds, tree_levels, ...(version ? { version } : {}) };
+  return {
+    name: typeof raw.name === 'string' ? raw.name : path.basename(root),
+    layers,
+    vocabulary,
+    source_kinds,
+    tree_levels,
+    ...(version ? { version } : {}),
+  };
 }
 
 export function writeStoreConfig(root: string, cfg: StoreConfig): void {
@@ -169,12 +188,26 @@ export function findStore(cwd: string, override?: string): Store | null {
   let dir = path.resolve(cwd);
   for (;;) {
     // inside a store itself (the global store, or any store opened by path; `changes/` is the layout before products held them)
-    if (fs.existsSync(path.join(dir, 'pjman.yaml')) && (fs.existsSync(path.join(dir, 'products')) || fs.existsSync(path.join(dir, 'changes')))) return openStore(dir);
+    if (
+      fs.existsSync(path.join(dir, 'pjman.yaml')) &&
+      (fs.existsSync(path.join(dir, 'products')) || fs.existsSync(path.join(dir, 'changes')))
+    )
+      return openStore(dir);
     const candidate = path.join(dir, '.pjman');
     if (fs.existsSync(path.join(candidate, 'pjman.yaml'))) {
       // an in-project store holds its own project record: the one it has is the current project
-      const projects = (() => { try { return fs.readdirSync(path.join(candidate, 'projects')).filter((f) => f.endsWith('.md')); } catch { return []; } })();
-      return { ...openStore(candidate), projectDir: dir, project: projects.length === 1 ? `project:${projects[0].slice(0, -3)}` : undefined };
+      const projects = (() => {
+        try {
+          return fs.readdirSync(path.join(candidate, 'projects')).filter((f) => f.endsWith('.md'));
+        } catch {
+          return [];
+        }
+      })();
+      return {
+        ...openStore(candidate),
+        projectDir: dir,
+        project: projects.length === 1 ? `project:${projects[0].slice(0, -3)}` : undefined,
+      };
     }
     const parent = path.dirname(dir);
     if (parent === dir) break;
@@ -191,7 +224,12 @@ export function findStore(cwd: string, override?: string): Store | null {
       }
     }
   }
-  if (best && fs.existsSync(path.join(best.store.path, 'pjman.yaml'))) return { ...openStore(best.store.path), project: best.binding.project, projectDir: path.resolve(best.binding.path) };
+  if (best && fs.existsSync(path.join(best.store.path, 'pjman.yaml')))
+    return {
+      ...openStore(best.store.path),
+      project: best.binding.project,
+      projectDir: path.resolve(best.binding.path),
+    };
   return null;
 }
 

@@ -61,17 +61,46 @@ export function receiptLines(events: StoreEvent[], loaded: Loaded, opts: { count
     const res = resolve(loaded, key);
     const rec = res.status === 'ok' || res.status === 'alias' || res.status === 'invalid' ? res.rec : undefined;
     const title = str(rec?.data.name) ?? str(rec?.data.title) ?? str(rec?.data.gist);
-    const verb = r.ops.has('removed') ? 'removed' : r.ops.has('created') ? 'created' : r.ops.has('moved') ? 'renamed to' : r.ops.has('bind') ? 'bound' : r.ops.has('observe') ? 'observed on' : r.ops.has('set') ? 'set' : r.fields.has('notes') ? 'noted' : r.log ? 'logged' : null;
+    const verb = r.ops.has('removed')
+      ? 'removed'
+      : r.ops.has('created')
+        ? 'created'
+        : r.ops.has('moved')
+          ? 'renamed to'
+          : r.ops.has('bind')
+            ? 'bound'
+            : r.ops.has('observe')
+              ? 'observed on'
+              : r.ops.has('set')
+                ? 'set'
+                : r.fields.has('notes')
+                  ? 'noted'
+                  : r.log
+                    ? 'logged'
+                    : null;
     if (r.ops.has('applied') || r.ops.has('reverted')) {
       // a batch is one line on the record it was for, before the records it touched
-      const what = [r.ops.has('applied') ? `applied as one batch (${[...r.fields].filter((f) => /writes$/.test(f)).join(', ') || 'writes'})` : '', r.ops.has('reverted') ? 'a batch reverted' : ''].filter(Boolean).join('; ');
+      const what = [
+        r.ops.has('applied')
+          ? `applied as one batch (${[...r.fields].filter((f) => /writes$/.test(f)).join(', ') || 'writes'})`
+          : '',
+        r.ops.has('reverted') ? 'a batch reverted' : '',
+      ]
+        .filter(Boolean)
+        .join('; ');
       lines.push(`${key}: ${what}`);
       if (!verb) continue;
     }
     if (!verb) continue;
     if (r.type === 'session' && verb !== 'created' && verb !== 'removed') {
       // a session's own bookkeeping is one quiet line
-      const what = [r.ops.has('bind') ? 'bound a change' : '', r.ops.has('observe') ? 'observed sources' : '', r.log ? (r.fields.has('notes') ? `noted` : `${r.log} log line${r.log === 1 ? '' : 's'}`) : ''].filter(Boolean).join(', ');
+      const what = [
+        r.ops.has('bind') ? 'bound a change' : '',
+        r.ops.has('observe') ? 'observed sources' : '',
+        r.log ? (r.fields.has('notes') ? `noted` : `${r.log} log line${r.log === 1 ? '' : 's'}`) : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
       lines.push(`${key}: ${what}`);
       continue;
     }

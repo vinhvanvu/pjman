@@ -24,7 +24,9 @@ function sessionRec(loaded: Loaded, ident: string): Rec {
 
 /** The change a session is credited with: its last bound change that still resolves. */
 function changeOf(loaded: Loaded, rec: Rec): Rec | undefined {
-  const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : []).map((k) => live(loaded, k)).filter((r): r is Rec => !!r);
+  const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : [])
+    .map((k) => live(loaded, k))
+    .filter((r): r is Rec => !!r);
   return bound.at(-1);
 }
 
@@ -37,7 +39,8 @@ export function labelText(loaded: Loaded, rec: Rec): string {
   if (!c) return 'pjman';
   const name = str(c.data.name) ?? str(c.data.gist) ?? c.key.slice(c.key.lastIndexOf('/') + 1);
   const waiting = proposedDecisions(loaded, (d) => changeOfDecision(d.key) === c.key);
-  if (waiting.length) return `${name} · waits: ${waiting[0].name ?? waiting[0].key.slice(waiting[0].key.lastIndexOf('/') + 1)}`;
+  if (waiting.length)
+    return `${name} · waits: ${waiting[0].name ?? waiting[0].key.slice(waiting[0].key.lastIndexOf('/') + 1)}`;
   const steps = stepsOf(c.data);
   const counted = steps.filter((s) => s.state !== 'dropped');
   const next = nextStep(steps);
@@ -55,7 +58,16 @@ export interface HostResult {
   ok: boolean;
 }
 
-function hosted(store: Store, ident: string): { loaded: Loaded; rec: Rec; adapter: NonNullable<ReturnType<typeof hostOfRecord>>['adapter']; id: NonNullable<ReturnType<typeof hostOfRecord>>['id']; host: SessionHost } {
+function hosted(
+  store: Store,
+  ident: string,
+): {
+  loaded: Loaded;
+  rec: Rec;
+  adapter: NonNullable<ReturnType<typeof hostOfRecord>>['adapter'];
+  id: NonNullable<ReturnType<typeof hostOfRecord>>['id'];
+  host: SessionHost;
+} {
   const loaded = loadStore(store);
   const rec = sessionRec(loaded, ident);
   const h = hostOfRecord(rec.data);
@@ -84,7 +96,10 @@ export function hostOpen(store: Store, ident: string): HostResult {
 }
 
 /** What the host of a session reports its program is doing, asked once. */
-export function hostStatus(store: Store, ident: string): { session: string; host: SessionHost; status: HostStatus | null } {
+export function hostStatus(
+  store: Store,
+  ident: string,
+): { session: string; host: SessionHost; status: HostStatus | null } {
   const { rec, adapter, id, host } = hosted(store, ident);
   return { session: rec.key, host, status: adapter.status(id) };
 }
@@ -106,7 +121,15 @@ export interface Delivery {
 /** An accepted decision delivered into the sessions working its change through their hosts: every session bound to
  *  the change that runs in a host, has not ended, spoke inside the window, and whose agent has no waking adapter.
  *  The text names the decision, the option and the person's words, and says where to read on. */
-export function deliverDecision(loaded: Loaded, decisionKey: string, option: string, words: string | undefined, by: string, env: NodeJS.ProcessEnv = process.env, now = Date.now()): Delivery[] {
+export function deliverDecision(
+  loaded: Loaded,
+  decisionKey: string,
+  option: string,
+  words: string | undefined,
+  by: string,
+  env: NodeJS.ProcessEnv = process.env,
+  now = Date.now(),
+): Delivery[] {
   const change = changeOfDecision(decisionKey);
   if (!change) return [];
   const since = new Date(now - DELIVER_HOURS * 3_600_000).toISOString();
@@ -155,7 +178,8 @@ export function hostLaunch(store: Store, changeRef: string, env: NodeJS.ProcessE
   if (res.status !== 'ok' && res.status !== 'alias') throw notFound(raw, { as: 'change' });
   const c = res.rec;
   if (c.type !== 'change') throw new CliError(`${c.key} is a ${c.type}, not a change`);
-  if (c.data.status === 'done' || c.data.status === 'dropped') throw new CliError(`${c.key} is ${String(c.data.status)}; a session is launched for open work`);
+  if (c.data.status === 'done' || c.data.status === 'dropped')
+    throw new CliError(`${c.key} is ${String(c.data.status)}; a session is launched for open work`);
   const cwd = store.projectDir ?? process.cwd();
   const command = launchCommand(c.key);
   const id = here.adapter.launch({ cwd, name: worktreeNameFor(c.key), command }, env);
@@ -164,9 +188,17 @@ export function hostLaunch(store: Store, changeRef: string, env: NodeJS.ProcessE
 }
 
 /** The host this machine runs: the first whose command answers, its version, and whether the adapter validated it. */
-export function hostHere(env: NodeJS.ProcessEnv = process.env): { name: string; version: string | null; validated: boolean | null; interface: number; range: string } | null {
+export function hostHere(
+  env: NodeJS.ProcessEnv = process.env,
+): { name: string; version: string | null; validated: boolean | null; interface: number; range: string } | null {
   const here = hostPresent(env);
   if (!here) return null;
   const { manifest } = here.adapter;
-  return { name: manifest.environment, version: here.version, validated: here.version ? inRange(here.version, manifest.validated) : null, interface: manifest.interface, range: manifest.validated };
+  return {
+    name: manifest.environment,
+    version: here.version,
+    validated: here.version ? inRange(here.version, manifest.validated) : null,
+    interface: manifest.interface,
+    range: manifest.validated,
+  };
 }

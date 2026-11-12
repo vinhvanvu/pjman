@@ -65,19 +65,30 @@ export function liftsFor(loaded: Loaded, events: EventInput[]): Lift[] {
 
 /** Every lift the store's changes call for from their plans as they stand: the backfill for a store written before the rule. */
 export function liftsOfStore(loaded: Loaded): Lift[] {
-  return loaded.records.filter((r) => r.type === 'change').map((r) => liftOf(r, fromPlan(r), 'plan')).filter((l): l is Lift => !!l);
+  return loaded.records
+    .filter((r) => r.type === 'change')
+    .map((r) => liftOf(r, fromPlan(r), 'plan'))
+    .filter((l): l is Lift => !!l);
 }
 
 /** Run the rule after a write: each lift goes through pjman set, carrying the session the write came from. */
 export function liftAfter(store: Store, events: EventInput[], session: string | undefined): Lift[] {
   // only a plan written or a file observed can call for a lift; anything else skips the load
-  if (!events.some((e) => (e.type === 'change' && e.fields?.includes('plan')) || (e.type === 'session' && e.op === 'observe'))) return [];
+  if (
+    !events.some(
+      (e) => (e.type === 'change' && e.fields?.includes('plan')) || (e.type === 'session' && e.op === 'observe'),
+    )
+  )
+    return [];
   const lifts = liftsFor(loadStore(store), events);
   const done: Lift[] = [];
   for (const l of lifts) {
     // the write that called for the lift has landed: a lift refused says so and leaves that write standing
     try {
-      set(store, l.key, [`status=${l.to}`], { session: events.find((e) => e.session)?.session ?? session, because: `lifted from ${l.from}: ${l.because}` });
+      set(store, l.key, [`status=${l.to}`], {
+        session: events.find((e) => e.session)?.session ?? session,
+        because: `lifted from ${l.from}: ${l.because}`,
+      });
       done.push(l);
     } catch (err) {
       process.stderr.write(`pjman: ${l.key} not lifted to ${l.to}: ${(err as Error).message.split('\n')[0]}\n`);

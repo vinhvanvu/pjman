@@ -32,7 +32,8 @@ export function resolveMoment(store: Store, at: At, events: StoreEvent[] = readE
   let i: number;
   if (typeof at === 'number' || SEQ.test(at)) {
     const seq = typeof at === 'number' ? at : Number(at);
-    if (!Number.isInteger(seq) || seq < 1) throw new CliError(`at=${at}: a moment is an event's sequence number (1 or more) or an instant`);
+    if (!Number.isInteger(seq) || seq < 1)
+      throw new CliError(`at=${at}: a moment is an event's sequence number (1 or more) or an instant`);
     i = events.findIndex((e) => e.seq >= seq);
     if (i === -1) i = events.length - 1;
     else if (events[i].seq > seq) i = i - 1; // a gap in the numbering: the last event before it
@@ -54,7 +55,8 @@ export function resolveMoment(store: Store, at: At, events: StoreEvent[] = readE
   // the commit the store stood at: this event's, else the nearest earlier write that committed
   let commit: string | null = null;
   for (let k = i; k >= 0 && !commit; k--) commit = events[k].commit ?? null;
-  if (!commit) throw new CliError(`at=${at}: no commit stands behind event #${target.seq}; the store's history begins later`);
+  if (!commit)
+    throw new CliError(`at=${at}: no commit stands behind event #${target.seq}; the store's history begins later`);
   return { seq: target.seq, at: target.at, commit };
 }
 
@@ -139,7 +141,10 @@ export function loadAt(store: Store, at: At): { moment: Moment; loaded: Loaded }
     cache.set(key, loaded);
   } else {
     const src = gitSource(store.root, moment.commit);
-    if (isLegacyLayout(src)) throw new CliError(`at=${at}: event #${moment.seq} (${moment.at}) is before the store's layout migration, and moments before it cannot be read`);
+    if (isLegacyLayout(src))
+      throw new CliError(
+        `at=${at}: event #${moment.seq} (${moment.at}) is before the store's layout migration, and moments before it cannot be read`,
+      );
     loaded = loadStore(store, src);
     cache.set(key, loaded);
     if (cache.size > CACHE_SIZE) cache.delete(cache.keys().next().value!);

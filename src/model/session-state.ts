@@ -64,7 +64,10 @@ export function sessionState(f: StateFacts, now = Date.now(), liveMinutes = LIVE
     if (f.host.state === 'working') return 'working';
     return f.proposed ? 'waiting' : 'stopped';
   }
-  const last = [f.line, f.act].filter((x): x is string => !!x).sort().at(-1);
+  const last = [f.line, f.act]
+    .filter((x): x is string => !!x)
+    .sort()
+    .at(-1);
   const liveSince = new Date(now - liveMinutes * 60_000).toISOString();
   const stopped = !!f.line && (!f.act || f.act <= f.line);
   if (!stopped && last && last >= liveSince) return 'working';
@@ -112,7 +115,9 @@ function sessionLogOnce(rec: Rec): SessionLog {
 /** The last act of each session from the stream: a write stamped with it, its own log lines excluded (the line's own
  *  instant is read from the log, so a stop reads as a stop and not as an act after it). */
 export function lastActs(events: readonly StoreEvent[], until?: number): Map<string, string> {
-  return until === undefined ? streamMemo(events, 'last-acts', () => lastActsOnce(events)) : lastActsOnce(events, until);
+  return until === undefined
+    ? streamMemo(events, 'last-acts', () => lastActsOnce(events))
+    : lastActsOnce(events, until);
 }
 
 function lastActsOnce(events: Iterable<StoreEvent>, until?: number): Map<string, string> {

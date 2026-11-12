@@ -45,7 +45,8 @@ const CLOSE = '<!-- /pjman:brief -->';
 export type BriefTarget = 'claude-md';
 
 export function briefTargetPath(target: BriefTarget): string {
-  if (target === 'claude-md') return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'CLAUDE.md');
+  if (target === 'claude-md')
+    return path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'CLAUDE.md');
   throw new Error(`unknown brief target ${String(target)}`);
 }
 

@@ -12,7 +12,15 @@ import { rm } from '../ops/rm.js';
 import { newRecord } from '../ops/new.js';
 import { sessionBind, sessionLog, sessionObserve } from '../ops/session.js';
 import { set } from '../ops/set.js';
-import { changeContext, decisionLine, formatChangeContext, formatLs, formatStoreContext, ls, storeContext } from '../model/view.js';
+import {
+  changeContext,
+  decisionLine,
+  formatChangeContext,
+  formatLs,
+  formatStoreContext,
+  ls,
+  storeContext,
+} from '../model/view.js';
 import { findStore, readUserConfig, writeStoreConfig, type Store } from '../store/config.js';
 import { findReferences, get, keyFromUrl } from '../model/graph.js';
 import { renderView, viewData } from '../ops/pane.js';
@@ -61,7 +69,10 @@ test('init creates the global store, its own repository, and registers the repos
   assert.ok(loadStore(store).byKey.has('project:project'));
   writeStoreConfig(store.root, { ...store.config, vocabulary: { merged: 'done' } });
   store = findStore(project)!;
-  assert.match(git(store.root, 'log', '--format=%s'), /pjman: new project:project\npjman: new product:project\npjman: new person:tester\npjman: new session-kind:other\npjman: new session-kind:chat\npjman: new session-kind:backlog\npjman: new session-kind:review\npjman: init store global$/);
+  assert.match(
+    git(store.root, 'log', '--format=%s'),
+    /pjman: new project:project\npjman: new product:project\npjman: new person:tester\npjman: new session-kind:other\npjman: new session-kind:chat\npjman: new session-kind:backlog\npjman: new session-kind:review\npjman: init store global$/,
+  );
   assert.ok(fs.existsSync(path.join(store.root, '.gitignore')));
   assert.deepEqual(init({ checkers: [], cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
 });
@@ -71,7 +82,12 @@ test('new change, decision, source, actor, session validate and commit', () => {
   assert.equal(c.key, 'change:project/schema');
   assert.ok(c.commit);
   assert.equal(loadStore(store).byKey.get('change:project/schema')![0].data.project, 'project:project');
-  const d = decisionRec(store, 'schema/keys', { title: 'Keys', decision: 'Keys.', why: 'Because.', created: '2026-10-10' });
+  const d = decisionRec(store, 'schema/keys', {
+    title: 'Keys',
+    decision: 'Keys.',
+    why: 'Because.',
+    created: '2026-10-10',
+  });
   assert.equal(d.path, 'products/project/changes/schema/decisions/2026-10-10-keys.md');
   newRecord(store, 'source', 'file:SCHEMA.md', { title: 'The schema' });
   assert.ok(loadStore(store).byKey.has('person:tester')); // init made the person record
@@ -86,7 +102,11 @@ test('new change, decision, source, actor, session validate and commit', () => {
 
 test('a decision that supersedes marks its target superseded', () => {
   const r = decisionRec(store, 'schema/keys-and-aliases', {
-    title: 'Keys and aliases', decision: 'x', why: 'y', decidedBy: 'person:tester', supersedes: 'decision:project/schema/keys',
+    title: 'Keys and aliases',
+    decision: 'x',
+    why: 'y',
+    decidedBy: 'person:tester',
+    supersedes: 'decision:project/schema/keys',
   });
   assert.deepEqual(r.notes, ['decision:project/schema/keys is now superseded']);
   const loaded = loadStore(store);
@@ -96,13 +116,19 @@ test('a decision that supersedes marks its target superseded', () => {
 
 test('the tool refuses what would not validate and undoes the write', () => {
   change(store, 'alpha', { title: 'Alpha', summary: 'a', binds: ['linear:ABC-1'] });
-  assert.throws(() => change(store, 'beta', { title: 'Beta', summary: 'b', binds: ['linear:ABC-1'] }), /also bound by change:project\/alpha/);
+  assert.throws(
+    () => change(store, 'beta', { title: 'Beta', summary: 'b', binds: ['linear:ABC-1'] }),
+    /also bound by change:project\/alpha/,
+  );
   assert.ok(!fs.existsSync(path.join(store.root, 'products/project/changes/beta')));
   assert.throws(() => change(store, 'gamma', { title: 'G', status: 'implementing' }), /not in the vocabulary/);
   assert.throws(() => decisionRec(store, 'nope/x', { title: 'x' }), /resolves to nothing/);
-  assert.throws(() => decisionRec(store, 'alpha/agentic', { title: 'x', status: 'decided', writer: 'agent:bot' }), /not the decider/);
+  assert.throws(
+    () => decisionRec(store, 'alpha/agentic', { title: 'x', status: 'decided', writer: 'agent:bot' }),
+    /not the decider/,
+  );
   assert.throws(() => change(store, 'nameless', { title: 'x', name: 'one two three four five' }), /one to four/);
-  assert.throws(() => change(store, 'twoline', { gist: "a\nb" }), /one line/);
+  assert.throws(() => change(store, 'twoline', { gist: 'a\nb' }), /one line/);
   assert.throws(() => newRecord(store, 'source', 'bogus:1', { title: 'x' }), /not in source_kinds/);
 });
 
@@ -121,7 +147,11 @@ test('sessions append: bind, log, observe', () => {
 test('a session started just before local midnight is named by that day and validates', () => {
   // 23:30 local on 2026-10-25, as the UTC instant the hook records; its UTC day may already be the 26th
   const local = new Date(2026, 9, 25, 23, 30);
-  const r = newRecord(store, 'session', 'late-night', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', started: local.toISOString() });
+  const r = newRecord(store, 'session', 'late-night', {
+    agent: 'agent:claude-code',
+    onBehalfOf: 'person:tester',
+    started: local.toISOString(),
+  });
   assert.equal(r.path, 'sessions/2026-10-25-late-night.md');
   const warnings = validate(loadStore(store)).filter((p) => p.path === r.path);
   assert.deepEqual(warnings, []);
@@ -130,19 +160,29 @@ test('a session started just before local midnight is named by that day and vali
 
 test('validate reports hand-written faults by path and reason, never drops', () => {
   fs.mkdirSync(path.join(store.root, 'products/project/changes/hand'), { recursive: true });
-  fs.writeFileSync(path.join(store.root, 'products/project/changes/hand/change.md'), '---\ngist: Hand: written\nstatus: open\n---\nno origin\n');
+  fs.writeFileSync(
+    path.join(store.root, 'products/project/changes/hand/change.md'),
+    '---\ngist: Hand: written\nstatus: open\n---\nno origin\n',
+  );
   const problems = validate(loadStore(store));
   const hand = problems.filter((p) => p.path === 'products/project/changes/hand/change.md');
   assert.ok(hand.some((p) => /pjman fmt/.test(p.message)));
   const r = fmt(store, {});
   assert.deepEqual(r.changed, ['products/project/changes/hand/change.md']);
-  const after = validate(loadStore(store)).filter((p) => p.path === 'products/project/changes/hand/change.md').map((p) => p.message);
+  const after = validate(loadStore(store))
+    .filter((p) => p.path === 'products/project/changes/hand/change.md')
+    .map((p) => p.message);
   assert.deepEqual(after, ["body is missing the '## Origin' section"]);
   fs.rmSync(path.join(store.root, 'products/project/changes/hand'), { recursive: true });
 });
 
 test('set changes authored fields and refuses what would not validate', () => {
-  const r = set(store, 'change:project/alpha', ['status=active', 'gist=Write the plan: soon', 'links=file:A.md,file:B.md'], {});
+  const r = set(
+    store,
+    'change:project/alpha',
+    ['status=active', 'gist=Write the plan: soon', 'links=file:A.md,file:B.md'],
+    {},
+  );
   assert.deepEqual(r.changed, ['status', 'gist', 'links']);
   const rec = loadStore(store).byKey.get('change:project/alpha')![0];
   assert.equal(rec.data.status, 'active');
@@ -168,12 +208,18 @@ test('set changes authored fields and refuses what would not validate', () => {
 
 test('mv renames the folder, leaves an alias, rewrites references', () => {
   const r = mv(store, 'change:project/schema', 'change:project/contract', {});
-  assert.ok(r.rewritten.includes('sessions/' + fs.readdirSync(path.join(store.root, 'sessions')).find((f) => f.endsWith('.md'))));
+  assert.ok(
+    r.rewritten.includes(
+      'sessions/' + fs.readdirSync(path.join(store.root, 'sessions')).find((f) => f.endsWith('.md')),
+    ),
+  );
   const loaded = loadStore(store);
   const c = loaded.byKey.get('change:project/contract')![0];
   assert.deepEqual(c.data.aliases, ['schema']);
   assert.ok(loaded.byKey.has('decision:project/contract/keys-and-aliases'));
-  assert.deepEqual(loaded.byKey.get('decision:project/contract/keys-and-aliases')![0].data.supersedes, ['decision:project/contract/keys']);
+  assert.deepEqual(loaded.byKey.get('decision:project/contract/keys-and-aliases')![0].data.supersedes, [
+    'decision:project/contract/keys',
+  ]);
   assert.deepEqual(loaded.byKey.get('session:sess-1')![0].data.changes, ['change:project/contract']);
   assert.deepEqual(errors(store), []);
   const ctx = changeContext(store, 'change:project/schema'); // via alias
@@ -183,7 +229,10 @@ test('mv renames the folder, leaves an alias, rewrites references', () => {
   const old = ctx.decisions.find((d) => d.key === 'decision:project/contract/keys')!;
   assert.equal(decisionLine(old), 'superseded by decision:project/contract/keys-and-aliases');
   const dated = ls(store, { type: 'decision' }).map((r) => r.path);
-  assert.deepEqual(dated, [...dated].sort((a, b) => a.localeCompare(b)));
+  assert.deepEqual(
+    dated,
+    [...dated].sort((a, b) => a.localeCompare(b)),
+  );
 });
 
 test('index mints stable ids, derives reverse edges, records conflicts', async () => {
@@ -199,11 +248,16 @@ test('index mints stable ids, derives reverse edges, records conflicts', async (
   buildIndex(store);
   const id2 = (query(store, "select id from records where key='change:project/contract'") as { id: string }[])[0].id;
   assert.equal(id1, id2);
-  const rev = query(store, "select from_key from edges where edge='in' and to_key='change:project/contract'") as { from_key: string }[];
+  const rev = query(store, "select from_key from edges where edge='in' and to_key='change:project/contract'") as {
+    from_key: string;
+  }[];
   assert.equal(rev.length, 2);
   // a hand-written double bind is a conflict, not a silent winner
   fs.mkdirSync(path.join(store.root, 'products/project/changes/beta'), { recursive: true });
-  fs.writeFileSync(path.join(store.root, 'products/project/changes/beta/change.md'), '---\ntitle: Beta\nstatus: open\nbinds:\n  - linear:ABC-1\n---\n\n## Summary\n\nb\n');
+  fs.writeFileSync(
+    path.join(store.root, 'products/project/changes/beta/change.md'),
+    '---\ntitle: Beta\nstatus: open\nbinds:\n  - linear:ABC-1\n---\n\n## Summary\n\nb\n',
+  );
   const c = buildIndex(store);
   assert.equal(c.conflicts.length, 1);
   assert.equal(c.conflicts[0].kind, 'double-bind');
@@ -221,13 +275,22 @@ test('a second repository joins the same global store as its own project; the bo
   assert.equal(s3.project, 'project:other');
   assert.deepEqual(loadStore(s3).byKey.get('project:other')![0].data.links, ['git-repo:acme/other']);
   change(s3, 'x2', { title: 'X2', summary: 's' });
-  assert.deepEqual(storeContext(s3, { project: s3.project }).changes.map((r) => r.key), ['change:other/x2']);
+  assert.deepEqual(
+    storeContext(s3, { project: s3.project }).changes.map((r) => r.key),
+    ['change:other/x2'],
+  );
   const all = storeContext(store, { project: null });
-  assert.ok(all.changes.some((r) => r.key === 'change:other/x2') && all.changes.some((r) => r.data.project === 'project:project'));
+  assert.ok(
+    all.changes.some((r) => r.key === 'change:other/x2') &&
+      all.changes.some((r) => r.data.project === 'project:project'),
+  );
   assert.equal(ls(store, { type: 'change', project: 'project:other' }).length, 1);
   // the change is keyed under other's product: a project of another product is a move, not a field
   assert.throws(() => set(store, 'change:other/x2', ['project=project:nope'], {}), /does not resolve/);
-  assert.throws(() => set(store, 'change:other/x2', ['project=project:project'], {}), /belongs to product:project; this change is keyed under product:other/);
+  assert.throws(
+    () => set(store, 'change:other/x2', ['project=project:project'], {}),
+    /belongs to product:project; this change is keyed under product:other/,
+  );
   mv(store, 'change:other/x2', 'change:project/x2', {});
   assert.equal(loadStore(store).byKey.get('change:project/x2')![0].data.project, 'project:project');
   assert.deepEqual(loadStore(store).byKey.get('change:project/x2')![0].data.aliases, ['other/x2']);
@@ -260,7 +323,9 @@ test('dates are local calendar days; ls shows them', () => {
   assert.equal(localDate(new Date(2026, 0, 1, 0, 10)), '2026-01-01');
   assert.equal(today(), localDate(new Date()));
   const r = change(store, 'dated', { title: 'Dated' });
-  const line = formatLs(ls(store, { type: 'change' })).split('\n').find((l) => l.includes('change:project/dated'));
+  const line = formatLs(ls(store, { type: 'change' }))
+    .split('\n')
+    .find((l) => l.includes('change:project/dated'));
   assert.ok(line);
   assert.match(line, new RegExp(`^change   ${today()}  change:project/dated`));
   fs.rmSync(path.join(store.root, path.dirname(r.path)), { recursive: true });
@@ -275,7 +340,10 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   assert.equal(byAlias.via['change:project/contract'], 'self');
   const bySource = get(loaded, 'file:SCHEMA.md');
   assert.equal(bySource.resolution.status, 'record');
-  assert.deepEqual(bySource.changes.map((c) => c.change.key), ['change:project/contract']);
+  assert.deepEqual(
+    bySource.changes.map((c) => c.change.key),
+    ['change:project/contract'],
+  );
   assert.equal(bySource.via['change:project/contract'], 'links');
   const byPath = get(loaded, path.join(project, 'SCHEMA.md'), { cwd: project, projectDir: project });
   assert.equal(byPath.resolution.key, 'file:SCHEMA.md');
@@ -291,26 +359,40 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   const byTicket = get(loaded, 'ABC-1234');
   assert.equal(byTicket.resolution.status, 'key');
   assert.equal(byTicket.resolution.key, 'linear:ABC-1234');
-  assert.deepEqual(byTicket.changes.map((c) => c.change.key), ['change:project/abc']);
+  assert.deepEqual(
+    byTicket.changes.map((c) => c.change.key),
+    ['change:project/abc'],
+  );
   assert.equal(byTicket.via['change:project/abc'], 'binds');
   const byUrl = get(loaded, 'https://linear.app/acme/issue/ABC-1234/some-title');
   assert.equal(byUrl.resolution.key, 'linear:ABC-1234');
   assert.equal(byUrl.resolution.shape, 'url');
-  assert.deepEqual(byUrl.changes.map((c) => c.change.key), ['change:project/abc']);
+  assert.deepEqual(
+    byUrl.changes.map((c) => c.change.key),
+    ['change:project/abc'],
+  );
   assert.equal(keyFromUrl('https://github.com/acme/app/pull/7'), 'github-pr:acme/app#7');
   assert.equal(keyFromUrl('https://github.com/acme/app/issues/8'), 'github-issue:acme/app#8');
   assert.equal(keyFromUrl('https://github.com/acme/app'), 'git-repo:acme/app');
   assert.equal(get(loaded, 'https://github.com/acme/app/pull/7').changes.length, 0);
 
   // a source is listed once, bound before linked, with where it opens: the record's URL, else one built from the key
-  change(store, 'chips', { title: 'Chips', summary: 's', binds: ['github-issue:acme/app#8'], links: ['github-issue:acme/app#8', 'github-pr:acme/app#7', 'url:https://example.com/a', 'file:SCHEMA.md'] });
+  change(store, 'chips', {
+    title: 'Chips',
+    summary: 's',
+    binds: ['github-issue:acme/app#8'],
+    links: ['github-issue:acme/app#8', 'github-pr:acme/app#7', 'url:https://example.com/a', 'file:SCHEMA.md'],
+  });
   const chips = changeContext(store, 'change:project/chips').sources;
-  assert.deepEqual(chips.map((x) => [x.via, x.key, x.url]), [
-    ['binds', 'github-issue:acme/app#8', 'https://github.com/acme/app/issues/8'],
-    ['links', 'github-pr:acme/app#7', 'https://github.com/acme/app/pull/7'],
-    ['links', 'url:https://example.com/a', 'https://example.com/a'],
-    ['links', 'file:SCHEMA.md', undefined],
-  ]);
+  assert.deepEqual(
+    chips.map((x) => [x.via, x.key, x.url]),
+    [
+      ['binds', 'github-issue:acme/app#8', 'https://github.com/acme/app/issues/8'],
+      ['links', 'github-pr:acme/app#7', 'https://github.com/acme/app/pull/7'],
+      ['links', 'url:https://example.com/a', 'https://example.com/a'],
+      ['links', 'file:SCHEMA.md', undefined],
+    ],
+  );
   assert.equal(changeContext(store, 'change:project/abc').sources[0].url, undefined); // a Linear key builds none: its record carries the URL
   rm(store, 'change:project/chips', {});
 
@@ -329,24 +411,40 @@ test('the getter: any shape in, the record and the changes in reach out', () => 
   loaded = loadStore(store);
   assert.equal(get(loaded, '#5', { project: 'project:project' }).resolution.key, 'github-issue:acme/app#5');
   assert.equal(get(loaded, 'acme/app#5').resolution.key, 'github-issue:acme/app#5');
-  assert.deepEqual(get(loaded, '#8', { project: 'project:project' }).changes.map((c) => c.change.key), ['change:project/app-8']);
+  assert.deepEqual(
+    get(loaded, '#8', { project: 'project:project' }).changes.map((c) => c.change.key),
+    ['change:project/app-8'],
+  );
   assert.deepEqual(get(loaded, 'other/repo#8').changes, []);
   assert.equal(get(loaded, 'other/repo#8').resolution.key, 'github-issue:other/repo#8');
   // an id of another kind's shape does not resolve through this project's tracker
   assert.equal(get(loaded, 'XYZ-77', { project: 'project:project' }).resolution.status, 'none');
 
   // the scanner: every reference in a text, in order, with the change it leads to; a shape of another tracker is not a reference here
-  const refs = findReferences(loaded, 'see change:contract, then #8 (not #77, UTF-8 or XYZ-77) and https://linear.app/acme/issue/ABC-1234/x', { project: 'project:project' });
+  const refs = findReferences(
+    loaded,
+    'see change:contract, then #8 (not #77, UTF-8 or XYZ-77) and https://linear.app/acme/issue/ABC-1234/x',
+    { project: 'project:project' },
+  );
   // a bare #n is listed with what it would lead to but is weak: it never binds or creates; the qualified form does
-  assert.deepEqual(refs.map((r) => [r.text, r.key, r.change, r.creatable, r.weak]), [
-    ['change:contract', 'change:project/contract', 'change:project/contract', false, false],
-    ['#8', 'github-issue:acme/app#8', 'change:project/app-8', false, true],
-    ['#77', 'github-issue:acme/app#77', undefined, false, true],
-    ['https://linear.app/acme/issue/ABC-1234/x', 'linear:ABC-1234', 'change:project/abc', false, false],
-  ]);
-  assert.deepEqual(findReferences(loaded, 'then acme/app#77', { project: 'project:project' }).map((r) => [r.key, r.creatable, r.weak]), [['github-issue:acme/app#77', true, false]]);
+  assert.deepEqual(
+    refs.map((r) => [r.text, r.key, r.change, r.creatable, r.weak]),
+    [
+      ['change:contract', 'change:project/contract', 'change:project/contract', false, false],
+      ['#8', 'github-issue:acme/app#8', 'change:project/app-8', false, true],
+      ['#77', 'github-issue:acme/app#77', undefined, false, true],
+      ['https://linear.app/acme/issue/ABC-1234/x', 'linear:ABC-1234', 'change:project/abc', false, false],
+    ],
+  );
+  assert.deepEqual(
+    findReferences(loaded, 'then acme/app#77', { project: 'project:project' }).map((r) => [r.key, r.creatable, r.weak]),
+    [['github-issue:acme/app#77', true, false]],
+  );
   // what an interface writes for a pasted image or text is not a reference
-  assert.deepEqual(findReferences(loaded, '[Image #8] and [Pasted text #8 +3 lines]', { project: 'project:project' }), []);
+  assert.deepEqual(
+    findReferences(loaded, '[Image #8] and [Pasted text #8 +3 lines]', { project: 'project:project' }),
+    [],
+  );
   assert.equal(findReferences(loaded, 'nothing here', { project: 'project:project' }).length, 0);
   fs.rmSync(path.join(store.root, 'products/project/changes/abc'), { recursive: true });
 });
@@ -360,9 +458,15 @@ test('a change may have a parent change: any depth, no cycles, children derived,
   assert.throws(() => set(store, 'change:project/epic', ['parent=change:epic'], {}), /cycles/);
   const ctx = changeContext(store, 'change:project/epic-a');
   assert.equal(ctx.parent?.key, 'change:project/epic');
-  assert.deepEqual(ctx.children.map((r) => r.key), ['change:project/epic-a-1']);
+  assert.deepEqual(
+    ctx.children.map((r) => r.key),
+    ['change:project/epic-a-1'],
+  );
   const board = formatStoreContext(storeContext(store, { project: 'project:project' }));
-  assert.match(board, /^- change:project\/epic — Epic · 0\/1 done\n  - change:project\/epic-a \[open\] — A · 0\/1 done\n    - change:project\/epic-a-1 \[open\] — A1$/m);
+  assert.match(
+    board,
+    /^- change:project\/epic — Epic · 0\/1 done\n  - change:project\/epic-a \[open\] — A · 0\/1 done\n    - change:project\/epic-a-1 \[open\] — A1$/m,
+  );
   // a parent change is a milestone: progress is its children done, dropped excluded
   change(store, 'epic-b', { title: 'B', summary: 's', parent: 'change:project/epic', status: 'done' });
   change(store, 'epic-c', { title: 'C', summary: 's', parent: 'change:project/epic', status: 'dropped' });
@@ -373,7 +477,8 @@ test('a change may have a parent change: any depth, no cycles, children derived,
   assert.equal(n.via['change:project/epic'], 'parent');
   assert.equal(n.via['change:project/epic-a-1'], 'parent');
   assert.deepEqual(errors(store), []);
-  for (const c of ['epic-a-1', 'epic-a', 'epic-b', 'epic-c', 'epic']) fs.rmSync(path.join(store.root, 'products/project/changes', c), { recursive: true });
+  for (const c of ['epic-a-1', 'epic-a', 'epic-b', 'epic-c', 'epic'])
+    fs.rmSync(path.join(store.root, 'products/project/changes', c), { recursive: true });
 });
 
 test('the view renders a reference; the session page reads what a session is on', () => {
@@ -413,27 +518,45 @@ test('every write appends one event per record to the stream; follow delivers ne
   set(store, 'change:project/evented', ['status=active'], {});
   next(store, 'change:project/evented', 'go');
   decisionRec(store, 'evented/first', { title: 'First', decision: 'a', why: 'b' });
-  decisionRec(store, 'evented/second', { title: 'Second', decision: 'a', why: 'b', supersedes: 'decision:project/evented/first' });
+  decisionRec(store, 'evented/second', {
+    title: 'Second',
+    decision: 'a',
+    why: 'b',
+    supersedes: 'decision:project/evented/first',
+  });
   const after = readEvents(store, before.at(-1)!.seq);
-  assert.deepEqual(after.map((e) => [e.op, e.key, e.fields]), [
-    ['created', 'change:project/evented', undefined],
-    ['set', 'change:project/evented', ['status']],
-    ['set', 'change:project/evented', ['plan', 'step add']],
-    ['created', 'decision:project/evented/first', undefined],
-    ['created', 'decision:project/evented/second', undefined],
-    ['set', 'decision:project/evented/first', ['status']],
-  ]);
+  assert.deepEqual(
+    after.map((e) => [e.op, e.key, e.fields]),
+    [
+      ['created', 'change:project/evented', undefined],
+      ['set', 'change:project/evented', ['status']],
+      ['set', 'change:project/evented', ['plan', 'step add']],
+      ['created', 'decision:project/evented/first', undefined],
+      ['created', 'decision:project/evented/second', undefined],
+      ['set', 'decision:project/evented/first', ['status']],
+    ],
+  );
   assert.equal(after[0].commit, r.commit);
   assert.equal(after[0].writer, 'person:tester');
   assert.match(after[0].at, /^\d{4}-\d{2}-\d{2}T.*Z$/);
   await new Promise((res) => setTimeout(res, 300));
   stop();
-  assert.deepEqual(delivered, ['created change:project/evented', 'set change:project/evented', 'set change:project/evented', 'created decision:project/evented/first', 'created decision:project/evented/second', 'set decision:project/evented/first']);
+  assert.deepEqual(delivered, [
+    'created change:project/evented',
+    'set change:project/evented',
+    'set change:project/evented',
+    'created decision:project/evented/first',
+    'created decision:project/evented/second',
+    'set decision:project/evented/first',
+  ]);
   const all = readEvents(store);
   const rebuilt = rebuildEvents(store);
   const again = readEvents(store);
   assert.equal(rebuilt.events, again.length);
-  assert.deepEqual(again.slice(-6).map((e) => [e.op, e.key]), all.slice(-6).map((e) => [e.op, e.key]));
+  assert.deepEqual(
+    again.slice(-6).map((e) => [e.op, e.key]),
+    all.slice(-6).map((e) => [e.op, e.key]),
+  );
   assert.equal(again.at(-1)!.commit, all.at(-1)!.commit);
   fs.rmSync(path.join(store.root, 'products/project/changes/evented'), { recursive: true });
 });
@@ -467,7 +590,12 @@ test('start brings the dashboard up detached and is idempotent; stop takes it do
   assert.equal(again.address.url, first.address.url);
   assert.equal(readServeAddress()?.pid, first.address.pid);
   const lines = init({ checkers: [], cwd: project, start: true });
-  assert.ok(lines.some((l) => l === `dashboard: ${first.address.url} (already running)` || l.startsWith(`dashboard: ${first.address.url}`)));
+  assert.ok(
+    lines.some(
+      (l) =>
+        l === `dashboard: ${first.address.url} (already running)` || l.startsWith(`dashboard: ${first.address.url}`),
+    ),
+  );
   assert.ok(lines.some((l) => /left to do/.test(l)));
   const stopped = stop();
   assert.equal(stopped?.pid, first.address.pid);
@@ -483,20 +611,32 @@ test('rm removes a record; refused while referenced; --detach drops droppable re
   sessionBind(store, 'sess-rm', 'change:project/doomed');
   sessionObserve(store, 'sess-rm', 'links', 'change:project/doomed', 'file:src/x.ts');
   assert.throws(() => rm(store, 'change:project/nope'), /resolves to nothing/);
-  assert.throws(() => rm(store, 'change:project/doomed'), /referenced by\n  change:project\/orphan  parent\n  session:sess-rm  changes, observed/);
+  assert.throws(
+    () => rm(store, 'change:project/doomed'),
+    /referenced by\n  change:project\/orphan  parent\n  session:sess-rm  changes, observed/,
+  );
   assert.ok(loadStore(store).byKey.has('change:project/doomed'));
   const r = rm(store, 'change:project/doomed', { detach: true });
   assert.equal(r.removed.length, 2);
   assert.ok(r.removed.includes('products/project/changes/doomed/change.md'));
   assert.ok(r.removed.some((p) => p.startsWith('products/project/changes/doomed/decisions/')));
-  assert.deepEqual(r.detached.map((d) => [d.key, d.fields]), [['change:project/orphan', ['parent']], ['session:sess-rm', ['changes', 'observed']]]);
+  assert.deepEqual(
+    r.detached.map((d) => [d.key, d.fields]),
+    [
+      ['change:project/orphan', ['parent']],
+      ['session:sess-rm', ['changes', 'observed']],
+    ],
+  );
   const after = loadStore(store);
   assert.ok(!after.byKey.has('change:project/doomed'));
   assert.ok(!after.byKey.has('decision:project/doomed/why'));
   assert.ok(!fs.existsSync(path.join(store.root, 'products/project/changes/doomed')));
   assert.equal(after.byKey.get('change:project/orphan')![0].data.parent, undefined);
   assert.equal(after.byKey.get('session:sess-rm')![0].data.changes, undefined);
-  assert.deepEqual(validate(after).filter((p) => p.level === 'error'), []);
+  assert.deepEqual(
+    validate(after).filter((p) => p.level === 'error'),
+    [],
+  );
   const evs = readEvents(store);
   const removed = evs.filter((e) => e.op === 'removed').map((e) => e.key);
   assert.deepEqual(removed.slice(-2), ['change:project/doomed', 'decision:project/doomed/why']);
@@ -529,27 +669,49 @@ test('crud: set reaches actors and refuses sessions; mv renames a decision, with
   assert.ok(!loaded.byKey.has('decision:project/contract/keys'));
   const moved = loaded.byKey.get('decision:project/contract/keys-v1')![0];
   assert.equal(path.basename(moved.path), path.basename(before).replace(/keys\.md$/, 'keys-v1.md'));
-  assert.deepEqual(loaded.byKey.get('decision:project/contract/keys-and-aliases')![0].data.supersedes, ['decision:project/contract/keys-v1']);
+  assert.deepEqual(loaded.byKey.get('decision:project/contract/keys-and-aliases')![0].data.supersedes, [
+    'decision:project/contract/keys-v1',
+  ]);
   assert.deepEqual(errors(store), []);
   // across changes
   change(store, 'elsewhere', { title: 'Elsewhere', summary: 'e' });
   mv(store, 'decision:project/contract/keys-v1', 'decision:project/elsewhere/keys-v1', {});
   loaded = loadStore(store);
-  assert.ok(loaded.byKey.get('decision:project/elsewhere/keys-v1')![0].path.startsWith('products/project/changes/elsewhere/decisions/'));
-  assert.deepEqual(loaded.byKey.get('decision:project/contract/keys-and-aliases')![0].data.supersedes, ['decision:project/elsewhere/keys-v1']);
-  assert.throws(() => mv(store, 'decision:project/elsewhere/keys-v1', 'decision:project/nowhere/keys-v1', {}), /change:project\/nowhere resolves to nothing/);
+  assert.ok(
+    loaded.byKey
+      .get('decision:project/elsewhere/keys-v1')![0]
+      .path.startsWith('products/project/changes/elsewhere/decisions/'),
+  );
+  assert.deepEqual(loaded.byKey.get('decision:project/contract/keys-and-aliases')![0].data.supersedes, [
+    'decision:project/elsewhere/keys-v1',
+  ]);
+  assert.throws(
+    () => mv(store, 'decision:project/elsewhere/keys-v1', 'decision:project/nowhere/keys-v1', {}),
+    /change:project\/nowhere resolves to nothing/,
+  );
   assert.throws(() => mv(store, 'decision:project/elsewhere/keys-v1', 'change:project/keys-v1', {}), /keeps the kind/);
   assert.deepEqual(errors(store), []);
 
   // a project rename: every change's project field and the directory binding follow
-  const bound = readUserConfig().stores.flatMap((s) => s.projects).filter((b) => b.project === 'project:project').length;
+  const bound = readUserConfig()
+    .stores.flatMap((s) => s.projects)
+    .filter((b) => b.project === 'project:project').length;
   const p = mv(store, 'project:project', 'project:renamed', {});
   loaded = loadStore(store);
   assert.ok(!loaded.byKey.has('project:project'));
   assert.equal(loaded.byKey.get('project:renamed')![0].path, 'projects/renamed.md');
-  assert.ok(loaded.records.filter((r) => r.type === 'change' && r.data.project).every((r) => r.data.project === 'project:renamed'));
+  assert.ok(
+    loaded.records
+      .filter((r) => r.type === 'change' && r.data.project)
+      .every((r) => r.data.project === 'project:renamed'),
+  );
   assert.ok(p.rewritten.length >= 1);
-  assert.equal(readUserConfig().stores.flatMap((s) => s.projects).filter((b) => b.project === 'project:renamed').length, bound);
+  assert.equal(
+    readUserConfig()
+      .stores.flatMap((s) => s.projects)
+      .filter((b) => b.project === 'project:renamed').length,
+    bound,
+  );
   assert.deepEqual(errors(store), []);
   assert.throws(() => mv(store, 'linear:ABC-1', 'linear:ABC-2', {}), /keep their keys/);
   const evs = readEvents(store);
@@ -570,7 +732,9 @@ test('the receipt: what the store received since a point, one line per record, d
   const mid = readEvents(store).at(-1)!.seq;
   set(store, 'change:project/receipt-b', ['status=review'], {});
   next(store, 'change:project/receipt-b', 'look');
-  assert.deepEqual(receipt(store, { since: mid }).lines, ['set change:project/receipt-b (status → review, plan, step add)']);
+  assert.deepEqual(receipt(store, { since: mid }).lines, [
+    'set change:project/receipt-b (status → review, plan, step add)',
+  ]);
   assert.deepEqual(receipt(store, { since: mid, session: 'session:nobody' }).lines, []);
   rm(store, 'change:project/receipt-b');
 });
@@ -581,7 +745,11 @@ test("a session's receipt: its writes and its spawned sessions', nothing from an
   const who = { agent: 'agent:claude-code', onBehalfOf: 'person:tester' };
   newRecord(store, 'session', 'rc-parent', who);
   newRecord(store, 'session', 'rc-child', { ...who, parent: 'session:rc-parent', session: 'session:rc-child' });
-  newRecord(store, 'session', 'rc-grandchild', { ...who, parent: 'session:rc-child', session: 'session:rc-grandchild' });
+  newRecord(store, 'session', 'rc-grandchild', {
+    ...who,
+    parent: 'session:rc-child',
+    session: 'session:rc-grandchild',
+  });
   newRecord(store, 'session', 'rc-other', who);
   sessionLog(store, 'rc-child', 'spawned by session:rc-parent');
   sessionBind(store, 'rc-parent', 'change:project/receipt-c');
@@ -589,23 +757,47 @@ test("a session's receipt: its writes and its spawned sessions', nothing from an
   set(store, 'change:project/receipt-c', ['notes=n'], { session: 'session:rc-child' });
   next(store, 'change:project/receipt-c', 'deep', { session: 'session:rc-grandchild' });
   set(store, 'change:project/receipt-c', ['scope=s'], { session: 'session:rc-other' });
-  change(store, 'receipt-d', { title: 'Receipt D', summary: 's', project: 'project:renamed', session: 'session:rc-other' });
-  assert.deepEqual(receipt(store, { since, session: 'session:rc-parent' }).lines, ['set change:project/receipt-c (status → active, notes, plan, step add)']);
-  assert.deepEqual(receipt(store, { since, session: 'session:rc-child' }).lines, ['set change:project/receipt-c (notes, plan, step add)']);
-  assert.deepEqual(receipt(store, { since, session: 'session:rc-other' }).lines, ['set change:project/receipt-c (scope)', 'created change:project/receipt-d — Receipt D']);
+  change(store, 'receipt-d', {
+    title: 'Receipt D',
+    summary: 's',
+    project: 'project:renamed',
+    session: 'session:rc-other',
+  });
+  assert.deepEqual(receipt(store, { since, session: 'session:rc-parent' }).lines, [
+    'set change:project/receipt-c (status → active, notes, plan, step add)',
+  ]);
+  assert.deepEqual(receipt(store, { since, session: 'session:rc-child' }).lines, [
+    'set change:project/receipt-c (notes, plan, step add)',
+  ]);
+  assert.deepEqual(receipt(store, { since, session: 'session:rc-other' }).lines, [
+    'set change:project/receipt-c (scope)',
+    'created change:project/receipt-d — Receipt D',
+  ]);
   rm(store, 'change:project/receipt-d');
 });
 
 test('depends_on, kind, severity, target and the sequence: validated, refused when wrong, dropped by rm --detach', () => {
   const project = 'project:renamed'; // renamed above; its product is still product:project
   change(store, 'base', { title: 'Base', summary: 'b', project });
-  change(store, 'on-base', { title: 'On base', summary: 'o', project, dependsOn: ['change:project/base'], target: '2026-12-01' });
+  change(store, 'on-base', {
+    title: 'On base',
+    summary: 'o',
+    project,
+    dependsOn: ['change:project/base'],
+    target: '2026-12-01',
+  });
   const rec = loadStore(store).byKey.get('change:project/on-base')![0];
   assert.deepEqual(rec.data.depends_on, ['change:project/base']);
   assert.equal(rec.data.target, '2026-12-01');
   const ctx = changeContext(store, 'change:project/on-base');
-  assert.deepEqual(ctx.dependsOn.map((r) => r.key), ['change:project/base']);
-  assert.deepEqual(changeContext(store, 'change:project/base').neededBy.map((r) => r.key), ['change:project/on-base']);
+  assert.deepEqual(
+    ctx.dependsOn.map((r) => r.key),
+    ['change:project/base'],
+  );
+  assert.deepEqual(
+    changeContext(store, 'change:project/base').neededBy.map((r) => r.key),
+    ['change:project/on-base'],
+  );
   assert.match(formatChangeContext(ctx), /## Depends on\n- change:project\/base/);
   // a cycle, a self-dependency, a missing target, a bad date: refused
   assert.throws(() => set(store, 'change:project/base', ['depends_on=change:on-base'], {}), /depends_on cycles/);
@@ -621,23 +813,57 @@ test('depends_on, kind, severity, target and the sequence: validated, refused wh
   // a milestone is a change of kind milestone (decision milestone-kind/kind-not-children): a parent must be one, it
   // takes no steps of its own, and promotion is a plain write once the steps are gone
   change(store, 'goal', { title: 'Goal', summary: 'g', project, kind: 'milestone' });
-  change(store, 'toward-goal', { title: 'Toward goal', summary: 't', project, parent: 'change:project/goal', next: 'a step on the child is fine' });
-  assert.throws(() => change(store, 'under-work', { title: 'Under work', summary: 'u', project, parent: 'change:project/base' }), /parent: change:project\/base is not a milestone \(its kind is 'work'\); pjman set change:project\/base kind=milestone/);
-  assert.throws(() => step(store, 'change:project/goal', 'add', undefined, { text: 'no' }), /is a milestone: its children are its plan/);
-  assert.throws(() => set(store, 'change:project/goal', ['kind=work'], {}), /change:project\/toward-goal names this change as parent, so it must be a milestone/);
-  assert.throws(() => change(store, 'stepped', { title: 'Stepped', summary: 's', project, kind: 'milestone', steps: ['own step'] }), /a milestone's plan is its children; this one carries 1 step of its own/);
+  change(store, 'toward-goal', {
+    title: 'Toward goal',
+    summary: 't',
+    project,
+    parent: 'change:project/goal',
+    next: 'a step on the child is fine',
+  });
+  assert.throws(
+    () => change(store, 'under-work', { title: 'Under work', summary: 'u', project, parent: 'change:project/base' }),
+    /parent: change:project\/base is not a milestone \(its kind is 'work'\); pjman set change:project\/base kind=milestone/,
+  );
+  assert.throws(
+    () => step(store, 'change:project/goal', 'add', undefined, { text: 'no' }),
+    /is a milestone: its children are its plan/,
+  );
+  assert.throws(
+    () => set(store, 'change:project/goal', ['kind=work'], {}),
+    /change:project\/toward-goal names this change as parent, so it must be a milestone/,
+  );
+  assert.throws(
+    () => change(store, 'stepped', { title: 'Stepped', summary: 's', project, kind: 'milestone', steps: ['own step'] }),
+    /a milestone's plan is its children; this one carries 1 step of its own/,
+  );
   assert.equal(loadStore(store).byKey.get('change:project/stepped'), undefined, 'refused whole');
   set(store, 'change:project/base', ['kind=milestone'], {}); // base has no steps: promoted
   assert.equal(loadStore(store).byKey.get('change:project/base')![0].data.kind, 'milestone');
   set(store, 'change:project/base', ['kind=work'], {}); // and back, while nothing names it as parent
-  assert.deepEqual(ls(store, { type: 'change', kind: 'milestone' }).map((r) => r.key), ['change:project/goal']);
-  change(store, 'typo', { title: 'Typo', summary: 't', project, kind: 'bug', severity: 'cosmetic', created: '2026-01-01' });
+  assert.deepEqual(
+    ls(store, { type: 'change', kind: 'milestone' }).map((r) => r.key),
+    ['change:project/goal'],
+  );
+  change(store, 'typo', {
+    title: 'Typo',
+    summary: 't',
+    project,
+    kind: 'bug',
+    severity: 'cosmetic',
+    created: '2026-01-01',
+  });
   change(store, 'slow', { title: 'Slow', summary: 's', project, kind: 'bug' });
-  assert.deepEqual(ls(store, { type: 'change', kind: 'bug' }).map((r) => r.key), ['change:project/crash', 'change:project/typo', 'change:project/slow']);
+  assert.deepEqual(
+    ls(store, { type: 'change', kind: 'bug' }).map((r) => r.key),
+    ['change:project/crash', 'change:project/typo', 'change:project/slow'],
+  );
   assert.ok(!ls(store, { type: 'change', kind: 'work' }).some((r) => r.key === 'change:project/crash'));
   // the product's sequence: change keys, no repeats
   set(store, 'product:project', ['sequence=change:base,change:on-base'], {});
-  assert.deepEqual(loadStore(store).byKey.get('product:project')![0].data.sequence, ['change:project/base', 'change:project/on-base']);
+  assert.deepEqual(loadStore(store).byKey.get('product:project')![0].data.sequence, [
+    'change:project/base',
+    'change:project/on-base',
+  ]);
   assert.throws(() => set(store, 'product:project', ['sequence=change:base,change:base'], {}), /appears twice/);
   assert.throws(() => set(store, 'product:project', ['sequence=feature:nope'], {}), /must be a change key/);
   // the getter sees the edges
@@ -683,7 +909,10 @@ test('a feature rename keeps the old slug as an alias; apply lands a batch as on
       }
       newRecord(store, type as 'feature', ident!, f);
     } else if (cmd === 'set') set(store, rest[0]!, rest.slice(1), {});
-    else if (cmd === 'step') step(store, rest[0]!, rest[1]!, rest[1] === 'add' ? undefined : Number(rest[2]), { text: rest.slice(2).join(' ') });
+    else if (cmd === 'step')
+      step(store, rest[0]!, rest[1]!, rest[1] === 'add' ? undefined : Number(rest[2]), {
+        text: rest.slice(2).join(' '),
+      });
     else if (cmd === 'mv') mv(store, rest[0]!, rest[1]!, {});
     else throw new Error(`no ${cmd}`);
   };
@@ -692,7 +921,7 @@ test('a feature rename keeps the old slug as an alias; apply lands a batch as on
   const batch = [
     '# the map, regrouped',
     'new feature io --title "Ways in and out" --name I/O --product product:shop',
-    "set feature:lanes parent=feature:io product=",
+    'set feature:lanes parent=feature:io product=',
     'pjman step change:board-work add "after the batch"',
   ].join('\n');
   const a = apply(store, batch, run, { for: 'change:project/board-work' });
@@ -701,14 +930,23 @@ test('a feature rename keeps the old slug as an alias; apply lands a batch as on
   assert.equal(a.writes, 4);
   assert.ok(a.commit);
   assert.equal(git(store.root, 'rev-list', '--count', `${before}..HEAD`), '1');
-  assert.match(git(store.root, 'log', '-1', '--format=%s%n%(trailers:key=Pjman-For,valueonly)'), /^pjman: apply 4 writes for change:project\/board-work\nchange:project\/board-work/);
+  assert.match(
+    git(store.root, 'log', '-1', '--format=%s%n%(trailers:key=Pjman-For,valueonly)'),
+    /^pjman: apply 4 writes for change:project\/board-work\nchange:project\/board-work/,
+  );
   assert.equal(loadStore(store).byKey.get('feature:shop/lanes')![0].data.parent, 'feature:shop/io');
   const evs = readEvents(store, seqBefore);
-  assert.deepEqual(evs.map((e) => e.op), ['created', 'set', 'set', 'set', 'applied']);
+  assert.deepEqual(
+    evs.map((e) => e.op),
+    ['created', 'set', 'set', 'set', 'applied'],
+  );
   assert.ok(evs.every((e) => e.commit === a.commit));
   assert.deepEqual(evs.at(-1)!.fields, ['4 writes']);
   // a line that fails refuses the whole batch: nothing written, nothing committed
-  assert.throws(() => apply(store, 'set feature:io title=Changed\nset feature:nope title=x', run), /refused at line 2 .*nothing was written/s);
+  assert.throws(
+    () => apply(store, 'set feature:io title=Changed\nset feature:nope title=x', run),
+    /refused at line 2 .*nothing was written/s,
+  );
   assert.equal(git(store.root, 'rev-parse', 'HEAD'), git(store.root, 'rev-parse', 'HEAD'));
   assert.equal(loadStore(store).byKey.get('feature:shop/io')![0].data.title, 'Ways in and out');
   assert.equal(git(store.root, 'status', '--porcelain'), '');
@@ -723,7 +961,12 @@ test('a feature rename keeps the old slug as an alias; apply lands a batch as on
   assert.equal(back.byKey.get('feature:shop/lanes')![0].data.product, 'product:shop');
   assert.equal(back.byKey.get('change:project/board-work')![0].data.plan, undefined);
   const undone = readEvents(store, evs.at(-1)!.seq);
-  assert.deepEqual(undone.map((e) => [e.op, e.key]).sort(), [['removed', 'feature:shop/io'], ['reverted', 'change:project/board-work'], ['set', 'change:project/board-work'], ['set', 'feature:shop/lanes']]);
+  assert.deepEqual(undone.map((e) => [e.op, e.key]).sort(), [
+    ['removed', 'feature:shop/io'],
+    ['reverted', 'change:project/board-work'],
+    ['set', 'change:project/board-work'],
+    ['set', 'feature:shop/lanes'],
+  ]);
   assert.deepEqual(errors(store), []);
   // a later write on a record of the batch refuses the undo of it
   const a2 = apply(store, 'step change:board-work add again', run, {});
@@ -744,47 +987,82 @@ test('init asks about the map once and records the answer; the context says when
   const lines = init({ checkers: [], cwd: other, adapter: false, start: false, map: false });
   assert.ok(lines.some((l) => /no product map will be proposed \(project:other map=skip\)/.test(l)));
   // init inventories the repository and records what it holds (decision cold-start-gaps/init-inventories-the-repository)
-  assert.ok(lines.some((l) => l === 'the repository holds nothing yet'), lines.join('\n'));
+  assert.ok(
+    lines.some((l) => l === 'the repository holds nothing yet'),
+    lines.join('\n'),
+  );
   assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'skip');
   assert.equal(loadStore(store).byKey.get('project:other')![0].data.holds, 'bare');
   // no line while the project declined
   assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
   // yes on a later init flips it; a bare repository is said to grow its map from the work, never to get a proposal
   const again = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
-  assert.ok(again.some((l) => /^no map is proposed yet \(project:other map=propose; .*\): there is nothing to survey, so the map grows from the work/.test(l)), again.join('\n'));
+  assert.ok(
+    again.some((l) =>
+      /^no map is proposed yet \(project:other map=propose; .*\): there is nothing to survey, so the map grows from the work/.test(
+        l,
+      ),
+    ),
+    again.join('\n'),
+  );
   assert.equal(loadStore(store).byKey.get('project:other')![0].data.map, 'propose');
   // init made the product with the project; with no feature yet the context says the product has no map, by what the repository holds
   const c = storeContext(store, { project: 'project:other' });
-  assert.match(c.mapPrompt ?? '', /^product:other has no map yet; the repository holds nothing yet\. Nothing to survey: the map grows from the work/);
+  assert.match(
+    c.mapPrompt ?? '',
+    /^product:other has no map yet; the repository holds nothing yet\. Nothing to survey: the map grows from the work/,
+  );
   assert.match(formatStoreContext(c), /^# project:other.*\nno product map: product:other has no map yet/);
   // the repository grows docs and code: read live from the repository when it is the store's own project, else as recorded
-  fs.writeFileSync(path.join(other, 'README.md'), '# other\n\n' + 'The other product does a thing for a person, described here.\n'.repeat(8));
+  fs.writeFileSync(
+    path.join(other, 'README.md'),
+    '# other\n\n' + 'The other product does a thing for a person, described here.\n'.repeat(8),
+  );
   fs.mkdirSync(path.join(other, 'src'), { recursive: true });
   fs.writeFileSync(path.join(other, 'src', 'main.py'), 'print(1)\n');
-  assert.match(storeContext(store, { project: 'project:other' }).mapPrompt ?? '', /holds nothing yet/, 'another project\'s store reads the recorded state');
+  assert.match(
+    storeContext(store, { project: 'project:other' }).mapPrompt ?? '',
+    /holds nothing yet/,
+    "another project's store reads the recorded state",
+  );
   const own = findStore(other)!;
   assert.equal(own.project, 'project:other');
   const live = storeContext(own, { project: 'project:other' }).mapPrompt ?? '';
   assert.match(live, /the repository holds docs and code \(README\.md; src\/\)\. the map is proposed from both/);
   assert.match(live, /file it with no feature and propose the map in the same breath/);
   const third = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
-  assert.ok(third.some((l) => /^the first change through intake proposes a product map \(project:other map=propose/.test(l)), third.join('\n'));
-  assert.equal(loadStore(store).byKey.get('project:other')![0].data.holds, 'docs+code', 'a re-run refreshes the record');
+  assert.ok(
+    third.some((l) => /^the first change through intake proposes a product map \(project:other map=propose/.test(l)),
+    third.join('\n'),
+  );
+  assert.equal(
+    loadStore(store).byKey.get('project:other')![0].data.holds,
+    'docs+code',
+    'a re-run refreshes the record',
+  );
   // a feature ends the line
   newRecord(store, 'feature', 'cart', { title: 'The cart', product: 'product:other' });
   assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
   assert.equal(storeContext(store, { project: 'project:other' }).regroupPrompt, undefined);
   // a map grown past seven layers is offered a regrouping, in the context, never run
-  for (const n of ['a', 'b', 'c', 'd', 'e', 'f', 'g']) newRecord(store, 'feature', `top-${n}`, { title: `Top ${n}`, product: 'product:other' });
+  for (const n of ['a', 'b', 'c', 'd', 'e', 'f', 'g'])
+    newRecord(store, 'feature', `top-${n}`, { title: `Top ${n}`, product: 'product:other' });
   const grown = storeContext(store, { project: 'project:other' });
-  assert.match(grown.regroupPrompt ?? '', /^product:other has 8 top-level features, more than a proposed map would have/);
+  assert.match(
+    grown.regroupPrompt ?? '',
+    /^product:other has 8 top-level features, more than a proposed map would have/,
+  );
   assert.match(formatStoreContext(grown), /\nmap outgrown: product:other has 8 top-level features/);
   set(store, 'project:other', ['map=skip'], {});
   assert.equal(storeContext(store, { project: 'project:other' }).regroupPrompt, undefined, 'skip ends this line too');
   set(store, 'project:other', ['map=propose'], {});
   assert.throws(() => set(store, 'project:other', ['map=maybe'], {}), /not one of propose, skip/);
   assert.throws(() => set(store, 'project:other', ['holds=maybe'], {}), /not one of bare, docs, code, docs\+code/);
-  assert.deepEqual(validate(loadStore(store)).filter((p) => p.path === 'projects/other.md'), [], 'holds is a known field: no warning');
+  assert.deepEqual(
+    validate(loadStore(store)).filter((p) => p.path === 'projects/other.md'),
+    [],
+    'holds is a known field: no warning',
+  );
   assert.deepEqual(errors(store), []);
 });
 
@@ -792,7 +1070,10 @@ test('a refused write puts the record back: a bind to a missing change leaves th
   const sess = loadStore(store).records.find((r) => r.type === 'session')!;
   const textBefore = fs.readFileSync(sess.abs, 'utf8');
   const head = git(store.root, 'rev-parse', 'HEAD');
-  assert.throws(() => sessionBind(store, sess.key.slice('session:'.length), 'change:never-made'), /resolves to nothing/);
+  assert.throws(
+    () => sessionBind(store, sess.key.slice('session:'.length), 'change:never-made'),
+    /resolves to nothing/,
+  );
   assert.equal(fs.readFileSync(sess.abs, 'utf8'), textBefore);
   assert.equal(git(store.root, 'status', '--porcelain'), '');
   assert.equal(git(store.root, 'rev-parse', 'HEAD'), head);
@@ -802,7 +1083,17 @@ test('a refused write puts the record back: a bind to a missing change leaves th
   decisionRec(store, 'sup/old', { title: 'Old', decision: 'o', why: 'w' });
   const old = loadStore(store).byKey.get('decision:project/sup/old')![0];
   const oldText = fs.readFileSync(old.abs, 'utf8');
-  assert.throws(() => decisionRec(store, 'sup/new', { title: 'New', decision: 'n', why: 'w', supersedes: 'decision:project/sup/old', links: ['not a key'] }), /would not validate/);
+  assert.throws(
+    () =>
+      decisionRec(store, 'sup/new', {
+        title: 'New',
+        decision: 'n',
+        why: 'w',
+        supersedes: 'decision:project/sup/old',
+        links: ['not a key'],
+      }),
+    /would not validate/,
+  );
   assert.equal(fs.readFileSync(old.abs, 'utf8'), oldText);
   assert.equal(git(store.root, 'status', '--porcelain'), '');
   // a product carries a short name like a feature

@@ -116,7 +116,8 @@ function writeCache(all: Record<string, CacheEntry>): void {
 /** A checker whose answers are remembered for a day. `fresh` asks again and overwrites. */
 export function cached(inner: Checker, fresh = false): Checker {
   const all = readCache();
-  const live = all[inner.kind] && Date.now() - all[inner.kind].at < DAY && !fresh ? all[inner.kind] : { at: Date.now() };
+  const live =
+    all[inner.kind] && Date.now() - all[inner.kind].at < DAY && !fresh ? all[inner.kind] : { at: Date.now() };
   const entry: CacheEntry = { ...live, exists: { ...(live.exists ?? {}) } };
   all[inner.kind] = entry;
   return {
@@ -150,7 +151,12 @@ export function cached(inner: Checker, fresh = false): Checker {
 
 function gh(args: string[]): { out: string } | { err: string } {
   try {
-    const out = execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 5000, env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' } }).trim();
+    const out = execFileSync('gh', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 5000,
+      env: { ...process.env, GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
+    }).trim();
     return { out };
   } catch (e) {
     return { err: String((e as { stderr?: string }).stderr || (e as Error).message) };
@@ -173,9 +179,20 @@ export const githubChecker: Checker = {
   },
   emails() {
     const r = gh(['api', 'user/emails', '--jq', '.[].email']);
-    if ('out' in r) return { list: r.out.split('\n').map((l) => l.trim().toLowerCase()).filter(Boolean) };
-    if (/scope/i.test(r.err)) return { reason: "GitHub's emails need the user scope (gh auth refresh -h github.com -s user)" };
-    return { reason: /not logged in|auth login/i.test(r.err) ? 'gh is not signed in (gh auth login)' : 'GitHub could not be asked' };
+    if ('out' in r)
+      return {
+        list: r.out
+          .split('\n')
+          .map((l) => l.trim().toLowerCase())
+          .filter(Boolean),
+      };
+    if (/scope/i.test(r.err))
+      return { reason: "GitHub's emails need the user scope (gh auth refresh -h github.com -s user)" };
+    return {
+      reason: /not logged in|auth login/i.test(r.err)
+        ? 'gh is not signed in (gh auth login)'
+        : 'GitHub could not be asked',
+    };
   },
 };
 
@@ -208,7 +225,12 @@ function originOf(handle: string, login: string | null): HandleOrigin {
   return 'hand';
 }
 
-const ORIGIN_WORDS: Record<HandleOrigin, string> = { forge: 'your forge login', committer: 'your committer name', machine: "this machine's account name", hand: 'a hand edit' };
+const ORIGIN_WORDS: Record<HandleOrigin, string> = {
+  forge: 'your forge login',
+  committer: 'your committer name',
+  machine: "this machine's account name",
+  hand: 'a hand edit',
+};
 
 function personRecord(loaded: Loaded, actor: string) {
   return loaded.byKey.get(actor)?.[0] ?? loaded.byKey.get(loaded.aliases.get(actor)?.[0] ?? '')?.[0];
@@ -220,14 +242,28 @@ export function identity(store: Store, opts: IdentityOpts = {}): Identity {
   const handle = actor?.startsWith('person:') ? actor.slice('person:'.length) : null;
   const loaded = loadStore(store);
   const rec = actor ? personRecord(loaded, actor) : undefined;
-  const links = rec && Array.isArray(rec.data.links) ? (rec.data.links as unknown[]).filter((l): l is string => typeof l === 'string') : [];
+  const links =
+    rec && Array.isArray(rec.data.links)
+      ? (rec.data.links as unknown[]).filter((l): l is string => typeof l === 'string')
+      : [];
   const kinds = new Set(IDENTITY_KINDS.filter((k) => store.config.source_kinds.includes(k)));
-  const accounts: Account[] = links.filter((l) => kinds.has(kindOf(l))).map((key) => ({ key, kind: kindOf(key), id: idOf(key), primary: false }));
+  const accounts: Account[] = links
+    .filter((l) => kinds.has(kindOf(l)))
+    .map((key) => ({ key, kind: kindOf(key), id: idOf(key), primary: false }));
   const primary = accounts.find((a) => HANDLE_KINDS.includes(a.kind)) ?? null;
   if (primary) primary.primary = true;
   const id: Identity = {
-    actor, handle, name: typeof rec?.data.name === 'string' ? rec.data.name : null, record: !!rec, accounts,
-    primary: primary?.key ?? null, provisional: !!rec && !primary, origin: null, signed_in: [], verified: !!opts.verify, notices: [],
+    actor,
+    handle,
+    name: typeof rec?.data.name === 'string' ? rec.data.name : null,
+    record: !!rec,
+    accounts,
+    primary: primary?.key ?? null,
+    provisional: !!rec && !primary,
+    origin: null,
+    signed_in: [],
+    verified: !!opts.verify,
+    notices: [],
   };
 
   const checkers = opts.verify ? checkersFor(opts) : [];
@@ -288,27 +324,42 @@ export function identity(store: Store, opts: IdentityOpts = {}): Identity {
   }
 
   // what is off
-  if (!actor) id.notices.push("no actor is configured: run pjman init (it names you from your forge login, your committer name or this machine's account name)");
+  if (!actor)
+    id.notices.push(
+      "no actor is configured: run pjman init (it names you from your forge login, your committer name or this machine's account name)",
+    );
   else if (!rec) id.notices.push(`${actor} has no record: run pjman init, which makes it with the accounts it knows`);
   if (rec && handle && id.provisional) {
     const forge = checkers.find((c) => HANDLE_KINDS.includes(c.kind));
-    const login = forge ? selfOf.get(forge.kind) ?? null : null;
+    const login = forge ? (selfOf.get(forge.kind) ?? null) : null;
     id.origin = originOf(handle, login);
     const from = `your handle ${handle} came from ${ORIGIN_WORDS[id.origin]} and claims no account of a handle kind, so it is provisional`;
     if (login) {
       const claimed = personOf(loaded, `${forge!.kind}:${login}`);
       const loginSlug = slugify(login);
       const claim = `pjman set ${actor} links=${[...links, `${forge!.kind}:${login}`].join(',')}`;
-      if (claimed && claimed !== rec.key) id.notices.push(`${from}; the ${forge!.app} login ${login} is claimed by ${claimed}`);
+      if (claimed && claimed !== rec.key)
+        id.notices.push(`${from}; the ${forge!.app} login ${login} is claimed by ${claimed}`);
       else if (loginSlug === handle) id.notices.push(`${from}; it is your ${forge!.app} login, claim it: ${claim}`);
-      else id.notices.push(`${from}; rename it to your ${forge!.app} login: pjman mv ${actor} person:${loginSlug} (the old handle stays an alias; the config and every reference follow), or keep it and claim the login: ${claim}`);
-    } else if (opts.verify) id.notices.push(`${from}; sign in to the forge (gh auth login) and run pjman init, or claim an account: pjman set ${actor} links=${[...links, 'github-user:<login>'].join(',')}`);
+      else
+        id.notices.push(
+          `${from}; rename it to your ${forge!.app} login: pjman mv ${actor} person:${loginSlug} (the old handle stays an alias; the config and every reference follow), or keep it and claim the login: ${claim}`,
+        );
+    } else if (opts.verify)
+      id.notices.push(
+        `${from}; sign in to the forge (gh auth login) and run pjman init, or claim an account: pjman set ${actor} links=${[...links, 'github-user:<login>'].join(',')}`,
+      );
     else id.notices.push(`${from}; pjman whoami --verify says what the forge knows`);
   }
   for (const s of id.signed_in) {
-    if (s.claimed_by && rec && s.claimed_by !== rec.key) id.notices.push(`the ${s.kind} account ${s.id} you are signed in as is claimed by ${s.claimed_by}; one account is one person's`);
+    if (s.claimed_by && rec && s.claimed_by !== rec.key)
+      id.notices.push(
+        `the ${s.kind} account ${s.id} you are signed in as is claimed by ${s.claimed_by}; one account is one person's`,
+      );
   }
-  for (const a of accounts) if (a.verdict === 'unknown') id.notices.push(`${a.key} is not known: ${a.note} (it stays until you drop it: pjman set ${actor} links=…)`);
+  for (const a of accounts)
+    if (a.verdict === 'unknown')
+      id.notices.push(`${a.key} is not known: ${a.note} (it stays until you drop it: pjman set ${actor} links=…)`);
   return id;
 }
 
@@ -316,9 +367,15 @@ export function identity(store: Store, opts: IdentityOpts = {}): Identity {
 export function formatIdentity(id: Identity): string[] {
   const out: string[] = [];
   if (!id.actor) out.push('no actor configured');
-  else out.push(`you are ${id.actor}${id.name ? ` (${id.name})` : ''}${id.record ? '' : ' (no record)'}${id.provisional ? ' (provisional)' : ''}`);
+  else
+    out.push(
+      `you are ${id.actor}${id.name ? ` (${id.name})` : ''}${id.record ? '' : ' (no record)'}${id.provisional ? ' (provisional)' : ''}`,
+    );
   for (const a of id.accounts) {
-    const tags = [a.primary ? 'primary' : null, a.verdict ? (a.note ? `${a.verdict}: ${a.note}` : a.verdict) : null].filter(Boolean);
+    const tags = [
+      a.primary ? 'primary' : null,
+      a.verdict ? (a.note ? `${a.verdict}: ${a.note}` : a.verdict) : null,
+    ].filter(Boolean);
     out.push(`  ${a.key}${tags.length ? `  ${tags.join(' · ')}` : ''}`);
   }
   for (const n of id.notices) out.push(`note: ${n}`);

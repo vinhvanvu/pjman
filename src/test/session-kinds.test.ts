@@ -55,10 +55,13 @@ test('the four kinds come with the store, each a record with a name and a gist, 
   assert.equal(errors().length, 0);
 });
 
-test('a PR observed on the session itself names it review by inference, after the source\'s title; the getter finds the session from the PR', () => {
+test("a PR observed on the session itself names it review by inference, after the source's title; the getter finds the session from the PR", () => {
   newRecord(store, 'session', 's1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionObserve(store, 's1', 'links', 'session:s1', 'github-pr:acme/web#7');
-  assert.deepEqual(ownSources(session('s1')).map((s) => s.to), ['github-pr:acme/web#7']);
+  assert.deepEqual(
+    ownSources(session('s1')).map((s) => s.to),
+    ['github-pr:acme/web#7'],
+  );
   const inferred = inferSessionKind(loadStore(store), session('s1'));
   assert.deepEqual(inferred, { kind: 'review', name: 'Round the tax up', from: 'github-pr:acme/web#7' });
   const r = sessionName(store, 's1', {});
@@ -73,8 +76,14 @@ test('a PR observed on the session itself names it review by inference, after th
   // the same name again writes nothing
   assert.equal(sessionName(store, 's1', {}).commit, null);
   const n = get(loadStore(store), 'github-pr:acme/web#7');
-  assert.ok(n.in.some((e) => e.from === 'session:s1' && e.edge === 'links' && e.observed), 'the PR is referenced by the session that read it');
-  assert.deepEqual(ls(store, { type: 'session', kind: 'review' }).map((r) => r.key), ['session:s1']);
+  assert.ok(
+    n.in.some((e) => e.from === 'session:s1' && e.edge === 'links' && e.observed),
+    'the PR is referenced by the session that read it',
+  );
+  assert.deepEqual(
+    ls(store, { type: 'session', kind: 'review' }).map((r) => r.key),
+    ['session:s1'],
+  );
   assert.match(ls(store, { type: 'session', kind: 'review' })[0].title ?? '', /Round the tax up \(review\)/);
   assert.equal(errors().length, 0);
 });
@@ -82,7 +91,11 @@ test('a PR observed on the session itself names it review by inference, after th
 test('a ticket with no change bound reads backlog by its key; a session with only log lines reads chat and needs a name; a bare record infers nothing', () => {
   newRecord(store, 'session', 's2', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionObserve(store, 's2', 'links', 'session:s2', 'github-issue:acme/web#12');
-  assert.deepEqual(inferSessionKind(loadStore(store), session('s2')), { kind: 'backlog', name: 'acme/web#12', from: 'github-issue:acme/web#12' });
+  assert.deepEqual(inferSessionKind(loadStore(store), session('s2')), {
+    kind: 'backlog',
+    name: 'acme/web#12',
+    from: 'github-issue:acme/web#12',
+  });
   newRecord(store, 'session', 's3', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   assert.equal(inferSessionKind(loadStore(store), session('s3')), null);
   assert.throws(() => sessionName(store, 's3', {}), /nothing on session:s3 says what it is doing/);
@@ -106,7 +119,10 @@ test('a kind handed to the naming command that the store lacks is created on the
   assert.throws(() => sessionName(store, 's4', { name: 'Sorting the week', kind: 'Not A Slug' }), /is not a slug/);
   assert.throws(() => sessionName(store, 's4', { name: 'one two three four five', kind: 'triage' }), /name: 5 words/);
   assert.throws(() => sessionName(store, 's4', { name: 'x', kind: 'change:cart' }), /not a session kind/);
-  assert.throws(() => ls(store, { type: 'session', kind: 'nope' }), /--kind nope is not a session kind \(backlog, chat, other, review, triage\)/);
+  assert.throws(
+    () => ls(store, { type: 'session', kind: 'nope' }),
+    /--kind nope is not a session kind \(backlog, chat, other, review, triage\)/,
+  );
   assert.equal(errors().length, 0);
 });
 
@@ -115,18 +131,27 @@ test('a session that later binds a change keeps its name and kind; the edges it 
   const rec = session('s1');
   assert.equal(rec.data.name, 'Round the tax up');
   assert.equal(rec.data.kind, 'session-kind:review');
-  assert.deepEqual(ownSources(rec).map((s) => s.to), ['github-pr:acme/web#7']);
+  assert.deepEqual(
+    ownSources(rec).map((s) => s.to),
+    ['github-pr:acme/web#7'],
+  );
   assert.equal(errors().length, 0);
 });
 
 test('rm is refused while a session carries the kind; mv renames it and every session follows, the old slug an alias; set changes its gist', () => {
-  assert.throws(() => rm(store, 'session-kind:triage'), /refused: session-kind:triage is referenced by\n  session:s4  kind/);
+  assert.throws(
+    () => rm(store, 'session-kind:triage'),
+    /refused: session-kind:triage is referenced by\n  session:s4  kind/,
+  );
   const r = mv(store, 'session-kind:triage', 'session-kind:sorting', {});
   assert.equal(r.to, 'session-kind:sorting');
   assert.equal(session('s4').data.kind, 'session-kind:sorting');
   const loaded = loadStore(store);
   assert.deepEqual(loaded.aliases.get('session-kind:triage'), ['session-kind:sorting']);
-  assert.deepEqual(ls(store, { type: 'session', kind: 'triage' }).map((x) => x.key), ['session:s4']);
+  assert.deepEqual(
+    ls(store, { type: 'session', kind: 'triage' }).map((x) => x.key),
+    ['session:s4'],
+  );
   set(store, 'session-kind:sorting', ['gist=Tickets sorted into changes'], {});
   assert.equal(loadStore(store).byKey.get('session-kind:sorting')?.[0].data.gist, 'Tickets sorted into changes');
   assert.throws(() => newRecord(store, 'session-kind', 'triage', {}), /former name of session-kind:sorting/);
@@ -140,10 +165,19 @@ test('validate refuses a session whose kind is not a session kind record, and a 
   const rec = session('s2');
   const text = fs.readFileSync(rec.abs, 'utf8').replace(/^project: .*$/m, (m) => `${m}\nkind: session-kind:nowhere`);
   fs.writeFileSync(rec.abs, text);
-  const messages = () => errors().map((p) => p.message).join('\n');
-  assert.ok(errors().some((p) => /kind: 'session-kind:nowhere' does not resolve/.test(p.message)), messages());
+  const messages = () =>
+    errors()
+      .map((p) => p.message)
+      .join('\n');
+  assert.ok(
+    errors().some((p) => /kind: 'session-kind:nowhere' does not resolve/.test(p.message)),
+    messages(),
+  );
   fs.writeFileSync(rec.abs, text.replace('kind: session-kind:nowhere', 'kind: change:web/cart'));
-  assert.ok(errors().some((p) => /kind: 'change:web\/cart' must be a session-kind key/.test(p.message)), messages());
+  assert.ok(
+    errors().some((p) => /kind: 'change:web\/cart' must be a session-kind key/.test(p.message)),
+    messages(),
+  );
   fs.writeFileSync(rec.abs, text.replace('\nkind: session-kind:nowhere', ''));
   assert.equal(errors().length, 0);
 });
@@ -161,7 +195,13 @@ test('the session-kinds move: a store stamped before 0.3.0 that lacks the four g
   assert.equal(r.rewritten, 2);
   assert.ok(r.commit);
   const four = DEFAULT_SESSION_KINDS.map((k) => `session-kind:${k.slug}`);
-  assert.deepEqual(ls(old, { type: 'session-kind' }).map((x) => x.key).filter((k) => four.includes(k)).sort(), [...four].sort());
+  assert.deepEqual(
+    ls(old, { type: 'session-kind' })
+      .map((x) => x.key)
+      .filter((k) => four.includes(k))
+      .sort(),
+    [...four].sort(),
+  );
   assert.equal(pendingMigration(old), 'stamp');
   assert.equal(migrate(old, {}).kind, 'stamp');
   assert.equal(pendingMigration(findStore(path.join(tmp, 'web'))!), null);

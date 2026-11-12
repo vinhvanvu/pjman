@@ -5,7 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { bench } from '../dist/bench/run.js';
 
-const scales = process.argv.slice(2).map(Number).filter((n) => n > 0);
+const scales = process.argv
+  .slice(2)
+  .map(Number)
+  .filter((n) => n > 0);
 const dir = process.env.BENCH_DIR ?? path.join(os.tmpdir(), 'pjman-bench');
 const results = [];
 for (const scale of scales.length ? scales : [1, 10]) {
@@ -16,4 +19,7 @@ for (const scale of scales.length ? scales : [1, 10]) {
 const names = results[0].timings.map((t) => t.name);
 const w = Math.max(...names.map((n) => n.length));
 console.log(`${''.padEnd(w)}  ${results.map((r) => `x${r.scale}`.padStart(9)).join('')}`);
-for (const n of names) console.log(`${n.padEnd(w)}  ${results.map((r) => `${r.timings.find((t) => t.name === n).ms.toFixed(0)}ms`.padStart(9)).join('')}`);
+for (const n of names)
+  console.log(
+    `${n.padEnd(w)}  ${results.map((r) => `${r.timings.find((t) => t.name === n).ms.toFixed(0)}ms`.padStart(9)).join('')}`,
+  );

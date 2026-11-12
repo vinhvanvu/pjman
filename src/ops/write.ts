@@ -52,7 +52,12 @@ export function snapshot(store: Store, rels: string[]): Map<string, string> {
 }
 
 /** Validate after a write; on errors undo the listed new paths, put the snapshotted ones back, and throw. */
-export function validateOrUndo(store: Store, rels: string[], created: string[], prior: Map<string, string> = new Map()): void {
+export function validateOrUndo(
+  store: Store,
+  rels: string[],
+  created: string[],
+  prior: Map<string, string> = new Map(),
+): void {
   const errors = errorsAt(store, rels);
   if (errors.length === 0) return;
   for (const [rel, text] of prior) fs.writeFileSync(path.join(store.root, rel), text);
@@ -105,15 +110,27 @@ export function commitIfStandalone(store: Store, message: string, session?: stri
 
 /** The end of every write: commit (standalone), then one event per record written, carrying the commit, then the status
  *  lift those events call for. */
-export function finishWrite(store: Store, message: string, session: string | undefined, events: EventInput[]): string | null {
+export function finishWrite(
+  store: Store,
+  message: string,
+  session: string | undefined,
+  events: EventInput[],
+): string | null {
   if (batch) {
-    notePending(store, events.map((e) => e.path));
+    notePending(
+      store,
+      events.map((e) => e.path),
+    );
     batch.push(...events.map((e) => ({ ...e, session: e.session ?? session })));
     liftAfter(store, events, session);
     return null;
   }
   const commit = commitIfStandalone(store, message, session);
-  emit(store, events.map((e) => ({ ...e, session: e.session ?? session })), commit);
+  emit(
+    store,
+    events.map((e) => ({ ...e, session: e.session ?? session })),
+    commit,
+  );
   // the status lift: a write that moves a change's plan or its work forward moves its status, as writes of its own
   liftAfter(store, events, session);
   return commit;
@@ -138,7 +155,13 @@ const KEY_FIELDS: Record<RecordType, string[]> = {
 /** Rewrite the keys in `field` (or every key field when none is named) to their full form, resolved in `scope`: the
  *  store holds full keys; the short form is for people and the places that show them. A key that resolves to nothing
  *  is left as written, for validation to refuse. */
-export function fullKeys(loaded: Loaded, type: RecordType, data: Record<string, unknown>, field: string | undefined, scope: string | null): void {
+export function fullKeys(
+  loaded: Loaded,
+  type: RecordType,
+  data: Record<string, unknown>,
+  field: string | undefined,
+  scope: string | null,
+): void {
   const full = (raw: string): string => {
     const m = /^(adds|changes|removes)\s+(\S+)$/.exec(raw);
     if (m) return `${m[1]} ${fullKey(loaded, m[2], scope)}`;

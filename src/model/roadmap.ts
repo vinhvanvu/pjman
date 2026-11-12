@@ -53,7 +53,9 @@ export function violations(list: RoadmapRow[], today: string): Violation[] {
     if (r.target && r.target < today) out.push({ kind: 'overdue', change: r.key });
   }
   // a milestone later in the sequence with an earlier target than one before it
-  const dated = list.filter((r) => isOpen(r) && r.target && r.position !== undefined).sort((a, b) => a.position! - b.position!);
+  const dated = list
+    .filter((r) => isOpen(r) && r.target && r.position !== undefined)
+    .sort((a, b) => a.position! - b.position!);
   for (let i = 1; i < dated.length; i++) {
     for (let j = 0; j < i; j++) {
       // same column is not an order; a child of a milestone shares its place
@@ -68,6 +70,9 @@ export function violations(list: RoadmapRow[], today: string): Violation[] {
 
 /** The worse of two severities; undefined counts as mildest. */
 export function worstSeverity(a?: string, b?: string): string | undefined {
-  const rank = (s?: string) => { const i = (SEVERITIES as readonly string[]).indexOf(s ?? ''); return i < 0 ? SEVERITIES.length : i; };
-  return rank(a) <= rank(b) ? a ?? b : b;
+  const rank = (s?: string) => {
+    const i = (SEVERITIES as readonly string[]).indexOf(s ?? '');
+    return i < 0 ? SEVERITIES.length : i;
+  };
+  return rank(a) <= rank(b) ? (a ?? b) : b;
 }

@@ -86,7 +86,10 @@ export function parseBatch(text: string): { line: number; argv: string[] }[] {
 }
 
 function requireStandalone(store: Store, what: string): void {
-  if (store.mode !== 'standalone') throw new CliError(`${what} needs a store the tool commits (the global store); an in-project store takes the commands one by one`);
+  if (store.mode !== 'standalone')
+    throw new CliError(
+      `${what} needs a store the tool commits (the global store); an in-project store takes the commands one by one`,
+    );
 }
 
 function requireClean(store: Store): void {
@@ -102,12 +105,22 @@ const forOf = (store: Store, key: string | undefined): { key: string; type: Reco
 };
 
 /** Run every line through `run` (the CLI's own dispatcher) with commits held; one commit and the events at the end. */
-export function apply(store: Store, text: string, run: (argv: string[]) => void, opts: { for?: string; session?: string; writer?: string } = {}): ApplyResult {
+export function apply(
+  store: Store,
+  text: string,
+  run: (argv: string[]) => void,
+  opts: { for?: string; session?: string; writer?: string } = {},
+): ApplyResult {
   return applyLines(store, parseBatch(text), run, opts);
 }
 
 /** A batch already split into argv lists: one commit, as apply makes one. A bulk set or rm builds its lines here. */
-export function applyLines(store: Store, lines: { line: number; argv: string[] }[], run: (argv: string[]) => void, opts: { for?: string; session?: string; writer?: string } = {}): ApplyResult {
+export function applyLines(
+  store: Store,
+  lines: { line: number; argv: string[] }[],
+  run: (argv: string[]) => void,
+  opts: { for?: string; session?: string; writer?: string } = {},
+): ApplyResult {
   noteReshaping(store);
   requireStandalone(store, 'apply');
   requireClean(store);
@@ -131,7 +144,15 @@ export function applyLines(store: Store, lines: { line: number; argv: string[] }
   if (!held.length) return { lines: lines.length, writes: 0, for: opts.for ? target.key : undefined, commit: null };
   const subject = `pjman: apply ${held.length} writes${opts.for ? ` for ${target.key}` : ''}`;
   const commit = commitAll(store.root, subject, env.session, opts.for ? { 'Pjman-For': target.key } : {});
-  const closing: EventInput = { op: 'applied', key: target.key, type: target.type, path: 'pjman.yaml', fields: [`${held.length} writes`], writer: env.writer, session: env.session };
+  const closing: EventInput = {
+    op: 'applied',
+    key: target.key,
+    type: target.type,
+    path: 'pjman.yaml',
+    fields: [`${held.length} writes`],
+    writer: env.writer,
+    session: env.session,
+  };
   emit(store, [...held, closing], commit);
   return { lines: lines.length, writes: held.length, for: opts.for ? target.key : undefined, commit };
 }
@@ -151,7 +172,12 @@ export function undo(store: Store, opts: { commit?: string; session?: string; wr
     }
   } else {
     // the last batch not already undone: an undo names what it reverted in its Pjman-Undoes trailer
-    const undone = new Set(git(root, ['log', '--format=%(trailers:key=Pjman-Undoes,valueonly)', '--grep=^pjman: undo ']).split('\n').map((l) => l.trim()).filter(Boolean));
+    const undone = new Set(
+      git(root, ['log', '--format=%(trailers:key=Pjman-Undoes,valueonly)', '--grep=^pjman: undo '])
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean),
+    );
     const batches = git(root, ['log', '--format=%H', '--grep=^pjman: apply ']).split('\n').filter(Boolean);
     sha = batches.find((b) => !undone.has(b)) ?? '';
     if (!sha) throw new CliError('no batch left to undo (pjman undo <commit> reverts any one write)');
@@ -159,9 +185,13 @@ export function undo(store: Store, opts: { commit?: string; session?: string; wr
   const subject = git(root, ['log', '-1', '--format=%s', sha]);
   const forKey = git(root, ['log', '-1', '--format=%(trailers:key=Pjman-For,valueonly)', sha]).trim() || undefined;
   const files = git(root, ['show', '--name-only', '--format=', sha]).split('\n').filter(Boolean);
-  const later = git(root, ['log', '--format=%h %s', `${sha}..HEAD`, '--', ...files]).split('\n').filter(Boolean);
+  const later = git(root, ['log', '--format=%h %s', `${sha}..HEAD`, '--', ...files])
+    .split('\n')
+    .filter(Boolean);
   if (later.length) {
-    throw new CliError(`refused: ${later.length} later write${later.length === 1 ? '' : 's'} touched a record of ${sha.slice(0, 7)} (${subject}); undo those first, or set the records by hand\n${later.map((l) => `  ${l}`).join('\n')}`);
+    throw new CliError(
+      `refused: ${later.length} later write${later.length === 1 ? '' : 's'} touched a record of ${sha.slice(0, 7)} (${subject}); undo those first, or set the records by hand\n${later.map((l) => `  ${l}`).join('\n')}`,
+    );
   }
   try {
     git(root, ['revert', '--no-commit', sha]);
@@ -175,17 +205,42 @@ export function undo(store: Store, opts: { commit?: string; session?: string; wr
   }
   const env = envelope(opts);
   const short = sha.slice(0, 7);
-  const commit = commitAll(root, `pjman: undo ${short} (${subject})`, env.session, forKey ? { 'Pjman-For': forKey, 'Pjman-Undoes': sha } : { 'Pjman-Undoes': sha });
-  const rows = git(root, ['show', '--name-status', '--format=', 'HEAD']).split('\n').filter(Boolean).map((r) => r.split('\t')).map(([status, a, b]) => ({ status: status!, p: b ?? a! }));
+  const commit = commitAll(
+    root,
+    `pjman: undo ${short} (${subject})`,
+    env.session,
+    forKey ? { 'Pjman-For': forKey, 'Pjman-Undoes': sha } : { 'Pjman-Undoes': sha },
+  );
+  const rows = git(root, ['show', '--name-status', '--format=', 'HEAD'])
+    .split('\n')
+    .filter(Boolean)
+    .map((r) => r.split('\t'))
+    .map(([status, a, b]) => ({ status: status!, p: b ?? a! }));
   const events: EventInput[] = [];
   for (const { status, p } of rows) {
     const type = typeOfPath(p);
     if (!type) continue;
     const key = keyOfPath(p, type, root, status.startsWith('D') ? 'HEAD^' : 'HEAD');
-    events.push({ op: status.startsWith('D') ? 'removed' : status.startsWith('A') ? 'created' : 'set', key, type, path: p, fields: status.startsWith('M') ? ['reverted'] : undefined, writer: env.writer, session: env.session });
+    events.push({
+      op: status.startsWith('D') ? 'removed' : status.startsWith('A') ? 'created' : 'set',
+      key,
+      type,
+      path: p,
+      fields: status.startsWith('M') ? ['reverted'] : undefined,
+      writer: env.writer,
+      session: env.session,
+    });
   }
   const target = forOf(store, forKey);
-  events.push({ op: 'reverted', key: target.key, type: target.type, path: 'pjman.yaml', fields: [short], writer: env.writer, session: env.session });
+  events.push({
+    op: 'reverted',
+    key: target.key,
+    type: target.type,
+    path: 'pjman.yaml',
+    fields: [short],
+    writer: env.writer,
+    session: env.session,
+  });
   emit(store, events, commit);
   return { reverted: short, subject, for: forKey, files: rows.length, commit };
 }

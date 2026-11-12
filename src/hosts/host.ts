@@ -89,9 +89,20 @@ export interface SessionHost {
 const TIMEOUT_MS = 5000;
 
 /** A host's command run, its stdout; null when the command is missing, refuses or times out. */
-export function run(command: string, args: string[], env: NodeJS.ProcessEnv = process.env, input?: string): string | null {
+export function run(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = process.env,
+  input?: string,
+): string | null {
   try {
-    return execFileSync(command, args, { encoding: 'utf8', stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'], timeout: TIMEOUT_MS, env, input });
+    return execFileSync(command, args, {
+      encoding: 'utf8',
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'],
+      timeout: TIMEOUT_MS,
+      env,
+      input,
+    });
   } catch {
     return null;
   }
@@ -126,7 +137,14 @@ export function inRange(version: string, range: string): boolean {
     // a bound may be short (`0.1`, `1`): the missing parts are zero
     const full = (x: string) => x.split('.').concat(['0', '0']).slice(0, 3).join('.');
     const c = compareVersions(v.replace(/[-+].*$/, ''), full(bound));
-    if ((op === '>=' && c < 0) || (op === '>' && c <= 0) || (op === '<=' && c > 0) || (op === '<' && c >= 0) || (op === '=' && c !== 0)) return false;
+    if (
+      (op === '>=' && c < 0) ||
+      (op === '>' && c <= 0) ||
+      (op === '<=' && c > 0) ||
+      (op === '<' && c >= 0) ||
+      (op === '=' && c !== 0)
+    )
+      return false;
   }
   return true;
 }
@@ -144,13 +162,23 @@ export function statusOf(record: unknown, at = now()): HostStatus | null {
   if (!state || !PROGRAM_STATES.has(state)) return null;
   const kind = typeof r.kind === 'string' && BLOCKED_KINDS.has(r.kind) ? (r.kind as BlockedKind) : undefined;
   const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  return { state: state as ProgramState, kind: state === 'blocked' ? kind : undefined, title: text(r.title), msg: text(r.msg), at };
+  return {
+    state: state as ProgramState,
+    kind: state === 'blocked' ? kind : undefined,
+    title: text(r.title),
+    msg: text(r.msg),
+    at,
+  };
 }
 
 /** The record that stands for the program among several (a program may report children, `build/test`): the root
  *  record, the one with no id, else the one reported last. */
 export function rootStatus(records: unknown): HostStatus | null {
-  const list: unknown[] = Array.isArray(records) ? records : records && typeof records === 'object' ? (Object.values(records as Record<string, unknown>).find(Array.isArray) as unknown[] | undefined) ?? [records] : [];
+  const list: unknown[] = Array.isArray(records)
+    ? records
+    : records && typeof records === 'object'
+      ? ((Object.values(records as Record<string, unknown>).find(Array.isArray) as unknown[] | undefined) ?? [records])
+      : [];
   const root = list.find((r) => r && typeof r === 'object' && !(r as Record<string, unknown>).id) ?? list.at(-1);
   return statusOf(root);
 }
@@ -164,7 +192,11 @@ export const rex: HostAdapter = {
   identify: (env) => (env.REX_SESSION ? { session: env.REX_SESSION, block: env.REX_BLOCK || undefined } : null),
   version: (env) => {
     const j = runJson('rex', ['version', '--json'], env) as Record<string, unknown> | null;
-    const fromJson = j ? versionIn([j.version, j.rex_version, j.client, j.server].find((v) => typeof v === 'string') as string | undefined) : null;
+    const fromJson = j
+      ? versionIn(
+          [j.version, j.rex_version, j.client, j.server].find((v) => typeof v === 'string') as string | undefined,
+        )
+      : null;
     return fromJson ?? versionIn(run('rex', ['version'], env));
   },
   status: (id, env) => {
@@ -172,28 +204,43 @@ export const rex: HostAdapter = {
     return rootStatus(runJson('rex', ['block', 'call', '-s', id.session, '-b', id.block, 'program_status'], env));
   },
   // an empty label clears nothing on Rex: a block keeps a label, so the tool's name stands in
-  label: (id, text, env) => (id.block ? run('rex', ['block', 'rename', '-s', id.session, id.block, text || 'pjman'], env) !== null : false),
+  label: (id, text, env) =>
+    id.block ? run('rex', ['block', 'rename', '-s', id.session, id.block, text || 'pjman'], env) !== null : false,
   // text as typed, then the carriage return a terminal reads as Enter
-  send: (id, text, env) => run('rex', ['send', '-s', id.session, ...(id.block ? ['-b', id.block] : []), `${text}\r`], env) !== null,
+  send: (id, text, env) =>
+    run('rex', ['send', '-s', id.session, ...(id.block ? ['-b', id.block] : []), `${text}\r`], env) !== null,
   open: (id, env) => run('rex', ['focus', '-s', id.session, ...(id.block ? [id.block] : [])], env) !== null,
   launch: (opts, env) => {
-    const j = runJson('rex', ['new', opts.name, '-c', opts.cwd, '--json', '--', ...opts.command], env) as Record<string, unknown> | null;
-    const session = typeof j?.session_id === 'string' ? j.session_id : typeof (j?.session as Record<string, unknown> | undefined)?.session_id === 'string' ? ((j!.session as Record<string, unknown>).session_id as string) : null;
+    const j = runJson('rex', ['new', opts.name, '-c', opts.cwd, '--json', '--', ...opts.command], env) as Record<
+      string,
+      unknown
+    > | null;
+    const session =
+      typeof j?.session_id === 'string'
+        ? j.session_id
+        : typeof (j?.session as Record<string, unknown> | undefined)?.session_id === 'string'
+          ? ((j!.session as Record<string, unknown>).session_id as string)
+          : null;
     if (!session) return null;
     const blocks = runJson('rex', ['block', 'ls', '-s', session, '--json'], env);
     const first = Array.isArray(blocks) ? (blocks[0] as Record<string, unknown> | undefined) : undefined;
-    return { session, block: typeof first?.block_id === 'string' ? first.block_id : typeof first?.id === 'string' ? first.id : undefined };
+    return {
+      session,
+      block:
+        typeof first?.block_id === 'string' ? first.block_id : typeof first?.id === 'string' ? first.id : undefined,
+    };
   },
-  follow: (id, fn, env) => followLines('rex', ['events', '-s', id.session, '--json'], env, (line) => {
-    let e: unknown;
-    try {
-      e = JSON.parse(line);
-    } catch {
-      return;
-    }
-    const ev = rexEvent(e, id);
-    if (ev) fn(ev);
-  }),
+  follow: (id, fn, env) =>
+    followLines('rex', ['events', '-s', id.session, '--json'], env, (line) => {
+      let e: unknown;
+      try {
+        e = JSON.parse(line);
+      } catch {
+        return;
+      }
+      const ev = rexEvent(e, id);
+      if (ev) fn(ev);
+    }),
 };
 
 /** A line of `rex events --json` read as a host event for one block: a program status it reported, or its exit.
@@ -210,7 +257,8 @@ export function rexEvent(e: unknown, id: HostId): HostEvent | null {
   const p = o.payload as Record<string, unknown> | undefined;
   if (!p || (id.block && p.block_id !== id.block)) return null;
   const body = p.payload as Record<string, unknown> | undefined;
-  if (p.name === 'child_exited') return { kind: 'exited', code: typeof body?.exit_code === 'number' ? body.exit_code : undefined };
+  if (p.name === 'child_exited')
+    return { kind: 'exited', code: typeof body?.exit_code === 'number' ? body.exit_code : undefined };
   if (p.name === 'program_status_changed') {
     const status = statusOf(body?.record ?? body);
     return status ? { kind: 'status', status } : null;
@@ -226,14 +274,33 @@ export function rexEvent(e: unknown, id: HostId): HostEvent | null {
  *  the CLI, so state falls back to the record; later cmux versions carry both, under the same interface. */
 export const cmux: HostAdapter = {
   manifest: { environment: 'cmux', interface: HOST_INTERFACE, validated: '>=0.62 <1', command: 'cmux' },
-  identify: (env) => (env.CMUX_WORKSPACE_ID ? { session: env.CMUX_WORKSPACE_ID, block: env.CMUX_SURFACE_ID || env.CMUX_PANEL_ID || undefined } : null),
+  identify: (env) =>
+    env.CMUX_WORKSPACE_ID
+      ? { session: env.CMUX_WORKSPACE_ID, block: env.CMUX_SURFACE_ID || env.CMUX_PANEL_ID || undefined }
+      : null,
   version: (env) => versionIn(run('cmux', ['--version'], env)),
   status: () => null,
-  label: (id, text, env) => run('cmux', text ? ['set-status', 'pjman', text, '--icon', 'point.3.connected.trianglepath.dotted', '--workspace', id.session] : ['clear-status', 'pjman', '--workspace', id.session], env) !== null,
-  send: (id, text, env) => run('cmux', ['send', '--workspace', id.session, ...(id.block ? ['--surface', id.block] : []), '--', `${text}\n`], env) !== null,
+  label: (id, text, env) =>
+    run(
+      'cmux',
+      text
+        ? ['set-status', 'pjman', text, '--icon', 'point.3.connected.trianglepath.dotted', '--workspace', id.session]
+        : ['clear-status', 'pjman', '--workspace', id.session],
+      env,
+    ) !== null,
+  send: (id, text, env) =>
+    run(
+      'cmux',
+      ['send', '--workspace', id.session, ...(id.block ? ['--surface', id.block] : []), '--', `${text}\n`],
+      env,
+    ) !== null,
   open: (id, env) => run('cmux', ['select-workspace', '--workspace', id.session], env) !== null,
   launch: (opts, env) => {
-    const out = run('cmux', ['new-workspace', '--cwd', opts.cwd, '--command', opts.command.map(shellWord).join(' ')], env);
+    const out = run(
+      'cmux',
+      ['new-workspace', '--cwd', opts.cwd, '--command', opts.command.map(shellWord).join(' ')],
+      env,
+    );
     if (out === null) return null;
     const m = /(workspace:[\w-]+|[0-9a-fA-F-]{36})/.exec(out);
     const session = m ? m[1] : null;
@@ -270,11 +337,19 @@ export function sessionHost(env: NodeJS.ProcessEnv = process.env): SessionHost |
   const found = detectHost(env);
   if (!found) return null;
   const version = found.adapter.version(env) ?? undefined;
-  return { name: found.adapter.manifest.environment, session: found.id.session, block: found.id.block, version, validated: version ? inRange(version, found.adapter.manifest.validated) : undefined };
+  return {
+    name: found.adapter.manifest.environment,
+    session: found.id.session,
+    block: found.id.block,
+    version,
+    validated: version ? inRange(version, found.adapter.manifest.validated) : undefined,
+  };
 }
 
 /** The host present on this machine, whether or not this process runs inside it: the first whose command answers. */
-export function hostPresent(env: NodeJS.ProcessEnv = process.env): { adapter: HostAdapter; version: string | null } | null {
+export function hostPresent(
+  env: NodeJS.ProcessEnv = process.env,
+): { adapter: HostAdapter; version: string | null } | null {
   for (const adapter of HOSTS) {
     const version = adapter.version(env);
     if (version !== null) return { adapter, version };
@@ -283,20 +358,31 @@ export function hostPresent(env: NodeJS.ProcessEnv = process.env): { adapter: Ho
 }
 
 /** The host a session record names, with its ids, when an adapter for it is registered. */
-export function hostOfRecord(data: Record<string, unknown>): { adapter: HostAdapter; id: HostId; host: SessionHost } | null {
+export function hostOfRecord(
+  data: Record<string, unknown>,
+): { adapter: HostAdapter; id: HostId; host: SessionHost } | null {
   const h = data.host;
   if (!h || typeof h !== 'object') return null;
   const host = h as SessionHost;
   const adapter = hostNamed(host.name);
   if (!adapter || typeof host.session !== 'string') return null;
-  return { adapter, id: { session: host.session, block: typeof host.block === 'string' ? host.block : undefined }, host };
+  return {
+    adapter,
+    id: { session: host.session, block: typeof host.block === 'string' ? host.block : undefined },
+    host,
+  };
 }
 
 // --- following a command's lines --------------------------------------------------------------------------------------
 
 /** A command spawned for its lines, one call per line; the stop kills it. A command that is missing or exits stops
  *  quietly: the caller reads `status` instead. */
-export function followLines(command: string, args: string[], env: NodeJS.ProcessEnv | undefined, fn: (line: string) => void): () => void {
+export function followLines(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv | undefined,
+  fn: (line: string) => void,
+): () => void {
   let child: ChildProcess | null;
   try {
     child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'ignore'] });
@@ -322,18 +408,27 @@ export function followLines(command: string, args: string[], env: NodeJS.Process
 }
 
 /** `status` by the host, without blocking: for the server, which reads many sessions at once. */
-export function statusAsync(adapter: HostAdapter, id: HostId, env: NodeJS.ProcessEnv = process.env): Promise<HostStatus | null> {
+export function statusAsync(
+  adapter: HostAdapter,
+  id: HostId,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<HostStatus | null> {
   if (adapter === rex) {
     if (!id.block) return Promise.resolve(null);
     return new Promise((resolve) => {
-      execFile('rex', ['block', 'call', '-s', id.session, '-b', id.block!, 'program_status'], { encoding: 'utf8', timeout: TIMEOUT_MS, env }, (err, out) => {
-        if (err) return resolve(null);
-        try {
-          resolve(rootStatus(JSON.parse(out)));
-        } catch {
-          resolve(null);
-        }
-      });
+      execFile(
+        'rex',
+        ['block', 'call', '-s', id.session, '-b', id.block!, 'program_status'],
+        { encoding: 'utf8', timeout: TIMEOUT_MS, env },
+        (err, out) => {
+          if (err) return resolve(null);
+          try {
+            resolve(rootStatus(JSON.parse(out)));
+          } catch {
+            resolve(null);
+          }
+        },
+      );
     });
   }
   return Promise.resolve(adapter.status(id, env));

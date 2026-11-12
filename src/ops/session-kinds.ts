@@ -26,7 +26,9 @@ export const sessionKindKey = (slug: string): string => `session-kind:${slug}`;
 
 /** The default kinds the store lacks (by key or former name). */
 export function missingSessionKinds(loaded: Loaded): SessionKindSeed[] {
-  return DEFAULT_SESSION_KINDS.filter((k) => !loaded.byKey.has(sessionKindKey(k.slug)) && !loaded.aliases.has(sessionKindKey(k.slug)));
+  return DEFAULT_SESSION_KINDS.filter(
+    (k) => !loaded.byKey.has(sessionKindKey(k.slug)) && !loaded.aliases.has(sessionKindKey(k.slug)),
+  );
 }
 
 /** Create the default kinds the store lacks, one write each; the keys created. */
@@ -63,7 +65,10 @@ export function ownSources(rec: Rec): { edge: string; to: string; at?: string }[
 /** The log lines a session wrote, the start line included. */
 function logLines(rec: Rec): string[] {
   const log = rec.sections.get('Log') ?? '';
-  return log.split('\n').map((l) => l.trim()).filter((l) => l.startsWith('- '));
+  return log
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith('- '));
 }
 
 /** What a session's own record says it is doing: a PR among its sources reads review, a ticket with no change bound

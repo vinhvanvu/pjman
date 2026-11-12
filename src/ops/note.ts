@@ -25,13 +25,19 @@ export function notesOf(body: string | undefined): Note[] {
 }
 
 /** Append a note to a change or a session. */
-export function note(store: Store, ref: string, text: string, flags: { writer?: string; session?: string } = {}): { key: string; path: string; commit: string | null } {
+export function note(
+  store: Store,
+  ref: string,
+  text: string,
+  flags: { writer?: string; session?: string } = {},
+): { key: string; path: string; commit: string | null } {
   if (!text.trim()) throw new CliError('a note needs its text');
   const loaded = loadStore(store);
   const res = resolve(loaded, ref);
   if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, ref);
   const rec = res.rec;
-  if (rec.type !== 'change' && rec.type !== 'session') throw new CliError(`a note is addressed to a change or a session, not ${rec.key}`);
+  if (rec.type !== 'change' && rec.type !== 'session')
+    throw new CliError(`a note is addressed to a change or a session, not ${rec.key}`);
   if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before adding a note`);
   const env = envelope(flags);
   let body = rec.body.replace(/\s+$/, '');
@@ -40,6 +46,8 @@ export function note(store: Store, ref: string, text: string, flags: { writer?: 
   const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render(rec.type, rec.data, body));
   validateOrUndo(store, [rec.path], [], prior);
-  const commit = finishWrite(store, `pjman: note ${rec.key}`, env.session, [{ op: 'log', key: rec.key, type: rec.type, path: rec.path, fields: ['notes'], writer: env.writer }]);
+  const commit = finishWrite(store, `pjman: note ${rec.key}`, env.session, [
+    { op: 'log', key: rec.key, type: rec.type, path: rec.path, fields: ['notes'], writer: env.writer },
+  ]);
   return { key: rec.key, path: rec.path, commit };
 }

@@ -11,7 +11,20 @@ export interface StoreEvent {
   seq: number;
   /** When the write happened (UTC instant). */
   at: string;
-  op: 'created' | 'set' | 'log' | 'bind' | 'observe' | 'moved' | 'formatted' | 'removed' | 'init' | 'write' | 'applied' | 'reverted' | 'migrated';
+  op:
+    | 'created'
+    | 'set'
+    | 'log'
+    | 'bind'
+    | 'observe'
+    | 'moved'
+    | 'formatted'
+    | 'removed'
+    | 'init'
+    | 'write'
+    | 'applied'
+    | 'reverted'
+    | 'migrated';
   /** The record written, or `store` for the store itself. */
   key: string;
   type: RecordType | 'store';
@@ -57,7 +70,10 @@ export function lastSeq(store: Store): number {
     const len = Math.min(size, 8192);
     const buf = Buffer.alloc(len);
     fs.readSync(fd, buf, 0, len, size - len);
-    const lines = buf.toString('utf8').split('\n').filter((l) => l.trim());
+    const lines = buf
+      .toString('utf8')
+      .split('\n')
+      .filter((l) => l.trim());
     for (let i = lines.length - 1; i >= 0; i--) {
       const e = parseLine(lines[i]);
       if (e) return e.seq;
@@ -69,7 +85,12 @@ export function lastSeq(store: Store): number {
 }
 
 /** Append events to the stream, numbered after the last one. */
-export function emit(store: Store, inputs: EventInput[], commit: string | null = null, at: string = new Date().toISOString()): StoreEvent[] {
+export function emit(
+  store: Store,
+  inputs: EventInput[],
+  commit: string | null = null,
+  at: string = new Date().toISOString(),
+): StoreEvent[] {
   if (inputs.length === 0) return [];
   let seq = lastSeq(store);
   const events = inputs.map((e) => ({ seq: ++seq, at, ...e, commit }));
@@ -135,7 +156,8 @@ export function readEvents(store: Store, since = 0): StoreEvent[] {
  *  absent), read back from the end of the file, so a process that needs only what is recent never reads the whole
  *  stream (change:dashboard-reads-slow). With the whole stream already read in this process, cut from that. */
 export function tailEvents(store: Store, back: { seq?: number; at?: string }): StoreEvent[] {
-  const before = (e: StoreEvent) => (back.seq === undefined || e.seq < back.seq) && (back.at === undefined || e.at < back.at);
+  const before = (e: StoreEvent) =>
+    (back.seq === undefined || e.seq < back.seq) && (back.at === undefined || e.at < back.at);
   const file = eventsPath(store);
   const whole = streams.get(file);
   const cut = (all: readonly StoreEvent[]) => {
@@ -170,7 +192,10 @@ export function tailEvents(store: Store, back: { seq?: number; at?: string }): S
         continue;
       }
       carry = start === 0 ? Buffer.alloc(0) : text.subarray(0, nl + 1);
-      const lines = text.subarray(nl + 1).toString('utf8').split('\n');
+      const lines = text
+        .subarray(nl + 1)
+        .toString('utf8')
+        .split('\n');
       for (let i = lines.length - 1; i >= 0; i--) {
         const e = lines[i].trim() ? parseLine(lines[i]) : null;
         if (!e) continue;
@@ -317,20 +342,29 @@ export function keyOfPath(p: string, type: RecordType, root: string, sha: string
   const seg = p.split('/');
   const under = seg[0] === 'products' && seg.length > 2 ? seg[1] : null; // the product the path is beneath, in the current layout
   switch (type) {
-    case 'product': return `product:${under ?? base}`;
-    case 'feature': return under ? `feature:${under}/${seg[3]}` : `feature:${seg[1]}`;
-    case 'project': return `project:${base}`;
-    case 'change': return under ? `change:${under}/${seg[3]}` : `change:${seg[1]}`;
+    case 'product':
+      return `product:${under ?? base}`;
+    case 'feature':
+      return under ? `feature:${under}/${seg[3]}` : `feature:${seg[1]}`;
+    case 'project':
+      return `project:${base}`;
+    case 'change':
+      return under ? `change:${under}/${seg[3]}` : `change:${seg[1]}`;
     case 'decision': {
       const slug = dated?.[1] ?? base;
       if (under) return seg[2] === 'changes' ? `decision:${under}/${seg[3]}/${slug}` : `decision:${under}/${slug}`;
       return p.startsWith('decisions/') ? `decision:/${slug}` : `decision:${seg[1]}/${slug}`;
     }
-    case 'aspect': return `aspect:${under}/${seg[3]}`;
-    case 'place': return `aspect:${under}/${seg[3]}/${base}`;
-    case 'release': return `release:${under}/${base}`;
-    case 'session': return `session:${dated?.[1] ?? base}`;
-    case 'session-kind': return `session-kind:${base}`;
+    case 'aspect':
+      return `aspect:${under}/${seg[3]}`;
+    case 'place':
+      return `aspect:${under}/${seg[3]}/${base}`;
+    case 'release':
+      return `release:${under}/${base}`;
+    case 'session':
+      return `session:${dated?.[1] ?? base}`;
+    case 'session-kind':
+      return `session-kind:${base}`;
     case 'source':
     case 'actor': {
       // the key is in the frontmatter at that commit
@@ -359,7 +393,10 @@ function textAt(root: string, rev: string, p: string): string {
 
 /** A scalar field of a record's frontmatter, unquoted. */
 function fieldOf(text: string, name: string): string | undefined {
-  return new RegExp(`^${name}:\\s*(.+)$`, 'm').exec(text)?.[1]?.trim().replace(/^"(.*)"$/, '$1');
+  return new RegExp(`^${name}:\\s*(.+)$`, 'm')
+    .exec(text)?.[1]
+    ?.trim()
+    .replace(/^"(.*)"$/, '$1');
 }
 
 /** Rewrite the stream from the store's git history: one event per record per commit. The stream is derived and disposable. */
@@ -381,12 +418,31 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
     const verb = m?.[1];
     const rest = m?.[2] ?? '';
     if (verb === 'init') {
-      events.push({ seq: ++seq, at, op: 'init', key: 'store', type: 'store', path: 'pjman.yaml', session, commit: short });
+      events.push({
+        seq: ++seq,
+        at,
+        op: 'init',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        session,
+        commit: short,
+      });
       continue;
     }
     if (verb === 'migrate') {
       // every record moved under its product: one event on the store, not one per record
-      events.push({ seq: ++seq, at, op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${changed.length} files`], session, commit: short });
+      events.push({
+        seq: ++seq,
+        at,
+        op: 'migrated',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        fields: [`${changed.length} files`],
+        session,
+        commit: short,
+      });
       continue;
     }
     // the record the subject names comes first, as the live write emitted it
@@ -404,24 +460,58 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       if (!type) continue;
       if (status.startsWith('D')) {
         // a removed record: its key as it was in the parent commit
-        if (verb === 'rm') events.push({ seq: ++seq, at, op: 'removed', key: keyOfPath(p, type, root, `${sha}^`), type, path: p, session, commit: short });
+        if (verb === 'rm')
+          events.push({
+            seq: ++seq,
+            at,
+            op: 'removed',
+            key: keyOfPath(p, type, root, `${sha}^`),
+            type,
+            path: p,
+            session,
+            commit: short,
+          });
         continue;
       }
       const key = keyOfPath(p, type, root, sha);
       let op: StoreEvent['op'] = 'write';
       let fields: string[] | undefined;
       if (verb === 'new' && rest === key) op = 'created';
-      else if (verb === 'rm') { op = 'set'; fields = ['references']; } // a record that lost a reference to the removed one
-      else if (verb === 'new') { op = 'set'; fields = ['status']; } // the record a new decision superseded
-      else if (verb === 'set') { op = 'set'; fields = rest.split(' ').slice(1); }
-      else if (verb === 'decision') { op = 'set'; fields = ['thread', ...rest.split(' ').slice(1)]; } // entries appended to a decision's thread
-      else if (verb === 'step') { op = 'set'; fields = ['plan', `step ${rest.split(' ')[1] ?? ''}`.trim()]; } // one move of a change's plan
-      else if (verb === 'session' && rest.startsWith('unbind')) { op = 'set'; fields = ['changes', 'observed', 'log']; }
-      else if (verb === 'session' && (rest.startsWith('focus') || rest.startsWith('briefed'))) { op = 'set'; fields = [rest.startsWith('focus') ? 'focus' : 'briefed']; }
-      else if (verb === 'session') { op = rest.startsWith('log') ? 'log' : rest.startsWith('bind') ? 'bind' : 'observe'; fields = [op === 'log' ? 'log' : op === 'bind' ? 'changes' : 'observed']; }
-      else if (verb === 'note') { op = 'log'; fields = ['notes']; }
-      else if (verb === 'mv') { op = status.startsWith('R') || key === rest.split(' ')[1] ? 'moved' : 'set'; if (op === 'set') fields = ['references']; }
-      else if (verb === 'fmt') op = 'formatted';
+      else if (verb === 'rm') {
+        op = 'set';
+        fields = ['references'];
+      } // a record that lost a reference to the removed one
+      else if (verb === 'new') {
+        op = 'set';
+        fields = ['status'];
+      } // the record a new decision superseded
+      else if (verb === 'set') {
+        op = 'set';
+        fields = rest.split(' ').slice(1);
+      } else if (verb === 'decision') {
+        op = 'set';
+        fields = ['thread', ...rest.split(' ').slice(1)];
+      } // entries appended to a decision's thread
+      else if (verb === 'step') {
+        op = 'set';
+        fields = ['plan', `step ${rest.split(' ')[1] ?? ''}`.trim()];
+      } // one move of a change's plan
+      else if (verb === 'session' && rest.startsWith('unbind')) {
+        op = 'set';
+        fields = ['changes', 'observed', 'log'];
+      } else if (verb === 'session' && (rest.startsWith('focus') || rest.startsWith('briefed'))) {
+        op = 'set';
+        fields = [rest.startsWith('focus') ? 'focus' : 'briefed'];
+      } else if (verb === 'session') {
+        op = rest.startsWith('log') ? 'log' : rest.startsWith('bind') ? 'bind' : 'observe';
+        fields = [op === 'log' ? 'log' : op === 'bind' ? 'changes' : 'observed'];
+      } else if (verb === 'note') {
+        op = 'log';
+        fields = ['notes'];
+      } else if (verb === 'mv') {
+        op = status.startsWith('R') || key === rest.split(' ')[1] ? 'moved' : 'set';
+        if (op === 'set') fields = ['references'];
+      } else if (verb === 'fmt') op = 'formatted';
       else if (verb === 'apply' || verb === 'undo') op = status.startsWith('A') ? 'created' : 'set';
       else if (status.startsWith('A')) op = 'created';
       let writer: string | undefined;
@@ -432,21 +522,34 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
         if (op === 'set' && (type === 'change' || type === 'decision')) {
           // the value a set left: status when it moved, else decided_by; the field is named among the changed ones
           const prior = textAt(root, `${sha}^`, p);
-          const moved = (['status', 'decided_by'] as const).find((f) => fieldOf(text, f) !== undefined && fieldOf(text, f) !== fieldOf(prior, f));
+          const moved = (['status', 'decided_by'] as const).find(
+            (f) => fieldOf(text, f) !== undefined && fieldOf(text, f) !== fieldOf(prior, f),
+          );
           if (moved) {
             value = fieldOf(text, moved);
             if (fields && !fields.includes(moved)) fields = [...fields, moved];
           }
         }
       }
-      if (type === 'session' && (op === 'bind' || (op === 'set' && fields?.includes('focus')))) value = rest.split(' ')[2] || undefined;
+      if (type === 'session' && (op === 'bind' || (op === 'set' && fields?.includes('focus'))))
+        value = rest.split(' ')[2] || undefined;
       events.push({ seq: ++seq, at, op, key, type, path: p, fields, value, writer, session, commit: short });
     }
     // a batch or its undo closes with the event that names what it was for
     if (verb === 'apply' || verb === 'undo') {
       const forKey = git(root, ['log', '-1', '--format=%(trailers:key=Pjman-For,valueonly)', sha]).trim() || 'store';
-      const forType = forKey === 'store' ? 'store' : (parseKey(forKey)?.kind as RecordType | undefined) ?? 'store';
-      events.push({ seq: ++seq, at, op: verb === 'apply' ? 'applied' : 'reverted', key: forKey, type: forType, path: 'pjman.yaml', fields: [rest], session, commit: short });
+      const forType = forKey === 'store' ? 'store' : ((parseKey(forKey)?.kind as RecordType | undefined) ?? 'store');
+      events.push({
+        seq: ++seq,
+        at,
+        op: verb === 'apply' ? 'applied' : 'reverted',
+        key: forKey,
+        type: forType,
+        path: 'pjman.yaml',
+        fields: [rest],
+        session,
+        commit: short,
+      });
     }
   }
   const tmp = eventsPath(store) + '.tmp';

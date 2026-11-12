@@ -83,7 +83,9 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
   const insRec = db.prepare(
     'INSERT OR IGNORE INTO records (id, key, type, path, title, status, created, writer, session, valid, data) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
   );
-  const insEdge = db.prepare('INSERT INTO edges (edge, from_key, to_key, declared_on, observed, at) VALUES (?,?,?,?,?,?)');
+  const insEdge = db.prepare(
+    'INSERT INTO edges (edge, from_key, to_key, declared_on, observed, at) VALUES (?,?,?,?,?,?)',
+  );
   const insAlias = db.prepare('INSERT OR REPLACE INTO aliases (alias, key) VALUES (?,?)');
   const insConflict = db.prepare('INSERT INTO conflicts (kind, key, paths, message) VALUES (?,?,?,?)');
   const insProblem = db.prepare('INSERT INTO problems (level, path, message) VALUES (?,?,?)');
@@ -98,14 +100,43 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
     counts[r.type] = (counts[r.type] ?? 0) + 1;
     const dup = seenKeys.get(r.key);
     if (dup) {
-      const c = { kind: 'duplicate-key', key: r.key, paths: [dup.path, r.path], message: `two records resolve to '${r.key}'` };
+      const c = {
+        kind: 'duplicate-key',
+        key: r.key,
+        paths: [dup.path, r.path],
+        message: `two records resolve to '${r.key}'`,
+      };
       conflicts.push(c);
       // the second record gets its own id, under its path, so nothing is lost
-      insRec.run(uuidv7(), r.key, r.type, r.path, (str(r.data.title) ?? str(r.data.gist)), str(r.data.status), str(r.data.created), str(r.data.writer), str(r.data.session), r.valid ? 1 : 0, JSON.stringify(r.data));
+      insRec.run(
+        uuidv7(),
+        r.key,
+        r.type,
+        r.path,
+        str(r.data.title) ?? str(r.data.gist),
+        str(r.data.status),
+        str(r.data.created),
+        str(r.data.writer),
+        str(r.data.session),
+        r.valid ? 1 : 0,
+        JSON.stringify(r.data),
+      );
       continue;
     }
     seenKeys.set(r.key, r);
-    insRec.run(idFor(r.key), r.key, r.type, r.path, (str(r.data.title) ?? str(r.data.gist)), str(r.data.status), str(r.data.created), str(r.data.writer), str(r.data.session), r.valid ? 1 : 0, JSON.stringify(r.data));
+    insRec.run(
+      idFor(r.key),
+      r.key,
+      r.type,
+      r.path,
+      str(r.data.title) ?? str(r.data.gist),
+      str(r.data.status),
+      str(r.data.created),
+      str(r.data.writer),
+      str(r.data.session),
+      r.valid ? 1 : 0,
+      JSON.stringify(r.data),
+    );
   }
 
   const edges = allEdges(loaded);
@@ -123,7 +154,12 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
   }
   for (const [src, recs] of boundBy) {
     if (recs.length > 1) {
-      conflicts.push({ kind: 'double-bind', key: src, paths: recs.map((r) => r.path), message: `'${src}' is bound by ${recs.map((r) => r.key).join(' and ')}` });
+      conflicts.push({
+        kind: 'double-bind',
+        key: src,
+        paths: recs.map((r) => r.path),
+        message: `'${src}' is bound by ${recs.map((r) => r.key).join(' and ')}`,
+      });
     }
   }
   for (const c of conflicts) insConflict.run(c.kind, c.key, JSON.stringify(c.paths), c.message);

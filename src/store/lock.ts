@@ -56,7 +56,11 @@ export function lockStore(root: string): void {
     return;
   }
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  const holder: Holder = { pid: process.pid, at: new Date().toISOString(), cmd: process.argv.slice(2, 5).join(' ') || undefined };
+  const holder: Holder = {
+    pid: process.pid,
+    at: new Date().toISOString(),
+    cmd: process.argv.slice(2, 5).join(' ') || undefined,
+  };
   const started = Date.now();
   for (;;) {
     try {
@@ -73,7 +77,9 @@ export function lockStore(root: string): void {
       continue;
     }
     if (Date.now() - started >= waitMs()) {
-      throw new CliError(`the store is busy: another pjman is writing it (pid ${other.pid}${other.cmd ? `, ${other.cmd}` : ''}, since ${other.at}); try again in a moment`);
+      throw new CliError(
+        `the store is busy: another pjman is writing it (pid ${other.pid}${other.cmd ? `, ${other.cmd}` : ''}, since ${other.at}); try again in a moment`,
+      );
     }
     sleep(POLL_MS);
   }

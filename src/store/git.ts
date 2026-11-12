@@ -39,11 +39,19 @@ export function gitUserEmail(): string | null {
 }
 
 /** Stage everything under `root` and commit. Returns the short sha, or null when there was nothing to commit. */
-export function commitAll(root: string, message: string, session?: string, trailers: Record<string, string> = {}): string | null {
+export function commitAll(
+  root: string,
+  message: string,
+  session?: string,
+  trailers: Record<string, string> = {},
+): string | null {
   git(root, ['add', '-A', '--', '.']);
   const staged = git(root, ['diff', '--cached', '--name-only']);
   if (!staged) return null;
-  const lines = [...(session ? [`Pjman-Session: ${session}`] : []), ...Object.entries(trailers).map(([k, v]) => `${k}: ${v}`)];
+  const lines = [
+    ...(session ? [`Pjman-Session: ${session}`] : []),
+    ...Object.entries(trailers).map(([k, v]) => `${k}: ${v}`),
+  ];
   const body = lines.length ? `${message}\n\n${lines.join('\n')}` : message;
   git(root, ['commit', '-q', '-m', body]);
   return git(root, ['rev-parse', '--short', 'HEAD']);

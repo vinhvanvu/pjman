@@ -33,7 +33,8 @@ const SINGLE = ['parent', 'supersedes']; // supersedes is one key or a list; eac
 /** Drop `key` from the fields that may lose a reference. Returns the fields changed. */
 function detach(data: Record<string, unknown>, keys: Set<string>): string[] {
   const changed: string[] = [];
-  const is = (v: unknown): boolean => typeof v === 'string' && (keys.has(canon(v)) || keys.has(canon(v.replace(/^(adds|changes|removes)\s+/, ''))));
+  const is = (v: unknown): boolean =>
+    typeof v === 'string' && (keys.has(canon(v)) || keys.has(canon(v.replace(/^(adds|changes|removes)\s+/, ''))));
   for (const f of LISTS) {
     if (!Array.isArray(data[f])) continue;
     const kept = (data[f] as unknown[]).filter((v) => !is(v));
@@ -50,7 +51,14 @@ function detach(data: Record<string, unknown>, keys: Set<string>): string[] {
     }
   }
   if (Array.isArray(data.observed)) {
-    const kept = (data.observed as unknown[]).filter((o) => !(o && typeof o === 'object' && (is((o as Record<string, unknown>).from) || is((o as Record<string, unknown>).to))));
+    const kept = (data.observed as unknown[]).filter(
+      (o) =>
+        !(
+          o &&
+          typeof o === 'object' &&
+          (is((o as Record<string, unknown>).from) || is((o as Record<string, unknown>).to))
+        ),
+    );
     if (kept.length !== (data.observed as unknown[]).length) {
       if (kept.length) data.observed = kept;
       else delete data.observed;
@@ -78,7 +86,11 @@ function referrers(records: Rec[], removedPaths: Set<string>, keys: Set<string>)
   return out;
 }
 
-export function rm(store: Store, raw: string, opts: { detach?: boolean; session?: string; writer?: string } = {}): RmResult {
+export function rm(
+  store: Store,
+  raw: string,
+  opts: { detach?: boolean; session?: string; writer?: string } = {},
+): RmResult {
   noteReshaping(store);
   const key = parseKey(raw);
   if (!key) throw new CliError(`'${raw}' is not a key (kind:rest)`);
@@ -88,23 +100,36 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
   const rec = res.rec;
 
   // what goes: a change takes its folder (decisions included), an aspect its places; anything else is one file
-  const dir = rec.type === 'change' || rec.type === 'feature' || rec.type === 'product' || rec.type === 'aspect' ? path.dirname(rec.path) : null;
+  const dir =
+    rec.type === 'change' || rec.type === 'feature' || rec.type === 'product' || rec.type === 'aspect'
+      ? path.dirname(rec.path)
+      : null;
   const going = loaded.records.filter((r) => r.path === rec.path || (dir !== null && r.path.startsWith(dir + '/')));
   const removedPaths = new Set(going.map((r) => r.path));
   const keys = new Set<string>(going.flatMap((r) => eventKeysOf(r)));
 
   if (rec.type === 'project') {
     const members = loaded.records.filter((r) => r.type === 'change' && r.data.project === rec.key).map((r) => r.key);
-    if (members.length) throw new CliError(`refused: ${rec.key} is the project of ${members.join(', ')}; move or remove them first`);
+    if (members.length)
+      throw new CliError(`refused: ${rec.key} is the project of ${members.join(', ')}; move or remove them first`);
   }
   if (rec.type === 'product') {
-    const members = loaded.records.filter((r) => (r.type !== 'product' && r.productSlug === rec.productSlug) || (r.type === 'project' && r.data.product === rec.key)).map((r) => r.key);
-    if (members.length) throw new CliError(`refused: ${rec.key} is the product of ${members.join(', ')}; move or remove them first`);
+    const members = loaded.records
+      .filter(
+        (r) =>
+          (r.type !== 'product' && r.productSlug === rec.productSlug) ||
+          (r.type === 'project' && r.data.product === rec.key),
+      )
+      .map((r) => r.key);
+    if (members.length)
+      throw new CliError(`refused: ${rec.key} is the product of ${members.join(', ')}; move or remove them first`);
   }
   const refs = referrers(loaded.records, removedPaths, keys);
   if (refs.length && !opts.detach) {
     const lines = refs.map((x) => `  ${x.rec.key}  ${x.fields.join(', ')}`);
-    throw new CliError(`refused: ${rec.key} is referenced by\n${lines.join('\n')}\n--detach drops those references (a key in a list, a parent, a superseded decision, an observed edge); a change's project, a writer or a session cannot be dropped`);
+    throw new CliError(
+      `refused: ${rec.key} is referenced by\n${lines.join('\n')}\n--detach drops those references (a key in a list, a parent, a superseded decision, an observed edge); a change's project, a writer or a session cannot be dropped`,
+    );
   }
 
   // remove, detach, validate what remains; undo everything on an error
@@ -130,18 +155,38 @@ export function rm(store: Store, raw: string, opts: { detach?: boolean; session?
     fs.writeFileSync(r.abs, render(r.type, data, r.body));
     detached.push({ key: r.key, path: r.path, fields });
   }
-  const still = refs.filter((x) => !detached.some((d) => d.path === x.rec.path) || x.fields.some((f) => !detached.find((d) => d.path === x.rec.path)!.fields.includes(f)));
+  const still = refs.filter(
+    (x) =>
+      !detached.some((d) => d.path === x.rec.path) ||
+      x.fields.some((f) => !detached.find((d) => d.path === x.rec.path)!.fields.includes(f)),
+  );
   const errors = errorsAt(store, [...refs.map((x) => x.rec.path)]);
   if (errors.length || still.length) {
     undo();
-    const why = still.length ? still.map((x) => `  ${x.rec.key}  ${x.fields.filter((f) => !detached.find((d) => d.path === x.rec.path)?.fields.includes(f)).join(', ')}`).join('\n') : errors.map((e) => `  ${e.path}: ${e.message}`).join('\n');
+    const why = still.length
+      ? still
+          .map(
+            (x) =>
+              `  ${x.rec.key}  ${x.fields.filter((f) => !detached.find((d) => d.path === x.rec.path)?.fields.includes(f)).join(', ')}`,
+          )
+          .join('\n')
+      : errors.map((e) => `  ${e.path}: ${e.message}`).join('\n');
     throw new CliError(`refused: ${rec.key} is still required by\n${why}`);
   }
 
   const env = envelope(opts);
   const events: EventInput[] = [
-    ...going.sort((a, b) => (a.path === rec.path ? -1 : b.path === rec.path ? 1 : 0)).map((r) => ({ op: 'removed' as const, key: r.key, type: r.type, path: r.path, writer: env.writer })),
-    ...detached.map((d) => ({ op: 'set' as const, key: d.key, type: loaded.records.find((r) => r.path === d.path)!.type, path: d.path, fields: d.fields, writer: env.writer })),
+    ...going
+      .sort((a, b) => (a.path === rec.path ? -1 : b.path === rec.path ? 1 : 0))
+      .map((r) => ({ op: 'removed' as const, key: r.key, type: r.type, path: r.path, writer: env.writer })),
+    ...detached.map((d) => ({
+      op: 'set' as const,
+      key: d.key,
+      type: loaded.records.find((r) => r.path === d.path)!.type,
+      path: d.path,
+      fields: d.fields,
+      writer: env.writer,
+    })),
   ];
   const commit = finishWrite(store, `pjman: rm ${rec.key}`, env.session, events);
   return { key: rec.key, removed: [...removedPaths], detached, commit };

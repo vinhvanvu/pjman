@@ -62,11 +62,20 @@ export interface SyncResult {
   session?: string;
 }
 
-const obj = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
+const obj = (v: unknown): Record<string, unknown> | undefined =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
 export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
   const { project, kind, owner, writer, tickets } = opts;
-  const result: SyncResult = { project: project.key, issues: tickets.length, created: [], updated: [], unchanged: [], skipped: [], commit: null };
+  const result: SyncResult = {
+    project: project.key,
+    issues: tickets.length,
+    created: [],
+    updated: [],
+    unchanged: [],
+    skipped: [],
+    commit: null,
+  };
   if (!tickets.length) return result;
 
   const actor = readUserConfig().actor;
@@ -87,9 +96,19 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
   const { product } = productOfProject(loaded, project.key);
 
   const byBind = new Map<string, Rec>();
-  for (const r of loaded.records) if (r.type === 'change' && Array.isArray(r.data.binds)) for (const k of r.data.binds as unknown[]) if (typeof k === 'string') byBind.set(k, r);
+  for (const r of loaded.records)
+    if (r.type === 'change' && Array.isArray(r.data.binds))
+      for (const k of r.data.binds as unknown[]) if (typeof k === 'string') byBind.set(k, r);
 
-  const write = (rec: Rec | undefined, type: 'source' | 'change', rel: string, key: string, data: Record<string, unknown>, body: string, fields: string[]) => {
+  const write = (
+    rec: Rec | undefined,
+    type: 'source' | 'change',
+    rel: string,
+    key: string,
+    data: Record<string, unknown>,
+    body: string,
+    fields: string[],
+  ) => {
     const text = render(type, data, body);
     if (rec && render(type, rec.data, rec.body) === text) {
       if (type === 'change') result.unchanged.push(key);
@@ -97,7 +116,11 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     }
     writeFile(store, rel, text);
     touched.push(rel);
-    events.push(rec ? { op: 'set', key, type, path: rel, fields, writer, session } : { op: 'created', key, type, path: rel, writer, session });
+    events.push(
+      rec
+        ? { op: 'set', key, type, path: rel, fields, writer, session }
+        : { op: 'created', key, type, path: rel, writer, session },
+    );
     if (type === 'change') (rec ? result.updated : result.created).push(key);
   };
 
@@ -109,11 +132,21 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     const src = loaded.byKey.get(sourceKey)?.[0];
     const observed = { ...t.observed, synced_at: nowIso() };
     const prev = obj(obj(src?.data.ext)?.[owner]);
-    const same = src && prev && Object.keys(t.observed).every((k) => JSON.stringify(prev[k] ?? null) === JSON.stringify(t.observed[k] ?? null)) && src.data.title === t.title && (t.url ?? src.data.url) === src.data.url;
+    const same =
+      src &&
+      prev &&
+      Object.keys(t.observed).every((k) => JSON.stringify(prev[k] ?? null) === JSON.stringify(t.observed[k] ?? null)) &&
+      src.data.title === t.title &&
+      (t.url ?? src.data.url) === src.data.url;
     if (!same) {
       const srcData: Record<string, unknown> = {
-        ...(src?.data ?? {}), kind, key: t.id, title: t.title, url: t.url ?? src?.data.url,
-        ...(src ? {} : stamp), ext: { ...(obj(src?.data.ext) ?? {}), [owner]: observed },
+        ...(src?.data ?? {}),
+        kind,
+        key: t.id,
+        title: t.title,
+        url: t.url ?? src?.data.url,
+        ...(src ? {} : stamp),
+        ext: { ...(obj(src?.data.ext) ?? {}), [owner]: observed },
       };
       write(src, 'source', srcRel, sourceKey, srcData, src?.body ?? '', ['title', 'url', 'ext']);
     }
@@ -127,16 +160,43 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       const binds = Array.isArray(existing.data.binds) ? (existing.data.binds as string[]) : [];
       const had = Array.isArray(existing.data.owners) ? (existing.data.owners as string[]) : [];
       const merged = [...had, ...owners.filter((o) => !had.includes(o))];
-      write(existing, 'change', rel, changeKey, { ...existing.data, kind: existing.data.kind ?? t.kind, owners: merged.length ? merged : undefined, binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }, existing.body, ['kind', 'owners', 'binds']);
+      write(
+        existing,
+        'change',
+        rel,
+        changeKey,
+        {
+          ...existing.data,
+          kind: existing.data.kind ?? t.kind,
+          owners: merged.length ? merged : undefined,
+          binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey],
+        },
+        existing.body,
+        ['kind', 'owners', 'binds'],
+      );
     } else {
       // the gist is a draft from the ticket's title; the name, intent and done-when are written by whoever first works it
       const gist = t.title.replace(/\s+/g, ' ').trim();
       const body = `## Origin\n\n${originText(sourceKey, { session }, stamp.created)}\n`;
-      const data = { gist, status: t.status, kind: t.kind, project: project.key, owners: owners.length ? owners : undefined, binds: [sourceKey], rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))), ...stamp };
+      const data = {
+        gist,
+        status: t.status,
+        kind: t.kind,
+        project: project.key,
+        owners: owners.length ? owners : undefined,
+        binds: [sourceKey],
+        rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))),
+        ...stamp,
+      };
       write(undefined, 'change', rel, changeKey, data, body, []);
     }
   }
-  if (touched.length) validateOrUndo(store, touched, events.filter((e) => e.op === 'created').map((e) => e.path));
+  if (touched.length)
+    validateOrUndo(
+      store,
+      touched,
+      events.filter((e) => e.op === 'created').map((e) => e.path),
+    );
 
   // pass 2: parents on the changes this sync created, where the parent change exists; a change that exists keeps its own
   loaded = loadStore(store);
@@ -154,14 +214,26 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     // names becomes one, unless it is a bug or carries steps of its own, in which case the parent is not written
     const parentRec = loaded.byKey.get(parentKey)?.[0];
     if (parentRec && parentRec.type === 'change' && parentRec.data.kind !== 'milestone') {
-      const why = parentRec.data.kind === 'bug' ? 'is a bug' : stepsOf(parentRec.data).length ? 'carries steps of its own' : null;
+      const why =
+        parentRec.data.kind === 'bug' ? 'is a bug' : stepsOf(parentRec.data).length ? 'carries steps of its own' : null;
       if (why) {
-        result.skipped.push({ id: t.id, reason: `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone` });
+        result.skipped.push({
+          id: t.id,
+          reason: `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone`,
+        });
         continue;
       }
       writeFile(store, parentRec.path, render('change', { ...parentRec.data, kind: 'milestone' }, parentRec.body));
       touched.push(parentRec.path);
-      events.push({ op: 'set', key: parentKey, type: 'change', path: parentRec.path, fields: ['kind'], writer, session });
+      events.push({
+        op: 'set',
+        key: parentKey,
+        type: 'change',
+        path: parentRec.path,
+        fields: ['kind'],
+        writer,
+        session,
+      });
       if (!result.updated.includes(parentKey) && !result.created.includes(parentKey)) result.updated.push(parentKey);
       result.unchanged = result.unchanged.filter((k) => k !== parentKey);
     }
@@ -173,19 +245,34 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
   }
   if (touched.length) validateOrUndo(store, touched, []);
 
-  result.commit = events.length ? finishWrite(store, `pjman: sync ${opts.label} (${tickets.length} issues)`, session, events) : null;
-  if (session) sessionLog(store, session, `${opts.label}: ${tickets.length} issues; ${result.created.length} changes created, ${result.updated.length} updated, ${result.unchanged.length} unchanged`);
+  result.commit = events.length
+    ? finishWrite(store, `pjman: sync ${opts.label} (${tickets.length} issues)`, session, events)
+    : null;
+  if (session)
+    sessionLog(
+      store,
+      session,
+      `${opts.label}: ${tickets.length} issues; ${result.created.length} changes created, ${result.updated.length} updated, ${result.unchanged.length} unchanged`,
+    );
   result.session = session;
   return result;
 }
 
 /** The observed data: a path, `-` for stdin, inline JSON text, or the parsed value itself. */
 export function readObserved(from: string | unknown): unknown {
-  if (from === undefined) throw new Error("nothing to sync: pass --from <file> or --from - (the issues as JSON, as the tracker's tools answered)");
+  if (from === undefined)
+    throw new Error(
+      "nothing to sync: pass --from <file> or --from - (the issues as JSON, as the tracker's tools answered)",
+    );
   if (typeof from !== 'string') return from;
   const trimmed = from.trim();
   const fs = require_fs();
-  const text = trimmed.startsWith('{') || trimmed.startsWith('[') ? from : from === '-' ? fs.readFileSync(0, 'utf8') : fs.readFileSync(from, 'utf8');
+  const text =
+    trimmed.startsWith('{') || trimmed.startsWith('[')
+      ? from
+      : from === '-'
+        ? fs.readFileSync(0, 'utf8')
+        : fs.readFileSync(from, 'utf8');
   try {
     return JSON.parse(text);
   } catch {
@@ -210,9 +297,12 @@ export function itemsIn(data: unknown, isOne: (r: Record<string, unknown>) => bo
   const r = obj(data);
   if (!r) return [];
   if (isOne(r)) return [r];
-  if (Array.isArray(r.content)) return (r.content as unknown[]).flatMap((c) => (obj(c)?.type === 'text' ? itemsIn(obj(c)!.text, isOne) : []));
+  if (Array.isArray(r.content))
+    return (r.content as unknown[]).flatMap((c) => (obj(c)?.type === 'text' ? itemsIn(obj(c)!.text, isOne) : []));
   if (r.structuredContent !== undefined) return itemsIn(r.structuredContent, isOne);
-  const list = (['issues', 'nodes', 'results', 'items', 'data'] as const).map((k) => r[k]).find(Array.isArray) ?? Object.values(r).find(Array.isArray);
+  const list =
+    (['issues', 'nodes', 'results', 'items', 'data'] as const).map((k) => r[k]).find(Array.isArray) ??
+    Object.values(r).find(Array.isArray);
   if (list) return itemsIn(list, isOne);
   // a wrapper with no list of its own (GraphQL: data.repository.issues.nodes): the first nested object that holds items
   for (const v of Object.values(r)) {

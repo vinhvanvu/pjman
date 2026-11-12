@@ -5,7 +5,12 @@ export type ErrorCode = 'usage' | 'not-found' | 'ambiguous' | 'refused';
 export class CliError extends Error {
   /** A usage error exits 2; anything else 1. */
   public exitCode: number;
-  constructor(message: string, exitCode = 1, public code: ErrorCode = exitCode === 2 ? 'usage' : 'refused', public tried?: string[]) {
+  constructor(
+    message: string,
+    exitCode = 1,
+    public code: ErrorCode = exitCode === 2 ? 'usage' : 'refused',
+    public tried?: string[],
+  ) {
     super(message);
     this.exitCode = code === 'usage' ? 2 : exitCode;
   }
@@ -20,12 +25,22 @@ export function usageError(message: string): CliError {
  *  tried and the command that would make it, when known. */
 export function notFound(ref: string, opts: { as?: string; tried?: string[]; hint?: string } = {}): CliError {
   const tried = opts.tried?.length ? `; tried: ${opts.tried.join('; ')}` : '';
-  return new CliError(`${ref} resolves to ${opts.as ? `no ${opts.as}` : 'nothing'}${tried}${opts.hint ? `; ${opts.hint}` : ''}`, 1, 'not-found', opts.tried);
+  return new CliError(
+    `${ref} resolves to ${opts.as ? `no ${opts.as}` : 'nothing'}${tried}${opts.hint ? `; ${opts.hint}` : ''}`,
+    1,
+    'not-found',
+    opts.tried,
+  );
 }
 
 /** Two or more records answer to one reference: refused, naming them. */
 export function ambiguous(ref: string, candidates: string[]): CliError {
-  return new CliError(`${ref} is ambiguous: ${candidates.join(', ')} (name one by its key)`, 1, 'ambiguous', candidates);
+  return new CliError(
+    `${ref} is ambiguous: ${candidates.join(', ')} (name one by its key)`,
+    1,
+    'ambiguous',
+    candidates,
+  );
 }
 
 /** The calendar date (yyyy-mm-dd) in local time: the day the person worked, not the UTC day. */

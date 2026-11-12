@@ -37,7 +37,13 @@ test('the host decides: blocked waits, working works, at rest waits only on a pr
 });
 
 /** A fake adapter: the status it answers, and the events its stream delivers, under the test's control. */
-function fakeAdapter(name: string): { adapter: HostAdapter; answer: (s: HostStatus | null) => void; emit: (e: HostEvent) => void; followed: string[]; stopped: string[] } {
+function fakeAdapter(name: string): {
+  adapter: HostAdapter;
+  answer: (s: HostStatus | null) => void;
+  emit: (e: HostEvent) => void;
+  followed: string[];
+  stopped: string[];
+} {
   let status: HostStatus | null = null;
   const listeners = new Map<string, (e: HostEvent) => void>();
   const followed: string[] = [];
@@ -68,7 +74,10 @@ const tick = () => new Promise((r) => setTimeout(r, 30));
 test('the watch follows a session on its host, polls until the stream speaks, says when the state changed, and lets go', async () => {
   const fake = fakeAdapter('fake');
   const changes: string[] = [];
-  const watch = new HostWatch({ pollMs: 20, onChange: (key, s) => changes.push(`${key}=${s?.state ?? '-'}${s?.kind ? `/${s.kind}` : ''}`) });
+  const watch = new HostWatch({
+    pollMs: 20,
+    onChange: (key, s) => changes.push(`${key}=${s?.state ?? '-'}${s?.kind ? `/${s.kind}` : ''}`),
+  });
   fake.answer({ state: 'working', at: at(1) });
   watch.track('session:a', fake.adapter, { session: 'host-a', block: 'b' });
   await tick();
@@ -116,7 +125,9 @@ before(async () => {
   delete process.env.PJMAN_STORE;
   fs.mkdirSync(fakes, { recursive: true });
   // a rex whose program is blocked on a question, and whose stream says so once then stays open a while
-  fs.writeFileSync(path.join(fakes, 'rex'), `#!/bin/sh
+  fs.writeFileSync(
+    path.join(fakes, 'rex'),
+    `#!/bin/sh
 case "$1 $2" in
   "version --json") echo '{"version":"0.3.1"}';;
   "block call") echo '[{"state":"blocked","kind":"question","app":"claude-code"}]';;
@@ -127,7 +138,9 @@ case "$1 $2" in
   "events -s") echo '{"type":"session_event","payload":{"session_id":"session:s1","event":{"type":"block_event","payload":{"block_id":"block:b1","creator_name":"com.superlogical.terminal","name":"program_status_changed","payload":{"record":{"state":"blocked","kind":"question"}}}}}}'; sleep 5;;
   *) exit 1;;
 esac
-`, { mode: 0o755 });
+`,
+    { mode: 0o755 },
+  );
   process.env.PATH = `${fakes}:${savedPath ?? ''}`;
   fs.mkdirSync(project, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: project });
@@ -135,7 +148,12 @@ esac
   store = findStore(project)!;
   change(store, 'login', { title: 'Login', summary: 'Sign in.' });
   // a session that ran in Rex, bound to the change, quiet for an hour by the record: stopped by the record alone
-  sessionStart(store, 'in-rex', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', log: 'session started', host: { name: 'rex', session: 'session:s1', block: 'block:b1', version: '0.3.1', validated: true } });
+  sessionStart(store, 'in-rex', {
+    agent: 'agent:claude-code',
+    onBehalfOf: 'person:tester',
+    log: 'session started',
+    host: { name: 'rex', session: 'session:s1', block: 'block:b1', version: '0.3.1', validated: true },
+  });
   // one outside any host, for contrast
   newRecord(store, 'session', 'plain', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   const ui = path.join(tmp, 'ui');
@@ -154,7 +172,11 @@ after(() => {
 test('the server hands what the host says to the bridge: a session blocked on a question waits, and the stream carries a host frame', async () => {
   await new Promise((r) => setTimeout(r, 900)); // the sweep after the first event, then the stream's first line
   const res = await fetch(`${base}/products/app/bridge?days=1`);
-  const body = (await res.json()) as { data: { sessions: { key: string; state: string; host?: { name: string; status?: { state: string; kind?: string } } }[] } };
+  const body = (await res.json()) as {
+    data: {
+      sessions: { key: string; state: string; host?: { name: string; status?: { state: string; kind?: string } } }[];
+    };
+  };
   const row = body.data.sessions.find((s) => s.key === 'session:in-rex');
   assert.ok(row, 'the hosted session is on the bridge');
   assert.equal(row.state, 'waiting');
@@ -164,7 +186,9 @@ test('the server hands what the host says to the bridge: a session blocked on a 
   const plain = body.data.sessions.find((s) => s.key === 'session:plain');
   assert.equal(plain?.host, undefined);
   // the session page carries it too
-  const view = (await (await fetch(`${base}/sessions/in-rex/view`)).json()) as { data: { session: { host?: { status?: { kind?: string } }; working: boolean } } };
+  const view = (await (await fetch(`${base}/sessions/in-rex/view`)).json()) as {
+    data: { session: { host?: { status?: { kind?: string } }; working: boolean } };
+  };
   assert.equal(view.data.session.host?.status?.kind, 'question');
   assert.equal(view.data.session.working, false);
 });
@@ -176,27 +200,38 @@ test('a host frame reaches an open stream when the host speaks', async () => {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let seen = '';
-  const until = (pred: () => boolean) => new Promise<void>((resolve, reject) => {
-    const deadline = setTimeout(() => reject(new Error(`no host frame; saw:\n${seen}`)), 6000);
-    const pump = (): void => {
-      void reader.read().then(({ value, done }) => {
-        if (done) return;
-        seen += decoder.decode(value);
-        if (pred()) {
-          clearTimeout(deadline);
-          resolve();
-        } else pump();
-      }, reject);
-    };
-    pump();
+  const until = (pred: () => boolean) =>
+    new Promise<void>((resolve, reject) => {
+      const deadline = setTimeout(() => reject(new Error(`no host frame; saw:\n${seen}`)), 6000);
+      const pump = (): void => {
+        void reader.read().then(({ value, done }) => {
+          if (done) return;
+          seen += decoder.decode(value);
+          if (pred()) {
+            clearTimeout(deadline);
+            resolve();
+          } else pump();
+        }, reject);
+      };
+      pump();
+    });
+  sessionStart(store, 'in-rex-2', {
+    agent: 'agent:claude-code',
+    onBehalfOf: 'person:tester',
+    log: 'session started',
+    host: { name: 'rex', session: 'session:s1', block: 'block:b1' },
   });
-  sessionStart(store, 'in-rex-2', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', log: 'session started', host: { name: 'rex', session: 'session:s1', block: 'block:b1' } });
   await until(() => /event: host\ndata: \{[^\n]*"key":"session:in-rex-2"[^\n]*"state":"blocked"/.test(seen));
   ctl.abort();
 });
 
-test('POST /open asks the host to bring the session\'s block to the front; a session in no host is refused', async () => {
-  const post = (body: unknown) => fetch(`${base}/open`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+test("POST /open asks the host to bring the session's block to the front; a session in no host is refused", async () => {
+  const post = (body: unknown) =>
+    fetch(`${base}/open`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
   const ok = await post({ session: 'session:in-rex' });
   assert.equal(ok.status, 200);
   const r = (await ok.json()) as { data: { did: string; ok: boolean; host: { name: string } } };
@@ -211,30 +246,64 @@ test('POST /open asks the host to bring the session\'s block to the front; a ses
 });
 
 test('POST /launch opens a session for a change on the host this machine runs; the store says which host that is', async () => {
-  const info = (await (await fetch(`${base}/store`)).json()) as { data: { host: { name: string; version: string | null; validated: boolean | null } | null } };
+  const info = (await (await fetch(`${base}/store`)).json()) as {
+    data: { host: { name: string; version: string | null; validated: boolean | null } | null };
+  };
   assert.deepEqual(info.data.host, { name: 'rex', version: '0.3.1', validated: true, interface: 1, range: '>=0.1 <1' });
-  const res = await fetch(`${base}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ change: 'change:login' }) });
+  const res = await fetch(`${base}/launch`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ change: 'change:login' }),
+  });
   assert.equal(res.status, 200);
-  const r = (await res.json()) as { data: { host: string; id: { session: string; block?: string }; command: string[] } };
+  const r = (await res.json()) as {
+    data: { host: string; id: { session: string; block?: string }; command: string[] };
+  };
   assert.equal(r.data.host, 'rex');
   assert.deepEqual(r.data.id, { session: 'session:new9', block: 'block:b9' });
   assert.deepEqual(r.data.command, ['claude', '--worktree', 'login']);
-  assert.match(fs.readFileSync(path.join(tmp, 'rex-new'), 'utf8'), new RegExp(`launched new login -c ${store.projectDir} --json -- claude --worktree login`));
-  assert.equal((await fetch(`${base}/launch`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) })).status, 400);
+  assert.match(
+    fs.readFileSync(path.join(tmp, 'rex-new'), 'utf8'),
+    new RegExp(`launched new login -c ${store.projectDir} --json -- claude --worktree login`),
+  );
+  assert.equal(
+    (
+      await fetch(`${base}/launch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+    ).status,
+    400,
+  );
 });
 
 test('an acceptance is delivered through the host to the sessions on the change whose agent has no waking adapter; a Claude Code session hears it from its wake module instead', async () => {
   // a Codex session in Rex on the change, beside the Claude Code one already there (in-rex, bound to nothing yet)
-  sessionStart(store, 'codex-in-rex', { agent: 'agent:codex', onBehalfOf: 'person:tester', log: 'session started', host: { name: 'rex', session: 'session:s2', block: 'block:b2' } });
+  sessionStart(store, 'codex-in-rex', {
+    agent: 'agent:codex',
+    onBehalfOf: 'person:tester',
+    log: 'session started',
+    host: { name: 'rex', session: 'session:s2', block: 'block:b2' },
+  });
   sessionBind(store, 'codex-in-rex', 'change:login', 'by hand');
   sessionBind(store, 'in-rex', 'change:login', 'by hand');
   decisionRec(store, 'login/passwordless', { title: 'Passwordless or not', name: 'Passwordless' });
-  const res = await fetch(`${base}/decide`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'decision:login/passwordless', words: 'yes, links' }) });
+  const res = await fetch(`${base}/decide`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ decision: 'decision:login/passwordless', words: 'yes, links' }),
+  });
   assert.equal(res.status, 200);
-  const r = (await res.json()) as { data: { status: string; delivered?: { session: string; host: string; ok: boolean }[] } };
+  const r = (await res.json()) as {
+    data: { status: string; delivered?: { session: string; host: string; ok: boolean }[] };
+  };
   assert.equal(r.data.status, 'decided');
   assert.deepEqual(r.data.delivered, [{ session: 'session:codex-in-rex', host: 'rex', ok: true }]);
   const sent = fs.readFileSync(path.join(tmp, 'rex-send'), 'utf8');
-  assert.match(sent, /^sent send -s session:s2 -b block:b2 pjman: decision:[^ ]*login\/passwordless decided by person:\S+: it — yes, links\. Read pjman context change:[^ ]*login and act on it as the record now says\.\r$/m);
+  assert.match(
+    sent,
+    /^sent send -s session:s2 -b block:b2 pjman: decision:[^ ]*login\/passwordless decided by person:\S+: it — yes, links\. Read pjman context change:[^ ]*login and act on it as the record now says\.\r$/m,
+  );
   assert.ok(!/session:s1/.test(sent), 'the Claude Code session is left to its wake module');
 });

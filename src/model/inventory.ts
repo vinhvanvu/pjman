@@ -14,13 +14,85 @@ export interface Inventory {
   code: string[];
 }
 
-const SKIP = new Set(['.git', '.github', '.gitlab', '.circleci', 'node_modules', 'dist', 'build', 'out', 'target', 'vendor', '.next', '.venv', 'venv', '__pycache__', 'coverage', '.pjman', '.claude', '.idea', '.vscode']);
+const SKIP = new Set([
+  '.git',
+  '.github',
+  '.gitlab',
+  '.circleci',
+  'node_modules',
+  'dist',
+  'build',
+  'out',
+  'target',
+  'vendor',
+  '.next',
+  '.venv',
+  'venv',
+  '__pycache__',
+  'coverage',
+  '.pjman',
+  '.claude',
+  '.idea',
+  '.vscode',
+]);
 const DOC_DIRS = new Set(['docs', 'doc', 'documentation', 'adr', 'adrs', 'rfcs', 'specs', 'design']);
 const NOT_DOCS = /^(license|licence|notice|changelog|contributing|code_of_conduct|security|authors|patents)(\.|$)/i;
 const DOC_EXT = new Set(['.md', '.mdx', '.rst', '.adoc', '.txt']);
-const MANIFESTS = ['package.json', 'pyproject.toml', 'setup.py', 'requirements.txt', 'Cargo.toml', 'go.mod', 'Gemfile', 'pom.xml', 'build.gradle', 'build.gradle.kts', 'mix.exs', 'composer.json', 'Package.swift', 'pubspec.yaml', 'CMakeLists.txt', 'Makefile', 'deno.json', 'bun.lockb'];
+const MANIFESTS = [
+  'package.json',
+  'pyproject.toml',
+  'setup.py',
+  'requirements.txt',
+  'Cargo.toml',
+  'go.mod',
+  'Gemfile',
+  'pom.xml',
+  'build.gradle',
+  'build.gradle.kts',
+  'mix.exs',
+  'composer.json',
+  'Package.swift',
+  'pubspec.yaml',
+  'CMakeLists.txt',
+  'Makefile',
+  'deno.json',
+  'bun.lockb',
+];
 /** Source in a language: one file is code. */
-const CODE_EXT = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.rb', '.go', '.rs', '.java', '.kt', '.kts', '.swift', '.c', '.h', '.cc', '.cpp', '.hpp', '.cs', '.php', '.ex', '.exs', '.scala', '.clj', '.hs', '.ml', '.dart', '.lua', '.zig', '.vue', '.svelte']);
+const CODE_EXT = new Set([
+  '.ts',
+  '.tsx',
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.py',
+  '.rb',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.kts',
+  '.swift',
+  '.c',
+  '.h',
+  '.cc',
+  '.cpp',
+  '.hpp',
+  '.cs',
+  '.php',
+  '.ex',
+  '.exs',
+  '.scala',
+  '.clj',
+  '.hs',
+  '.ml',
+  '.dart',
+  '.lua',
+  '.zig',
+  '.vue',
+  '.svelte',
+]);
 /** Scripts and schemas: a tooling folder has a few, a product of them has many. Three make a directory code. */
 const AUX_EXT = new Set(['.sh', '.bash', '.zsh', '.sql', '.proto', '.ps1']);
 const AUX_MIN = 3;
@@ -29,7 +101,10 @@ const README_MIN = 300;
 
 function entries(dir: string): fs.Dirent[] {
   try {
-    return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => !SKIP.has(e.name)).sort((a, b) => a.name.localeCompare(b.name));
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((e) => !SKIP.has(e.name))
+      .sort((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
   }
@@ -103,6 +178,6 @@ export function mapGuidance(holds: Holds): string {
     case 'code':
       return "the map is proposed from the code's split, titled as the sentences a person would recognise behind it, live by default since the code exists (the map skill)";
     case 'docs+code':
-      return "the map is proposed from both: the documentation names the sentences and their status, the code names the split, which is the better proposal (the map skill)";
+      return 'the map is proposed from both: the documentation names the sentences and their status, the code names the split, which is the better proposal (the map skill)';
   }
 }

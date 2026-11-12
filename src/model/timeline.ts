@@ -102,7 +102,12 @@ function readStatuses(root: string, wanted: { commit: string; path: string }[]):
   if (fresh.length === 0) return;
   let out: Buffer;
   try {
-    out = execFileSync('git', ['cat-file', '--batch'], { cwd: root, input: fresh.map((k) => `${k}\n`).join(''), maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'ignore'] });
+    out = execFileSync('git', ['cat-file', '--batch'], {
+      cwd: root,
+      input: fresh.map((k) => `${k}\n`).join(''),
+      maxBuffer: 64 * 1024 * 1024,
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
   } catch {
     for (const k of fresh) statusAt.set(k, null);
     return;
@@ -135,7 +140,11 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
   const now = opts.now ?? Date.now();
   const to = opts.to ? new Date(Date.parse(opts.to)).toISOString() : new Date(now).toISOString();
   const from = opts.from ? new Date(Date.parse(opts.from)).toISOString() : new Date(Date.parse(to) - DAY).toISOString();
-  const productKey = opts.product ? (opts.product.startsWith('product:') ? opts.product : `product:${opts.product}`) : null;
+  const productKey = opts.product
+    ? opts.product.startsWith('product:')
+      ? opts.product
+      : `product:${opts.product}`
+    : null;
   const slug = productKey?.slice('product:'.length);
 
   const placed = new Map<string, { inProduct: boolean; title?: string }>();
@@ -143,8 +152,13 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
     let p = placed.get(key);
     if (p) return p;
     const rec = live(loaded, key);
-    const title = rec && (rec.type === 'session' ? lineOf(sessionChange(loaded, rec)?.data ?? {}) : str(rec.data.name) ?? lineOf(rec.data));
-    const inProduct = !productKey || (rec ? productOfRecord(loaded, rec)?.key === productKey : keySegment(key) === slug);
+    const title =
+      rec &&
+      (rec.type === 'session'
+        ? lineOf(sessionChange(loaded, rec)?.data ?? {})
+        : (str(rec.data.name) ?? lineOf(rec.data)));
+    const inProduct =
+      !productKey || (rec ? productOfRecord(loaded, rec)?.key === productKey : keySegment(key) === slug);
     p = { inProduct, title };
     placed.set(key, p);
     return p;
@@ -174,7 +188,10 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
   // what each decision tick left its decision in, from the write's own commit
   const ticks = events.filter((e) => e.decision);
   const commitOf = new Map(all.filter((e) => e.commit).map((e) => [e.seq, { commit: e.commit!, path: e.path }]));
-  readStatuses(store.root, ticks.flatMap((e) => (commitOf.has(e.seq) ? [commitOf.get(e.seq)!] : [])));
+  readStatuses(
+    store.root,
+    ticks.flatMap((e) => (commitOf.has(e.seq) ? [commitOf.get(e.seq)!] : [])),
+  );
   for (const e of events) {
     if (e.type !== 'decision') continue;
     const c = commitOf.get(e.seq);
@@ -184,5 +201,12 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
     if (now) e.statusNow = now;
   }
   const last = all.at(-1);
-  return { product: productKey, from, to, events, last: last && { seq: last.seq, at: last.at }, ...(arrivedAfter === undefined ? {} : { arrivedAfter }) };
+  return {
+    product: productKey,
+    from,
+    to,
+    events,
+    last: last && { seq: last.seq, at: last.at },
+    ...(arrivedAfter === undefined ? {} : { arrivedAfter }),
+  };
 }

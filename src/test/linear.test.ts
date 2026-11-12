@@ -22,12 +22,49 @@ delete process.env.PJMAN_SESSION;
 delete process.env.PJMAN_STORE;
 
 // what a harness's Linear MCP tools answer with, in a few of the shapes they take
-type Raw = { identifier: string; title: string; url: string; state: { name: string; type: string }; parent?: { identifier: string }; updatedAt: string; team: { key: string } };
+type Raw = {
+  identifier: string;
+  title: string;
+  url: string;
+  state: { name: string; type: string };
+  parent?: { identifier: string };
+  updatedAt: string;
+  team: { key: string };
+};
 const issues: Raw[] = [
-  { identifier: 'APP-1', title: 'Login', url: 'https://linear.app/acme/issue/APP-1/login', state: { name: 'In Progress', type: 'started' }, updatedAt: '2026-10-20T10:00:00Z', team: { key: 'APP' } },
-  { identifier: 'APP-2', title: 'Signup form', url: 'https://linear.app/acme/issue/APP-2/signup', state: { name: 'Todo', type: 'unstarted' }, parent: { identifier: 'APP-1' }, updatedAt: '2026-10-21T10:00:00Z', team: { key: 'APP' } },
-  { identifier: 'APP-3', title: 'Old thing', url: 'https://linear.app/acme/issue/APP-3/old', state: { name: 'Done', type: 'completed' }, updatedAt: '2026-10-01T10:00:00Z', team: { key: 'APP' } },
-  { identifier: 'XYZ-9', title: 'Other team', url: 'https://linear.app/acme/issue/XYZ-9/x', state: { name: 'Todo', type: 'unstarted' }, updatedAt: '2026-10-21T10:00:00Z', team: { key: 'XYZ' } },
+  {
+    identifier: 'APP-1',
+    title: 'Login',
+    url: 'https://linear.app/acme/issue/APP-1/login',
+    state: { name: 'In Progress', type: 'started' },
+    updatedAt: '2026-10-20T10:00:00Z',
+    team: { key: 'APP' },
+  },
+  {
+    identifier: 'APP-2',
+    title: 'Signup form',
+    url: 'https://linear.app/acme/issue/APP-2/signup',
+    state: { name: 'Todo', type: 'unstarted' },
+    parent: { identifier: 'APP-1' },
+    updatedAt: '2026-10-21T10:00:00Z',
+    team: { key: 'APP' },
+  },
+  {
+    identifier: 'APP-3',
+    title: 'Old thing',
+    url: 'https://linear.app/acme/issue/APP-3/old',
+    state: { name: 'Done', type: 'completed' },
+    updatedAt: '2026-10-01T10:00:00Z',
+    team: { key: 'APP' },
+  },
+  {
+    identifier: 'XYZ-9',
+    title: 'Other team',
+    url: 'https://linear.app/acme/issue/XYZ-9/x',
+    state: { name: 'Todo', type: 'unstarted' },
+    updatedAt: '2026-10-21T10:00:00Z',
+    team: { key: 'XYZ' },
+  },
 ];
 
 let store: Store;
@@ -42,20 +79,29 @@ before(() => {
 });
 
 test('shapes: issues from several field names and containers, status mapping', () => {
-  assert.equal(toIssue({ identifier: 'A-1', title: 't', state: { name: 'In Review', type: 'started' } })?.stateType, 'started');
+  assert.equal(
+    toIssue({ identifier: 'A-1', title: 't', state: { name: 'In Review', type: 'started' } })?.stateType,
+    'started',
+  );
   assert.equal(toIssue({ key: 'A-2', name: 't', status: 'Done' })?.state, 'Done');
   assert.equal(toIssue({ id: 'uuid', title: 't' }), null);
   assert.equal(issuesIn(issues).length, 4);
   assert.equal(issuesIn({ issues: issues.slice(0, 2), nextCursor: 'x' }).length, 2);
   assert.equal(issuesIn({ nodes: issues.slice(0, 1) }).length, 1);
   assert.equal(issuesIn(issues[0]).length, 1);
-  assert.equal(issuesIn({ content: [{ type: 'text', text: JSON.stringify({ issues: issues.slice(0, 3) }) }] }).length, 3);
+  assert.equal(
+    issuesIn({ content: [{ type: 'text', text: JSON.stringify({ issues: issues.slice(0, 3) }) }] }).length,
+    3,
+  );
   assert.equal(issuesIn(JSON.stringify(issues)).length, 4);
   assert.equal(issuesIn('not json').length, 0);
   assert.equal(mapStatus(store, 'In Progress', 'started'), 'active');
   assert.equal(mapStatus(store, 'Canceled', 'canceled'), 'dropped');
   assert.equal(mapStatus(store, 'Weird', undefined), 'open');
-  assert.equal(mapStatus({ ...store, config: { ...store.config, vocabulary: { 'in review': 'review' } } }, 'In Review', 'started'), 'review');
+  assert.equal(
+    mapStatus({ ...store, config: { ...store.config, vocabulary: { 'in review': 'review' } } }, 'In Review', 'started'),
+    'review',
+  );
 });
 
 test('a project without a tracker or a team is refused; nothing to sync is refused', () => {
@@ -92,7 +138,10 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   assert.equal(s1.data.title, 'Login');
   assert.equal((s1.data.ext as { linear: { state: string } }).linear.state, 'In Progress');
   assert.ok(r.session && loaded.byKey.has(r.session));
-  assert.deepEqual(validate(loaded).filter((p) => p.level === 'error'), []);
+  assert.deepEqual(
+    validate(loaded).filter((p) => p.level === 'error'),
+    [],
+  );
 
   const events = readEvents(store).length;
   const again = syncLinear(store, { from: issues });
@@ -104,7 +153,9 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
 
   next(store, 'change:app/app-2', 'write the tests'); // app-1 is a milestone (APP-2 names it as parent): its children are its plan
   set(store, 'change:app/app-1', ['intent=Our own words.'], {});
-  const moved = issues.map((i) => (i.identifier === 'APP-1' ? { ...i, title: 'Login (renamed)', state: { name: 'Done', type: 'completed' } } : i));
+  const moved = issues.map((i) =>
+    i.identifier === 'APP-1' ? { ...i, title: 'Login (renamed)', state: { name: 'Done', type: 'completed' } } : i,
+  );
   const third = syncLinear(store, { from: JSON.stringify({ issues: moved }) });
   assert.deepEqual(third.updated, [], 'pjman owns the change: a renamed, closed ticket moves only its source');
   const after = loadStore(store).byKey.get('change:app/app-1')![0];
@@ -117,7 +168,23 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
 
   // one ticket, pasted as the tool answered it, from a file
   const file = path.join(tmp, 'one.json');
-  fs.writeFileSync(file, JSON.stringify({ content: [{ type: 'text', text: JSON.stringify({ identifier: 'APP-4', title: 'New one', url: 'https://linear.app/acme/issue/APP-4/n', state: { name: 'Backlog', type: 'backlog' }, team: { key: 'APP' } }) }] }));
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            identifier: 'APP-4',
+            title: 'New one',
+            url: 'https://linear.app/acme/issue/APP-4/n',
+            state: { name: 'Backlog', type: 'backlog' },
+            team: { key: 'APP' },
+          }),
+        },
+      ],
+    }),
+  );
   const one = syncLinear(store, { from: file });
   assert.deepEqual(one.created, ['change:app/app-4']);
   assert.equal(loadStore(store).byKey.get('change:app/app-4')![0].data.status, 'open');

@@ -14,7 +14,17 @@ import { resolveSupersedes, supersededBy, supersedesOf } from '../model/supersed
 import { markSuperseded } from './supersede.js';
 import { CliError, isDateString, nowIso, today, notFound, usageError } from '../store/util.js';
 import { envelope, finishWrite, fullKeys, render, snapshot, validateOrUndo, writeFile } from './write.js';
-import { dayOf, decisionState, foundationHash, foundationOf, gistProblem, nameProblem, threadOf, type DecisionState, type Entry } from '../model/foundation.js';
+import {
+  dayOf,
+  decisionState,
+  foundationHash,
+  foundationOf,
+  gistProblem,
+  nameProblem,
+  threadOf,
+  type DecisionState,
+  type Entry,
+} from '../model/foundation.js';
 import { decisionHome } from './new.js';
 import { acrossCueOfDecision, aspectKeysOf, ASPECT_CUE_HINT, coveredByAspect } from '../model/aspects.js';
 import { deliverDecision, type Delivery } from './host.js';
@@ -67,33 +77,68 @@ function writerOf(opts: { writer?: string; session?: string }): string | undefin
 
 /** The entries from the command's flags, in the order a reader expects them: question, criteria, options and their
  *  case, comments, rejections, the recommendation, the acceptance, a reopening. */
-export function entriesFromFlags(f: { question?: string; criterion?: string[]; option?: string[]; case?: string[]; recommend?: string; comment?: string; on?: string; reject?: string[]; accept?: string; revisit?: string; reopen?: boolean; by?: string }, writer: string | undefined): EntryInput[] {
+export function entriesFromFlags(
+  f: {
+    question?: string;
+    criterion?: string[];
+    option?: string[];
+    case?: string[];
+    recommend?: string;
+    comment?: string;
+    on?: string;
+    reject?: string[];
+    accept?: string;
+    revisit?: string;
+    reopen?: boolean;
+    by?: string;
+  },
+  writer: string | undefined,
+): EntryInput[] {
   const out: EntryInput[] = [];
   const by = f.by ?? writer;
   if (f.question?.trim()) out.push({ type: 'question', text: f.question.trim(), by: writer });
   for (const c of f.criterion ?? []) if (c.trim()) out.push({ type: 'criterion', text: c.trim(), by: writer });
   const cases = new Map<string, string>();
-  for (const c of f.case ?? []) { const { id, text } = idText(c, '--case', true); cases.set(id, text!); }
+  for (const c of f.case ?? []) {
+    const { id, text } = idText(c, '--case', true);
+    cases.set(id, text!);
+  }
   for (const o of f.option ?? []) {
     const { id, text } = idText(o, '--option', true);
     out.push({ type: 'option', id, text, case: cases.get(id), by: writer });
     cases.delete(id);
   }
-  if (cases.size) throw new CliError(`--case names ${[...cases.keys()].join(', ')}, which --option does not define in this call; a case is written with its option`);
+  if (cases.size)
+    throw new CliError(
+      `--case names ${[...cases.keys()].join(', ')}, which --option does not define in this call; a case is written with its option`,
+    );
   // a comment may name the option it is about (--on <id>); the views draw it beneath that option
-  if (f.on !== undefined && (!f.comment?.trim() || f.reopen)) throw new CliError('--on names the option a --comment is about; it goes with --comment');
+  if (f.on !== undefined && (!f.comment?.trim() || f.reopen))
+    throw new CliError('--on names the option a --comment is about; it goes with --comment');
   if (f.on !== undefined && !SLUG_RE.test(f.on)) throw new CliError(`--on: '${f.on}' is not an option id (a slug)`);
-  if (f.comment?.trim() && !f.reopen) out.push({ type: 'comment', text: f.comment.trim(), by, ...(f.on ? { option: f.on } : {}) });
-  for (const r of f.reject ?? []) { const { id, text } = idText(r, '--reject', false); out.push({ type: 'reject', option: id, text, by: writer }); }
-  if (f.recommend) { const { id, text } = idText(f.recommend, '--recommend', false); out.push({ type: 'recommendation', option: id, text, by: writer }); }
-  if (f.accept) { const { id, text } = idText(f.accept, '--accept', false); out.push({ type: 'accept', option: id, text, by, revisit: f.revisit?.trim() || undefined }); }
-  else if (f.revisit) throw new CliError('--revisit goes with --accept');
+  if (f.comment?.trim() && !f.reopen)
+    out.push({ type: 'comment', text: f.comment.trim(), by, ...(f.on ? { option: f.on } : {}) });
+  for (const r of f.reject ?? []) {
+    const { id, text } = idText(r, '--reject', false);
+    out.push({ type: 'reject', option: id, text, by: writer });
+  }
+  if (f.recommend) {
+    const { id, text } = idText(f.recommend, '--recommend', false);
+    out.push({ type: 'recommendation', option: id, text, by: writer });
+  }
+  if (f.accept) {
+    const { id, text } = idText(f.accept, '--accept', false);
+    out.push({ type: 'accept', option: id, text, by, revisit: f.revisit?.trim() || undefined });
+  } else if (f.revisit) throw new CliError('--revisit goes with --accept');
   if (f.reopen) out.push({ type: 'reopen', by, text: f.comment?.trim() || undefined });
   return out;
 }
 
 /** The entries from JSON on stdin: `{name, gist, entries: [{type, …}]}` or a bare list of entries. */
-export function entriesFromJson(text: string, writer: string | undefined): { name?: string; gist?: string; entries: EntryInput[] } {
+export function entriesFromJson(
+  text: string,
+  writer: string | undefined,
+): { name?: string; gist?: string; entries: EntryInput[] } {
   let v: unknown;
   try {
     v = JSON.parse(text);
@@ -106,7 +151,15 @@ export function entriesFromJson(text: string, writer: string | undefined): { nam
   const entries: EntryInput[] = (o.entries as unknown[]).map((raw, i) => {
     const e = raw as Record<string, unknown>;
     if (!e || typeof e !== 'object' || typeof e.type !== 'string') throw new CliError(`entries[${i}] needs a type`);
-    return { type: e.type as Entry['type'], text: str(e.text), id: str(e.id), case: str(e.case), option: str(e.option), by: str(e.by) ?? writer, revisit: str(e.revisit) };
+    return {
+      type: e.type as Entry['type'],
+      text: str(e.text),
+      id: str(e.id),
+      case: str(e.case),
+      option: str(e.option),
+      by: str(e.by) ?? writer,
+      revisit: str(e.revisit),
+    };
   });
   return { name: str(o.name), gist: str(o.gist), entries };
 }
@@ -135,9 +188,12 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   const key = existing?.key ?? home!.key;
   // a store-level decision has no product: its keys resolve store-wide
   const product = existing ? (existing.productSlug ?? null) : home!.product;
-  if (!existing && fs.existsSync(path.join(store.root, home!.rel))) throw new CliError(`refused: ${home!.rel} already exists`);
+  if (!existing && fs.existsSync(path.join(store.root, home!.rel)))
+    throw new CliError(`refused: ${home!.rel} already exists`);
 
-  const data: Record<string, unknown> = existing ? { ...existing.data } : { status: 'proposed', writer: env.writer, session: env.session, created: date };
+  const data: Record<string, unknown> = existing
+    ? { ...existing.data }
+    : { status: 'proposed', writer: env.writer, session: env.session, created: date };
   const notes: string[] = [];
   const changed: string[] = [];
   if (opts.name !== undefined) {
@@ -162,35 +218,60 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   const thread = threadOf(data);
   const before = decisionState(thread);
   const status = String(data.status);
-  if (opts.entries.length && (status === 'superseded' || status === 'reverted')) throw new CliError(`${key} is ${status}; its thread is closed. Open a decision that supersedes it`);
+  if (opts.entries.length && (status === 'superseded' || status === 'reverted'))
+    throw new CliError(`${key} is ${status}; its thread is closed. Open a decision that supersedes it`);
   const at = nowIso();
   const appended: string[] = [];
   let state = before;
   for (const e of opts.entries) {
     const entry: Entry = { ...e, at: e.at ?? at, by: e.by ?? env.writer };
-    if (!entry.text?.trim() && !['recommendation', 'reject', 'accept', 'reopen'].includes(entry.type)) throw new CliError(`a ${entry.type} needs its text`);
+    if (!entry.text?.trim() && !['recommendation', 'reject', 'accept', 'reopen'].includes(entry.type))
+      throw new CliError(`a ${entry.type} needs its text`);
     const ids = new Set(state.options.map((o) => o.id));
     switch (entry.type) {
       case 'option':
-        if (!entry.id || !SLUG_RE.test(entry.id)) throw new CliError(`an option needs an id (a slug): --option <id>="<text>"`);
+        if (!entry.id || !SLUG_RE.test(entry.id))
+          throw new CliError(`an option needs an id (a slug): --option <id>="<text>"`);
         if (ids.has(entry.id)) notes.push(`${entry.id} restated; its earlier text and case stay in the thread`);
         break;
-      case 'recommendation': case 'reject':
-        if (!entry.option || !ids.has(entry.option)) throw new CliError(`${entry.type}: '${String(entry.option)}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`);
+      case 'recommendation':
+      case 'reject':
+        if (!entry.option || !ids.has(entry.option))
+          throw new CliError(
+            `${entry.type}: '${String(entry.option)}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`,
+          );
         break;
       case 'accept': {
-        if (!entry.option || !ids.has(entry.option)) throw new CliError(`accept: '${String(entry.option)}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`);
-        if (state.accepted) throw new CliError(`${key} is decided (${state.accepted.option}); --reopen first, or open a decision that supersedes it`);
-        if (!entry.by?.startsWith('person:')) throw new CliError(`an acceptance is a person's: --by person:<handle>; ${entry.by ?? 'an agent'} is not the decider`);
-        if (state.options.find((o) => o.id === entry.option)?.rejected !== undefined) notes.push(`${entry.option} had been rejected; accepted now`);
+        if (!entry.option || !ids.has(entry.option))
+          throw new CliError(
+            `accept: '${String(entry.option)}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`,
+          );
+        if (state.accepted)
+          throw new CliError(
+            `${key} is decided (${state.accepted.option}); --reopen first, or open a decision that supersedes it`,
+          );
+        if (!entry.by?.startsWith('person:'))
+          throw new CliError(
+            `an acceptance is a person's: --by person:<handle>; ${entry.by ?? 'an agent'} is not the decider`,
+          );
+        if (state.options.find((o) => o.id === entry.option)?.rejected !== undefined)
+          notes.push(`${entry.option} had been rejected; accepted now`);
         break;
       }
       case 'comment':
-        if (entry.option && !ids.has(entry.option)) throw new CliError(`comment: --on '${entry.option}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`);
+        if (entry.option && !ids.has(entry.option))
+          throw new CliError(
+            `comment: --on '${entry.option}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`,
+          );
         break;
       case 'reopen':
         if (!state.accepted) throw new CliError(`${key} is not decided; nothing to reopen`);
-        if (supersededBy(loaded, key).length) throw new CliError(`${key} is superseded by ${supersededBy(loaded, key).map((r) => r.key).join(', ')}; reopen that instead`);
+        if (supersededBy(loaded, key).length)
+          throw new CliError(
+            `${key} is superseded by ${supersededBy(loaded, key)
+              .map((r) => r.key)
+              .join(', ')}; reopen that instead`,
+          );
         break;
       default:
         break;
@@ -207,9 +288,17 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     state = decisionState(thread);
   }
   if (!existing) {
-    const missing = [!data.name && '--name', !data.gist && '--gist', !state.question && '--question', !state.options.length && '--option <id>="…"'].filter(Boolean);
+    const missing = [
+      !data.name && '--name',
+      !data.gist && '--gist',
+      !state.question && '--question',
+      !state.options.length && '--option <id>="…"',
+    ].filter(Boolean);
     // a key that names no decision yet is a new one: say so, so a misspelt key is not mistaken for an add
-    if (missing.length) throw usageError(`${key} does not exist yet, and a new decision needs ${missing.join(', ')} (to add to an existing one, name it by its key: pjman ls decision --parent <change>)`);
+    if (missing.length)
+      throw usageError(
+        `${key} does not exist yet, and a new decision needs ${missing.join(', ')} (to add to an existing one, name it by its key: pjman ls decision --parent <change>)`,
+      );
   }
   if (appended.length) {
     data.thread = thread.map((e) => ({ ...e }));
@@ -218,7 +307,8 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   // the status, the decider and the date follow the thread
   if (status === 'proposed' || status === 'decided') {
     const next = state.accepted ? 'decided' : 'proposed';
-    if (next !== status || (state.accepted && (data.decided_by !== state.accepted.by || !data.decided_on))) changed.push('status');
+    if (next !== status || (state.accepted && (data.decided_by !== state.accepted.by || !data.decided_on)))
+      changed.push('status');
     data.status = next;
     if (state.accepted) {
       data.decided_by = state.accepted.by;
@@ -230,9 +320,14 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   }
   // the rungs: written here they read from the foundation as it stands now; a foundation written without them is said
   const hash = foundationHash(foundationOf('decision', data, new Map()));
-  const foundationMoved = appended.some((t) => t === 'question' || t === 'recommendation' || t === 'accept' || t === 'reopen');
+  const foundationMoved = appended.some(
+    (t) => t === 'question' || t === 'recommendation' || t === 'accept' || t === 'reopen',
+  );
   if (changed.includes('name') || changed.includes('gist') || !existing || !data.rungs_from) data.rungs_from = hash;
-  else if (foundationMoved && data.rungs_from !== hash) notes.push('the name and gist were written from an earlier thread: rewrite them (--name … --gist …) so they read from this one');
+  else if (foundationMoved && data.rungs_from !== hash)
+    notes.push(
+      'the name and gist were written from an earlier thread: rewrite them (--name … --gist …) so they read from this one',
+    );
   delete data.migrated;
 
   // supersedes: the targets are marked in this same commit
@@ -240,7 +335,10 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   const also: EventInput[] = [];
   const prior = new Map<string, string>();
   if (opts.supersedes) {
-    const keys = opts.supersedes.split(',').map((s) => s.trim()).filter(Boolean);
+    const keys = opts.supersedes
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     const targets = resolveSupersedes(loaded, keys, product ? `product:${product}` : null, existing);
     const have = supersedesOf(data);
     const fresh = targets.filter((t) => !have.includes(t.key));
@@ -254,16 +352,29 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
       changed.push('supersedes');
     }
   }
-  if (existing && !changed.length) throw new CliError(`nothing to write to ${key}: give an entry (--question, --option, --recommend, --comment, --reject, --accept, --reopen), --name, --gist, --links or --supersedes`);
+  if (existing && !changed.length)
+    throw new CliError(
+      `nothing to write to ${key}: give an entry (--question, --option, --recommend, --comment, --reject, --accept, --reopen), --name, --gist, --links or --supersedes`,
+    );
   fullKeys(loaded, 'decision', data, undefined, product);
   const rel = existing?.path ?? home!.rel;
   const snap = existing ? snapshot(store, [rel]) : new Map<string, string>();
   for (const [k, v] of snap) prior.set(k, v);
   writeFile(store, rel, render('decision', data, existing?.body ?? ''));
   validateOrUndo(store, [rel, ...touched], existing ? [] : [rel], prior);
-  const subject = existing ? `pjman: decision ${key} ${[...new Set(appended)].join(' ') || changed.join(' ')}` : `pjman: new ${key}`;
+  const subject = existing
+    ? `pjman: decision ${key} ${[...new Set(appended)].join(' ') || changed.join(' ')}`
+    : `pjman: new ${key}`;
   const event: EventInput = existing
-    ? { op: 'set', key, type: 'decision', path: rel, fields: [...new Set(changed)], value: changed.includes('status') ? String(data.status) : undefined, writer: env.writer }
+    ? {
+        op: 'set',
+        key,
+        type: 'decision',
+        path: rel,
+        fields: [...new Set(changed)],
+        value: changed.includes('status') ? String(data.status) : undefined,
+        writer: env.writer,
+      }
     : { op: 'created', key, type: 'decision', path: rel, writer: env.writer };
   const commit = finishWrite(store, subject, env.session, [event, ...also]);
   // opened or decided, a decision that reads as applying across the product is the moment to propose an aspect
@@ -272,7 +383,8 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     const m = /^decision:(.+)\/[^/]+$/.exec(key);
     const change = m ? loaded.byKey.get(`change:${m[1]}`)?.[0] : undefined;
     const phrase = acrossCueOfDecision(data);
-    if (phrase && !(change && aspectKeysOf(loaded, change).length) && !(existing && coveredByAspect(loaded, existing))) notes.push(`it says "${phrase}": ${ASPECT_CUE_HINT}`);
+    if (phrase && !(change && aspectKeysOf(loaded, change).length) && !(existing && coveredByAspect(loaded, existing)))
+      notes.push(`it says "${phrase}": ${ASPECT_CUE_HINT}`);
   }
   // an acceptance reaches the sessions working the change: through the host for the agents without a waking
   // adapter (decision rex-adapter/delivery-through-the-host); the others hear it from their harness's wake module
@@ -280,23 +392,55 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
   if (appended.includes('accept') && data.status === 'decided') {
     const accept = opts.entries.find((e) => e.type === 'accept');
     const after = loadStore(store);
-    delivered = deliverDecision(after, key, accept?.option ?? state.recommendation?.option ?? '', accept?.text, accept?.by ?? env.writer ?? 'the person');
-    for (const d of delivered) notes.push(d.ok ? `delivered to ${d.session} through ${d.host}` : `${d.host} did not take the delivery to ${d.session}`);
+    delivered = deliverDecision(
+      after,
+      key,
+      accept?.option ?? state.recommendation?.option ?? '',
+      accept?.text,
+      accept?.by ?? env.writer ?? 'the person',
+    );
+    for (const d of delivered)
+      notes.push(
+        d.ok ? `delivered to ${d.session} through ${d.host}` : `${d.host} did not take the delivery to ${d.session}`,
+      );
   }
-  return { key, path: rel, created: !existing, appended, status: String(data.status), state, commit, notes, ...(delivered?.length ? { delivered } : {}) };
+  return {
+    key,
+    path: rel,
+    created: !existing,
+    appended,
+    status: String(data.status),
+    state,
+    commit,
+    notes,
+    ...(delivered?.length ? { delivered } : {}),
+  };
 }
 
 /** A proposed decision accepted by the person from the dashboard or `pjman decide`: the recommended option, else the
  *  only one; refused when the thread leaves the choice open. */
-export function decide(store: Store, ref: string, opts: { by: string; option?: string; words?: string; session?: string }): DecisionResult {
+export function decide(
+  store: Store,
+  ref: string,
+  opts: { by: string; option?: string; words?: string; session?: string },
+): DecisionResult {
   const loaded = loadStore(store);
   const rec = find(loaded, ref);
   if (!rec) throw notFound(ref, { as: 'decision' });
-  if (rec.data.status !== 'proposed') throw new CliError(`${rec.key} is ${String(rec.data.status)}, not proposed; only a proposed decision is decided`);
+  if (rec.data.status !== 'proposed')
+    throw new CliError(`${rec.key} is ${String(rec.data.status)}, not proposed; only a proposed decision is decided`);
   const state = decisionState(threadOf(rec.data));
-  const option = opts.option ?? state.recommendation?.option ?? (state.options.length === 1 ? state.options[0].id : undefined);
-  if (!option) throw new CliError(`${rec.key} recommends nothing and has ${state.options.length} options (${state.options.map((o) => o.id).join(', ')}); name the one accepted: pjman decision ${rec.key} --accept <id> --by ${opts.by}`);
-  return decision(store, rec.key, { entries: [{ type: 'accept', option, by: opts.by, text: opts.words }], session: opts.session, writer: writerOf(opts) });
+  const option =
+    opts.option ?? state.recommendation?.option ?? (state.options.length === 1 ? state.options[0].id : undefined);
+  if (!option)
+    throw new CliError(
+      `${rec.key} recommends nothing and has ${state.options.length} options (${state.options.map((o) => o.id).join(', ')}); name the one accepted: pjman decision ${rec.key} --accept <id> --by ${opts.by}`,
+    );
+  return decision(store, rec.key, {
+    entries: [{ type: 'accept', option, by: opts.by, text: opts.words }],
+    session: opts.session,
+    writer: writerOf(opts),
+  });
 }
 
 /** Deciding's reverse: a decided decision reopened, the acceptance no longer in force. */
@@ -304,6 +448,7 @@ export function reopen(store: Store, ref: string, opts: { session?: string; writ
   const loaded = loadStore(store);
   const rec = find(loaded, ref);
   if (!rec) throw notFound(ref, { as: 'decision' });
-  if (rec.data.status !== 'decided') throw new CliError(`${rec.key} is ${String(rec.data.status)}, not decided; only a decided decision is reopened`);
+  if (rec.data.status !== 'decided')
+    throw new CliError(`${rec.key} is ${String(rec.data.status)}, not decided; only a decided decision is reopened`);
   return decision(store, rec.key, { entries: [{ type: 'reopen' }], session: opts.session, writer: opts.writer });
 }

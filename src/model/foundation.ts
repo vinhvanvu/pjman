@@ -11,10 +11,19 @@ import { localDate } from '../store/util.js';
 
 /** The calendar day of an instant, as the record's dates are written: the local day, except for an instant at exactly
  *  midnight UTC, which stands for a date alone (a migrated acceptance carries the day it was decided, no time). */
-export const dayOf = (at: string): string => (Number.isNaN(Date.parse(at)) || at.endsWith('T00:00:00.000Z') ? at.slice(0, 10) : localDate(new Date(at)));
+export const dayOf = (at: string): string =>
+  Number.isNaN(Date.parse(at)) || at.endsWith('T00:00:00.000Z') ? at.slice(0, 10) : localDate(new Date(at));
 
 /** A change's sections, in order of depth: a reader who wants more than the gist reads the first and stops. */
-export const CHANGE_SECTIONS = ['Origin', 'Intent', 'Done when', 'Scope', 'Open questions', 'Blocked on', 'Notes'] as const;
+export const CHANGE_SECTIONS = [
+  'Origin',
+  'Intent',
+  'Done when',
+  'Scope',
+  'Open questions',
+  'Blocked on',
+  'Notes',
+] as const;
 export type ChangeSection = (typeof CHANGE_SECTIONS)[number];
 /** The sections a change filed by a person or an agent carries from creation. An ingested or migrated change may lack
  *  Intent and Done when until it is first worked; Origin it always has. */
@@ -24,7 +33,13 @@ export const CHANGE_FOUNDATION: readonly ChangeSection[] = ['Origin', 'Intent', 
 
 /** The field a command takes for each section: `intent=…`, `done-when=…`. */
 export const SECTION_FIELDS: Record<string, ChangeSection> = {
-  origin: 'Origin', intent: 'Intent', 'done-when': 'Done when', scope: 'Scope', 'open-questions': 'Open questions', 'blocked-on': 'Blocked on', notes: 'Notes',
+  origin: 'Origin',
+  intent: 'Intent',
+  'done-when': 'Done when',
+  scope: 'Scope',
+  'open-questions': 'Open questions',
+  'blocked-on': 'Blocked on',
+  notes: 'Notes',
 };
 
 // --- the plan -----------------------------------------------------------------------------------------------------
@@ -42,7 +57,8 @@ export interface Step {
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
-const obj = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
+const obj = (v: unknown): Record<string, unknown> | undefined =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
 /** The steps a change's `plan` holds, as written; a malformed entry is left out (the validator names it). */
 export function stepsOf(data: Record<string, unknown>): Step[] {
@@ -78,7 +94,16 @@ export function formatStep(n: number, s: Step): string {
 
 // --- the thread ---------------------------------------------------------------------------------------------------
 
-export const ENTRY_TYPES = ['question', 'criterion', 'option', 'recommendation', 'comment', 'reject', 'accept', 'reopen'] as const;
+export const ENTRY_TYPES = [
+  'question',
+  'criterion',
+  'option',
+  'recommendation',
+  'comment',
+  'reject',
+  'accept',
+  'reopen',
+] as const;
 export type EntryType = (typeof ENTRY_TYPES)[number];
 
 /** One entry of a decision's thread. `text` is the entry's words: the question, the criterion, the option's name, the
@@ -108,7 +133,16 @@ export function threadOf(data: Record<string, unknown>): Entry[] {
   for (const raw of data.thread) {
     const e = obj(raw);
     if (!e || !(ENTRY_TYPES as readonly string[]).includes(String(e.type))) continue;
-    out.push({ type: e.type as EntryType, at: str(e.at) ?? '', by: str(e.by), text: str(e.text), id: str(e.id), case: str(e.case), option: str(e.option), revisit: str(e.revisit) });
+    out.push({
+      type: e.type as EntryType,
+      at: str(e.at) ?? '',
+      by: str(e.by),
+      text: str(e.text),
+      id: str(e.id),
+      case: str(e.case),
+      option: str(e.option),
+      revisit: str(e.revisit),
+    });
   }
   return out;
 }
@@ -142,29 +176,53 @@ export function decisionState(entries: Entry[]): DecisionState {
   const option = (id: string | undefined) => s.options.find((o) => o.id === id);
   for (const e of entries) {
     switch (e.type) {
-      case 'question': s.question = e.text; break;
-      case 'criterion': if (e.text) s.criteria.push(e.text); break;
+      case 'question':
+        s.question = e.text;
+        break;
+      case 'criterion':
+        if (e.text) s.criteria.push(e.text);
+        break;
       case 'option': {
         if (!e.id || !e.text) break;
         const o = option(e.id);
-        if (o) { o.text = e.text; o.case = e.case; } // restated: the latest statement stands; its marks stay
+        if (o) {
+          o.text = e.text;
+          o.case = e.case;
+        } // restated: the latest statement stands; its marks stay
         else s.options.push({ id: e.id, text: e.text, case: e.case, recommended: false, accepted: false });
         break;
       }
       case 'recommendation': {
         for (const o of s.options) o.recommended = false;
         const o = option(e.option);
-        if (o) { o.recommended = true; s.recommendation = { option: o.id, text: e.text, at: e.at }; }
+        if (o) {
+          o.recommended = true;
+          s.recommendation = { option: o.id, text: e.text, at: e.at };
+        }
         break;
       }
-      case 'comment': if (e.text) s.comments.push({ by: e.by, at: e.at, text: e.text, ...(e.option ? { option: e.option } : {}) }); break;
-      case 'reject': { const o = option(e.option); if (o) o.rejected = e.text ?? ''; break; }
+      case 'comment':
+        if (e.text) s.comments.push({ by: e.by, at: e.at, text: e.text, ...(e.option ? { option: e.option } : {}) });
+        break;
+      case 'reject': {
+        const o = option(e.option);
+        if (o) o.rejected = e.text ?? '';
+        break;
+      }
       case 'accept': {
         const o = option(e.option);
-        if (o) { for (const x of s.options) x.accepted = false; o.accepted = true; s.accepted = { option: o.id, by: e.by, at: e.at, text: e.text, revisit: e.revisit }; }
+        if (o) {
+          for (const x of s.options) x.accepted = false;
+          o.accepted = true;
+          s.accepted = { option: o.id, by: e.by, at: e.at, text: e.text, revisit: e.revisit };
+        }
         break;
       }
-      case 'reopen': { for (const x of s.options) x.accepted = false; s.accepted = undefined; break; }
+      case 'reopen': {
+        for (const x of s.options) x.accepted = false;
+        s.accepted = undefined;
+        break;
+      }
     }
   }
   return s;
@@ -189,13 +247,25 @@ export function formatDecisionState(s: DecisionState): string[] {
   if (s.options.length) {
     out.push('Options:');
     for (const o of s.options) {
-      const marks = [o.accepted ? 'accepted' : '', o.recommended && !o.accepted ? 'recommended' : '', o.rejected !== undefined ? `rejected${o.rejected ? `: ${o.rejected}` : ''}` : ''].filter(Boolean);
-      out.push(`- ${o.id}${marks.length ? ` (${marks.join('; ')})` : ''}: ${o.text}${pointsOf(o.case).map((p) => `\n  - ${p}`).join('')}`);
+      const marks = [
+        o.accepted ? 'accepted' : '',
+        o.recommended && !o.accepted ? 'recommended' : '',
+        o.rejected !== undefined ? `rejected${o.rejected ? `: ${o.rejected}` : ''}` : '',
+      ].filter(Boolean);
+      out.push(
+        `- ${o.id}${marks.length ? ` (${marks.join('; ')})` : ''}: ${o.text}${pointsOf(o.case)
+          .map((p) => `\n  - ${p}`)
+          .join('')}`,
+      );
     }
   }
   if (s.recommendation?.text) out.push(`Why ${s.recommendation.option}: ${s.recommendation.text}`);
-  for (const c of s.comments) out.push(`${c.by ?? 'someone'} (${dayOf(c.at)})${c.option ? ` on ${c.option}` : ''}: ${c.text}`);
-  if (s.accepted) out.push(`Accepted ${s.accepted.option}${s.accepted.by ? ` by ${s.accepted.by}` : ''} on ${dayOf(s.accepted.at)}${s.accepted.text ? `: ${s.accepted.text}` : ''}${s.accepted.revisit ? ` (revisit when ${s.accepted.revisit})` : ''}`);
+  for (const c of s.comments)
+    out.push(`${c.by ?? 'someone'} (${dayOf(c.at)})${c.option ? ` on ${c.option}` : ''}: ${c.text}`);
+  if (s.accepted)
+    out.push(
+      `Accepted ${s.accepted.option}${s.accepted.by ? ` by ${s.accepted.by}` : ''} on ${dayOf(s.accepted.at)}${s.accepted.text ? `: ${s.accepted.text}` : ''}${s.accepted.revisit ? ` (revisit when ${s.accepted.revisit})` : ''}`,
+    );
   return out;
 }
 
@@ -252,15 +322,23 @@ export function needsOf(rec: Pick<Rec, 'type' | 'data' | 'sections'>): string[] 
 
 /** The record is in the shape before the foundation: a title, a Summary, a Decision section. `pjman migrate` maps it. */
 export function unmigrated(rec: Pick<Rec, 'type' | 'data' | 'sections'>): boolean {
-  if (rec.type === 'change') return rec.data.title !== undefined || rec.data.next !== undefined || rec.sections.has('Summary') || rec.sections.has('Plan');
-  if (rec.type === 'decision') return rec.data.title !== undefined || rec.sections.has('Decision') || rec.sections.has('Why');
+  if (rec.type === 'change')
+    return (
+      rec.data.title !== undefined ||
+      rec.data.next !== undefined ||
+      rec.sections.has('Summary') ||
+      rec.sections.has('Plan')
+    );
+  if (rec.type === 'decision')
+    return rec.data.title !== undefined || rec.sections.has('Decision') || rec.sections.has('Why');
   return false;
 }
 
 /** The record's one line: its title, or for a change or a decision its gist. */
 export const lineOf = (data: Record<string, unknown>): string | undefined => str(data.title) ?? str(data.gist);
 /** The record's label, which one in a crowd: its name, else its title, else its key's last segment. */
-export const labelOf = (data: Record<string, unknown>, key: string): string => str(data.name) ?? str(data.title) ?? key.slice(key.lastIndexOf('/') + 1).replace(/^[a-z-]+:/, '');
+export const labelOf = (data: Record<string, unknown>, key: string): string =>
+  str(data.name) ?? str(data.title) ?? key.slice(key.lastIndexOf('/') + 1).replace(/^[a-z-]+:/, '');
 
 /** A name: one to four words. */
 export function nameProblem(name: string): string | null {

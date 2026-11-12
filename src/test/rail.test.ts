@@ -90,11 +90,14 @@ test('a milestone: its children are the lanes, and a write beneath a child falls
   assert.ok(r.lanes.find((l) => l.id === 'change:web/child-a')!.last! >= stepRow.at);
 });
 
-test("a session: the changes it touched are the lanes, its lines the trunk, a bind and a focus name their change, a write drills to its change", () => {
+test('a session: the changes it touched are the lanes, its lines the trunk, a bind and a focus name their change, a write drills to its change', () => {
   const r = rail(store, loadStore(store), 'session:me');
   assert.equal(r.axis, 'session');
   // last touch first: the focus on billing, the step on child-a, the writes on auth
-  assert.deepEqual(r.lanes.map((l) => l.id), ['change:web/billing', 'change:web/child-a', 'change:web/auth']);
+  assert.deepEqual(
+    r.lanes.map((l) => l.id),
+    ['change:web/billing', 'change:web/child-a', 'change:web/auth'],
+  );
   // the writes a lane counts: billing was only read (a focus is no write), the other two were written to
   assert.equal(r.lanes[0].writes, 0);
   assert.ok(r.lanes[1].writes > 0 && r.lanes[2].writes > 0);
@@ -128,7 +131,10 @@ test('a change: a file its session touched while on it is a file row on the trun
   const r = rail(store, loadStore(store), 'change:auth');
   const files = r.rows.filter((row) => row.kind === 'file');
   assert.ok(files.some((f) => f.files?.includes('ui/src/auth-change.ts')));
-  assert.ok(files.every((f) => !f.files?.includes('ui/src/billing.ts')), 'a file from another change stays off');
+  assert.ok(
+    files.every((f) => !f.files?.includes('ui/src/billing.ts')),
+    'a file from another change stays off',
+  );
   assert.ok(files.every((f) => f.lane === null && f.drill === 'session:me'));
   const billing = rail(store, loadStore(store), 'change:billing');
   assert.ok(billing.rows.some((row) => row.kind === 'file' && row.files?.includes('ui/src/billing.ts')));
@@ -172,7 +178,10 @@ test('a page: the last n passing rows, paged back by sequence; every older row b
   const next = rail(store, loadStore(store), 'change:auth', { limit: 2, before: page.rows[0]!.seq });
   assert.deepEqual(next.rows, whole.rows.slice(-3, -1));
   assert.equal(next.earlier, whole.total - 3);
-  assert.equal(next.buckets.reduce((n, d) => n + d.count, 0), next.earlier);
+  assert.equal(
+    next.buckets.reduce((n, d) => n + d.count, 0),
+    next.earlier,
+  );
   const first = whole.rows[0]!.seq;
   const end = rail(store, loadStore(store), 'change:auth', { limit: 2, before: first + 1 });
   assert.deepEqual(end.rows, [whole.rows[0]]);
@@ -182,7 +191,10 @@ test('a page: the last n passing rows, paged back by sequence; every older row b
 test('the pages down to a day: from the day on, before the page already shown, without a limit', () => {
   const whole = rail(store, loadStore(store), 'change:auth');
   const day = whole.rows[0]!.at.slice(0, 10);
-  const down = rail(store, loadStore(store), 'change:auth', { from: `${day}T00:00:00.000Z`, before: whole.rows.at(-1)!.seq });
+  const down = rail(store, loadStore(store), 'change:auth', {
+    from: `${day}T00:00:00.000Z`,
+    before: whole.rows.at(-1)!.seq,
+  });
   assert.deepEqual(down.rows, whole.rows.slice(0, -1));
   assert.equal(down.from, `${day}T00:00:00.000Z`);
   assert.equal(down.earlier, 0);

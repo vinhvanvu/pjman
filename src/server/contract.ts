@@ -17,7 +17,14 @@ export type { Bridge, BridgeChange, BridgeMotion, BridgeSession, SessionState } 
 export type { ChangeContext, Row } from '../model/view.js';
 export type { Moment } from '../model/moment.js';
 export type { Timeline, TimelineEvent } from '../model/timeline.js';
-export type { Rail, Lane as RailLane, Row as RailRow, Bucket as RailBucket, RowKind as RailRowKind, RailSession } from '../model/rail.js';
+export type {
+  Rail,
+  Lane as RailLane,
+  Row as RailRow,
+  Bucket as RailBucket,
+  RowKind as RailRowKind,
+  RailSession,
+} from '../model/rail.js';
 export type { DecisionState, OptionState } from '../model/foundation.js';
 export type { OrderResult } from '../ops/order.js';
 export type { SetResult } from '../ops/set.js';

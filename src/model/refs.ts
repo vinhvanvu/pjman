@@ -34,12 +34,17 @@ export interface Grammar {
 }
 
 const REPO = '[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+';
-const githubRepo = (u: URL): string[] | null => (u.hostname.toLowerCase() === 'github.com' ? u.pathname.split('/').filter(Boolean) : null);
+const githubRepo = (u: URL): string[] | null =>
+  u.hostname.toLowerCase() === 'github.com' ? u.pathname.split('/').filter(Boolean) : null;
 const githubHref = (rest: string, path: string): string | undefined => {
   const m = new RegExp(`^(${REPO})#(\\d+)$`).exec(rest);
   return m ? `https://github.com/${m[1]}/${path}/${m[2]}` : undefined;
 };
-const repoName = (repo: string): string => repo.slice(repo.indexOf('/') + 1).toLowerCase().replace(/[^a-z0-9]+/g, '-');
+const repoName = (repo: string): string =>
+  repo
+    .slice(repo.indexOf('/') + 1)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-');
 
 export const GRAMMARS: Grammar[] = [
   {
@@ -50,14 +55,19 @@ export const GRAMMARS: Grammar[] = [
     inScope: (m, scope) => !scope.team || m[0].slice(0, m[0].indexOf('-')) === scope.team.toUpperCase(),
     url: (u) => {
       const seg = u.pathname.split('/').filter(Boolean);
-      return u.hostname.toLowerCase() === 'linear.app' && seg[1] === 'issue' && seg[2] && /^[A-Z][A-Z0-9]*-\d+$/.test(seg[2]) ? seg[2] : undefined;
+      return u.hostname.toLowerCase() === 'linear.app' &&
+        seg[1] === 'issue' &&
+        seg[2] &&
+        /^[A-Z][A-Z0-9]*-\d+$/.test(seg[2])
+        ? seg[2]
+        : undefined;
     },
     slug: (rest) => rest.toLowerCase(),
   },
   {
     kind: 'github-issue',
     id: new RegExp(`(?<![\\w/.#-])(?:(${REPO}))?#(\\d+)\\b`, 'g'),
-    rest: (m, scope) => (m[1] ?? scope.repo ? `${m[1] ?? scope.repo}#${m[2]}` : undefined),
+    rest: (m, scope) => ((m[1] ?? scope.repo) ? `${m[1] ?? scope.repo}#${m[2]}` : undefined),
     qualified: (m) => !!m[1],
     weak: (m) => !m[1],
     inScope: (m, scope) => !m[1] || !scope.repo || m[1].toLowerCase() === scope.repo.toLowerCase(),
@@ -100,7 +110,10 @@ export const grammarOf = (kind: string): Grammar | undefined => GRAMMARS.find((g
 export function slugFor(kind: string, rest: string): string {
   const g = grammarOf(kind);
   if (g?.slug) return g.slug(rest);
-  const s = rest.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const s = rest
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
   return SLUG_RE.test(s) ? s : `t-${s}`;
 }
 
@@ -130,7 +143,8 @@ export function keyFromUrl(u: string): string | null {
   return null;
 }
 
-const obj = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
+const obj = (v: unknown): Record<string, unknown> | undefined =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
 
 /** The project's GitHub repository: `ext.github.repo`, else its `git-repo:` link. */
 export function repoOf(loaded: Loaded, project?: string): string | undefined {
@@ -182,8 +196,15 @@ export function shortForms(word: string, scope: Scope): ShortForm[] {
     if (!m) continue;
     const rest = g.rest?.(m, scope);
     out.push({
-      kind: g.kind, key: rest ? `${g.kind}:${rest}` : undefined, qualified: g.qualified?.(m) ?? false, inScope: g.inScope?.(m, scope) ?? true,
-      needs: rest ? undefined : g.kind === 'github-issue' ? 'a repository (ext.github.repo or a git-repo: link on the project)' : 'a scope',
+      kind: g.kind,
+      key: rest ? `${g.kind}:${rest}` : undefined,
+      qualified: g.qualified?.(m) ?? false,
+      inScope: g.inScope?.(m, scope) ?? true,
+      needs: rest
+        ? undefined
+        : g.kind === 'github-issue'
+          ? 'a repository (ext.github.repo or a git-repo: link on the project)'
+          : 'a scope',
     });
   }
   return out;
@@ -209,11 +230,15 @@ const PLACEHOLDER = /\[(?:Image|Pasted text)\b[^\]\n]*\]/g;
 export function mentions(text: string, slugs: string[] = []): Mention[] {
   text = text.replace(PLACEHOLDER, (p) => ' '.repeat(p.length)); // blanked, so every offset still points into the input
   const found: Mention[] = [];
-  for (const m of text.matchAll(/\bchange:([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)/g)) found.push({ text: `change:${m[1]}`, at: m.index!, shape: 'change' });
-  for (const m of text.matchAll(/https?:\/\/[^\s<>()"']+/g)) found.push({ text: m[0].replace(/[.,;:!?]+$/, ''), at: m.index!, shape: 'url' });
+  for (const m of text.matchAll(/\bchange:([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)/g))
+    found.push({ text: `change:${m[1]}`, at: m.index!, shape: 'change' });
+  for (const m of text.matchAll(/https?:\/\/[^\s<>()"']+/g))
+    found.push({ text: m[0].replace(/[.,;:!?]+$/, ''), at: m.index!, shape: 'url' });
   for (const g of GRAMMARS) {
     if (!g.id) continue;
-    for (const m of text.matchAll(g.id)) if (!g.not?.test(m[0])) found.push({ text: m[0], at: m.index!, shape: g.kind, ...(g.weak?.(m) ? { weak: true } : {}) });
+    for (const m of text.matchAll(g.id))
+      if (!g.not?.test(m[0]))
+        found.push({ text: m[0], at: m.index!, shape: g.kind, ...(g.weak?.(m) ? { weak: true } : {}) });
   }
   for (const slug of slugs) {
     if (!slug.includes('-')) continue;
@@ -232,9 +257,17 @@ export function mentions(text: string, slugs: string[] = []): Mention[] {
 
 /** The person who claims an account, or undefined when no one does. */
 export function personOf(loaded: Loaded, account: string): string | undefined {
-  const key = account.toLowerCase().startsWith('email:') ? `email:${account.slice('email:'.length).toLowerCase()}` : account;
+  const key = account.toLowerCase().startsWith('email:')
+    ? `email:${account.slice('email:'.length).toLowerCase()}`
+    : account;
   const people = loaded.records.filter((r) => r.type === 'actor' && r.valid && r.data.kind === 'person');
-  const holder = people.find((r) => Array.isArray(r.data.links) && (r.data.links as unknown[]).some((l) => typeof l === 'string' && (l === key || l.toLowerCase() === key.toLowerCase())));
+  const holder = people.find(
+    (r) =>
+      Array.isArray(r.data.links) &&
+      (r.data.links as unknown[]).some(
+        (l) => typeof l === 'string' && (l === key || l.toLowerCase() === key.toLowerCase()),
+      ),
+  );
   return holder?.key;
 }
 
@@ -244,7 +277,22 @@ export const IDENTITY_GRAMMARS: Grammar[] = [
     kind: 'github-user',
     url: (u) => {
       const seg = githubRepo(u);
-      return seg && seg.length === 1 && !['orgs', 'settings', 'marketplace', 'explore', 'topics', 'features', 'pulls', 'issues', 'notifications', 'login'].includes(seg[0]) ? seg[0] : undefined;
+      return seg &&
+        seg.length === 1 &&
+        ![
+          'orgs',
+          'settings',
+          'marketplace',
+          'explore',
+          'topics',
+          'features',
+          'pulls',
+          'issues',
+          'notifications',
+          'login',
+        ].includes(seg[0])
+        ? seg[0]
+        : undefined;
     },
   },
   { kind: 'email', url: (u) => (u.protocol === 'mailto:' ? u.pathname.toLowerCase() : undefined) },

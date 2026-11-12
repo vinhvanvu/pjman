@@ -40,26 +40,33 @@ export interface Migration {
 
 export const MIGRATIONS: readonly Migration[] = [
   {
-    name: 'layout', since: '0.2.0',
+    name: 'layout',
+    since: '0.2.0',
     pending: (store) => isLegacyLayout(store.root),
     run: (store, opts) => migrateLayout(store, opts),
     about: 'every record keyed under its product',
   },
   {
-    name: 'foundation', since: '0.2.0',
-    pending: (store) => loadStore(store).records.some((r) => (r.type === 'change' || r.type === 'decision') && r.valid && unmigrated(r)),
+    name: 'foundation',
+    since: '0.2.0',
+    pending: (store) =>
+      loadStore(store).records.some((r) => (r.type === 'change' || r.type === 'decision') && r.valid && unmigrated(r)),
     run: (store, opts) => migrateFoundation(store, opts),
     about: 'every change and decision in its shape',
   },
   {
-    name: 'kinds', since: '0.3.0',
-    pending: (store) => compareVersions(storeVersion(store), '0.3.0') < 0 && parentsToPromote(loadStore(store)).length > 0,
+    name: 'kinds',
+    since: '0.3.0',
+    pending: (store) =>
+      compareVersions(storeVersion(store), '0.3.0') < 0 && parentsToPromote(loadStore(store)).length > 0,
     run: (store, opts) => migrateKinds(store, opts),
     about: 'every change named as a parent a milestone by its kind',
   },
   {
-    name: 'session-kinds', since: '0.3.0',
-    pending: (store) => compareVersions(storeVersion(store), '0.3.0') < 0 && missingSessionKinds(loadStore(store)).length > 0,
+    name: 'session-kinds',
+    since: '0.3.0',
+    pending: (store) =>
+      compareVersions(storeVersion(store), '0.3.0') < 0 && missingSessionKinds(loadStore(store)).length > 0,
     run: (store, opts) => migrateSessionKinds(store, opts),
     about: 'the kinds a session with no change may be given (review, backlog, chat, other) as records',
   },
@@ -67,7 +74,8 @@ export const MIGRATIONS: readonly Migration[] = [
 
 /** The session kinds (decision unbound-sessions/kinds): the four defaults the store lacks are created, one write each. */
 export function migrateSessionKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
-  if (store.mode === 'standalone' && git(store.root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  if (store.mode === 'standalone' && git(store.root, ['status', '--porcelain', '--', '.']))
+    throw new CliError('the store has uncommitted changes; commit or discard them first');
   const created = seedSessionKinds(store, opts);
   const commit = store.mode === 'standalone' ? git(store.root, ['rev-parse', '--short', 'HEAD']) : null;
   return { kind: 'session-kinds', since: '0.3.0', products: 0, moved: 0, rewritten: created.length, commit };
@@ -75,7 +83,10 @@ export function migrateSessionKinds(store: Store, opts: { session?: string; writ
 
 /** The format this pjman writes: the version of the latest move it knows. A store stamped higher was written by a newer
  *  pjman; one stamped lower, or not at all, waits for `pjman migrate`. */
-export const FORMAT_VERSION: string = MIGRATIONS.reduce((top, m) => (compareVersions(m.since, top) > 0 ? m.since : top), UNSTAMPED_VERSION);
+export const FORMAT_VERSION: string = MIGRATIONS.reduce(
+  (top, m) => (compareVersions(m.since, top) > 0 ? m.since : top),
+  UNSTAMPED_VERSION,
+);
 
 /** The format a store is in: its stamp, or the version before the stamp existed. */
 export const storeVersion = (store: Store): string => store.config.version ?? UNSTAMPED_VERSION;
@@ -113,7 +124,9 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
   noteReshaping(store);
   const pending = pendingMigration(store);
   if (!pending) {
-    throw new CliError(`nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, the session kinds are records, and the store is in format ${storeVersion(store)}`);
+    throw new CliError(
+      `nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, the session kinds are records, and the store is in format ${storeVersion(store)}`,
+    );
   }
   if (pending === 'stamp') return stamp(store, opts);
   return MIGRATIONS.find((m) => m.name === pending)!.run(store, opts);
@@ -122,13 +135,31 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
 /** The stamp: pjman.yaml names the format this pjman writes. One commit, one event. */
 function stamp(store: Store, opts: { session?: string; writer?: string }): MigrateResult {
   const root = store.root;
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+    throw new CliError('the store has uncommitted changes; commit or discard them first');
   const from = storeVersion(store);
   writeStoreConfig(root, { ...store.config, version: FORMAT_VERSION });
   store.config.version = FORMAT_VERSION;
   const env = envelope(opts);
-  const commit = store.mode === 'standalone' ? commitAll(root, `pjman: the store is in format ${FORMAT_VERSION}`, env.session) : null;
-  emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: ['version', `${from} → ${FORMAT_VERSION}`], writer: env.writer, session: env.session }], commit);
+  const commit =
+    store.mode === 'standalone'
+      ? commitAll(root, `pjman: the store is in format ${FORMAT_VERSION}`, env.session)
+      : null;
+  emit(
+    store,
+    [
+      {
+        op: 'migrated',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        fields: ['version', `${from} → ${FORMAT_VERSION}`],
+        writer: env.writer,
+        session: env.session,
+      },
+    ],
+    commit,
+  );
   return { kind: 'stamp', since: FORMAT_VERSION, products: 0, moved: 0, rewritten: 0, version: FORMAT_VERSION, commit };
 }
 
@@ -138,8 +169,10 @@ function stamp(store: Store, opts: { session?: string; writer?: string }): Migra
 export function formatMismatch(store: Store, toolVersion: string): string | null {
   const have = store.config.version;
   if (!have) return null;
-  if (compareVersions(have, FORMAT_VERSION) > 0) return `the store is in format ${have}, newer than this pjman (${toolVersion}, format ${FORMAT_VERSION}): install pjman ${have} or newer before writing it`;
-  if (compareVersions(have, FORMAT_VERSION) < 0) return `the store is in format ${have}; this pjman (${toolVersion}) brings format ${FORMAT_VERSION}: run pjman migrate, which names each move it makes`;
+  if (compareVersions(have, FORMAT_VERSION) > 0)
+    return `the store is in format ${have}, newer than this pjman (${toolVersion}, format ${FORMAT_VERSION}): install pjman ${have} or newer before writing it`;
+  if (compareVersions(have, FORMAT_VERSION) < 0)
+    return `the store is in format ${have}; this pjman (${toolVersion}) brings format ${FORMAT_VERSION}: run pjman migrate, which names each move it makes`;
   return null;
 }
 
@@ -147,7 +180,10 @@ const LIST_LINE = /^\s*(?:[-*]|\d+[.)])\s+(.*)$/;
 
 /** The lines of a Plan section as steps, when it reads as a list; else nothing, and the text goes to Notes. */
 function planSteps(text: string, done: boolean, at: string): { steps: Record<string, unknown>[] | null } {
-  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const lines = text
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
   if (!lines.length || !lines.every((l) => LIST_LINE.test(l))) return { steps: null };
   return { steps: lines.map((l) => ({ text: LIST_LINE.exec(l)![1].trim(), state: done ? 'done' : 'open', at })) };
 }
@@ -163,7 +199,8 @@ const noteLine = (at: string, text: string): string => `- ${at} — ${text.repla
 export function migrateFoundation(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
   noteReshaping(store);
   const root = store.root;
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+    throw new CliError('the store has uncommitted changes; commit or discard them first');
   const loaded = loadStore(store);
   const date = localDate();
   const at = nowIso();
@@ -177,7 +214,13 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
     const data: Record<string, unknown> = { ...r.data };
     const sections = new Map(r.sections);
     const made = (lead: string): string => {
-      const from = [str(r.data.created) ? `created ${str(r.data.created)}` : '', str(r.data.writer) ? `by ${str(r.data.writer)}` : '', str(r.data.session) ? `in ${str(r.data.session)}` : ''].filter(Boolean).join(' ');
+      const from = [
+        str(r.data.created) ? `created ${str(r.data.created)}` : '',
+        str(r.data.writer) ? `by ${str(r.data.writer)}` : '',
+        str(r.data.session) ? `in ${str(r.data.session)}` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
       return `${lead}, ${date}.${from ? ` ${from[0].toUpperCase()}${from.slice(1)}.` : ''}`;
     };
     if (r.type === 'change') {
@@ -203,14 +246,19 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
           if (steps && !data.plan) data.plan = steps;
           else notes.push(noteLine(at, `plan.md (before the foundation): ${text}`));
         }
-        if (inGit && isTracked(root, path.relative(root, planFile))) git(root, ['rm', '-q', '--', path.relative(root, planFile)]);
+        if (inGit && isTracked(root, path.relative(root, planFile)))
+          git(root, ['rm', '-q', '--', path.relative(root, planFile)]);
         else fs.rmSync(planFile, { force: true });
       }
       const next = str(data.next);
       if (next?.trim()) notes.push(noteLine(at, `next (before the foundation): ${next.trim()}`));
       delete data.next;
-      if (notes.length) sections.set('Notes', [sections.get('Notes')?.trim() ?? '', ...notes].filter(Boolean).join('\n'));
-      sections.set('Origin', made('Mapped from the record as it stood before the foundation (a title, a summary, a next)'));
+      if (notes.length)
+        sections.set('Notes', [sections.get('Notes')?.trim() ?? '', ...notes].filter(Boolean).join('\n'));
+      sections.set(
+        'Origin',
+        made('Mapped from the record as it stood before the foundation (a title, a summary, a next)'),
+      );
       changes++;
     } else {
       const title = str(data.title);
@@ -220,26 +268,52 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
       const why = sections.get('Why')?.trim();
       sections.delete('Decision');
       sections.delete('Why');
-      const thread: Record<string, unknown>[] = [...(Array.isArray(data.thread) ? (data.thread as Record<string, unknown>[]) : [])];
+      const thread: Record<string, unknown>[] = [
+        ...(Array.isArray(data.thread) ? (data.thread as Record<string, unknown>[]) : []),
+      ];
       const createdAt = str(data.created) ? `${str(data.created)}T12:00:00.000Z` : at;
       const by = str(data.writer);
-      if (decision || why) thread.push({ type: 'option', at: createdAt, by, id: 'chosen', text: decision || why, case: decision ? why : undefined });
+      if (decision || why)
+        thread.push({
+          type: 'option',
+          at: createdAt,
+          by,
+          id: 'chosen',
+          text: decision || why,
+          case: decision ? why : undefined,
+        });
       const decidedBy = str(data.decided_by);
       if (data.status !== 'proposed' && decidedBy?.startsWith('person:') && (decision || why)) {
-        thread.push({ type: 'accept', at: str(data.decided_on) ? `${str(data.decided_on)}T12:00:00.000Z` : createdAt, by: decidedBy, option: 'chosen' });
+        thread.push({
+          type: 'accept',
+          at: str(data.decided_on) ? `${str(data.decided_on)}T12:00:00.000Z` : createdAt,
+          by: decidedBy,
+          option: 'chosen',
+        });
       } else if (decision || why) thread.push({ type: 'recommendation', at: createdAt, by, option: 'chosen' });
       if (thread.length) data.thread = thread;
       if (data.status === 'decided' && !decidedBy?.startsWith('person:')) {
         // a decided decision nobody accepted (an agent's, or hand-written): it stays decided as the field says, with no
         // acceptance to show; the validator only checks a thread that holds one
         delete data.thread;
-        sections.set('Notes', [sections.get('Notes')?.trim() ?? '', noteLine(at, `decision (before the foundation): ${decision ?? ''}${why ? ` Why: ${why}` : ''}`)].filter(Boolean).join('\n'));
+        sections.set(
+          'Notes',
+          [
+            sections.get('Notes')?.trim() ?? '',
+            noteLine(at, `decision (before the foundation): ${decision ?? ''}${why ? ` Why: ${why}` : ''}`),
+          ]
+            .filter(Boolean)
+            .join('\n'),
+        );
       }
       decisions++;
     }
     const order = r.type === 'change' ? [...CHANGE_SECTIONS] : ['Notes'];
     const rest = [...sections.keys()].filter((k) => k && !order.includes(k));
-    const body = [...order, ...rest].filter((k) => sections.get(k)?.trim()).map((k) => `## ${k}\n\n${sections.get(k)!.trim()}\n`).join('\n');
+    const body = [...order, ...rest]
+      .filter((k) => sections.get(k)?.trim())
+      .map((k) => `## ${k}\n\n${sections.get(k)!.trim()}\n`)
+      .join('\n');
     data.migrated = date;
     data.rungs_from = foundationHash(foundationOf(r.type, data, parseSections(body)));
     fs.writeFileSync(r.abs, render(r.type, data, body));
@@ -250,12 +324,40 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
       git(root, ['reset', '-q', '--hard', 'HEAD']);
       git(root, ['clean', '-qfd', '--', '.']);
     }
-    throw new CliError(`refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`);
+    throw new CliError(
+      `refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`,
+    );
   }
   const env = envelope(opts);
-  const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate changes and decisions into the foundation', env.session) : null;
-  emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${changes} changes`, `${decisions} decisions`], writer: env.writer, session: env.session }], commit);
-  return { kind: 'foundation', since: '0.2.0', products: 0, moved: 0, rewritten: changes + decisions, changes, decisions, commit };
+  const commit =
+    store.mode === 'standalone'
+      ? commitAll(root, 'pjman: migrate changes and decisions into the foundation', env.session)
+      : null;
+  emit(
+    store,
+    [
+      {
+        op: 'migrated',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        fields: [`${changes} changes`, `${decisions} decisions`],
+        writer: env.writer,
+        session: env.session,
+      },
+    ],
+    commit,
+  );
+  return {
+    kind: 'foundation',
+    since: '0.2.0',
+    products: 0,
+    moved: 0,
+    rewritten: changes + decisions,
+    changes,
+    decisions,
+    commit,
+  };
 }
 
 /** The valid changes other valid changes name as parent that are not milestones by their kind: what the kinds move
@@ -267,7 +369,9 @@ export function parentsToPromote(loaded: ReturnType<typeof loadStore>): Rec[] {
     const res = resolve(loaded, c.data.parent, c.productSlug ?? undefined);
     if (res.status === 'ok' || res.status === 'alias') named.add(res.rec.key);
   }
-  return loaded.records.filter((r) => r.type === 'change' && r.valid && named.has(r.key) && r.data.kind !== 'milestone');
+  return loaded.records.filter(
+    (r) => r.type === 'change' && r.valid && named.has(r.key) && r.data.kind !== 'milestone',
+  );
 }
 
 /** The kinds: every change another change names as parent becomes a milestone by its kind. Steps it carried go to
@@ -275,7 +379,8 @@ export function parentsToPromote(loaded: ReturnType<typeof loadStore>): Rec[] {
  *  commit, one event; the store must validate afterwards or nothing is written. */
 export function migrateKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
   const root = store.root;
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+    throw new CliError('the store has uncommitted changes; commit or discard them first');
   const loaded = loadStore(store);
   const at = nowIso();
   const inGit = toplevel(root) !== null;
@@ -287,7 +392,12 @@ export function migrateKinds(store: Store, opts: { session?: string; writer?: st
     const steps = stepsOf(r.data);
     if (steps.length) {
       const mark = (s: string) => (s === 'done' ? 'x' : s === 'dropped' ? '-' : s === 'active' ? '>' : ' ');
-      notes.push(noteLine(at, `plan (before the milestone kind; a milestone's plan is its children): ${steps.map((s, i) => `${i + 1}. [${mark(s.state)}] ${s.text}${s.note ? ` (${s.note})` : ''}`).join(' · ')}`));
+      notes.push(
+        noteLine(
+          at,
+          `plan (before the milestone kind; a milestone's plan is its children): ${steps.map((s, i) => `${i + 1}. [${mark(s.state)}] ${s.text}${s.note ? ` (${s.note})` : ''}`).join(' · ')}`,
+        ),
+      );
     }
     delete data.plan;
     if (typeof data.severity === 'string') {
@@ -297,7 +407,10 @@ export function migrateKinds(store: Store, opts: { session?: string; writer?: st
     if (notes.length) sections.set('Notes', [sections.get('Notes')?.trim() ?? '', ...notes].filter(Boolean).join('\n'));
     const order = [...CHANGE_SECTIONS];
     const rest = [...sections.keys()].filter((k) => k && !(order as string[]).includes(k));
-    const body = [...order, ...rest].filter((k) => sections.get(k)?.trim()).map((k) => `## ${k}\n\n${sections.get(k)!.trim()}\n`).join('\n');
+    const body = [...order, ...rest]
+      .filter((k) => sections.get(k)?.trim())
+      .map((k) => `## ${k}\n\n${sections.get(k)!.trim()}\n`)
+      .join('\n');
     fs.writeFileSync(r.abs, render('change', data, body));
   }
   const problems = validate(loadStore(store)).filter((p) => p.level === 'error');
@@ -306,19 +419,49 @@ export function migrateKinds(store: Store, opts: { session?: string; writer?: st
       git(root, ['reset', '-q', '--hard', 'HEAD']);
       git(root, ['clean', '-qfd', '--', '.']);
     }
-    throw new CliError(`refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`);
+    throw new CliError(
+      `refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`,
+    );
   }
   const env = envelope(opts);
-  const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate parent changes into the milestone kind', env.session) : null;
-  emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${promoted.length} milestones`], writer: env.writer, session: env.session }], commit);
-  return { kind: 'kinds', since: '0.3.0', products: 0, moved: 0, rewritten: promoted.length, changes: promoted.length, commit };
+  const commit =
+    store.mode === 'standalone'
+      ? commitAll(root, 'pjman: migrate parent changes into the milestone kind', env.session)
+      : null;
+  emit(
+    store,
+    [
+      {
+        op: 'migrated',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        fields: [`${promoted.length} milestones`],
+        writer: env.writer,
+        session: env.session,
+      },
+    ],
+    commit,
+  );
+  return {
+    kind: 'kinds',
+    since: '0.3.0',
+    products: 0,
+    moved: 0,
+    rewritten: promoted.length,
+    changes: promoted.length,
+    commit,
+  };
 }
 
 const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** A whole flat key (`change:<slug>`, `feature:<slug>`) → its key under the product. */
 const rewriteFlat = (text: string, kind: string, slug: string, product: string): string =>
-  text.replace(new RegExp(`(^|[^A-Za-z0-9_/:-])${kind}:${esc(slug)}(?![A-Za-z0-9_/-])`, 'g'), `$1${kind}:${product}/${slug}`);
+  text.replace(
+    new RegExp(`(^|[^A-Za-z0-9_/:-])${kind}:${esc(slug)}(?![A-Za-z0-9_/-])`, 'g'),
+    `$1${kind}:${product}/${slug}`,
+  );
 /** `decision:<change>/` → `decision:<product>/<change>/`. */
 const rewriteDecisions = (text: string, change: string, product: string): string =>
   text.replace(new RegExp(`(^|[^A-Za-z0-9_/:-])decision:${esc(change)}/`, 'g'), `$1decision:${product}/${change}/`);
@@ -327,7 +470,8 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
   noteReshaping(store);
   const root = store.root;
   if (!isLegacyLayout(root)) throw new CliError('nothing to migrate: every record is already keyed under its product');
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.'])) throw new CliError('the store has uncommitted changes; commit or discard them first');
+  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+    throw new CliError('the store has uncommitted changes; commit or discard them first');
   const records = loadLegacy(store);
   const byKey = new Map(records.map((r) => [r.key, r]));
   const inGit = toplevel(root) !== null;
@@ -380,22 +524,29 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
       else homeless.push(r.key);
     }
   }
-  for (const r of records) if (r.type === 'decision' && r.changeSlug) {
-    const p = home.get(`change:${r.changeSlug}`);
-    if (p) home.set(r.key, p);
-  }
+  for (const r of records)
+    if (r.type === 'decision' && r.changeSlug) {
+      const p = home.get(`change:${r.changeSlug}`);
+      if (p) home.set(r.key, p);
+    }
   if (homeless.length) {
-    throw new CliError(`${homeless.length} record${homeless.length === 1 ? ' belongs' : 's belong'} to no product, and every feature and change is keyed under one:\n${homeless.map((k) => `  ${k}`).join('\n')}\nGive each project a product (pjman new product <slug> --title …; pjman set project:<slug> product=product:<slug>) and run the migration again`);
+    throw new CliError(
+      `${homeless.length} record${homeless.length === 1 ? ' belongs' : 's belong'} to no product, and every feature and change is keyed under one:\n${homeless.map((k) => `  ${k}`).join('\n')}\nGive each project a product (pjman new product <slug> --title …; pjman set project:<slug> product=product:<slug>) and run the migration again`,
+    );
   }
 
   // moves: product files into folders, feature and change folders under their product
   const moves: [string, string][] = [];
   const pathAfter = new Map<string, string>();
   for (const r of records) {
-    if (r.type === 'product' && !r.path.endsWith('/product.md')) moves.push([r.path, path.join('products', r.productSlug!, 'product.md')]);
+    if (r.type === 'product' && !r.path.endsWith('/product.md'))
+      moves.push([r.path, path.join('products', r.productSlug!, 'product.md')]);
     if (r.type === 'feature' || r.type === 'change') {
       const p = home.get(r.key)!;
-      moves.push([path.dirname(r.path), path.join('products', p, r.type === 'feature' ? 'features' : 'changes', path.basename(path.dirname(r.path)))]);
+      moves.push([
+        path.dirname(r.path),
+        path.join('products', p, r.type === 'feature' ? 'features' : 'changes', path.basename(path.dirname(r.path))),
+      ]);
     }
   }
   const after = (rel: string): string => {
@@ -412,12 +563,17 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
   }
   for (const dir of ['changes', 'features']) {
     const abs = path.join(root, dir);
-    if (fs.existsSync(abs) && fs.readdirSync(abs).every((n) => n === '.gitkeep')) fs.rmSync(abs, { recursive: true, force: true });
+    if (fs.existsSync(abs) && fs.readdirSync(abs).every((n) => n === '.gitkeep'))
+      fs.rmSync(abs, { recursive: true, force: true });
   }
 
   // rewrites: every flat key in every record, longest slugs first so a slug that prefixes another is never clipped
-  const features = records.filter((r) => r.type === 'feature').sort((a, b) => b.featureSlug!.length - a.featureSlug!.length);
-  const changes = records.filter((r) => r.type === 'change').sort((a, b) => b.changeSlug!.length - a.changeSlug!.length);
+  const features = records
+    .filter((r) => r.type === 'feature')
+    .sort((a, b) => b.featureSlug!.length - a.featureSlug!.length);
+  const changes = records
+    .filter((r) => r.type === 'change')
+    .sort((a, b) => b.changeSlug!.length - a.changeSlug!.length);
   const rewrite = (text: string): string => {
     let out = text;
     for (const f of features) out = rewriteFlat(out, 'feature', f.featureSlug!, home.get(f.key)!);
@@ -462,10 +618,34 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
       git(root, ['reset', '-q', '--hard', 'HEAD']);
       git(root, ['clean', '-qfd', '--', '.']);
     }
-    throw new CliError(`refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`);
+    throw new CliError(
+      `refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`,
+    );
   }
   const env = envelope(opts);
-  const commit = store.mode === 'standalone' ? commitAll(root, 'pjman: migrate keys under the product', env.session) : null;
-  emit(store, [{ op: 'migrated', key: 'store', type: 'store', path: 'pjman.yaml', fields: [`${moves.length} moved`, `${rewritten} rewritten`], writer: env.writer, session: env.session }], commit);
-  return { kind: 'layout', since: '0.2.0', products: records.filter((r) => r.type === 'product').length, moved: moves.length, rewritten, commit };
+  const commit =
+    store.mode === 'standalone' ? commitAll(root, 'pjman: migrate keys under the product', env.session) : null;
+  emit(
+    store,
+    [
+      {
+        op: 'migrated',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        fields: [`${moves.length} moved`, `${rewritten} rewritten`],
+        writer: env.writer,
+        session: env.session,
+      },
+    ],
+    commit,
+  );
+  return {
+    kind: 'layout',
+    since: '0.2.0',
+    products: records.filter((r) => r.type === 'product').length,
+    moved: moves.length,
+    rewritten,
+    commit,
+  };
 }

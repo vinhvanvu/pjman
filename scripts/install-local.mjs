@@ -12,12 +12,19 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const say = (line) => process.stdout.write(`${line}\n`);
-const run = (cmd, args, opts = {}) => (execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }) ?? '').trim();
+const run = (cmd, args, opts = {}) =>
+  (
+    execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...opts }) ?? ''
+  ).trim();
 const soft = (cmd, args, opts = {}) => {
   try {
     return execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
   } catch (e) {
-    return { failed: String(e.stderr || e.stdout || e.message).trim().split('\n')[0] };
+    return {
+      failed: String(e.stderr || e.stdout || e.message)
+        .trim()
+        .split('\n')[0],
+    };
   }
 };
 
@@ -39,14 +46,19 @@ run('npm', ['install', '-g', '--no-audit', '--no-fund', tarball], { stdio: ['ign
 fs.rmSync(dest, { recursive: true, force: true });
 const installed = path.join(globalRoot, '@vinhvanvu', 'pjman');
 const real = fs.realpathSync(installed);
-if (real === fs.realpathSync(root)) throw new Error(`the global install still links to this checkout (${real}); run: npm unlink -g pjman, then again`);
+if (real === fs.realpathSync(root))
+  throw new Error(`the global install still links to this checkout (${real}); run: npm unlink -g pjman, then again`);
 say(`installed pjman ${packed[0].version} at ${installed}`);
 
 // the plugin: the marketplace is the installed copy, so hooks and skills come from the same package as the tool
 const claude = soft('claude', ['--version']);
 if (claude.failed) say(`claude is not on PATH; the plugin is left as it is`);
 else {
-  const known = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'known_marketplaces.json');
+  const known = path.join(
+    process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
+    'plugins',
+    'known_marketplaces.json',
+  );
   let current;
   try {
     current = JSON.parse(fs.readFileSync(known, 'utf8')).pjman?.source?.path;
@@ -64,14 +76,20 @@ else {
   const upd = soft('claude', ['plugin', 'update', 'pjman@pjman']);
   if (upd.failed) {
     const inst = soft('claude', ['plugin', 'install', 'pjman@pjman', '--scope', 'user']);
-    say(inst.failed ? `plugin not refreshed: ${inst.failed}` : 'plugin pjman installed from the copy; it loads at the next session or /reload-plugins');
+    say(
+      inst.failed
+        ? `plugin not refreshed: ${inst.failed}`
+        : 'plugin pjman installed from the copy; it loads at the next session or /reload-plugins',
+    );
   } else say('plugin pjman refreshed from the copy; it loads at the next session or /reload-plugins');
 }
 
 // the dashboard: a running server keeps the old code until restarted; it comes back on the same port
 let port;
 try {
-  port = JSON.parse(fs.readFileSync(path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'serve.json'), 'utf8')).port;
+  port = JSON.parse(
+    fs.readFileSync(path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'serve.json'), 'utf8'),
+  ).port;
 } catch {}
 const stopped = soft('pjman', ['stop']);
 if (!stopped.failed && /stopped/.test(stopped)) {

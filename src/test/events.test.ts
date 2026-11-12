@@ -59,7 +59,12 @@ test('a decision opened carries no value; accepted, its event names the status a
 });
 
 test('a decision superseded by a new one is set superseded, with the value on its event', () => {
-  decisionRec(store, 'auth/tokens-2', { title: 'Tokens again', decision: 'd', why: 'w', supersedes: 'decision:auth/tokens' });
+  decisionRec(store, 'auth/tokens-2', {
+    title: 'Tokens again',
+    decision: 'd',
+    why: 'w',
+    supersedes: 'decision:auth/tokens',
+  });
   const e = on('decision:web/auth/tokens').at(-1)!;
   assert.equal(e.op, 'set');
   assert.deepEqual(e.fields, ['status']);

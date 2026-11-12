@@ -2,27 +2,133 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from './config.js';
 import { parseRecord, sections, type Parsed } from './frontmatter.js';
-import { aspectKey, canonicalSourceKey, decisionKey, parseAspectRest, parseDecisionRest, parseKey, parseReleaseRest, parseScopedRest, releaseKey, SCOPED_KINDS, VERSION_RE, type Key } from './keys.js';
+import {
+  aspectKey,
+  canonicalSourceKey,
+  decisionKey,
+  parseAspectRest,
+  parseDecisionRest,
+  parseKey,
+  parseReleaseRest,
+  parseScopedRest,
+  releaseKey,
+  SCOPED_KINDS,
+  VERSION_RE,
+  type Key,
+} from './keys.js';
 import { ambiguous, CliError, notFound } from './util.js';
 import { indexedEntries, type Entry, type Head, type HeadField } from './store-index.js';
 
-export type RecordType = 'product' | 'feature' | 'aspect' | 'place' | 'project' | 'change' | 'decision' | 'release' | 'source' | 'session' | 'session-kind' | 'actor';
+export type RecordType =
+  | 'product'
+  | 'feature'
+  | 'aspect'
+  | 'place'
+  | 'project'
+  | 'change'
+  | 'decision'
+  | 'release'
+  | 'source'
+  | 'session'
+  | 'session-kind'
+  | 'actor';
 
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
-  feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
+  feature: [
+    'title',
+    'name',
+    'status',
+    'level',
+    'product',
+    'parent',
+    'owners',
+    'links',
+    'aliases',
+    'writer',
+    'session',
+    'created',
+    'ext',
+  ],
   aspect: ['title', 'name', 'parent', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
   place: ['feature', 'links', 'writer', 'session', 'created', 'ext'],
-  project: ['title', 'product', 'parent', 'tracker', 'map', 'holds', 'owners', 'links', 'writer', 'session', 'created', 'ext'],
+  project: [
+    'title',
+    'product',
+    'parent',
+    'tracker',
+    'map',
+    'holds',
+    'owners',
+    'links',
+    'writer',
+    'session',
+    'created',
+    'ext',
+  ],
   // a change and a decision carry the rungs (name, gist) over their foundation: a change's plan of steps and its
   // sections, a decision's thread; rungs_from is the foundation the rungs were written from; migrated marks a record
   // mapped mechanically and not yet written through the tool (foundation.ts)
-  change: ['name', 'gist', 'status', 'kind', 'severity', 'project', 'parent', 'depends_on', 'features', 'aspects', 'owners', 'target', 'plan', 'binds', 'links', 'aliases', 'rungs_from', 'migrated', 'writer', 'session', 'created', 'ext'],
-  decision: ['name', 'gist', 'status', 'decided_by', 'decided_on', 'supersedes', 'links', 'thread', 'rungs_from', 'migrated', 'writer', 'session', 'created', 'ext'],
+  change: [
+    'name',
+    'gist',
+    'status',
+    'kind',
+    'severity',
+    'project',
+    'parent',
+    'depends_on',
+    'features',
+    'aspects',
+    'owners',
+    'target',
+    'plan',
+    'binds',
+    'links',
+    'aliases',
+    'rungs_from',
+    'migrated',
+    'writer',
+    'session',
+    'created',
+    'ext',
+  ],
+  decision: [
+    'name',
+    'gist',
+    'status',
+    'decided_by',
+    'decided_on',
+    'supersedes',
+    'links',
+    'thread',
+    'rungs_from',
+    'migrated',
+    'writer',
+    'session',
+    'created',
+    'ext',
+  ],
   // a release: the version a product shipped, when, from which commit, at what level, and the changes it ships in order
   release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'ships', 'links', 'writer', 'session', 'created', 'ext'],
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
-  session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'name', 'kind', 'host', 'changes', 'focus', 'briefed', 'observed', 'writer', 'created', 'ext'],
+  session: [
+    'agent',
+    'on_behalf_of',
+    'started',
+    'parent',
+    'project',
+    'name',
+    'kind',
+    'host',
+    'changes',
+    'focus',
+    'briefed',
+    'observed',
+    'writer',
+    'created',
+    'ext',
+  ],
   // a session kind: what a session with no change is doing (review, backlog, chat, other, or one a person made), store-wide
   'session-kind': ['name', 'gist', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   actor: ['kind', 'name', 'url', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
@@ -118,7 +224,8 @@ export function indexedSource(store: Store): Source {
     entries = indexedEntries(store);
   } catch (e) {
     // the files are the truth, so a load still answers; said once, since every load would be slow without the index
-    if (!indexWarned) process.stderr.write(`pjman: the store index could not be used (${(e as Error).message}); reading the files\n`);
+    if (!indexWarned)
+      process.stderr.write(`pjman: the store index could not be used (${(e as Error).message}); reading the files\n`);
     indexWarned = true;
     return disk;
   }
@@ -132,7 +239,7 @@ export function indexedSource(store: Store): Source {
   return {
     list: (rel) => (rel === '' ? disk.list('') : [...(children.get(rel) ?? [])]),
     isDir: (rel) => (rel === '' ? true : entries.has(rel) ? entries.get(rel)!.dir : top(rel) && disk.isDir(rel)),
-    exists: (rel) => (rel === '' || entries.has(rel) || (top(rel) && disk.exists(rel))),
+    exists: (rel) => rel === '' || entries.has(rel) || (top(rel) && disk.exists(rel)),
     read: (rel) => disk.read(rel),
     held: (rel) => {
       const e = entries.get(rel);
@@ -147,7 +254,10 @@ export function diskSource(root: string): Source {
   return {
     list(rel) {
       try {
-        return fs.readdirSync(abs(rel)).filter((n) => !n.startsWith('.')).sort();
+        return fs
+          .readdirSync(abs(rel))
+          .filter((n) => !n.startsWith('.'))
+          .sort();
       } catch {
         return [];
       }
@@ -196,7 +306,17 @@ function readRec(src: Source, store: Store, rel: string, type: RecordType, key: 
   }
   const parsed = parseRecord(src.read(rel));
   const valid = parsed.hasFrontmatter && parsed.isMapping && parsed.errors.length === 0;
-  return { type, key, path: rel, abs, data: parsed.data, body: parsed.body, sections: sections(parsed.body), parsed, valid };
+  return {
+    type,
+    key,
+    path: rel,
+    abs,
+    data: parsed.data,
+    body: parsed.body,
+    sections: sections(parsed.body),
+    parsed,
+    valid,
+  };
 }
 
 const DATED = /^(\d{4}-\d{2}-\d{2})-(.+)\.md$/;
@@ -209,7 +329,19 @@ export function isLegacyLayout(root: string | Source): boolean {
   return src.list('products').some((n) => n.endsWith('.md'));
 }
 
-const STORE_FILES = ['products', 'projects', 'decisions', 'sources', 'sessions', 'session-kinds', 'actors', 'pjman.yaml', 'index.db', 'events.jsonl', 'README.md'];
+const STORE_FILES = [
+  'products',
+  'projects',
+  'decisions',
+  'sources',
+  'sessions',
+  'session-kinds',
+  'actors',
+  'pjman.yaml',
+  'index.db',
+  'events.jsonl',
+  'README.md',
+];
 
 export function loadStore(store: Store, src: Source = indexedSource(store)): Loaded {
   const records: Rec[] = [];
@@ -219,8 +351,12 @@ export function loadStore(store: Store, src: Source = indexedSource(store)): Loa
   const exists = (rel: string) => src.exists(rel);
   // paths are relative to the store root; the source knows where the root is
   const root = '';
-  if (isLegacyLayout(src)) throw new CliError('the store is laid out the old way (changes/, features/ and products/<slug>.md at the root); run `pjman migrate` once to key every record under its product');
-  const unexpected = (rel: string) => problems.push({ level: 'warning', path: rel, message: 'unexpected file; not a record' });
+  if (isLegacyLayout(src))
+    throw new CliError(
+      'the store is laid out the old way (changes/, features/ and products/<slug>.md at the root); run `pjman migrate` once to key every record under its product',
+    );
+  const unexpected = (rel: string) =>
+    problems.push({ level: 'warning', path: rel, message: 'unexpected file; not a record' });
 
   const readDecisions = (dir: string, product: string | null, change: string | null, changeKeyOf?: string): void => {
     for (const f of listDir(path.join(root, dir))) {
@@ -311,7 +447,11 @@ export function loadStore(store: Store, src: Source = indexedSource(store)): Loa
         for (const f of listDir(path.join(root, sub))) {
           const rel = path.join(sub, f);
           if (!f.endsWith('.md') || !VERSION_RE.test(f.slice(0, -3))) {
-            problems.push({ level: 'error', path: rel, message: 'release file name must be <major>.<minor>.<patch>.md' });
+            problems.push({
+              level: 'error',
+              path: rel,
+              message: 'release file name must be <major>.<minor>.<patch>.md',
+            });
             continue;
           }
           const version = f.slice(0, -3);
@@ -410,7 +550,11 @@ export function loadStore(store: Store, src: Source = indexedSource(store)): Loa
     const rel = path.join('sessions', f);
     const m = DATED.exec(f);
     if (!m) {
-      problems.push({ level: 'error', path: rel, message: 'session file name must be <yyyy-mm-dd>-<harness-session-id>.md' });
+      problems.push({
+        level: 'error',
+        path: rel,
+        message: 'session file name must be <yyyy-mm-dd>-<harness-session-id>.md',
+      });
       continue;
     }
     const r = readRec(src, store, rel, 'session', `session:${m[2]}`);
@@ -485,7 +629,9 @@ export function loadStore(store: Store, src: Source = indexedSource(store)): Loa
 export function storeScope(store: Store): string | null {
   if (!store.project?.startsWith('project:')) return null;
   try {
-    const project = parseRecord(fs.readFileSync(path.join(store.root, 'projects', `${store.project.slice('project:'.length)}.md`), 'utf8'));
+    const project = parseRecord(
+      fs.readFileSync(path.join(store.root, 'projects', `${store.project.slice('project:'.length)}.md`), 'utf8'),
+    );
     const product = project.data.product;
     if (typeof product !== 'string' || !product.startsWith('product:')) return null;
     const slug = product.slice('product:'.length);
@@ -540,11 +686,13 @@ export function push<K, V>(m: Map<K, V[]>, k: K, v: V): void {
 
 /** The records of one type, in the store's order. */
 export function ofType(loaded: Loaded, type: RecordType): Rec[] {
-  return memo(loaded, 'of-type', () => {
-    const out = new Map<string, Rec[]>();
-    for (const r of loaded.records) push(out, r.type, r);
-    return out;
-  }).get(type) ?? [];
+  return (
+    memo(loaded, 'of-type', () => {
+      const out = new Map<string, Rec[]>();
+      for (const r of loaded.records) push(out, r.type, r);
+      return out;
+    }).get(type) ?? []
+  );
 }
 
 /** `<kind>:<rest>` → the records keyed `<kind>:<their product>/<rest>`: a bare key's store-wide candidates. */
@@ -646,7 +794,12 @@ function resolveOnce(loaded: Loaded, raw: unknown, scope: string | null | undefi
       if (rec) return c.status === 'alias' ? { status: 'alias', rec, via: rec.key } : found(rec);
       return { status: 'missing', key };
     }
-    if (c.status === 'ambiguous') return { status: 'ambiguous', key, candidates: c.candidates.map((k) => `decision:${k.slice('change:'.length)}/${d.slug}`) };
+    if (c.status === 'ambiguous')
+      return {
+        status: 'ambiguous',
+        key,
+        candidates: c.candidates.map((k) => `decision:${k.slice('change:'.length)}/${d.slug}`),
+      };
     return { status: 'missing', key };
   }
   if (key.kind === 'aspect') {
@@ -666,7 +819,10 @@ function resolveOnce(loaded: Loaded, raw: unknown, scope: string | null | undefi
     const bare = (tail: string[]): Resolution => {
       const inScope = scope ? at(aspectKey(scope, tail[0], tail[1])) : null;
       if (inScope) return inScope;
-      const hits = loaded.records.filter((r) => r.key === aspectKey(r.productSlug ?? '', tail[0], tail[1]) && (r.type === 'aspect' || r.type === 'place'));
+      const hits = loaded.records.filter(
+        (r) =>
+          r.key === aspectKey(r.productSlug ?? '', tail[0], tail[1]) && (r.type === 'aspect' || r.type === 'place'),
+      );
       if (hits.length === 1) return found(hits[0]);
       if (hits.length > 1) return { status: 'ambiguous', key, candidates: hits.map((r) => r.key) };
       return { status: 'missing', key };
@@ -740,7 +896,13 @@ export function eventKeysOf(rec: Rec): string[] {
   }
   if (rec.type === 'feature' || rec.type === 'change' || rec.type === 'decision') {
     // the flat key the record had before keys were paths under the product
-    const flat = rec.type === 'decision' ? decisionKey(null, null, rec.decisionSlug!).replace('decision:/', rec.changeSlug ? `decision:${rec.changeSlug}/` : 'decision:/') : `${kind}:${rec.key.slice(rec.key.lastIndexOf('/') + 1)}`;
+    const flat =
+      rec.type === 'decision'
+        ? decisionKey(null, null, rec.decisionSlug!).replace(
+            'decision:/',
+            rec.changeSlug ? `decision:${rec.changeSlug}/` : 'decision:/',
+          )
+        : `${kind}:${rec.key.slice(rec.key.lastIndexOf('/') + 1)}`;
     if (!out.includes(flat)) out.push(flat);
   }
   return out;

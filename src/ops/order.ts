@@ -45,7 +45,10 @@ export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): Or
     const rec = res.rec;
     const i = seq.indexOf(rec.key);
     if (i < 0) throw new CliError(`${rec.key} is not on ${product.key}'s sequence; place it first`);
-    if (!isAhead(loaded, rec.key)) throw new CliError(`${rec.key} is ${String(rec.data.status)}, no longer ahead in the order; place it against an entry that is`);
+    if (!isAhead(loaded, rec.key))
+      throw new CliError(
+        `${rec.key} is ${String(rec.data.status)}, no longer ahead in the order; place it against an entry that is`,
+      );
     return i;
   };
   if (opts.before) seq.splice(anchor(opts.before), 0, change.key);
@@ -66,6 +69,8 @@ export function order(store: Store, changeRaw: string, opts: OrderOpts = {}): Or
     throw e;
   }
   const env = envelope(opts);
-  const commit = finishWrite(store, `pjman: order ${change.key} in ${product.key}`, env.session, [{ op: 'set', key: product.key, type: 'product', path: product.path, fields: ['sequence'], writer: env.writer }]);
+  const commit = finishWrite(store, `pjman: order ${change.key} in ${product.key}`, env.session, [
+    { op: 'set', key: product.key, type: 'product', path: product.path, fields: ['sequence'], writer: env.writer },
+  ]);
   return { product: product.key, change: change.key, sequence: seq.filter((k) => isAhead(loaded, k)), commit };
 }

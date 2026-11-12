@@ -23,7 +23,14 @@ function same(s: Store): Loaded {
   const viaIndex = loadStore(s);
   const fromDisk = loadStore(s, diskSource(s.root));
   const shape = (l: Loaded) => ({
-    records: l.records.map((r) => ({ key: r.key, path: r.path, type: r.type, valid: r.valid, data: r.data, body: r.body })),
+    records: l.records.map((r) => ({
+      key: r.key,
+      path: r.path,
+      type: r.type,
+      valid: r.valid,
+      data: r.data,
+      body: r.body,
+    })),
     problems: l.problems,
     aliases: [...l.aliases],
   });
@@ -131,13 +138,32 @@ test('a refused create leaves no entry behind for the next process (change:refus
   const cli = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'cli', 'main.js');
   const run = (...args: string[]) => {
     try {
-      return { code: 0, out: execFileSync(process.execPath, [cli, ...args], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+      return {
+        code: 0,
+        out: execFileSync(process.execPath, [cli, ...args], {
+          cwd: project,
+          env: { ...process.env, PJMAN_SESSION: '' },
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        }),
+      };
     } catch (e) {
       const err = e as { status?: number; stdout?: string; stderr?: string };
       return { code: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
     }
   };
-  const fields = ['--name', 'Ghost', '--gist', 'A change refused once', '--origin', 'a test', '--intent', 'Nothing.', '--done-when', 'Never.'];
+  const fields = [
+    '--name',
+    'Ghost',
+    '--gist',
+    'A change refused once',
+    '--origin',
+    'a test',
+    '--intent',
+    'Nothing.',
+    '--done-when',
+    'Never.',
+  ];
   const refused = run('new', 'change', 'ghost', ...fields, '--links', 'change:web/card-form');
   assert.equal(refused.code, 1, refused.out);
   assert.match(refused.out, /would not validate/);
@@ -163,7 +189,11 @@ test('an undo settled through the index is not read back by the next process (rm
   loadStore(store); // the write as validation reads it: into the index
   fs.rmSync(path.dirname(abs), { recursive: true });
   settleIndex(store, [rel]);
-  const out = execFileSync(process.execPath, [cli, 'ls', 'change'], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8' });
+  const out = execFileSync(process.execPath, [cli, 'ls', 'change'], {
+    cwd: project,
+    env: { ...process.env, PJMAN_SESSION: '' },
+    encoding: 'utf8',
+  });
   assert.doesNotMatch(out, /undone/);
   same(store);
 });
@@ -178,9 +208,18 @@ test('pjman index reads every file again, clearing an entry whose file is gone',
   notePending(store, [rel]);
   loadStore(store);
   fs.rmSync(path.dirname(abs), { recursive: true }); // gone with no event: the index drifts
-  const ls = () => execFileSync(process.execPath, [cli, 'ls', 'change'], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8' });
+  const ls = () =>
+    execFileSync(process.execPath, [cli, 'ls', 'change'], {
+      cwd: project,
+      env: { ...process.env, PJMAN_SESSION: '' },
+      encoding: 'utf8',
+    });
   assert.match(ls(), /drifted/);
-  execFileSync(process.execPath, [cli, 'index'], { cwd: project, env: { ...process.env, PJMAN_SESSION: '' }, encoding: 'utf8' });
+  execFileSync(process.execPath, [cli, 'index'], {
+    cwd: project,
+    env: { ...process.env, PJMAN_SESSION: '' },
+    encoding: 'utf8',
+  });
   assert.doesNotMatch(ls(), /drifted/);
   settleIndex(store, [rel]);
   same(store);

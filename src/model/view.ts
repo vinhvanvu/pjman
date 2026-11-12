@@ -2,14 +2,49 @@ import fs from 'node:fs';
 import type { Store } from '../store/config.js';
 import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SEVERITIES } from '../store/config.js';
 import { branchNameFor, worktreeNameFor } from './branch.js';
-import { loadStore, memo, ofType, push, resolve, unresolvedError, type Loaded, type Rec, type RecordType } from '../store/records.js';
+import {
+  loadStore,
+  memo,
+  ofType,
+  push,
+  resolve,
+  unresolvedError,
+  type Loaded,
+  type Rec,
+  type RecordType,
+} from '../store/records.js';
 import { supersedesOf } from './supersede.js';
 import { derivedStatus, effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from './tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from './inventory.js';
-import { aspectAt, aspectCuesOf, aspectsOfChange, featureOfPlace, formatAspectAt, formatAspectCues, formatChangeAspects, reachOfBase, type AspectCue, type ChangeAspects } from './aspects.js';
+import {
+  aspectAt,
+  aspectCuesOf,
+  aspectsOfChange,
+  featureOfPlace,
+  formatAspectAt,
+  formatAspectCues,
+  formatChangeAspects,
+  reachOfBase,
+  type AspectCue,
+  type ChangeAspects,
+} from './aspects.js';
 import { urlOf } from './refs.js';
 import { CliError, usageError, notFound } from '../store/util.js';
-import { CHANGE_SECTIONS, decisionState, formatDecisionState, formatStep, labelOf, needsOf, nextStep, planProgress, rungsOf, stepsOf, threadOf, type DecisionState, type Step } from './foundation.js';
+import {
+  CHANGE_SECTIONS,
+  decisionState,
+  formatDecisionState,
+  formatStep,
+  labelOf,
+  needsOf,
+  nextStep,
+  planProgress,
+  rungsOf,
+  stepsOf,
+  threadOf,
+  type DecisionState,
+  type Step,
+} from './foundation.js';
 
 export interface Row {
   type: RecordType;
@@ -38,13 +73,26 @@ export const lineOfRow = (r: Pick<Row, 'gist' | 'title'>): string | undefined =>
 export function row(r: Rec): Row {
   const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
   return {
-    type: r.type, key: r.key, path: r.path, valid: r.valid,
-    ...(r.type === 'change' || r.type === 'decision' || r.type === 'session-kind' ? { gist: s(r.data.gist) }
-      // a session's line is its name and kind, when it was given them (decision unbound-sessions/naming)
-      : r.type === 'session' ? { title: s(r.data.name) ? `${s(r.data.name)}${s(r.data.kind) ? ` (${s(r.data.kind)!.replace(/^session-kind:/, '')})` : ''}` : undefined }
-      : { title: s(r.data.title) }),
-    name: s(r.data.name), status: s(r.data.status), created: s(r.data.created),
-    writer: s(r.data.writer), session: s(r.data.session), data: r.data,
+    type: r.type,
+    key: r.key,
+    path: r.path,
+    valid: r.valid,
+    ...(r.type === 'change' || r.type === 'decision' || r.type === 'session-kind'
+      ? { gist: s(r.data.gist) }
+      : // a session's line is its name and kind, when it was given them (decision unbound-sessions/naming)
+        r.type === 'session'
+        ? {
+            title: s(r.data.name)
+              ? `${s(r.data.name)}${s(r.data.kind) ? ` (${s(r.data.kind)!.replace(/^session-kind:/, '')})` : ''}`
+              : undefined,
+          }
+        : { title: s(r.data.title) }),
+    name: s(r.data.name),
+    status: s(r.data.status),
+    created: s(r.data.created),
+    writer: s(r.data.writer),
+    session: s(r.data.session),
+    data: r.data,
   };
 }
 
@@ -79,31 +127,84 @@ function observedBranchesOnce(loaded: Loaded): Map<string, { to: string; at: str
   return latest;
 }
 
-export function branchOf(rec: Rec, observed: Map<string, { to: string; at: string }>, prefix: string | undefined = readUserConfig().branch_prefix): ChangeBranch {
+export function branchOf(
+  rec: Rec,
+  observed: Map<string, { to: string; at: string }>,
+  prefix: string | undefined = readUserConfig().branch_prefix,
+): ChangeBranch {
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  const seenOn = observed.get(rec.key)?.to ?? [...list(rec.data.binds), ...list(rec.data.links)].find((k) => k.startsWith('branch:'));
+  const seenOn =
+    observed.get(rec.key)?.to ??
+    [...list(rec.data.binds), ...list(rec.data.links)].find((k) => k.startsWith('branch:'));
   return seenOn
     ? { name: seenOn.slice('branch:'.length), worktree: worktreeNameFor(rec.key), observed: true }
     : { name: branchNameFor(rec.key, prefix), worktree: worktreeNameFor(rec.key), observed: false };
 }
 
 const TYPE_ALIASES: Record<string, RecordType> = {
-  product: 'product', products: 'product', feature: 'feature', features: 'feature', aspect: 'aspect', aspects: 'aspect', place: 'place', places: 'place',
-  project: 'project', projects: 'project', change: 'change', changes: 'change', decision: 'decision', decisions: 'decision',
-  release: 'release', releases: 'release', 'session-kind': 'session-kind', 'session-kinds': 'session-kind',
-  source: 'source', sources: 'source', session: 'session', sessions: 'session', actor: 'actor', actors: 'actor',
+  product: 'product',
+  products: 'product',
+  feature: 'feature',
+  features: 'feature',
+  aspect: 'aspect',
+  aspects: 'aspect',
+  place: 'place',
+  places: 'place',
+  project: 'project',
+  projects: 'project',
+  change: 'change',
+  changes: 'change',
+  decision: 'decision',
+  decisions: 'decision',
+  release: 'release',
+  releases: 'release',
+  'session-kind': 'session-kind',
+  'session-kinds': 'session-kind',
+  source: 'source',
+  sources: 'source',
+  session: 'session',
+  sessions: 'session',
+  actor: 'actor',
+  actors: 'actor',
 };
 
 /** Bugs in queue order: the worst severity first, an unset severity last, then the oldest. */
-export function bugOrder(a: { severity?: string; created?: string; key: string }, b: { severity?: string; created?: string; key: string }): number {
-  const rank = (s?: string) => { const i = (SEVERITIES as readonly string[]).indexOf(s ?? ''); return i < 0 ? SEVERITIES.length : i; };
-  return rank(a.severity) - rank(b.severity) || (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key);
+export function bugOrder(
+  a: { severity?: string; created?: string; key: string },
+  b: { severity?: string; created?: string; key: string },
+): number {
+  const rank = (s?: string) => {
+    const i = (SEVERITIES as readonly string[]).indexOf(s ?? '');
+    return i < 0 ? SEVERITIES.length : i;
+  };
+  return (
+    rank(a.severity) - rank(b.severity) ||
+    (a.created ?? '').localeCompare(b.created ?? '') ||
+    a.key.localeCompare(b.key)
+  );
 }
 
-const LIST_TYPES: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'session-kind', 'actor'];
+const LIST_TYPES: RecordType[] = [
+  'product',
+  'feature',
+  'aspect',
+  'place',
+  'project',
+  'change',
+  'decision',
+  'release',
+  'source',
+  'session',
+  'session-kind',
+  'actor',
+];
 
 /** The statuses a listing can filter by, per type that has one. */
-const STATUSES: Partial<Record<RecordType, readonly string[]>> = { change: CANONICAL_STATUSES, decision: DECISION_STATUSES, feature: FEATURE_STATUSES };
+const STATUSES: Partial<Record<RecordType, readonly string[]>> = {
+  change: CANONICAL_STATUSES,
+  decision: DECISION_STATUSES,
+  feature: FEATURE_STATUSES,
+};
 
 export interface LsOpts {
   type?: string;
@@ -120,7 +221,14 @@ export interface LsOpts {
 
 export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)): Row[] {
   // a feature's status is the one the tree shows: authored, else derived from the changes on it
-  const statusOf = (r: Rec): string | undefined => (r.type === 'feature' ? (typeof r.data.status === 'string' ? r.data.status : derivedStatus(loaded, r.key).status) : typeof r.data.status === 'string' ? r.data.status : undefined);
+  const statusOf = (r: Rec): string | undefined =>
+    r.type === 'feature'
+      ? typeof r.data.status === 'string'
+        ? r.data.status
+        : derivedStatus(loaded, r.key).status
+      : typeof r.data.status === 'string'
+        ? r.data.status
+        : undefined;
   let recs = loaded.records;
   let t: RecordType | undefined;
   if (opts.type) {
@@ -132,18 +240,27 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
     // a status no listed type has is a typo, refused rather than answered with nothing (decision interface-audit/error-contract)
     const known = t ? STATUSES[t] : [...new Set(Object.values(STATUSES).flat())];
     if (t && !known) throw usageError(`a ${t} has no status to filter by`);
-    if (known && !known.includes(opts.status)) throw usageError(`--status ${opts.status} is not a status${t ? ` of a ${t}` : ''} (${known.join(', ')})`);
+    if (known && !known.includes(opts.status))
+      throw usageError(`--status ${opts.status} is not a status${t ? ` of a ${t}` : ''} (${known.join(', ')})`);
     recs = recs.filter((r) => statusOf(r) === opts.status);
   }
   if (opts.kind && t === 'session') {
     // a session's kind is a record (decision unbound-sessions/kinds): the filter takes its slug or key; one the store lacks is refused
     const k = resolve(loaded, opts.kind.includes(':') ? opts.kind : `session-kind:${opts.kind}`);
     if ((k.status !== 'ok' && k.status !== 'alias') || k.rec.type !== 'session-kind') {
-      throw usageError(`--kind ${opts.kind} is not a session kind (${ofType(loaded, 'session-kind').map((r) => r.key.slice('session-kind:'.length)).sort().join(', ')})`);
+      throw usageError(
+        `--kind ${opts.kind} is not a session kind (${ofType(loaded, 'session-kind')
+          .map((r) => r.key.slice('session-kind:'.length))
+          .sort()
+          .join(', ')})`,
+      );
     }
     recs = recs.filter((r) => live(loaded, r.data.kind)?.key === k.rec.key);
   } else if (opts.kind) {
-    if (!(CHANGE_KINDS as readonly string[]).includes(opts.kind)) throw usageError(`--kind ${opts.kind} is not a kind of change (${CHANGE_KINDS.join(', ')}); a session's kind is pjman ls session --kind <kind>`);
+    if (!(CHANGE_KINDS as readonly string[]).includes(opts.kind))
+      throw usageError(
+        `--kind ${opts.kind} is not a kind of change (${CHANGE_KINDS.join(', ')}); a session's kind is pjman ls session --kind <kind>`,
+      );
     recs = recs.filter((r) => r.type === 'change' && (r.data.kind ?? 'work') === opts.kind);
   }
   const node = (flag: string, raw: string): Rec => {
@@ -161,7 +278,12 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
   }
   if (opts.parent) {
     const p = node('--parent', opts.parent);
-    recs = recs.filter((r) => (r.type === 'decision' ? r.changeKey === p.key : live(loaded, r.data.parent)?.key === p.key || (r.type === 'feature' && live(loaded, r.data.product)?.key === p.key)));
+    recs = recs.filter((r) =>
+      r.type === 'decision'
+        ? r.changeKey === p.key
+        : live(loaded, r.data.parent)?.key === p.key ||
+          (r.type === 'feature' && live(loaded, r.data.product)?.key === p.key),
+    );
   }
   if (opts.feature) {
     const f = node('--feature', opts.feature.includes(':') ? opts.feature : `feature:${opts.feature}`);
@@ -173,20 +295,56 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
       }
       return false;
     };
-    recs = recs.filter((r) => (r.type === 'change' ? effectsOf(r).some((e) => beneath(live(loaded, e.key))) : r.type === 'feature' ? r.key !== f.key && beneath(r) : false));
+    recs = recs.filter((r) =>
+      r.type === 'change'
+        ? effectsOf(r).some((e) => beneath(live(loaded, e.key)))
+        : r.type === 'feature'
+          ? r.key !== f.key && beneath(r)
+          : false,
+    );
   }
   // a change's row carries its branch and worktree name, computed once for the listing
   const observed = recs.some((r) => r.type === 'change') ? observedBranches(loaded) : null;
   const prefix = readUserConfig().branch_prefix;
-  const withBranch = (r: Rec): Row => (r.type === 'change' && r.valid && observed ? { ...row(r), branch: branchOf(r, observed, prefix) } : r.type === 'feature' ? { ...row(r), status: statusOf(r) } : row(r));
+  const withBranch = (r: Rec): Row =>
+    r.type === 'change' && r.valid && observed
+      ? { ...row(r), branch: branchOf(r, observed, prefix) }
+      : r.type === 'feature'
+        ? { ...row(r), status: statusOf(r) }
+        : row(r);
   if (opts.kind === 'bug') {
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
-    return [...recs].sort((a, b) => bugOrder({ severity: s(a.data.severity), created: s(a.data.created), key: a.key }, { severity: s(b.data.severity), created: s(b.data.created), key: b.key })).map(withBranch);
+    return [...recs]
+      .sort((a, b) =>
+        bugOrder(
+          { severity: s(a.data.severity), created: s(a.data.created), key: a.key },
+          { severity: s(b.data.severity), created: s(b.data.created), key: b.key },
+        ),
+      )
+      .map(withBranch);
   }
-  const typeOrder: RecordType[] = ['product', 'feature', 'aspect', 'place', 'project', 'change', 'decision', 'release', 'source', 'session', 'session-kind', 'actor'];
+  const typeOrder: RecordType[] = [
+    'product',
+    'feature',
+    'aspect',
+    'place',
+    'project',
+    'change',
+    'decision',
+    'release',
+    'source',
+    'session',
+    'session-kind',
+    'actor',
+  ];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
-    .sort((a, b) => typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) || dateOf(a).localeCompare(dateOf(b)) || a.key.localeCompare(b.key))
+    .sort(
+      (a, b) =>
+        typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) ||
+        dateOf(a).localeCompare(dateOf(b)) ||
+        a.key.localeCompare(b.key),
+    )
     .map(withBranch);
 }
 
@@ -195,7 +353,10 @@ export function formatLs(rows: Row[]): string {
   const w = Math.min(48, Math.max(...rows.map((r) => r.key.length)));
   const dateOf = (r: Row) => r.created ?? (typeof r.data.started === 'string' ? r.data.started.slice(0, 10) : '');
   return rows
-    .map((r) => `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.gist ?? r.title ?? (r.valid ? '' : '(invalid)')}`)
+    .map(
+      (r) =>
+        `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.gist ?? r.title ?? (r.valid ? '' : '(invalid)')}`,
+    )
     .join('\n');
 }
 
@@ -205,7 +366,8 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
   if (res.status === 'ok' || res.status === 'alias' || res.status === 'invalid') {
     let text = fs.readFileSync(res.rec.abs, 'utf8');
     // an aspect is shown with every place it reaches; a place with the aspect read there, base then forks
-    if (res.status !== 'invalid' && res.rec.type === 'aspect') text += '\n' + reachOfBase(loaded, res.rec).join('\n') + '\n';
+    if (res.status !== 'invalid' && res.rec.type === 'aspect')
+      text += '\n' + reachOfBase(loaded, res.rec).join('\n') + '\n';
     if (res.status !== 'invalid' && res.rec.type === 'place') {
       const aspect = loaded.byKey.get(res.rec.aspectKey ?? '')?.[0];
       const feature = featureOfPlace(loaded, res.rec);
@@ -286,13 +448,22 @@ export interface DecisionRow extends Row {
 
 export function decisionRow(r: Rec, supersededBy?: string): DecisionRow {
   const rungs = rungsOf(r);
-  return { ...row(r), state: decisionState(threadOf(r.data)), needs: needsOf(r), stale: rungs.stale, migrated: typeof r.data.migrated === 'string' ? r.data.migrated : undefined, supersededBy };
+  return {
+    ...row(r),
+    state: decisionState(threadOf(r.data)),
+    needs: needsOf(r),
+    stale: rungs.stale,
+    migrated: typeof r.data.migrated === 'string' ? r.data.migrated : undefined,
+    supersededBy,
+  };
 }
 
 /** Milestone progress: done children over children that were not dropped; undefined without children. */
 export function progressOf(children: { status?: string }[]): { done: number; total: number } | undefined {
   const counted = children.filter((c) => c.status !== 'dropped');
-  return counted.length ? { done: counted.filter((c) => c.status === 'done').length, total: counted.length } : undefined;
+  return counted.length
+    ? { done: counted.filter((c) => c.status === 'done').length, total: counted.length }
+    : undefined;
 }
 
 function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
@@ -317,7 +488,14 @@ function contextIndex(loaded: Loaded): ContextIndex {
       return r && (r.status === 'ok' || r.status === 'alias') ? r.rec.key : undefined;
     };
     const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-    const cx: ContextIndex = { supersededBy: new Map(), decisions: new Map(), sessions: new Map(), observed: new Map(), children: new Map(), neededBy: new Map() };
+    const cx: ContextIndex = {
+      supersededBy: new Map(),
+      decisions: new Map(),
+      sessions: new Map(),
+      observed: new Map(),
+      children: new Map(),
+      neededBy: new Map(),
+    };
     for (const r of ofType(loaded, 'decision')) {
       for (const sup of supersedesOf(r.data)) {
         const t = liveKey(sup, r.productSlug ? `product:${r.productSlug}` : undefined);
@@ -325,20 +503,29 @@ function contextIndex(loaded: Loaded): ContextIndex {
       }
       if (r.changeKey) push(cx.decisions, r.changeKey, r);
     }
-    for (const ds of cx.decisions.values()) ds.sort((a, b) => (a.fileDate! + a.path).localeCompare(b.fileDate! + b.path));
+    for (const ds of cx.decisions.values())
+      ds.sort((a, b) => (a.fileDate! + a.path).localeCompare(b.fileDate! + b.path));
     for (const s of ofType(loaded, 'session')) {
       if (!s.valid) continue;
-      if (Array.isArray(s.data.changes)) for (const k of new Set((s.data.changes as unknown[]).map((k) => liveKey(k)))) if (k) push(cx.sessions, k, s);
+      if (Array.isArray(s.data.changes))
+        for (const k of new Set((s.data.changes as unknown[]).map((k) => liveKey(k)))) if (k) push(cx.sessions, k, s);
       if (!Array.isArray(s.data.observed)) continue;
       for (const o of s.data.observed as unknown[]) {
         if (!o || typeof o !== 'object') continue;
         const e = o as Record<string, unknown>;
         if (typeof e.edge !== 'string' || typeof e.from !== 'string' || typeof e.to !== 'string') continue;
         const from = liveKey(e.from);
-        if (from) push(cx.observed, from, { edge: e.edge, to: e.to, session: s.key, at: typeof e.at === 'string' ? e.at : undefined });
+        if (from)
+          push(cx.observed, from, {
+            edge: e.edge,
+            to: e.to,
+            session: s.key,
+            at: typeof e.at === 'string' ? e.at : undefined,
+          });
       }
     }
-    for (const ss of cx.sessions.values()) ss.sort((a, b) => String(a.data.started).localeCompare(String(b.data.started)));
+    for (const ss of cx.sessions.values())
+      ss.sort((a, b) => String(a.data.started).localeCompare(String(b.data.started)));
     for (const c of ofType(loaded, 'change')) {
       if (!c.valid) continue;
       const p = typeof c.data.parent === 'string' ? liveKey(c.data.parent) : undefined;
@@ -377,7 +564,10 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const sessions = sessionsOf(loaded, rec.key).map((r) => {
     const log = r.sections.get('Log') ?? '';
     const lines = log.split('\n').filter((l) => l.trim());
-    return { ...row(r), last: lines.length ? lines[lines.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined };
+    return {
+      ...row(r),
+      last: lines.length ? lines[lines.length - 1].replace(/^-\s*/, '').replace(/^\S+Z\s+—\s+/, '') : undefined,
+    };
   });
   const observed: ChangeContext['observed'] = [];
   const seen = new Set<string>();
@@ -387,36 +577,79 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     observed.push(o);
   }
   const parentRes = typeof rec.data.parent === 'string' ? resolve(loaded, rec.data.parent) : null;
-  const parent = parentRes && (parentRes.status === 'ok' || parentRes.status === 'alias') ? row(parentRes.rec) : undefined;
+  const parent =
+    parentRes && (parentRes.status === 'ok' || parentRes.status === 'alias') ? row(parentRes.rec) : undefined;
   const children = (cx.children.get(rec.key) ?? []).map(row);
   const liveKey = (k: unknown): string | undefined => {
     const r = typeof k === 'string' ? resolve(loaded, k) : null;
     return r && (r.status === 'ok' || r.status === 'alias') ? r.rec.key : undefined;
   };
-  const dependsOn = list(rec.data.depends_on).map((k) => liveKey(k)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => !!r).map(row);
+  const dependsOn = list(rec.data.depends_on)
+    .map((k) => liveKey(k))
+    .map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined))
+    .filter((r): r is Rec => !!r)
+    .map(row);
   const neededBy = (cx.neededBy.get(rec.key) ?? []).map(row);
   // the branch: one seen by a session (the latest) or linked from the change, else the recommended name
   const branch = branchOf(rec, observedBranches(loaded));
-  const features = effectsOf(rec).map((e) => liveKey(e.key)).map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined)).filter((r): r is Rec => r?.type === 'feature');
+  const features = effectsOf(rec)
+    .map((e) => liveKey(e.key))
+    .map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined))
+    .filter((r): r is Rec => r?.type === 'feature');
   const aspects = aspectsOfChange(loaded, rec, features);
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
   const releases = ofType(loaded, 'release')
     .filter((r) => r.valid && list(r.data.ships).some((k) => liveKey(k) === rec.key))
-    .map((r) => ({ key: r.key, version: str(r.data.version) ?? r.releaseVersion ?? r.key, at: str(r.data.at), url: str(r.data.url) }))
+    .map((r) => ({
+      key: r.key,
+      version: str(r.data.version) ?? r.releaseVersion ?? r.key,
+      at: str(r.data.at),
+      url: str(r.data.url),
+    }))
     .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
   return {
-    change: row(rec), sections, plan, planProgress: planProgress(plan), next: nextStep(plan), needs: needsOf(rec), stale: rungs.stale,
+    change: row(rec),
+    sections,
+    plan,
+    planProgress: planProgress(plan),
+    next: nextStep(plan),
+    needs: needsOf(rec),
+    stale: rungs.stale,
     migrated: typeof rec.data.migrated === 'string' ? rec.data.migrated : undefined,
-    decisions, sources, branch, sessions, parent, children, progress: progressOf(children), dependsOn, neededBy, observed, aspects, aspectCues: aspectCuesOf(loaded, rec), releases,
+    decisions,
+    sources,
+    branch,
+    sessions,
+    parent,
+    children,
+    progress: progressOf(children),
+    dependsOn,
+    neededBy,
+    observed,
+    aspects,
+    aspectCues: aspectCuesOf(loaded, rec),
+    releases,
   };
 }
 
 /** The lines that say what a record still needs, that its rungs are stale, or that it was migrated and not yet reviewed. */
-export function readinessLines(c: { needs: string[]; stale: boolean; migrated?: string }, what: 'change' | 'decision'): string[] {
+export function readinessLines(
+  c: { needs: string[]; stale: boolean; migrated?: string },
+  what: 'change' | 'decision',
+): string[] {
   const out: string[] = [];
-  if (c.needs.length) out.push(`needs: ${c.needs.join(', ')} (write them before working it${what === 'change' ? ': pjman set <change> name=… gist=… intent=… done-when=…' : ': pjman decision <key> --name … --gist … --question …'})`);
-  if (c.stale) out.push(`rungs: stale (the name and gist were written from an earlier ${what === 'change' ? 'Origin, Intent and Done when' : 'thread'}; rewrite them)`);
-  if (c.migrated) out.push(`migrated: ${c.migrated} (mapped from the old shape, not reviewed since; the first write through the tool clears this)`);
+  if (c.needs.length)
+    out.push(
+      `needs: ${c.needs.join(', ')} (write them before working it${what === 'change' ? ': pjman set <change> name=… gist=… intent=… done-when=…' : ': pjman decision <key> --name … --gist … --question …'})`,
+    );
+  if (c.stale)
+    out.push(
+      `rungs: stale (the name and gist were written from an earlier ${what === 'change' ? 'Origin, Intent and Done when' : 'thread'}; rewrite them)`,
+    );
+  if (c.migrated)
+    out.push(
+      `migrated: ${c.migrated} (mapped from the old shape, not reviewed since; the first write through the tool clears this)`,
+    );
   return out;
 }
 
@@ -427,10 +660,13 @@ export function nextLine(next: { n: number; step: Step } | undefined): string | 
 
 /** "decided by X on Y", "superseded by Z (decided by X on Y)", "proposed", "reverted (decided by X on Y)". */
 export function decisionLine(dec: Row & { supersededBy?: string }): string {
-  const by = dec.data.decided_by ? `decided by ${String(dec.data.decided_by)}${dec.data.decided_on ? ` on ${String(dec.data.decided_on)}` : ''}` : '';
+  const by = dec.data.decided_by
+    ? `decided by ${String(dec.data.decided_by)}${dec.data.decided_on ? ` on ${String(dec.data.decided_on)}` : ''}`
+    : '';
   const parts: string[] = [];
   if (dec.status === 'decided') parts.push(by || 'decided');
-  else if (dec.status === 'superseded') parts.push(`superseded${dec.supersededBy ? ` by ${dec.supersededBy}` : ''}${by ? ` (${by})` : ''}`);
+  else if (dec.status === 'superseded')
+    parts.push(`superseded${dec.supersededBy ? ` by ${dec.supersededBy}` : ''}${by ? ` (${by})` : ''}`);
   else if (dec.status === 'reverted') parts.push(`reverted${by ? ` (${by})` : ''}`);
   else parts.push(dec.status ?? '?');
   const sup = supersedesOf(dec.data);
@@ -456,14 +692,22 @@ export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
   out.push(heading('#', c.change));
-  out.push(`status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`);
+  out.push(
+    `status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`,
+  );
   out.push(...readinessLines(c, 'change'));
   // the foundation in order of depth; the plan sits after Scope, where the work's shape ends and its steps begin
   for (const [k, v] of Object.entries(c.sections)) {
-    if (k === 'Open questions' && c.plan.length) out.push(`\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`);
+    if (k === 'Open questions' && c.plan.length)
+      out.push(
+        `\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`,
+      );
     out.push(`\n## ${k}\n\n${v}`);
   }
-  if (c.plan.length && !('Open questions' in c.sections)) out.push(`\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`);
+  if (c.plan.length && !('Open questions' in c.sections))
+    out.push(
+      `\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`,
+    );
   if (c.decisions.length) {
     out.push('\n## Decisions');
     for (const dec of c.decisions) {
@@ -504,14 +748,20 @@ export function formatChangeContext(c: ChangeContext): string {
   if (c.sessions.length) {
     out.push('\n## Sessions');
     for (const s of c.sessions.slice(-5)) {
-      out.push(`- ${String(s.data.started).slice(0, 10)} ${s.key} ${String(s.data.agent)} for ${String(s.data.on_behalf_of)}${s.last ? ` — ${s.last}` : ''}`);
+      out.push(
+        `- ${String(s.data.started).slice(0, 10)} ${s.key} ${String(s.data.agent)} for ${String(s.data.on_behalf_of)}${s.last ? ` — ${s.last}` : ''}`,
+      );
     }
   }
   return out.join('\n') + '\n';
 }
 
 /** The board: the open changes of one project (`opts.project`), or of the whole store. */
-export function storeContext(store: Store, opts: { project?: string | null } = {}, loaded: Loaded = loadStore(store)): StoreContext {
+export function storeContext(
+  store: Store,
+  opts: { project?: string | null } = {},
+  loaded: Loaded = loadStore(store),
+): StoreContext {
   const counts: Record<string, number> = {};
   for (const r of loaded.records) counts[r.type] = (counts[r.type] ?? 0) + 1;
   const projects = loaded.records.filter((r) => r.type === 'project').map(row);
@@ -529,12 +779,24 @@ export function storeContext(store: Store, opts: { project?: string | null } = {
     .filter((r) => r.type === 'decision' && r.data.status === 'proposed')
     .filter((r) => !project || !r.changeKey || loaded.byKey.get(r.changeKey)?.[0]?.data.project === project.key)
     .map(row);
-  const map = project ? mapState(loaded, project, store.project === project.key ? store.projectDir : undefined) : undefined;
-  return { store: { name: store.config.name, mode: store.mode, root: store.root }, project, projects, changes, proposed, counts, mapPrompt: map?.prompt, regroupPrompt: project ? regroupPrompt(loaded, project) : undefined };
+  const map = project
+    ? mapState(loaded, project, store.project === project.key ? store.projectDir : undefined)
+    : undefined;
+  return {
+    store: { name: store.config.name, mode: store.mode, root: store.root },
+    project,
+    projects,
+    changes,
+    proposed,
+    counts,
+    mapPrompt: map?.prompt,
+    regroupPrompt: project ? regroupPrompt(loaded, project) : undefined,
+  };
 }
 
 /** The top-level features of a product: its layers, the roadmap's lanes. */
-const topFeatures = (loaded: Loaded, product: string): Rec[] => loaded.records.filter((r) => r.type === 'feature' && r.valid && structuralParent(loaded, r)?.key === product);
+const topFeatures = (loaded: Loaded, product: string): Rec[] =>
+  loaded.records.filter((r) => r.type === 'feature' && r.valid && structuralParent(loaded, r)?.key === product);
 
 export interface MapState {
   /** The product with no map, or null when the project has no product. */
@@ -547,19 +809,33 @@ export interface MapState {
 
 /** The project has no product, or its product has no feature: how the map comes, by what the repository holds, unless
  *  the project said skip. Live from the repository when its directory is known; else from the `holds` init recorded. */
-export function mapState(loaded: Loaded, project: Pick<Row, 'key' | 'data'>, projectDir?: string): MapState | undefined {
+export function mapState(
+  loaded: Loaded,
+  project: Pick<Row, 'key' | 'data'>,
+  projectDir?: string,
+): MapState | undefined {
   if (project.data.map === 'skip') return undefined;
   const product = typeof project.data.product === 'string' ? project.data.product : undefined;
-  if (product && loaded.records.some((r) => r.type === 'feature' && `product:${r.productSlug}` === product)) return undefined;
-  const inv: Inventory | null = projectDir && fs.existsSync(projectDir) ? inventory(projectDir) : isHolds(project.data.holds) ? { holds: project.data.holds, docs: [], code: [] } : null;
+  if (product && loaded.records.some((r) => r.type === 'feature' && `product:${r.productSlug}` === product))
+    return undefined;
+  const inv: Inventory | null =
+    projectDir && fs.existsSync(projectDir)
+      ? inventory(projectDir)
+      : isHolds(project.data.holds)
+        ? { holds: project.data.holds, docs: [], code: [] }
+        : null;
   const what = product ? `${product} has no map yet` : `${project.key} has no product yet`;
   const holds = inv ? `; the repository holds ${describeInventory(inv)}` : '';
   const how = inv
     ? inv.holds === 'bare'
       ? 'Nothing to survey: the map grows from the work. When a change is filed, name the capability it needs under the feature it best correlates to, creating both when none exists (the intake skill); a bug that breaks a behaviour no node has creates the live node. Never a proposal of a tree that has nothing to read.'
       : `${mapGuidance(inv.holds)}. The first change filed goes through intake, which says the map is missing: file it with no feature and propose the map in the same breath, the whole tree in a proposed decision that names the change as the first it houses; apply only on the go, as one batch (pjman apply).`
-    : 'Survey the repository (what the person said, the documentation, the code\'s split, the store) and propose a product map, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure.';
-  return { product: product ?? null, inventory: inv, prompt: `${what}${holds}. ${how} \`pjman set ${project.key} map=skip\` stops this line.` };
+    : "Survey the repository (what the person said, the documentation, the code's split, the store) and propose a product map, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure.";
+  return {
+    product: product ?? null,
+    inventory: inv,
+    prompt: `${what}${holds}. ${how} \`pjman set ${project.key} map=skip\` stops this line.`,
+  };
 }
 
 /** The map skill's shape for a proposed tree is four to seven layers at the top; a map grown one change at a time
@@ -573,7 +849,6 @@ export function regroupPrompt(loaded: Loaded, project: Pick<Row, 'key' | 'data'>
   if (top.length <= 7) return undefined;
   return `${product} has ${top.length} top-level features, more than a proposed map would have (four to seven layers): if the person asks, the map skill regroups them into layers as one proposed decision; say what you see, never regroup unasked.`;
 }
-
 
 export function formatStoreContext(c: StoreContext): string {
   const head = c.project
@@ -605,11 +880,23 @@ export function formatStoreContext(c: StoreContext): string {
     out.push(`\n## ${s}`);
     for (const r of rows) out.push(item(r, 0));
   }
-  if (c.project && c.projects.length > 1) out.push(`\nother projects: ${c.projects.filter((p) => p.key !== c.project!.key).map((p) => p.key).join(', ')} (pjman context --all)`);
+  if (c.project && c.projects.length > 1)
+    out.push(
+      `\nother projects: ${c.projects
+        .filter((p) => p.key !== c.project!.key)
+        .map((p) => p.key)
+        .join(', ')} (pjman context --all)`,
+    );
   if (c.proposed.length) {
     out.push('\n## proposed decisions');
     for (const r of c.proposed) out.push(`- ${r.key} — ${nameAndLine(r)}`);
   }
-  out.push(`\n${Object.entries(c.counts).map(([k, v]) => `${v} ${k}${v === 1 ? '' : 's'}`).join(', ') || 'no records'}`);
+  out.push(
+    `\n${
+      Object.entries(c.counts)
+        .map(([k, v]) => `${v} ${k}${v === 1 ? '' : 's'}`)
+        .join(', ') || 'no records'
+    }`,
+  );
   return out.join('\n') + '\n';
 }

@@ -112,5 +112,8 @@ test('the backfill lists the changes whose status is behind their plan', () => {
   set(store, 'change:behind', ['status=open'], {});
   assert.equal(statusOf('behind'), 'open');
   const lifts = liftsOfStore(loadStore(store));
-  assert.deepEqual(lifts.map((l) => [l.key.split('/').pop(), l.from, l.to]), [['behind', 'open', 'planning']]);
+  assert.deepEqual(
+    lifts.map((l) => [l.key.split('/').pop(), l.from, l.to]),
+    [['behind', 'open', 'planning']],
+  );
 });

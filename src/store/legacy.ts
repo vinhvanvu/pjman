@@ -10,7 +10,10 @@ import type { Rec, RecordType } from './records.js';
 
 function listDir(abs: string): string[] {
   try {
-    return fs.readdirSync(abs).filter((n) => !n.startsWith('.')).sort();
+    return fs
+      .readdirSync(abs)
+      .filter((n) => !n.startsWith('.'))
+      .sort();
   } catch {
     return [];
   }
@@ -30,7 +33,17 @@ function readRec(store: Store, rel: string, type: RecordType, key: string): Rec 
   const abs = path.join(store.root, rel);
   const parsed = parseRecord(fs.readFileSync(abs, 'utf8'));
   const valid = parsed.hasFrontmatter && parsed.isMapping && parsed.errors.length === 0;
-  return { type, key, path: rel, abs, data: parsed.data, body: parsed.body, sections: sections(parsed.body), parsed, valid };
+  return {
+    type,
+    key,
+    path: rel,
+    abs,
+    data: parsed.data,
+    body: parsed.body,
+    sections: sections(parsed.body),
+    parsed,
+    valid,
+  };
 }
 
 /** Every record of a store in the old layout, keyed the old way (`change:<slug>`, `feature:<slug>`, `decision:<change>/<slug>`). */
@@ -98,7 +111,8 @@ export function loadLegacy(store: Store): Rec[] {
       if (!f.endsWith('.md')) continue;
       const r = readRec(store, path.join('sources', kind, f), 'source', `${kind}:?${f.slice(0, -3)}`);
       r.fileSlug = f.slice(0, -3);
-      if (typeof r.data.kind === 'string' && typeof r.data.key === 'string') r.key = canonicalSourceKey(r.data.kind, r.data.key);
+      if (typeof r.data.kind === 'string' && typeof r.data.key === 'string')
+        r.key = canonicalSourceKey(r.data.kind, r.data.key);
       records.push(r);
     }
   }

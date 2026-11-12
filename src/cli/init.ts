@@ -2,7 +2,21 @@ import { emit } from '../store/events.js';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { DEFAULT_SOURCE_KINDS, DEFAULT_TREE_LEVELS, globalStorePath, LAYERS, openStore, readUserConfig, userConfigPath, userDir, writeStoreConfig, writeUserConfig, type Store, type StoreConfig, type UserStore } from '../store/config.js';
+import {
+  DEFAULT_SOURCE_KINDS,
+  DEFAULT_TREE_LEVELS,
+  globalStorePath,
+  LAYERS,
+  openStore,
+  readUserConfig,
+  userConfigPath,
+  userDir,
+  writeStoreConfig,
+  writeUserConfig,
+  type Store,
+  type StoreConfig,
+  type UserStore,
+} from '../store/config.js';
 import { git, gitUserEmail, gitUserName, hasGit, toplevel } from '../store/git.js';
 import { slugify } from '../store/keys.js';
 import { loadStore } from '../store/records.js';
@@ -44,7 +58,8 @@ export interface InitOpts {
  *  at the install's stable path (stableRoot: under Homebrew, the opt path that follows upgrades); an installed plugin is
  *  refreshed from it, so a rerun after an upgrade loads the new hooks. Idempotent; never throws. */
 export function installClaudeAdapter(): string {
-  const run = (args: string[]) => execFileSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 });
+  const run = (args: string[]) =>
+    execFileSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60_000 });
   try {
     run(['--version']);
   } catch {
@@ -81,7 +96,8 @@ export function installClaudeAdapter(): string {
       }
       return `Claude Code: the pjman plugin now loads from ${root} (it read ${repointed}); it loads at the next session or /reload-plugins`;
     }
-    if (!/already/i.test(out)) return 'Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins';
+    if (!/already/i.test(out))
+      return 'Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins';
     try {
       run(['plugin', 'marketplace', 'update', 'pjman']);
       run(['plugin', 'update', 'pjman@pjman']);
@@ -95,10 +111,13 @@ export function installClaudeAdapter(): string {
 }
 
 /** Where Claude Code's pjman marketplace reads from, as it recorded it; null when none is registered. */
-export function knownMarketplace(claudeDir: string = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude')): string | null {
+export function knownMarketplace(
+  claudeDir: string = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
+): string | null {
   const file = path.join(claudeDir, 'plugins', 'known_marketplaces.json');
   try {
-    const p = (JSON.parse(fs.readFileSync(file, 'utf8')) as { pjman?: { source?: { path?: string } } }).pjman?.source?.path;
+    const p = (JSON.parse(fs.readFileSync(file, 'utf8')) as { pjman?: { source?: { path?: string } } }).pjman?.source
+      ?.path;
     return typeof p === 'string' ? p : null;
   } catch {
     return null;
@@ -108,7 +127,12 @@ export function knownMarketplace(claudeDir: string = process.env.CLAUDE_CONFIG_D
 /** The adapter's files from the plugin's data folder (where earlier versions kept them) to ~/.pjman/claude-code,
  *  never over newer ones: removing the marketplace deletes that folder, and the hook may not have run since the upgrade. */
 function carryAdapterData(): void {
-  const from = path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'), 'plugins', 'data', 'pjman-pjman');
+  const from = path.join(
+    process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
+    'plugins',
+    'data',
+    'pjman-pjman',
+  );
   const to = path.join(userDir(), 'claude-code');
   try {
     if (!fs.existsSync(from)) return;
@@ -172,7 +196,12 @@ function forgeLogin(checkers: Checker[]): { kind: string; login: string } | null
  *  the fallback knew (the forge login, the committer email) are what the person record links. A handle from the
  *  committer name or the machine claims no account of a handle kind, so it reads as provisional until the person claims
  *  one or renames it (decision handle-from-the-forge/say-it-while-unclaimed). */
-function ensureActor(checkers: Checker[]): { actor?: string; login?: { kind: string; login: string } | null; email?: string | null; name?: string | null } {
+function ensureActor(checkers: Checker[]): {
+  actor?: string;
+  login?: { kind: string; login: string } | null;
+  email?: string | null;
+  name?: string | null;
+} {
   const user = readUserConfig();
   const email = gitUserEmail();
   const name = gitUserName();
@@ -198,7 +227,9 @@ function claimLogin(store: Store, actor: string, checkers: Checker[]): string | 
   const loaded = loadStore(store);
   const rec = loaded.byKey.get(actor)?.[0];
   if (!rec) return null;
-  const links = Array.isArray(rec.data.links) ? (rec.data.links as unknown[]).filter((l): l is string => typeof l === 'string') : [];
+  const links = Array.isArray(rec.data.links)
+    ? (rec.data.links as unknown[]).filter((l): l is string => typeof l === 'string')
+    : [];
   if (links.some((l) => HANDLE_KINDS.includes(l.slice(0, l.indexOf(':'))))) return null;
   const login = forgeLogin(checkers);
   if (!login || slugify(login.login) !== actor.slice('person:'.length)) return null;
@@ -222,7 +253,14 @@ function originRepo(project: string): string | null {
 export function init(opts: InitOpts): string[] {
   const out: string[] = [];
   const project = toplevel(opts.cwd) ?? path.resolve(opts.cwd);
-  const cfg = (name: string): StoreConfig => ({ name, layers: [...LAYERS], vocabulary: {}, source_kinds: [...DEFAULT_SOURCE_KINDS], tree_levels: [...DEFAULT_TREE_LEVELS], version: FORMAT_VERSION });
+  const cfg = (name: string): StoreConfig => ({
+    name,
+    layers: [...LAYERS],
+    vocabulary: {},
+    source_kinds: [...DEFAULT_SOURCE_KINDS],
+    tree_levels: [...DEFAULT_TREE_LEVELS],
+    version: FORMAT_VERSION,
+  });
   // init is the person's own act, so the apps are asked afresh; the day's cache is refilled for the sessions that follow
   const checkers = checkersFor({ checkers: opts.checkers, fresh: true });
   const who = ensureActor(checkers);
@@ -239,13 +277,20 @@ export function init(opts: InitOpts): string[] {
       const own = openStore(root);
       newProduct(own, slug, { title, name: title.length <= 24 ? title : undefined, writer: actor });
       const inv = inventory(project);
-      newProject(own, slug, { title, product: `product:${slug}`, writer: actor, map: opts.map === false ? 'skip' : 'propose', holds: inv.holds });
+      newProject(own, slug, {
+        title,
+        product: `product:${slug}`,
+        writer: actor,
+        map: opts.map === false ? 'skip' : 'propose',
+        holds: inv.holds,
+      });
       out.push(`registered project:${slug} under product:${slug}`);
       seedSessionKinds(own, { writer: actor });
       out.push(`the repository holds ${describeInventory(inv)}`);
       if (opts.map !== false) out.push(mapGuidance(inv.holds));
     }
-    if (!toplevel(project)) out.push(`note: ${project} is not a git repository; the store will have no history until it is`);
+    if (!toplevel(project))
+      out.push(`note: ${project} is not a git repository; the store will have no history until it is`);
     out.push('the tool never commits here; commit the store with the project');
   } else {
     if (!hasGit()) throw new CliError('git is required on PATH for the global store');
@@ -255,7 +300,11 @@ export function init(opts: InitOpts): string[] {
       if (!toplevel(root) || fs.realpathSync(toplevel(root)!) !== fs.realpathSync(root)) git(root, ['init', '-q']);
       git(root, ['add', '-A', '--', '.']);
       git(root, ['commit', '-q', '-m', 'pjman: init store global']);
-      emit(openStore(root), [{ op: 'init', key: 'store', type: 'store', path: 'pjman.yaml' }], git(root, ['rev-parse', '--short', 'HEAD']));
+      emit(
+        openStore(root),
+        [{ op: 'init', key: 'store', type: 'store', path: 'pjman.yaml' }],
+        git(root, ['rev-parse', '--short', 'HEAD']),
+      );
       out.push(`created the global store at ${root} (its own git repository)`);
     } else {
       for (const f of FOLDERS) fs.mkdirSync(path.join(root, f), { recursive: true });
@@ -278,7 +327,10 @@ export function init(opts: InitOpts): string[] {
     let loaded = loadStore(store);
     // the person: a record keyed by their handle, holding the accounts the sources will be matched through
     if (actor && !loaded.byKey.has(actor)) {
-      const links = [who.login ? `${who.login.kind}:${who.login.login}` : null, who.email ? `email:${who.email.toLowerCase()}` : null].filter((k): k is string => !!k && store.config.source_kinds.includes(k.slice(0, k.indexOf(':'))));
+      const links = [
+        who.login ? `${who.login.kind}:${who.login.login}` : null,
+        who.email ? `email:${who.email.toLowerCase()}` : null,
+      ].filter((k): k is string => !!k && store.config.source_kinds.includes(k.slice(0, k.indexOf(':'))));
       newActor(store, actor, { name: who.name ?? undefined, links, writer: actor });
       out.push(`created ${actor}${links.length ? ` (${links.join(', ')})` : ''}`);
       loaded = loadStore(store);
@@ -293,26 +345,48 @@ export function init(opts: InitOpts): string[] {
     // what the repository holds, read now and recorded on the project: the brief's line and intake's offer read by it
     const inv = inventory(project);
     out.push(`the repository holds ${describeInventory(inv)}`);
-    const wantsMap = opts.map ?? (known && typeof known.data.map === 'string' ? undefined : askYesNo('Should the first session propose a product map from this repository?', true));
+    const wantsMap =
+      opts.map ??
+      (known && typeof known.data.map === 'string'
+        ? undefined
+        : askYesNo('Should the first session propose a product map from this repository?', true));
     if (!known) {
       const repo = originRepo(project);
       // the product the repository builds: an existing one named by --product, else one made now with the project's name
       let product = opts.product;
-      if (product && !loaded.byKey.has(product.startsWith('product:') ? product : `product:${product}`)) throw notFound(`--product ${product}`, { as: 'product' });
+      if (product && !loaded.byKey.has(product.startsWith('product:') ? product : `product:${product}`))
+        throw notFound(`--product ${product}`, { as: 'product' });
       if (!product) {
-        if (!loaded.byKey.has(`product:${slug}`)) newProduct(store, slug, { title, name: title.length <= 24 ? title : undefined, writer: actor });
+        if (!loaded.byKey.has(`product:${slug}`))
+          newProduct(store, slug, { title, name: title.length <= 24 ? title : undefined, writer: actor });
         product = `product:${slug}`;
         out.push(`created ${product}`);
       } else if (!product.startsWith('product:')) product = `product:${product}`;
-      newProject(store, slug, { title, product, links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined, writer: actor, map: wantsMap === false ? 'skip' : 'propose', holds: inv.holds });
+      newProject(store, slug, {
+        title,
+        product,
+        links: repo && store.config.source_kinds.includes('git-repo') ? [`git-repo:${repo}`] : undefined,
+        writer: actor,
+        map: wantsMap === false ? 'skip' : 'propose',
+        holds: inv.holds,
+      });
       out.push(`registered ${key} under ${product}${repo ? ` (git-repo:${repo})` : ''}`);
     } else {
       out.push(`${key} is already registered`);
-      const pairs = [wantsMap !== undefined && known.data.map !== (wantsMap ? 'propose' : 'skip') ? `map=${wantsMap ? 'propose' : 'skip'}` : null, known.data.holds !== inv.holds ? `holds=${inv.holds}` : null].filter((p): p is string => !!p);
+      const pairs = [
+        wantsMap !== undefined && known.data.map !== (wantsMap ? 'propose' : 'skip')
+          ? `map=${wantsMap ? 'propose' : 'skip'}`
+          : null,
+        known.data.holds !== inv.holds ? `holds=${inv.holds}` : null,
+      ].filter((p): p is string => !!p);
       if (pairs.length) set(store, key, pairs, {});
     }
-    const answer = wantsMap ?? (known?.data.map !== 'skip');
-    out.push(answer ? `${inv.holds === 'bare' ? 'no map is proposed yet' : 'the first change through intake proposes a product map'} (${key} map=propose; pjman set ${key} map=skip to stop): ${mapGuidance(inv.holds)}` : `no product map will be proposed (${key} map=skip)`);
+    const answer = wantsMap ?? known?.data.map !== 'skip';
+    out.push(
+      answer
+        ? `${inv.holds === 'bare' ? 'no map is proposed yet' : 'the first change through intake proposes a product map'} (${key} map=propose; pjman set ${key} map=skip to stop): ${mapGuidance(inv.holds)}`
+        : `no product map will be proposed (${key} map=skip)`,
+    );
     const binding = entry.projects.find((b) => path.resolve(b.path) === project);
     if (binding) binding.project = key;
     else entry.projects.push({ path: project, project: key });
@@ -321,7 +395,12 @@ export function init(opts: InitOpts): string[] {
     out.push('the tool commits every write it makes here');
   }
   // who you are, as the store and the apps see it: the same read as pjman whoami --verify
-  if (opts.inProject) out.push(actor ? `you are ${actor} (user config 'actor')` : `no actor known: set 'actor: person:<handle>' in ${path.join(userDir(), 'config.yaml')} or pass --writer`);
+  if (opts.inProject)
+    out.push(
+      actor
+        ? `you are ${actor} (user config 'actor')`
+        : `no actor known: set 'actor: person:<handle>' in ${path.join(userDir(), 'config.yaml')} or pass --writer`,
+    );
   else out.push(...formatIdentity(identity(openStore(globalStorePath()), { verify: true, checkers })));
   if (opts.adapter) out.push(installClaudeAdapter());
   if (opts.brief) {
@@ -331,7 +410,9 @@ export function init(opts: InitOpts): string[] {
   if (opts.start && !opts.inProject) {
     try {
       const s = start({ cwd: opts.cwd, port: opts.port, log: (l) => out.push(l) });
-      out.push(`dashboard: ${s.address.url}${s.started ? '' : ' (already running)'}${s.ui ? '' : ' (API only: no built app)'}`);
+      out.push(
+        `dashboard: ${s.address.url}${s.started ? '' : ' (already running)'}${s.ui ? '' : ' (API only: no built app)'}`,
+      );
     } catch (e) {
       out.push(`dashboard: ${(e as Error).message}`);
     }

@@ -39,7 +39,12 @@ function move(store: Store, fromRel: string, toRel: string): void {
 }
 
 /** Apply `rewrite` to every record's text (at its path after the move) and write back what changed. */
-function rewriteAll(store: Store, loaded: Loaded, pathAfter: (rel: string) => string, rewrite: (text: string, r: Rec) => string): string[] {
+function rewriteAll(
+  store: Store,
+  loaded: Loaded,
+  pathAfter: (rel: string) => string,
+  rewrite: (text: string, r: Rec) => string,
+): string[] {
   const rewritten: string[] = [];
   for (const r of loaded.records) {
     const rel = pathAfter(r.path);
@@ -54,19 +59,44 @@ function rewriteAll(store: Store, loaded: Loaded, pathAfter: (rel: string) => st
   return rewritten;
 }
 
-function finish(store: Store, loaded: Loaded, from: string, to: string, type: RecordType, movedRel: string, rewritten: string[], pathAfter: (rel: string) => string, opts: { session?: string }, fields?: string[]): MvResult {
+function finish(
+  store: Store,
+  loaded: Loaded,
+  from: string,
+  to: string,
+  type: RecordType,
+  movedRel: string,
+  rewritten: string[],
+  pathAfter: (rel: string) => string,
+  opts: { session?: string },
+  fields?: string[],
+): MvResult {
   validateOrUndo(store, [movedRel, ...rewritten], []);
   const env = envelope(opts);
   const recAt = (p: string) => loaded.records.find((r) => pathAfter(r.path) === p);
   const commit = finishWrite(store, `pjman: mv ${from} ${to}`, env.session, [
     { op: 'moved', key: to, type, path: movedRel, fields, writer: env.writer },
-    ...rewritten.filter((p) => p !== movedRel).map((p) => ({ op: 'set' as const, key: recAt(p)?.key ?? p, type: recAt(p)?.type ?? type, path: p, fields: ['references'], writer: env.writer })),
+    ...rewritten
+      .filter((p) => p !== movedRel)
+      .map((p) => ({
+        op: 'set' as const,
+        key: recAt(p)?.key ?? p,
+        type: recAt(p)?.type ?? type,
+        path: p,
+        fields: ['references'],
+        writer: env.writer,
+      })),
   ]);
   return { from, to, rewritten, commit };
 }
 
 /** With the record's own text, the alias list extended by what it was called, and any fields the move sets. */
-function withAlias(r: Rec, alias: string, rewrite: (text: string) => string, patch: Record<string, unknown> = {}): string {
+function withAlias(
+  r: Rec,
+  alias: string,
+  rewrite: (text: string) => string,
+  patch: Record<string, unknown> = {},
+): string {
   const aliases = Array.isArray(r.data.aliases) ? [...(r.data.aliases as string[])] : [];
   if (!aliases.includes(alias)) aliases.push(alias);
   const data = JSON.parse(rewrite(JSON.stringify({ ...r.data, ...patch, aliases }))) as Record<string, unknown>;
@@ -86,7 +116,14 @@ function source(loaded: Loaded, from: string, type: RecordType): Rec {
 
 /** A feature or a change: the folder moves (within the product, or to another), every reference and effect follows,
  *  the old slug (or `<product>/<slug>` when the product changed) stays as an alias. */
-function mvScoped(store: Store, loaded: Loaded, type: 'feature' | 'change', fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
+function mvScoped(
+  store: Store,
+  loaded: Loaded,
+  type: 'feature' | 'change',
+  fromRaw: string,
+  toRaw: string,
+  opts: { session?: string },
+): MvResult {
   const rec = source(loaded, fromRaw, type);
   const t = parseScopedRest(toRaw.slice(type.length + 1));
   if (!t) throw new CliError(`'${toRaw}' is not ${type}:<slug> or ${type}:<product>/<slug>`);
@@ -96,27 +133,42 @@ function mvScoped(store: Store, loaded: Loaded, type: 'feature' | 'change', from
   const to = `${type}:${toProduct}/${t.slug}`;
   if (to === from) throw new CliError(`${from} already has that key`);
   if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
-  if (loaded.aliases.has(to)) throw new CliError(`'${t.slug}' is a former name of ${loaded.aliases.get(to)!.join(', ')} in product:${toProduct}`);
+  if (loaded.aliases.has(to))
+    throw new CliError(`'${t.slug}' is a former name of ${loaded.aliases.get(to)!.join(', ')} in product:${toProduct}`);
   const folder = type === 'feature' ? 'features' : 'changes';
   const oldDir = dirOf(rec.path);
   const newDir = path.join('products', toProduct, folder, t.slug);
   move(store, oldDir, newDir);
   const pathAfter = (rel: string) => (rel.startsWith(oldDir + '/') ? newDir + rel.slice(oldDir.length) : rel);
-  const alias = toProduct === rec.productSlug ? rec.key.slice(rec.key.lastIndexOf('/') + 1) : from.slice(type.length + 1);
+  const alias =
+    toProduct === rec.productSlug ? rec.key.slice(rec.key.lastIndexOf('/') + 1) : from.slice(type.length + 1);
   // a change moving to another product moves to a project of that product: the one it has, else the move needs a say
   const patch: Record<string, unknown> = {};
   if (type === 'change' && toProduct !== rec.productSlug) {
-    const projects = loaded.records.filter((p) => p.type === 'project' && p.valid && p.data.product === `product:${toProduct}`).map((p) => p.key);
-    if (projects.length !== 1) throw new CliError(projects.length ? `product:${toProduct} has ${projects.length} projects (${projects.join(', ')}); set the change's project after the move is not possible, so move it into a product with one project or give that product one` : `product:${toProduct} has no project; a change belongs to a project of its product (pjman new project <slug> --title … --product product:${toProduct})`);
+    const projects = loaded.records
+      .filter((p) => p.type === 'project' && p.valid && p.data.product === `product:${toProduct}`)
+      .map((p) => p.key);
+    if (projects.length !== 1)
+      throw new CliError(
+        projects.length
+          ? `product:${toProduct} has ${projects.length} projects (${projects.join(', ')}); set the change's project after the move is not possible, so move it into a product with one project or give that product one`
+          : `product:${toProduct} has no project; a change belongs to a project of its product (pjman new project <slug> --title … --product product:${toProduct})`,
+      );
     patch.project = projects[0];
   }
   const rewrite = (text: string) => {
     let out = rewriteKey(text, from, to);
-    if (type === 'change') out = rewritePrefix(out, `decision:${from.slice('change:'.length)}/`, `decision:${to.slice('change:'.length)}/`);
+    if (type === 'change')
+      out = rewritePrefix(out, `decision:${from.slice('change:'.length)}/`, `decision:${to.slice('change:'.length)}/`);
     return out;
   };
-  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) => (r === rec ? withAlias(r, alias, rewrite, patch) : rewrite(text)));
-  return finish(store, loaded, from, to, type, path.join(newDir, `${type}.md`), rewritten, pathAfter, opts, ['aliases', ...(patch.project ? ['project'] : [])]);
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) =>
+    r === rec ? withAlias(r, alias, rewrite, patch) : rewrite(text),
+  );
+  return finish(store, loaded, from, to, type, path.join(newDir, `${type}.md`), rewritten, pathAfter, opts, [
+    'aliases',
+    ...(patch.project ? ['project'] : []),
+  ]);
 }
 
 /** A product: its folder moves and every key beneath it (features, changes, decisions) is rewritten with the new segment. */
@@ -127,7 +179,8 @@ function mvProduct(store: Store, loaded: Loaded, fromRaw: string, toRaw: string,
   const from = rec.key;
   const to = `product:${toSlug}`;
   if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
-  if (loaded.aliases.has(to)) throw new CliError(`'${toSlug}' is a former name of ${loaded.aliases.get(to)!.join(', ')}`);
+  if (loaded.aliases.has(to))
+    throw new CliError(`'${toSlug}' is a former name of ${loaded.aliases.get(to)!.join(', ')}`);
   const fromSlug = rec.productSlug!;
   const oldDir = path.join('products', fromSlug);
   const newDir = path.join('products', toSlug);
@@ -135,11 +188,16 @@ function mvProduct(store: Store, loaded: Loaded, fromRaw: string, toRaw: string,
   const pathAfter = (rel: string) => (rel.startsWith(oldDir + '/') ? newDir + rel.slice(oldDir.length) : rel);
   const rewrite = (text: string) => {
     let out = rewriteKey(text, from, to);
-    for (const kind of ['feature', 'change', 'decision', 'aspect', 'release']) out = rewritePrefix(out, `${kind}:${fromSlug}/`, `${kind}:${toSlug}/`);
+    for (const kind of ['feature', 'change', 'decision', 'aspect', 'release'])
+      out = rewritePrefix(out, `${kind}:${fromSlug}/`, `${kind}:${toSlug}/`);
     return out;
   };
-  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) => (r === rec ? withAlias(r, fromSlug, rewrite) : rewrite(text)));
-  return finish(store, loaded, from, to, 'product', path.join(newDir, 'product.md'), rewritten, pathAfter, opts, ['aliases']);
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) =>
+    r === rec ? withAlias(r, fromSlug, rewrite) : rewrite(text),
+  );
+  return finish(store, loaded, from, to, 'product', path.join(newDir, 'product.md'), rewritten, pathAfter, opts, [
+    'aliases',
+  ]);
 }
 
 function mvProject(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
@@ -156,7 +214,12 @@ function mvProject(store: Store, loaded: Loaded, fromRaw: string, toRaw: string,
   // the registry on this machine: directories bound to the project follow it
   const cfg = readUserConfig();
   let bound = false;
-  for (const s of cfg.stores) for (const b of s.projects) if (b.project === from) { b.project = to; bound = true; }
+  for (const s of cfg.stores)
+    for (const b of s.projects)
+      if (b.project === from) {
+        b.project = to;
+        bound = true;
+      }
   if (bound) writeUserConfig(cfg);
   return finish(store, loaded, from, to, 'project', newRel, rewritten, pathAfter, opts);
 }
@@ -172,13 +235,17 @@ function mvActor(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, o
   if (!SLUG_RE.test(toHandle)) throw new CliError(`'${toHandle}' is not a slug`);
   const from = rec.key;
   const to = `${fromKey.kind}:${toHandle}`;
-  if (loaded.byKey.has(to) || loaded.records.some((r) => r.type === 'actor' && r.handle === toHandle)) throw new CliError(`${to} already exists`);
-  if (loaded.aliases.has(to)) throw new CliError(`'${toHandle}' is a former handle of ${loaded.aliases.get(to)!.join(', ')}`);
+  if (loaded.byKey.has(to) || loaded.records.some((r) => r.type === 'actor' && r.handle === toHandle))
+    throw new CliError(`${to} already exists`);
+  if (loaded.aliases.has(to))
+    throw new CliError(`'${toHandle}' is a former handle of ${loaded.aliases.get(to)!.join(', ')}`);
   const newRel = path.join('actors', `${toHandle}.md`);
   move(store, rec.path, newRel);
   const pathAfter = (rel: string) => (rel === rec.path ? newRel : rel);
   const rewrite = (text: string) => rewriteKey(text, from, to);
-  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) => (r === rec ? withAlias(r, rec.handle!, rewrite) : rewrite(text)));
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) =>
+    r === rec ? withAlias(r, rec.handle!, rewrite) : rewrite(text),
+  );
   const cfg = readUserConfig();
   if (cfg.actor === from) {
     cfg.actor = to;
@@ -188,7 +255,13 @@ function mvActor(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, o
 }
 
 /** A session kind: the file moves, every session carrying it follows, the old slug stays as an alias. */
-function mvSessionKind(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
+function mvSessionKind(
+  store: Store,
+  loaded: Loaded,
+  fromRaw: string,
+  toRaw: string,
+  opts: { session?: string },
+): MvResult {
   const rec = source(loaded, fromRaw, 'session-kind');
   if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before renaming`);
   const toSlug = toRaw.slice('session-kind:'.length);
@@ -196,19 +269,31 @@ function mvSessionKind(store: Store, loaded: Loaded, fromRaw: string, toRaw: str
   const from = rec.key;
   const to = `session-kind:${toSlug}`;
   if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
-  if (loaded.aliases.has(to)) throw new CliError(`'${toSlug}' is a former name of ${loaded.aliases.get(to)!.join(', ')}`);
+  if (loaded.aliases.has(to))
+    throw new CliError(`'${toSlug}' is a former name of ${loaded.aliases.get(to)!.join(', ')}`);
   const newRel = path.join('session-kinds', `${toSlug}.md`);
   move(store, rec.path, newRel);
   const pathAfter = (rel: string) => (rel === rec.path ? newRel : rel);
   const rewrite = (text: string) => rewriteKey(text, from, to);
-  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) => (r === rec ? withAlias(r, rec.fileSlug!, rewrite) : rewrite(text)));
+  const rewritten = rewriteAll(store, loaded, pathAfter, (text, r) =>
+    r === rec ? withAlias(r, rec.fileSlug!, rewrite) : rewrite(text),
+  );
   return finish(store, loaded, from, to, 'session-kind', newRel, rewritten, pathAfter, opts, ['aliases']);
 }
 
-function mvDecision(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
+function mvDecision(
+  store: Store,
+  loaded: Loaded,
+  fromRaw: string,
+  toRaw: string,
+  opts: { session?: string },
+): MvResult {
   const rec = source(loaded, fromRaw, 'decision');
   const t = parseDecisionRest(toRaw.slice('decision:'.length));
-  if (!t) throw usageError('usage: pjman mv decision:<change>/<old> decision:<change>/<new>  (decision:/<slug> at store level)');
+  if (!t)
+    throw usageError(
+      'usage: pjman mv decision:<change>/<old> decision:<change>/<new>  (decision:/<slug> at store level)',
+    );
   // where it goes: the same change, another change (through the scope), product level, or store level
   let product: string | null = null;
   let change: Rec | undefined;
@@ -233,7 +318,11 @@ function mvDecision(store: Store, loaded: Loaded, fromRaw: string, toRaw: string
   const base = path.basename(rec.path);
   const date = /^(\d{4}-\d{2}-\d{2})-/.exec(base)?.[1];
   const newBase = `${date ? `${date}-` : ''}${t.slug}.md`;
-  const newRel = change ? path.join(dirOf(change.path), 'decisions', newBase) : product ? path.join('products', product, 'decisions', newBase) : path.join('decisions', newBase);
+  const newRel = change
+    ? path.join(dirOf(change.path), 'decisions', newBase)
+    : product
+      ? path.join('products', product, 'decisions', newBase)
+      : path.join('decisions', newBase);
   move(store, rec.path, newRel);
   const pathAfter = (rel: string) => (rel === rec.path ? newRel : rel);
   const rewritten = rewriteAll(store, loaded, pathAfter, (text) => rewriteKey(text, from, to));
@@ -255,36 +344,68 @@ function mvAspect(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, 
   const last = parts[parts.length - 1];
   const to = rec.type === 'aspect' ? aspectKey(p, last) : aspectKey(p, aslug, last);
   const from = rec.key;
-  if (rec.type === 'place' && parts.length >= 2 && parts[parts.length - 2] !== aslug) throw new CliError(`a place stays under its aspect (${aspectKey(p, aslug)}); remove it and make it under the other`);
+  if (rec.type === 'place' && parts.length >= 2 && parts[parts.length - 2] !== aslug)
+    throw new CliError(
+      `a place stays under its aspect (${aspectKey(p, aslug)}); remove it and make it under the other`,
+    );
   if (to === from) throw new CliError(`${from} already has that key`);
   if (loaded.byKey.has(to)) throw new CliError(`${to} already exists`);
   const oldRel = rec.type === 'aspect' ? path.dirname(rec.path) : rec.path;
-  const newRel = rec.type === 'aspect' ? path.join('products', p, 'aspects', last) : path.join(path.dirname(rec.path), `${last}.md`);
+  const newRel =
+    rec.type === 'aspect' ? path.join('products', p, 'aspects', last) : path.join(path.dirname(rec.path), `${last}.md`);
   move(store, oldRel, newRel);
-  const pathAfter = (rel: string) => (rel === oldRel ? newRel : rel.startsWith(oldRel + '/') ? newRel + rel.slice(oldRel.length) : rel);
-  const rewrite = (text: string) => (rec.type === 'aspect' ? rewritePrefix(rewriteKey(text, from, to), `${from}/`, `${to}/`) : rewriteKey(text, from, to));
+  const pathAfter = (rel: string) =>
+    rel === oldRel ? newRel : rel.startsWith(oldRel + '/') ? newRel + rel.slice(oldRel.length) : rel;
+  const rewrite = (text: string) =>
+    rec.type === 'aspect'
+      ? rewritePrefix(rewriteKey(text, from, to), `${from}/`, `${to}/`)
+      : rewriteKey(text, from, to);
   const rewritten = rewriteAll(store, loaded, pathAfter, (text) => rewrite(text));
-  return finish(store, loaded, from, to, rec.type, rec.type === 'aspect' ? path.join(newRel, 'aspect.md') : newRel, rewritten, pathAfter, opts);
+  return finish(
+    store,
+    loaded,
+    from,
+    to,
+    rec.type,
+    rec.type === 'aspect' ? path.join(newRel, 'aspect.md') : newRel,
+    rewritten,
+    pathAfter,
+    opts,
+  );
 }
 
 export function mv(store: Store, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
   noteReshaping(store);
   const from = parseKey(fromRaw);
   const to = parseKey(toRaw);
-  if (!from || !to) throw usageError('usage: pjman mv <kind>:<old> <kind>:<new>  (product, feature, aspect, place, project, change, decision, person, agent)');
+  if (!from || !to)
+    throw usageError(
+      'usage: pjman mv <kind>:<old> <kind>:<new>  (product, feature, aspect, place, project, change, decision, person, agent)',
+    );
   if (from.kind !== to.kind) throw new CliError(`mv keeps the kind: ${from.kind} → ${to.kind}`);
   const loaded = loadStore(store);
   switch (from.kind) {
-    case 'change': return mvScoped(store, loaded, 'change', from.raw, to.raw, opts);
-    case 'feature': return mvScoped(store, loaded, 'feature', from.raw, to.raw, opts);
-    case 'product': return mvProduct(store, loaded, from.raw, to.raw, opts);
-    case 'project': return mvProject(store, loaded, from.raw, to.raw, opts);
-    case 'decision': return mvDecision(store, loaded, from.raw, to.raw, opts);
-    case 'aspect': return mvAspect(store, loaded, from.raw, to.raw, opts);
+    case 'change':
+      return mvScoped(store, loaded, 'change', from.raw, to.raw, opts);
+    case 'feature':
+      return mvScoped(store, loaded, 'feature', from.raw, to.raw, opts);
+    case 'product':
+      return mvProduct(store, loaded, from.raw, to.raw, opts);
+    case 'project':
+      return mvProject(store, loaded, from.raw, to.raw, opts);
+    case 'decision':
+      return mvDecision(store, loaded, from.raw, to.raw, opts);
+    case 'aspect':
+      return mvAspect(store, loaded, from.raw, to.raw, opts);
     case 'person':
-    case 'agent': return mvActor(store, loaded, from.raw, to.raw, opts);
-    case 'session-kind': return mvSessionKind(store, loaded, from.raw, to.raw, opts);
-    default: throw new CliError('mv renames products, features, aspects and places, changes, decisions, projects, people, agents and session kinds; sources and sessions keep their keys (they are external), a release its version (a fact)');
+    case 'agent':
+      return mvActor(store, loaded, from.raw, to.raw, opts);
+    case 'session-kind':
+      return mvSessionKind(store, loaded, from.raw, to.raw, opts);
+    default:
+      throw new CliError(
+        'mv renames products, features, aspects and places, changes, decisions, projects, people, agents and session kinds; sources and sessions keep their keys (they are external), a release its version (a fact)',
+      );
   }
 }
 

@@ -22,8 +22,17 @@ const bin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 /** A child process that holds the store's lock for `ms` milliseconds. */
 const holder = (root: string, ms: number) =>
-  spawn(process.execPath, ['--input-type=module', '-e', `import { lockStore } from ${JSON.stringify(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'store', 'lock.js'))}; lockStore(${JSON.stringify(root)}); process.stdout.write('held\\n'); setTimeout(() => {}, ${ms});`], { env: process.env, stdio: ['ignore', 'pipe', 'inherit'] });
-const onceHeld = (child: ReturnType<typeof spawn>) => new Promise<void>((res) => child.stdout!.once('data', () => res()));
+  spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `import { lockStore } from ${JSON.stringify(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'store', 'lock.js'))}; lockStore(${JSON.stringify(root)}); process.stdout.write('held\\n'); setTimeout(() => {}, ${ms});`,
+    ],
+    { env: process.env, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+const onceHeld = (child: ReturnType<typeof spawn>) =>
+  new Promise<void>((res) => child.stdout!.once('data', () => res()));
 
 let store: Store;
 
@@ -48,7 +57,10 @@ test('the lock is a file under the user directory, re-entrant in one process, go
   unlockStore(store.root);
   assert.ok(!holdsLock(store.root));
   assert.ok(!fs.existsSync(file));
-  assert.equal(withStoreLock(store.root, () => 7), 7);
+  assert.equal(
+    withStoreLock(store.root, () => 7),
+    7,
+  );
   assert.ok(!fs.existsSync(file));
 });
 
@@ -64,7 +76,10 @@ test('a second writer waits for a short hold and then takes the lock', async () 
 test('a second writer refuses after the wait, naming the holder', async () => {
   const child = holder(store.root, 3000);
   await onceHeld(child);
-  assert.throws(() => withStoreLock(store.root, () => {}), new RegExp(`the store is busy: another pjman is writing it \\(pid ${child.pid}`));
+  assert.throws(
+    () => withStoreLock(store.root, () => {}),
+    new RegExp(`the store is busy: another pjman is writing it \\(pid ${child.pid}`),
+  );
   child.kill();
   await new Promise((res) => child.once('exit', res));
 });
@@ -80,11 +95,47 @@ test('a lock left by a dead process is reclaimed at once', () => {
 });
 
 test('two commands writing the store at once each land in their own commit', async () => {
-  const run = (args: string[]) => new Promise<string>((res, rej) => execFile(process.execPath, [bin, ...args], { cwd: project, env: { ...process.env, PJMAN_LOCK_WAIT_MS: '8000' }, encoding: 'utf8' }, (err, stdout, stderr) => (err ? rej(new Error(stderr || err.message)) : res(stdout))));
+  const run = (args: string[]) =>
+    new Promise<string>((res, rej) =>
+      execFile(
+        process.execPath,
+        [bin, ...args],
+        { cwd: project, env: { ...process.env, PJMAN_LOCK_WAIT_MS: '8000' }, encoding: 'utf8' },
+        (err, stdout, stderr) => (err ? rej(new Error(stderr || err.message)) : res(stdout)),
+      ),
+    );
   const before = git(store.root, 'rev-list', '--count', 'HEAD');
   const [a, b] = await Promise.all([
-    run(['new', 'change', 'left', '--name', 'Left', '--gist', 'Left', '--origin', 'asked', '--intent', 'l', '--done-when', 'd']),
-    run(['new', 'change', 'right', '--name', 'Right', '--gist', 'Right', '--origin', 'asked', '--intent', 'r', '--done-when', 'd']),
+    run([
+      'new',
+      'change',
+      'left',
+      '--name',
+      'Left',
+      '--gist',
+      'Left',
+      '--origin',
+      'asked',
+      '--intent',
+      'l',
+      '--done-when',
+      'd',
+    ]),
+    run([
+      'new',
+      'change',
+      'right',
+      '--name',
+      'Right',
+      '--gist',
+      'Right',
+      '--origin',
+      'asked',
+      '--intent',
+      'r',
+      '--done-when',
+      'd',
+    ]),
   ]);
   assert.match(a, /created change:(project\/)?left/);
   assert.match(b, /created change:(project\/)?right/);
@@ -95,6 +146,9 @@ test('two commands writing the store at once each land in their own commit', asy
     const subject = c[0]!;
     const which = /left/.test(subject) ? 'left' : 'right';
     assert.match(subject, /^pjman: new change:(project\/)?(left|right)/);
-    assert.ok(c.slice(1).every((p) => p.includes(`/changes/${which}/`)), `commit '${subject}' holds only its own files: ${c.slice(1).join(', ')}`);
+    assert.ok(
+      c.slice(1).every((p) => p.includes(`/changes/${which}/`)),
+      `commit '${subject}' holds only its own files: ${c.slice(1).join(', ')}`,
+    );
   }
 });

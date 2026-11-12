@@ -40,7 +40,12 @@ function machine(gitconfig: string): { project: string } {
 }
 
 /** A forge with a signed-in login, a set of known accounts and, when it allows, a list of emails. */
-function forge(opts: { self?: string | null; known?: string[]; emails?: string[] | string; calls?: { self: number } }): Checker {
+function forge(opts: {
+  self?: string | null;
+  known?: string[];
+  emails?: string[] | string;
+  calls?: { self: number };
+}): Checker {
   return {
     kind: 'github-user',
     app: 'GitHub',
@@ -49,7 +54,10 @@ function forge(opts: { self?: string | null; known?: string[]; emails?: string[]
       return opts.self ?? null;
     },
     exists: (id) => (opts.known ? opts.known.includes(id) : null),
-    emails: () => (Array.isArray(opts.emails) ? { list: opts.emails } : { reason: typeof opts.emails === 'string' ? opts.emails : 'no scope' }),
+    emails: () =>
+      Array.isArray(opts.emails)
+        ? { list: opts.emails }
+        : { reason: typeof opts.emails === 'string' ? opts.emails : 'no scope' },
   };
 }
 
@@ -63,16 +71,25 @@ test("there is always an actor: with no forge and no committer name the handle i
   const store = globalStore()!;
   const rec = person(store, `person:${me}`)!;
   assert.deepEqual(rec.data.links ?? [], []);
-  assert.ok(lines.some((l) => l === `created person:${me}`), lines.join('\n'));
+  assert.ok(
+    lines.some((l) => l === `created person:${me}`),
+    lines.join('\n'),
+  );
   const id = identity(store, { verify: true, checkers: [forge({ self: null })] });
   assert.equal(id.provisional, true);
   assert.equal(id.primary, null);
   assert.equal(id.origin, 'machine');
   assert.equal(id.notices.length, 1);
-  assert.match(id.notices[0], /came from this machine's account name and claims no account of a handle kind, so it is provisional; sign in to the forge/);
+  assert.match(
+    id.notices[0],
+    /came from this machine's account name and claims no account of a handle kind, so it is provisional; sign in to the forge/,
+  );
   assert.match(formatIdentity(id)[0], /^you are person:.* \(provisional\)$/);
   // the same, said by init itself
-  assert.ok(lines.some((l) => /^note: your handle .* is provisional/.test(l)), lines.join('\n'));
+  assert.ok(
+    lines.some((l) => /^note: your handle .* is provisional/.test(l)),
+    lines.join('\n'),
+  );
 });
 
 test('the committer name is the second fallback; the email is an account but not a handle kind, so the handle stays provisional until the login is claimed', () => {
@@ -94,7 +111,10 @@ test('the committer name is the second fallback; the email is an account but not
   // (the forge changes between scenarios, so each verified read asks fresh; a session would take the day's cache)
   const other = forge({ self: 'ada-l', emails: ['ada@example.com'] });
   id = identity(store, { verify: true, checkers: [other], fresh: true });
-  assert.match(id.notices[0], /rename it to your GitHub login: pjman mv person:ada-lovelace person:ada-l \(the old handle stays an alias.*or keep it and claim the login: pjman set person:ada-lovelace links=email:ada@example.com,github-user:ada-l$/);
+  assert.match(
+    id.notices[0],
+    /rename it to your GitHub login: pjman mv person:ada-lovelace person:ada-l \(the old handle stays an alias.*or keep it and claim the login: pjman set person:ada-lovelace links=email:ada@example.com,github-user:ada-l$/,
+  );
   assert.equal(id.accounts[0].verdict, 'verified'); // the email is on the signed-in account
   assert.deepEqual(id.signed_in, [{ kind: 'github-user', id: 'ada-l', key: 'github-user:ada-l', claimed_by: null }]);
   let lines = init({ cwd: project, checkers: [other] });
@@ -104,13 +124,25 @@ test('the committer name is the second fallback; the email is an account but not
   // the login is the handle: a re-run of init claims it, and the handle stops being provisional
   const same = forge({ self: 'ada-lovelace', emails: 'no scope here' });
   lines = init({ cwd: project, checkers: [same] });
-  assert.ok(lines.some((l) => l === 'claimed github-user:ada-lovelace for person:ada-lovelace: it is your handle'), lines.join('\n'));
-  assert.deepEqual(person(store, 'person:ada-lovelace')!.data.links, ['email:ada@example.com', 'github-user:ada-lovelace']);
+  assert.ok(
+    lines.some((l) => l === 'claimed github-user:ada-lovelace for person:ada-lovelace: it is your handle'),
+    lines.join('\n'),
+  );
+  assert.deepEqual(person(store, 'person:ada-lovelace')!.data.links, [
+    'email:ada@example.com',
+    'github-user:ada-lovelace',
+  ]);
   id = identity(store, { verify: true, checkers: [same], fresh: true });
   assert.equal(id.provisional, false);
   assert.equal(id.primary, 'github-user:ada-lovelace');
   assert.deepEqual(id.notices, []);
-  assert.deepEqual(id.accounts.map((a) => [a.key, a.primary, a.verdict]), [['email:ada@example.com', false, 'unchecked'], ['github-user:ada-lovelace', true, 'verified']]);
+  assert.deepEqual(
+    id.accounts.map((a) => [a.key, a.primary, a.verdict]),
+    [
+      ['email:ada@example.com', false, 'unchecked'],
+      ['github-user:ada-lovelace', true, 'verified'],
+    ],
+  );
   assert.equal(id.accounts[0].note, 'no scope here');
   // a chosen handle: the login claimed under another handle is said by nothing
   const chosen = forge({ self: 'ada-l', emails: [] });
@@ -119,7 +151,9 @@ test('the committer name is the second fallback; the email is an account but not
   assert.equal(id.provisional, false);
   assert.ok(!id.notices.some((n) => /provisional|rename/.test(n)), id.notices.join('\n'));
   assert.equal(id.accounts[1].verdict, 'unknown'); // the forge lists the emails and this one is not among them: said, never dropped
-  assert.deepEqual(id.notices, ['email:ada@example.com is not known: not among the emails of your GitHub account (it stays until you drop it: pjman set person:ada-lovelace links=…)']);
+  assert.deepEqual(id.notices, [
+    'email:ada@example.com is not known: not among the emails of your GitHub account (it stays until you drop it: pjman set person:ada-lovelace links=…)',
+  ]);
   assert.match(formatIdentity(id)[2], /unknown: not among the emails of your GitHub account/);
 });
 
@@ -133,31 +167,51 @@ test('a sign-in claimed by another person is always said; an account the forge d
   assert.equal(id.provisional, true);
   assert.equal(id.notices.length, 2);
   assert.match(id.notices[0], /the GitHub login bob is claimed by person:alice$/);
-  assert.match(id.notices[1], /^the github-user account bob you are signed in as is claimed by person:alice; one account is one person's$/);
+  assert.match(
+    id.notices[1],
+    /^the github-user account bob you are signed in as is claimed by person:alice; one account is one person's$/,
+  );
   // a re-run of init does not claim a login someone else holds
   const lines = init({ cwd: project, checkers: [forge({ self: 'bob', known: ['bob'] })] });
   assert.ok(!lines.some((l) => /^claimed /.test(l)));
   // accounts the record names: one the forge knows (but is not the sign-in), one it does not, one nobody can ask
-  set(store, 'person:bob', ['links=github-user:robert,github-user:ghost,linear-user:1b2c,git-author:Bob <bob@example.com>'], {});
+  set(
+    store,
+    'person:bob',
+    ['links=github-user:robert,github-user:ghost,linear-user:1b2c,git-author:Bob <bob@example.com>'],
+    {},
+  );
   id = identity(store, { verify: true, checkers: [forge({ self: 'bob', known: ['bob', 'robert'] })], fresh: true });
   assert.equal(id.provisional, false); // github-user:robert is a handle kind, claimed
   assert.equal(id.primary, 'github-user:robert');
-  assert.deepEqual(id.accounts.map((a) => [a.key, a.verdict, a.note]), [
-    ['github-user:robert', 'unchecked', 'exists at GitHub, but the sign-in is bob'],
-    ['github-user:ghost', 'unknown', 'GitHub knows no such account'],
-    ['linear-user:1b2c', 'unchecked', 'no checker for linear-user'],
-    ['git-author:Bob <bob@example.com>', 'unchecked', 'no checker for git-author'],
-  ]);
+  assert.deepEqual(
+    id.accounts.map((a) => [a.key, a.verdict, a.note]),
+    [
+      ['github-user:robert', 'unchecked', 'exists at GitHub, but the sign-in is bob'],
+      ['github-user:ghost', 'unknown', 'GitHub knows no such account'],
+      ['linear-user:1b2c', 'unchecked', 'no checker for linear-user'],
+      ['git-author:Bob <bob@example.com>', 'unchecked', 'no checker for git-author'],
+    ],
+  );
   assert.deepEqual(id.notices, [
     "the github-user account bob you are signed in as is claimed by person:alice; one account is one person's",
     'github-user:ghost is not known: GitHub knows no such account (it stays until you drop it: pjman set person:bob links=…)',
   ]);
-  assert.deepEqual(person(store, 'person:bob')!.data.links, ['github-user:robert', 'github-user:ghost', 'linear-user:1b2c', 'git-author:Bob <bob@example.com>']);
+  assert.deepEqual(person(store, 'person:bob')!.data.links, [
+    'github-user:robert',
+    'github-user:ghost',
+    'linear-user:1b2c',
+    'git-author:Bob <bob@example.com>',
+  ]);
 });
 
 test('no actor and no record are said with the way out', () => {
   const { project } = machine('');
-  const store = { root: path.join(project, 'nowhere'), mode: 'standalone', config: { name: 'x', layers: [], vocabulary: {}, source_kinds: ['github-user', 'email'], tree_levels: [] } } as Store;
+  const store = {
+    root: path.join(project, 'nowhere'),
+    mode: 'standalone',
+    config: { name: 'x', layers: [], vocabulary: {}, source_kinds: ['github-user', 'email'], tree_levels: [] },
+  } as Store;
   let id = identity(store);
   assert.equal(id.actor, null);
   assert.match(id.notices[0], /^no actor is configured: run pjman init/);

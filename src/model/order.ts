@@ -68,15 +68,32 @@ export function sequenceOf(loaded: Loaded, ref: string | null): { product: strin
   if (ref) {
     const res = resolve(loaded, ref);
     if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, ref);
-    product = res.rec.type === 'product' ? res.rec : res.rec.type === 'change' ? productOf(loaded, res.rec) : rootProductOf(loaded, res.rec);
+    product =
+      res.rec.type === 'product'
+        ? res.rec
+        : res.rec.type === 'change'
+          ? productOf(loaded, res.rec)
+          : rootProductOf(loaded, res.rec);
     if (!product) throw new CliError(`${res.rec.key} is under no product`);
   } else {
     // the current project's product, else the store's only one
     const products = loaded.records.filter((r) => r.type === 'product' && r.valid);
-    product = loaded.scope ? loaded.byKey.get(`product:${loaded.scope}`)?.[0] : products.length === 1 ? products[0] : undefined;
-    if (!product) throw new CliError(`no product here: name one (pjman order <product>; ${products.map((p) => p.key).join(', ')})`);
+    product = loaded.scope
+      ? loaded.byKey.get(`product:${loaded.scope}`)?.[0]
+      : products.length === 1
+        ? products[0]
+        : undefined;
+    if (!product)
+      throw new CliError(`no product here: name one (pjman order <product>; ${products.map((p) => p.key).join(', ')})`);
   }
   const sequence = ahead(loaded, product);
-  const later = loaded.records.filter((r) => r.valid && r.type === 'change' && isOpen(r) && !sequence.includes(r.key) && productOf(loaded, r)?.key === product!.key).length;
+  const later = loaded.records.filter(
+    (r) =>
+      r.valid &&
+      r.type === 'change' &&
+      isOpen(r) &&
+      !sequence.includes(r.key) &&
+      productOf(loaded, r)?.key === product!.key,
+  ).length;
   return { product: product.key, sequence, later };
 }

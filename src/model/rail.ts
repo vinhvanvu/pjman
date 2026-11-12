@@ -133,7 +133,10 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const lanesMax = opts.fold ?? 5;
 
   const all = readEvents(store).filter((e) => (opts.until === undefined || e.seq <= opts.until) && e.at < to);
-  const events = axis === 'tree' ? treeEvents(loaded, scope, all) : all.filter((e) => e.session === scope.key || e.key === scope.key);
+  const events =
+    axis === 'tree'
+      ? treeEvents(loaded, scope, all)
+      : all.filter((e) => e.session === scope.key || e.key === scope.key);
   // on a change, the files its sessions touched while on it: an observe is the session's, so it is found by its edges
   if (scope.type === 'change') events.push(...fileEvents(loaded, scope, all));
   events.sort((a, b) => a.seq - b.seq);
@@ -159,7 +162,10 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
     return lane;
   };
   // on a session, a bind or a focus names its change outright
-  const laneOfEvent = (e: StoreEvent): string | null => (axis === 'session' && e.key === scope.key && e.value?.startsWith('change:') ? (live(loaded, e.value)?.key ?? e.value) : laneFor(e));
+  const laneOfEvent = (e: StoreEvent): string | null =>
+    axis === 'session' && e.key === scope.key && e.value?.startsWith('change:')
+      ? (live(loaded, e.value)?.key ?? e.value)
+      : laneFor(e);
 
   // the lanes over the scope's life, so the filter and the page never hide one
   const touched = new Map<string, { last: string; count: number; writes: number }>();
@@ -179,9 +185,25 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   const foldedIds = new Set(folded.map(([id]) => id));
   const lanes: Lane[] = kept.map(([id, t]) => {
     const rec = live(loaded, id);
-    return { id, kind: rec?.type === 'decision' ? 'decision' : 'change', label: rec ? labelOf(rec.data, rec.key) : undefined, status: rec ? str(rec.data.status) : undefined, last: t.last, count: t.count, writes: t.writes };
+    return {
+      id,
+      kind: rec?.type === 'decision' ? 'decision' : 'change',
+      label: rec ? labelOf(rec.data, rec.key) : undefined,
+      status: rec ? str(rec.data.status) : undefined,
+      last: t.last,
+      count: t.count,
+      writes: t.writes,
+    };
   });
-  if (folded.length) lanes.push({ id: 'more', kind: 'more', last: folded[0][1].last, count: folded.reduce((n, [, t]) => n + t.count, 0), writes: folded.reduce((n, [, t]) => n + t.writes, 0), folded: folded.length });
+  if (folded.length)
+    lanes.push({
+      id: 'more',
+      kind: 'more',
+      last: folded[0][1].last,
+      count: folded.reduce((n, [, t]) => n + t.count, 0),
+      writes: folded.reduce((n, [, t]) => n + t.writes, 0),
+      folded: folded.length,
+    });
   const placed = (lane: string | null): string | null => (lane && foldedIds.has(lane) ? 'more' : lane);
 
   const observed = axis === 'session' ? observedOf(scope) : [];
@@ -191,7 +213,20 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
     const lane = laneOfEvent(e);
     const rec = live(loaded, e.key);
     const kind = kindOf(axis, scope, e);
-    const row: Row = { seq: e.seq, at: e.at, lane: placed(lane), kind, op: e.op, key: e.key, type: e.type, label: rec ? labelOf(rec.data, rec.key) : undefined, fields: e.fields, value: e.value, writer: e.writer, session: e.session };
+    const row: Row = {
+      seq: e.seq,
+      at: e.at,
+      lane: placed(lane),
+      kind,
+      op: e.op,
+      key: e.key,
+      type: e.type,
+      label: rec ? labelOf(rec.data, rec.key) : undefined,
+      fields: e.fields,
+      value: e.value,
+      writer: e.writer,
+      session: e.session,
+    };
     const drill = axis === 'tree' ? e.session : lane;
     if (drill) row.drill = drill;
     if (kind === 'line' && e.key === scope.key) {
@@ -211,9 +246,13 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
     if (kind === 'file') {
       // the edge the write observed, from the record: the files it names, and the change it was on as the row's lane
       // on a change, the session's own edges, and of those only the ones from this change
-      const edges = axis === 'session' ? observed : observedOf(live(loaded, e.key)).filter((o) => fromKey(loaded, o) === scope.key);
+      const edges =
+        axis === 'session' ? observed : observedOf(live(loaded, e.key)).filter((o) => fromKey(loaded, o) === scope.key);
       const near = edges.filter((o) => o.at && Math.abs(Date.parse(o.at) - Date.parse(e.at)) < NEAR_MS);
-      const files = near.flatMap((o) => [o.from, o.to]).filter((k): k is string => !!k && k.startsWith('file:')).map((k) => k.slice('file:'.length));
+      const files = near
+        .flatMap((o) => [o.from, o.to])
+        .filter((k): k is string => !!k && k.startsWith('file:'))
+        .map((k) => k.slice('file:'.length));
       if (files.length) row.files = [...new Set(files)];
       const on = near.map((o) => o.from).find((k) => k?.startsWith('change:'));
       if (on && axis === 'session') {
@@ -228,17 +267,26 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   // the filter, by the row's lane as placed and its kind
   const onlyLanes = opts.lanes && new Set(opts.lanes);
   const onlyKinds = opts.kinds && new Set(opts.kinds);
-  const passing = events.map(toRow).filter((r) => (!onlyLanes || onlyLanes.has(r.lane ?? 'trunk')) && (!onlyKinds || onlyKinds.has(r.kind)));
+  const passing = events
+    .map(toRow)
+    .filter((r) => (!onlyLanes || onlyLanes.has(r.lane ?? 'trunk')) && (!onlyKinds || onlyKinds.has(r.kind)));
 
   // the page: the last `limit` passing rows inside the bounds; every passing row before the page buckets by day
-  const bounded = passing.filter((r) => (from === undefined || r.at >= from) && (opts.before === undefined || r.seq < opts.before));
+  const bounded = passing.filter(
+    (r) => (from === undefined || r.at >= from) && (opts.before === undefined || r.seq < opts.before),
+  );
   const rows = opts.limit ? bounded.slice(-opts.limit) : bounded;
   const edge = rows[0]?.seq ?? opts.before;
   const older = edge === undefined ? (rows.length ? [] : passing) : passing.filter((r) => r.seq < edge);
   const byDay = new Map<string, Bucket>();
   for (const r of older) {
     const day = r.at.slice(0, 10);
-    const b = byDay.get(day) ?? { day, count: 0, lanes: {}, health: { moved: 0, done: 0, created: 0, blocked: 0, waiting: 0 } };
+    const b = byDay.get(day) ?? {
+      day,
+      count: 0,
+      lanes: {},
+      health: { moved: 0, done: 0, created: 0, blocked: 0, waiting: 0 },
+    };
     b.count += 1;
     const lane = r.lane ?? 'trunk';
     b.lanes[lane] = (b.lanes[lane] ?? 0) + 1;
@@ -253,7 +301,18 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
   }
 
   const last = events.at(-1);
-  const out: Rail = { key: scope.key, axis, from: from ?? rows[0]?.at ?? to, to, lanes, rows, buckets: [...byDay.values()], total: passing.length, earlier: older.length, last: last && { seq: last.seq, at: last.at } };
+  const out: Rail = {
+    key: scope.key,
+    axis,
+    from: from ?? rows[0]?.at ?? to,
+    to,
+    lanes,
+    rows,
+    buckets: [...byDay.values()],
+    total: passing.length,
+    earlier: older.length,
+    last: last && { seq: last.seq, at: last.at },
+  };
   if (scope.type === 'change') out.sessions = sessionsOn(loaded, events);
   return out;
 }
@@ -280,7 +339,15 @@ function sessionsOn(loaded: Loaded, events: StoreEvent[]): RailSession[] {
       continue;
     }
     const rec = live(loaded, e.session);
-    by.set(e.session, { key: rec?.key ?? e.session, agent: str(rec?.data.agent), onBehalfOf: str(rec?.data.on_behalf_of), started: str(rec?.data.started), first: e.at, last: e.at, count: 1 });
+    by.set(e.session, {
+      key: rec?.key ?? e.session,
+      agent: str(rec?.data.agent),
+      onBehalfOf: str(rec?.data.on_behalf_of),
+      started: str(rec?.data.started),
+      first: e.at,
+      last: e.at,
+      count: 1,
+    });
   }
   return [...by.values()];
 }
@@ -291,7 +358,9 @@ const NEAR_MS = 2000;
 
 /** A session's observed edges, as its record holds them. */
 function observedOf(rec: Rec | undefined): Observed[] {
-  return rec && Array.isArray(rec.data.observed) ? (rec.data.observed as Observed[]).filter((o) => !!o && typeof o === 'object') : [];
+  return rec && Array.isArray(rec.data.observed)
+    ? (rec.data.observed as Observed[]).filter((o) => !!o && typeof o === 'object')
+    : [];
 }
 
 /** The change an edge is from, under the key it has now. */
@@ -304,10 +373,19 @@ function fromKey(loaded: Loaded, o: Observed): string | undefined {
 function fileEvents(loaded: Loaded, scope: Rec, all: StoreEvent[]): StoreEvent[] {
   const edges = new Map<string, Observed[]>();
   const edgesOf = (key: string): Observed[] => {
-    if (!edges.has(key)) edges.set(key, observedOf(live(loaded, key)).filter((o) => o.to?.startsWith('file:') && fromKey(loaded, o) === scope.key));
+    if (!edges.has(key))
+      edges.set(
+        key,
+        observedOf(live(loaded, key)).filter((o) => o.to?.startsWith('file:') && fromKey(loaded, o) === scope.key),
+      );
     return edges.get(key)!;
   };
-  return all.filter((e) => e.op === 'observe' && e.type === 'session' && edgesOf(e.key).some((o) => o.at && Math.abs(Date.parse(o.at) - Date.parse(e.at)) < NEAR_MS));
+  return all.filter(
+    (e) =>
+      e.op === 'observe' &&
+      e.type === 'session' &&
+      edgesOf(e.key).some((o) => o.at && Math.abs(Date.parse(o.at) - Date.parse(e.at)) < NEAR_MS),
+  );
 }
 
 /** The units that can be lanes beneath a tree node: on a change its decisions; on a milestone its decisions and its
@@ -318,7 +396,8 @@ function treeLanes(loaded: Loaded, scope: Rec): Map<string, Rec> {
     const r = live(loaded, k);
     if (!r) continue;
     if (r.type === 'decision' && r.changeKey && live(loaded, r.changeKey)?.key === scope.key) out.set(r.key, r);
-    else if (r.type === 'change' && (scope.type !== 'change' || live(loaded, r.data.parent)?.key === scope.key)) out.set(r.key, r);
+    else if (r.type === 'change' && (scope.type !== 'change' || live(loaded, r.data.parent)?.key === scope.key))
+      out.set(r.key, r);
   }
   return out;
 }

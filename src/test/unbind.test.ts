@@ -39,8 +39,14 @@ test('unbind backs out the change and the edges observed on it, and logs that it
   assert.equal(r.dropped, 1);
   const loaded = loadStore(store);
   const rec = findSession(loaded, 's1')!;
-  assert.deepEqual((rec.data.changes as string[]).map((c) => c.split('/').pop()), ['right']);
-  assert.deepEqual((rec.data.observed as { from: string }[]).map((o) => o.from.split('/').pop()), ['right']);
+  assert.deepEqual(
+    (rec.data.changes as string[]).map((c) => c.split('/').pop()),
+    ['right'],
+  );
+  assert.deepEqual(
+    (rec.data.observed as { from: string }[]).map((o) => o.from.split('/').pop()),
+    ['right'],
+  );
   assert.match(rec.body, /unbound change:\S*wrong; dropped 1 edge observed on it/);
   assert.equal(validate(loaded).filter((p) => p.level === 'error').length, 0);
   for (const read of [() => readEvents(store), () => (rebuildEvents(store), readEvents(store))]) {

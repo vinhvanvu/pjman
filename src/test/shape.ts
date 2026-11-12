@@ -33,7 +33,9 @@ export function next(store: Store, key: string, text: string, opts: { session?: 
 
 /** A proposed decision accepted by a person. */
 export function accept(store: Store, key: string, by: string, on?: string): DecisionResult {
-  return writeDecision(store, key, { entries: [{ type: 'accept', option: 'it', by, at: on ? `${on}T12:00:00.000Z` : undefined }] });
+  return writeDecision(store, key, {
+    entries: [{ type: 'accept', option: 'it', by, at: on ? `${on}T12:00:00.000Z` : undefined }],
+  });
 }
 
 export function change(store: Store, ident: string, flags: ChangeFlags = {}): NewResult {
@@ -76,6 +78,21 @@ export function decisionRec(store: Store, ident: string, flags: DecisionFlags = 
     { type: 'recommendation', option: 'it', text: flags.why },
   ];
   // decided with no decider named: the writer accepts, which the tool refuses for an agent, as the old shape did
-  if (flags.decidedBy || flags.status === 'decided') entries.push({ type: 'accept', option: 'it', by: flags.decidedBy ?? flags.writer ?? 'person:tester', at: flags.decidedOn ? `${flags.decidedOn}T12:00:00.000Z` : undefined });
-  return writeDecision(store, ident, { name, gist, entries, supersedes: flags.supersedes, links: flags.links, created: flags.created, session: flags.session, writer: flags.writer });
+  if (flags.decidedBy || flags.status === 'decided')
+    entries.push({
+      type: 'accept',
+      option: 'it',
+      by: flags.decidedBy ?? flags.writer ?? 'person:tester',
+      at: flags.decidedOn ? `${flags.decidedOn}T12:00:00.000Z` : undefined,
+    });
+  return writeDecision(store, ident, {
+    name,
+    gist,
+    entries,
+    supersedes: flags.supersedes,
+    links: flags.links,
+    created: flags.created,
+    session: flags.session,
+    writer: flags.writer,
+  });
 }

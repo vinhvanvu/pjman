@@ -1,0 +1,120 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "unicorn", "oxc", "node"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "env": {
+    "node": true,
+    "es2024": true
+  },
+  "rules": {
+    "import/no-cycle": "off",
+    "import/no-self-import": "error",
+    "import/no-duplicates": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-explicit-any": "error",
+    "eqeqeq": "error"
+  },
+  "ignorePatterns": ["dist", "node_modules", "ui"],
+  "overrides": [
+    {
+      "files": ["src/store/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../hosts/*", "../model/*", "../ops/*", "../sync/*", "../server/*", "../cli/*"],
+                "message": "store is the bottom layer: it imports nothing above it (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/hosts/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../model/*", "../ops/*", "../sync/*", "../server/*", "../cli/*"],
+                "message": "hosts imports only store (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/model/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../ops/*", "../sync/*", "../server/*", "../cli/*"],
+                "message": "model reads; it imports only store and hosts (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/ops/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../sync/*", "../server/*", "../cli/*"],
+                "message": "ops imports only store, hosts and model (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/sync/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../server/*", "../cli/*"],
+                "message": "sync sits below the server and the command line (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/server/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../cli/*"],
+                "message": "the server never imports the command line (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

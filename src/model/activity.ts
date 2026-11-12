@@ -31,7 +31,12 @@ export interface Activity {
 
 const DAY = 86_400_000;
 
-export function activity(store: Store, loaded: Loaded, key: string, opts: { days?: number; since?: string; now?: number; until?: number } = {}): Activity {
+export function activity(
+  store: Store,
+  loaded: Loaded,
+  key: string,
+  opts: { days?: number; since?: string; now?: number; until?: number } = {},
+): Activity {
   const days = opts.days ?? 14;
   const now = opts.now ?? Date.now();
   const since = opts.since ? new Date(opts.since).toISOString() : new Date(now - days * DAY).toISOString();
@@ -47,21 +52,56 @@ export function activity(store: Store, loaded: Loaded, key: string, opts: { days
   const byOp: Record<string, number> = {};
   for (const e of events) byOp[e.op] = (byOp[e.op] ?? 0) + 1;
   const isDone = (k: string) => live(loaded, k)?.data.status === 'done';
-  const doneChanges = [...new Set(events.filter((e) => e.type === 'change' && e.op === 'set' && e.fields?.includes('status') && isDone(e.key)).map((e) => live(loaded, e.key)!.key))];
+  const doneChanges = [
+    ...new Set(
+      events
+        .filter((e) => e.type === 'change' && e.op === 'set' && e.fields?.includes('status') && isDone(e.key))
+        .map((e) => live(loaded, e.key)!.key),
+    ),
+  ];
   const newChanges = [...new Set(events.filter((e) => e.type === 'change' && e.op === 'created').map((e) => e.key))];
-  const proposedDecisions = loaded.records.filter((r) => r.type === 'decision' && r.valid && r.data.status === 'proposed' && keys.has(r.key)).map((r) => r.key);
-  const blocked = loaded.records.filter((r) => r.type === 'change' && r.valid && r.data.status === 'blocked' && keys.has(r.key)).map((r) => r.key);
+  const proposedDecisions = loaded.records
+    .filter((r) => r.type === 'decision' && r.valid && r.data.status === 'proposed' && keys.has(r.key))
+    .map((r) => r.key);
+  const blocked = loaded.records
+    .filter((r) => r.type === 'change' && r.valid && r.data.status === 'blocked' && keys.has(r.key))
+    .map((r) => r.key);
   return {
-    key, since, days, subtree: keys.size, events,
-    summary: { last, staleDays: last ? Math.floor((now - Date.parse(last)) / DAY) : null, events: events.length, byOp, doneChanges, newChanges, proposedDecisions, blocked },
+    key,
+    since,
+    days,
+    subtree: keys.size,
+    events,
+    summary: {
+      last,
+      staleDays: last ? Math.floor((now - Date.parse(last)) / DAY) : null,
+      events: events.length,
+      byOp,
+      doneChanges,
+      newChanges,
+      proposedDecisions,
+      blocked,
+    },
   };
 }
 
 export function formatActivity(a: Activity, formatEvent: (e: StoreEvent) => string): string {
   const s = a.summary;
   const out = [`# activity of ${a.key} — last ${a.days} days, ${a.subtree - 1} records beneath it`];
-  out.push(s.last ? `last moved ${s.last.replace('T', ' ').slice(0, 16)} (${s.staleDays} day${s.staleDays === 1 ? '' : 's'} ago)` : 'never moved');
-  out.push(`${s.events} event${s.events === 1 ? '' : 's'} in the window${Object.keys(s.byOp).length ? `: ${Object.entries(s.byOp).map(([k, v]) => `${v} ${k}`).join(', ')}` : ''}`);
+  out.push(
+    s.last
+      ? `last moved ${s.last.replace('T', ' ').slice(0, 16)} (${s.staleDays} day${s.staleDays === 1 ? '' : 's'} ago)`
+      : 'never moved',
+  );
+  out.push(
+    `${s.events} event${s.events === 1 ? '' : 's'} in the window${
+      Object.keys(s.byOp).length
+        ? `: ${Object.entries(s.byOp)
+            .map(([k, v]) => `${v} ${k}`)
+            .join(', ')}`
+        : ''
+    }`,
+  );
   if (s.doneChanges.length) out.push(`done: ${s.doneChanges.join(', ')}`);
   if (s.newChanges.length) out.push(`new: ${s.newChanges.join(', ')}`);
   if (s.blocked.length) out.push(`blocked now: ${s.blocked.join(', ')}`);
@@ -79,7 +119,11 @@ export function formatActivity(a: Activity, formatEvent: (e: StoreEvent) => stri
     const line = (g: StoreEvent[]): string => {
       if (g.length === 1) return formatEvent(g[0]);
       const writes = g.filter((e) => e.op !== 'applied');
-      const ops = Object.entries(writes.reduce<Record<string, number>>((m, e) => ({ ...m, [e.op]: (m[e.op] ?? 0) + 1 }), {})).map(([op, n]) => `${n} ${op}`).join(', ');
+      const ops = Object.entries(
+        writes.reduce<Record<string, number>>((m, e) => ({ ...m, [e.op]: (m[e.op] ?? 0) + 1 }), {}),
+      )
+        .map(([op, n]) => `${n} ${op}`)
+        .join(', ');
       const keys = [...new Set(writes.map((e) => e.key))];
       return `#${g[0].seq}-${g.at(-1)!.seq} ${g[0].at.replace('T', ' ').slice(0, 19)} batch     ${ops}: ${keys.slice(0, 4).join(', ')}${keys.length > 4 ? ` and ${keys.length - 4} more` : ''}`;
     };

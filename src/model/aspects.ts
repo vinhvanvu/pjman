@@ -30,7 +30,9 @@ const live = (loaded: Loaded, raw: unknown, scope: string | null): Rec | undefin
 
 /** The places under an aspect, in key order. */
 export function placesOf(loaded: Loaded, aspect: Rec): Rec[] {
-  return loaded.records.filter((r) => r.type === 'place' && r.aspectKey === aspect.key).sort((a, b) => a.key.localeCompare(b.key));
+  return loaded.records
+    .filter((r) => r.type === 'place' && r.aspectKey === aspect.key)
+    .sort((a, b) => a.key.localeCompare(b.key));
 }
 
 /** The feature a place applies at, resolved. */
@@ -43,7 +45,7 @@ export function featureOfPlace(loaded: Loaded, place: Rec): Rec | undefined {
 export function featureChain(loaded: Loaded, feature: Rec): Rec[] {
   const out: Rec[] = [];
   const seen = new Set<string>();
-  for (let cur: Rec | undefined = feature; cur && cur.type === 'feature' && !seen.has(cur.key); ) {
+  for (let cur: Rec | undefined = feature; cur && cur.type === 'feature' && !seen.has(cur.key);) {
     out.push(cur);
     seen.add(cur.key);
     cur = live(loaded, cur.data.parent, cur.productSlug ?? null);
@@ -88,7 +90,13 @@ export function aspectAt(loaded: Loaded, aspect: Rec, feature: Rec): AspectAt | 
   if (aspect.body.trim()) layers.push({ from: aspect.key, text: aspect.body.trim() });
   for (const { p, f } of covering) if (p.body.trim()) layers.push({ from: p.key, at: f.key, text: p.body.trim() });
   const nearest = covering[covering.length - 1];
-  return { aspect: aspect.key, title: String(aspect.data.title ?? aspect.key), place: nearest.p.key, at: nearest.f.key, layers };
+  return {
+    aspect: aspect.key,
+    title: String(aspect.data.title ?? aspect.key),
+    place: nearest.p.key,
+    at: nearest.f.key,
+    layers,
+  };
 }
 
 export interface PlaceLine {
@@ -97,7 +105,11 @@ export interface PlaceLine {
   forked: boolean;
 }
 
-export const placeLine = (loaded: Loaded, p: Rec): PlaceLine => ({ place: p.key, feature: featureOfPlace(loaded, p)?.key ?? String(p.data.feature ?? ''), forked: !!p.body.trim() });
+export const placeLine = (loaded: Loaded, p: Rec): PlaceLine => ({
+  place: p.key,
+  feature: featureOfPlace(loaded, p)?.key ?? String(p.data.feature ?? ''),
+  forked: !!p.body.trim(),
+});
 
 /** What a change works under, from the features it names: for each feature, every aspect whose place is at that
  *  feature or above it, read in full; and the places beneath a feature it names, one line each. */
@@ -127,8 +139,11 @@ export function aspectsForFeatures(loaded: Loaded, features: Rec[]): { at: Aspec
 /** Lines that say what a write to an aspect's base reaches: every place under it, and each fork in full. */
 export function reachOfBase(loaded: Loaded, aspect: Rec): string[] {
   const places = placesOf(loaded, aspect);
-  if (!places.length) return [`${aspect.key} applies nowhere yet: pjman new place ${aspect.key}/<place> --feature feature:<slug>`];
-  const out = [`the base of ${aspect.key} reaches ${places.length} place${places.length === 1 ? '' : 's'}; reconcile each fork with it in the same batch:`];
+  if (!places.length)
+    return [`${aspect.key} applies nowhere yet: pjman new place ${aspect.key}/<place> --feature feature:<slug>`];
+  const out = [
+    `the base of ${aspect.key} reaches ${places.length} place${places.length === 1 ? '' : 's'}; reconcile each fork with it in the same batch:`,
+  ];
   for (const p of places) {
     const l = placeLine(loaded, p);
     out.push(`  ${l.place} at ${l.feature}${l.forked ? ' (forked)' : ''}`);
@@ -201,14 +216,22 @@ export function aspectsOfChange(loaded: Loaded, change: Rec, features: Rec[]): C
   }
   const { at, beneath } = aspectsForFeatures(loaded, [...features, ...atPlaces]);
   const whole = new Set(named.map((n) => n.aspect));
-  const out = { named, at: at.filter((x) => !whole.has(x.aspect)), beneath: beneath.filter((b) => !named.some((n) => b.place.startsWith(n.aspect + '/'))) };
+  const out = {
+    named,
+    at: at.filter((x) => !whole.has(x.aspect)),
+    beneath: beneath.filter((b) => !named.some((n) => b.place.startsWith(n.aspect + '/'))),
+  };
   return out.named.length || out.at.length || out.beneath.length ? out : undefined;
 }
 
 export function formatChangeAspects(a: ChangeAspects): string[] {
   const out: string[] = ['## Aspects', ''];
   for (const n of a.named) {
-    out.push(`### ${n.aspect} — ${n.title} (named by this change: the base and every place)`, '', n.base || '(no base written yet)');
+    out.push(
+      `### ${n.aspect} — ${n.title} (named by this change: the base and every place)`,
+      '',
+      n.base || '(no base written yet)',
+    );
     for (const p of n.places) {
       out.push('', `- ${p.place} at ${p.feature}${p.forked ? ', forked:' : ', the base as it is'}`);
       if (p.fork) out.push('', ...p.fork.split('\n').map((l) => `  ${l}`));
@@ -256,7 +279,8 @@ export interface AspectCue {
 export function coveredByAspect(loaded: Loaded, decision: Rec): boolean {
   const full = decision.key;
   const bare = decision.productSlug ? full.replace(`decision:${decision.productSlug}/`, 'decision:') : full;
-  const names = (text: string) => text.includes(full) || new RegExp(`${bare.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}(?![\\w/-])`).test(text);
+  const names = (text: string) =>
+    text.includes(full) || new RegExp(`${bare.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')}(?![\\w/-])`).test(text);
   return loaded.records.some((r) => {
     if (r.type === 'aspect' || r.type === 'place') return names(r.body);
     if (r.type === 'change' && aspectKeysOf(loaded, r).length) return [...r.sections.values()].some(names);
@@ -270,7 +294,12 @@ export function coveredByAspect(loaded: Loaded, decision: Rec): boolean {
 export function aspectCuesOf(loaded: Loaded, change: Rec): AspectCue[] {
   if (aspectKeysOf(loaded, change).length) return [];
   return loaded.records
-    .filter((r) => r.type === 'decision' && r.changeKey === change.key && (r.data.status === 'proposed' || r.data.status === 'decided'))
+    .filter(
+      (r) =>
+        r.type === 'decision' &&
+        r.changeKey === change.key &&
+        (r.data.status === 'proposed' || r.data.status === 'decided'),
+    )
     .filter((r) => !coveredByAspect(loaded, r))
     .flatMap((r) => {
       const phrase = acrossCueOfDecision(r.data);

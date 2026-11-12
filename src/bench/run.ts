@@ -53,7 +53,9 @@ function get(port: number, route: string): Promise<number> {
     http
       .get({ host: '127.0.0.1', port, path: `/api/v1${route}`, headers: { host: 'localhost' } }, (r) => {
         r.resume();
-        r.on('end', () => (r.statusCode === 200 ? res(performance.now() - t) : rej(new Error(`${route}: ${r.statusCode}`))));
+        r.on('end', () =>
+          r.statusCode === 200 ? res(performance.now() - t) : rej(new Error(`${route}: ${r.statusCode}`)),
+        );
       })
       .on('error', rej);
   });

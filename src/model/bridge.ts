@@ -10,7 +10,14 @@ import { eventsSince, readEvents } from '../store/events.js';
 import { productOf } from './order.js';
 import { memo, ofType, push, type Loaded, type Rec } from '../store/records.js';
 import { proposedDecisions, type WaitingDecision } from './scope.js';
-import { hostFactsOf, lastActs, sessionLogOf, sessionState, type SessionHostFacts, type SessionState } from './session-state.js';
+import {
+  hostFactsOf,
+  lastActs,
+  sessionLogOf,
+  sessionState,
+  type SessionHostFacts,
+  type SessionState,
+} from './session-state.js';
 import type { HostStatus } from '../hosts/host.js';
 export { sessionState, type SessionHostFacts, type SessionState, type StateFacts } from './session-state.js';
 import { effectsOf, live, rootProductOf, structuralParent } from './tree.js';
@@ -116,7 +123,10 @@ export function featurePath(loaded: Loaded, change: Rec): BridgeChange['path'] {
   let cur: Rec | undefined = feature;
   while (cur && cur.type === 'feature' && !seen.has(cur.key)) {
     seen.add(cur.key);
-    out.unshift({ key: cur.key, name: str(cur.data.name) ?? str(cur.data.title) ?? cur.key.slice(cur.key.lastIndexOf('/') + 1) });
+    out.unshift({
+      key: cur.key,
+      name: str(cur.data.name) ?? str(cur.data.title) ?? cur.key.slice(cur.key.lastIndexOf('/') + 1),
+    });
     cur = structuralParent(loaded, cur);
   }
   return out;
@@ -136,7 +146,17 @@ export function changeOfDecision(key: string): string | undefined {
  *  milestone's page and the index; a milestone with no child yet is a bar of none. */
 export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[]): BridgeMotion {
   const blockedOn = c.sections.get('Blocked on')?.trim();
-  const base = { key: c.key, name: str(c.data.name), gist: str(c.data.gist), status: str(c.data.status), kind: str(c.data.kind), path: featurePath(loaded, c), blockedOn: blockedOn || undefined, last, sessions };
+  const base = {
+    key: c.key,
+    name: str(c.data.name),
+    gist: str(c.data.gist),
+    status: str(c.data.status),
+    kind: str(c.data.kind),
+    path: featurePath(loaded, c),
+    blockedOn: blockedOn || undefined,
+    last,
+    sessions,
+  };
   if (c.data.kind === 'milestone') {
     const kids = childrenOf(loaded, c);
     const counted = kids.filter((k) => k.data.status !== 'dropped');
@@ -145,7 +165,13 @@ export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[
     return {
       ...base,
       steps: { done: counted.length - open.length, total: counted.length, dropped: kids.length - counted.length },
-      step: inWork ? { n: counted.indexOf(inWork) + 1, text: str(inWork.data.name) ?? str(inWork.data.gist) ?? inWork.key.slice(inWork.key.lastIndexOf('/') + 1), state: 'open' } : undefined,
+      step: inWork
+        ? {
+            n: counted.indexOf(inWork) + 1,
+            text: str(inWork.data.name) ?? str(inWork.data.gist) ?? inWork.key.slice(inWork.key.lastIndexOf('/') + 1),
+            state: 'open',
+          }
+        : undefined,
     };
   }
   const steps = stepsOf(c.data);
@@ -153,21 +179,27 @@ export function motionOf(loaded: Loaded, c: Rec, last: string, sessions: string[
   const next = nextStep(steps);
   return {
     ...base,
-    steps: { done: counted.filter((s) => s.state === 'done').length, total: counted.length, dropped: steps.length - counted.length },
+    steps: {
+      done: counted.filter((s) => s.state === 'done').length,
+      total: counted.length,
+      dropped: steps.length - counted.length,
+    },
     step: next ? { n: next.n, text: next.step.text, state: next.step.state, note: next.step.note } : undefined,
   };
 }
 
 /** A change's children: the valid changes whose parent resolves to it, in the store's order. */
 function childrenOf(loaded: Loaded, c: Rec): Rec[] {
-  return memo(loaded, 'bridge-children', () => {
-    const m = new Map<string, Rec[]>();
-    for (const r of ofType(loaded, 'change')) {
-      const p = r.valid && typeof r.data.parent === 'string' ? live(loaded, r.data.parent) : undefined;
-      if (p) push(m, p.key, r);
-    }
-    return m;
-  }).get(c.key) ?? [];
+  return (
+    memo(loaded, 'bridge-children', () => {
+      const m = new Map<string, Rec[]>();
+      for (const r of ofType(loaded, 'change')) {
+        const p = r.valid && typeof r.data.parent === 'string' ? live(loaded, r.data.parent) : undefined;
+        if (p) push(m, p.key, r);
+      }
+      return m;
+    }).get(c.key) ?? []
+  );
 }
 
 const DAY = 24 * 60 * 60_000;
@@ -176,7 +208,11 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   const now = opts.now ?? Date.now();
   const days = opts.days ?? 1;
   const since = new Date(now - days * DAY).toISOString();
-  const productKey = opts.product ? (opts.product.startsWith('product:') ? opts.product : `product:${opts.product}`) : null;
+  const productKey = opts.product
+    ? opts.product.startsWith('product:')
+      ? opts.product
+      : `product:${opts.product}`
+    : null;
 
   // the last act of each session from the stream (session-state.ts: a write stamped with it, its own line excluded),
   // and the last touch of each change inside the window: a write to it, or to a decision on it
@@ -195,16 +231,28 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     const c = live(loaded, d.change)!;
     proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), d]);
   }
-  const asChange = (c: Rec): BridgeChange => ({ key: c.key, gist: str(c.data.gist), name: str(c.data.name), status: str(c.data.status), next: nextLine(nextStep(stepsOf(c.data))), path: featurePath(loaded, c) });
+  const asChange = (c: Rec): BridgeChange => ({
+    key: c.key,
+    gist: str(c.data.gist),
+    name: str(c.data.name),
+    status: str(c.data.status),
+    next: nextLine(nextStep(stepsOf(c.data))),
+    path: featurePath(loaded, c),
+  });
 
   const rows: BridgeSession[] = [];
   for (const rec of ofType(loaded, 'session')) {
     if (!rec.valid) continue;
     const { closing, ended, line } = sessionLogOf(rec);
     const act = acts.get(rec.key);
-    const last = [closing?.at, line?.at, act].filter((x): x is string => !!x).sort().at(-1);
+    const last = [closing?.at, line?.at, act]
+      .filter((x): x is string => !!x)
+      .sort()
+      .at(-1);
     if (!last || last < since) continue;
-    const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : []).map((k) => live(loaded, k)).filter((r): r is Rec => !!r);
+    const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : [])
+      .map((k) => live(loaded, k))
+      .filter((r): r is Rec => !!r);
     const on = bound.at(-1);
     const project = live(loaded, rec.data.project);
     const product = on ? productOf(loaded, on) : project ? rootProductOf(loaded, project) : undefined;
@@ -234,7 +282,8 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   // a subagent's session is carried under its parent; one spawned by a session outside the window or the product is
   // left out, since it has no row to sit under
   const byKey = new Map(rows.map((r) => [r.key, r]));
-  const newestFirst = (a: BridgeSession, b: BridgeSession) => (b.last ?? '').localeCompare(a.last ?? '') || a.key.localeCompare(b.key);
+  const newestFirst = (a: BridgeSession, b: BridgeSession) =>
+    (b.last ?? '').localeCompare(a.last ?? '') || a.key.localeCompare(b.key);
   const sessions: BridgeSession[] = [];
   for (const r of rows) {
     if (!r.parent) sessions.push(r);
@@ -266,7 +315,14 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   for (const [key, { rec: c, last }] of resolved) {
     if (c.data.status === 'done' || c.data.status === 'dropped') continue;
     if (!inProduct(c)) continue;
-    changes.push(motionOf(loaded, c, last, [...(onChange.get(key) ?? [])].sort(newestFirst).map((r) => r.key)));
+    changes.push(
+      motionOf(
+        loaded,
+        c,
+        last,
+        [...(onChange.get(key) ?? [])].sort(newestFirst).map((r) => r.key),
+      ),
+    );
   }
   changes.sort((a, b) => b.last.localeCompare(a.last) || a.key.localeCompare(b.key));
   return { product: productKey, days, changes, sessions };

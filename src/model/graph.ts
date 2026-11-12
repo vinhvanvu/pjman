@@ -52,7 +52,8 @@ export function edgesAt(loaded: Loaded): { from: Map<string, Edge[]>; to: Map<st
 
 function edgesOnce(loaded: Loaded): Edge[] {
   const out: Edge[] = [];
-  const edge = (name: string, from: string, to: string, on: Rec) => out.push({ edge: name, from, to: canon(to), on: on.path, observed: false, at: null });
+  const edge = (name: string, from: string, to: string, on: Rec) =>
+    out.push({ edge: name, from, to: canon(to), on: on.path, observed: false, at: null });
   const live = (raw: string, scope?: string | null): string => {
     const res = resolve(loaded, raw, scope);
     return res.status === 'ok' || res.status === 'alias' ? res.rec.key : raw;
@@ -125,7 +126,14 @@ function edgesOnce(loaded: Loaded): Edge[] {
             if (!o || typeof o !== 'object') continue;
             const e = o as Record<string, unknown>;
             if (typeof e.edge !== 'string' || typeof e.from !== 'string' || typeof e.to !== 'string') continue;
-            out.push({ edge: e.edge, from: live(e.from), to: canon(e.to), on: r.path, observed: true, at: typeof e.at === 'string' ? e.at : null });
+            out.push({
+              edge: e.edge,
+              from: live(e.from),
+              to: canon(e.to),
+              on: r.path,
+              observed: true,
+              at: typeof e.at === 'string' ? e.at : null,
+            });
           }
         }
         break;
@@ -222,8 +230,11 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     const u = canonicalUrl(ref);
     const direct = loaded.byKey.get(`url:${u}`)?.[0];
     if (direct) return { status: direct.valid ? 'record' : 'invalid', key: direct.key, shape: 'url', tried };
-    const byField = loaded.records.find((r) => r.type === 'source' && typeof r.data.url === 'string' && canonicalUrl(r.data.url) === u);
-    if (byField) return { status: byField.valid ? 'record' : 'invalid', key: byField.key, via: `url:${u}`, shape: 'url', tried };
+    const byField = loaded.records.find(
+      (r) => r.type === 'source' && typeof r.data.url === 'string' && canonicalUrl(r.data.url) === u,
+    );
+    if (byField)
+      return { status: byField.valid ? 'record' : 'invalid', key: byField.key, via: `url:${u}`, shape: 'url', tried };
     const vendor = keyFromUrl(u);
     if (vendor) return { ...sourceKey(vendor, 'url'), via: `url:${u}` };
     return sourceKey(`url:${u}`, 'url');
@@ -239,14 +250,20 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
     const tracker = trackerOf(loaded, opts.project);
     for (const f of forms) {
       if (!f.key) {
-        tried.push(`${f.kind} short form: ${opts.project ? `${opts.project} names no scope for it (${f.needs})` : `no current project (${f.needs})`}`);
+        tried.push(
+          `${f.kind} short form: ${opts.project ? `${opts.project} names no scope for it (${f.needs})` : `no current project (${f.needs})`}`,
+        );
         continue;
       }
       tried.push(`${f.kind} short form ${f.key}`);
       if (loaded.byKey.has(f.key) || referenced(f.key)) return sourceKey(f.key, 'ticket id');
-      if (f.qualified || (f.kind === tracker && f.inScope)) return { status: 'key', key: f.key, shape: 'ticket id', tried };
+      if (f.qualified || (f.kind === tracker && f.inScope))
+        return { status: 'key', key: f.key, shape: 'ticket id', tried };
     }
-    if (!tracker) tried.push(`a ticket through the project's tracker (${opts.project ? `${opts.project} names none` : 'no current project'})`);
+    if (!tracker)
+      tried.push(
+        `a ticket through the project's tracker (${opts.project ? `${opts.project} names none` : 'no current project'})`,
+      );
   }
   if (SLUG_RE.test(ref)) {
     tried.push(`change:${ref}, project:${ref}`);
@@ -267,13 +284,17 @@ export function resolveRef(loaded: Loaded, input: string, opts: GetOpts = {}): R
   }
   if (SLUG_RE.test(ref)) {
     const decisions = loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === ref);
-    tried.push(`a decision named ${ref}${decisions.length > 1 ? ` (${decisions.length} match: ${decisions.map((r) => r.key).join(', ')})` : ''}`);
-    if (decisions.length === 1) return { status: decisions[0].valid ? 'record' : 'invalid', key: decisions[0].key, shape: 'slug', tried };
+    tried.push(
+      `a decision named ${ref}${decisions.length > 1 ? ` (${decisions.length} match: ${decisions.map((r) => r.key).join(', ')})` : ''}`,
+    );
+    if (decisions.length === 1)
+      return { status: decisions[0].valid ? 'record' : 'invalid', key: decisions[0].key, shape: 'slug', tried };
   }
   if (ref.length >= 6 && /^[A-Za-z0-9._-]+$/.test(ref)) {
     const sessions = loaded.records.filter((r) => r.type === 'session' && r.sessionId?.startsWith(ref));
     tried.push(`a session id starting ${ref}${sessions.length > 1 ? ` (${sessions.length} match)` : ''}`);
-    if (sessions.length === 1) return { status: sessions[0].valid ? 'record' : 'invalid', key: sessions[0].key, shape: 'slug', tried };
+    if (sessions.length === 1)
+      return { status: sessions[0].valid ? 'record' : 'invalid', key: sessions[0].key, shape: 'slug', tried };
   }
   return { status: 'none', tried };
 }
@@ -311,7 +332,14 @@ export function resolveArg(loaded: Loaded, raw: string, opts: GetOpts & { kinds?
   }
   const res = resolveRef(loaded, ref, opts);
   if (res.key && res.status !== 'none') return res.key;
-  throw notFound(ref, { tried: SLUG_RE.test(ref) ? ['change, project, feature, product, aspect, decision named so', ...res.tried.filter((t) => !t.startsWith('change:'))] : res.tried });
+  throw notFound(ref, {
+    tried: SLUG_RE.test(ref)
+      ? [
+          'change, project, feature, product, aspect, decision named so',
+          ...res.tried.filter((t) => !t.startsWith('change:')),
+        ]
+      : res.tried,
+  });
 }
 
 /** The getter: a reference in, the record and its neighbourhood out. */
@@ -357,9 +385,14 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
       // an unresolvable change in reach is reported by validate, not here
     }
   }
-  if (rec?.type === 'project') result.members = loaded.records.filter((r) => r.type === 'change' && r.data.project === key).map(row);
-  if (rec?.type === 'session') result.members = loaded.records.filter((r) => r.type === 'session' && r.data.parent === key).map(row);
-  if (rec?.type === 'actor') result.members = loaded.records.filter((r) => r.type === 'session' && (r.data.on_behalf_of === key || r.data.agent === key)).map(row);
+  if (rec?.type === 'project')
+    result.members = loaded.records.filter((r) => r.type === 'change' && r.data.project === key).map(row);
+  if (rec?.type === 'session')
+    result.members = loaded.records.filter((r) => r.type === 'session' && r.data.parent === key).map(row);
+  if (rec?.type === 'actor')
+    result.members = loaded.records
+      .filter((r) => r.type === 'session' && (r.data.on_behalf_of === key || r.data.agent === key))
+      .map(row);
   return result;
 }
 
@@ -368,19 +401,42 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
   if (r.status === 'none') return `${n.input} resolves to nothing; tried: ${r.tried.join('; ')}`;
   const out: string[] = [];
   const how = r.via && r.via !== r.key ? ` via ${r.via}` : '';
-  const what = r.status === 'key' ? 'a source key with no record' : r.status === 'invalid' ? 'a record that does not parse' : r.status === 'alias' ? 'a former slug' : n.record?.type ?? 'a record';
+  const what =
+    r.status === 'key'
+      ? 'a source key with no record'
+      : r.status === 'invalid'
+        ? 'a record that does not parse'
+        : r.status === 'alias'
+          ? 'a former slug'
+          : (n.record?.type ?? 'a record');
   out.push(`${n.input} → ${r.key} (${r.shape}${how}; ${what})`);
-  if (n.record) out.push(`${n.record.type} ${n.record.key}${lineOfRow(n.record) ? ` — ${lineOfRow(n.record)}` : ''}${n.record.status ? ` [${n.record.status}]` : ''}  ${n.record.path}`);
-  const line = (e: Edge, other: string) => `- ${e.edge} ${other}${e.observed ? ` (observed by ${e.on.replace(/^sessions\//, 'session:').replace(/^\d{4}-\d{2}-\d{2}-/, '').replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})` : ''}`;
+  if (n.record)
+    out.push(
+      `${n.record.type} ${n.record.key}${lineOfRow(n.record) ? ` — ${lineOfRow(n.record)}` : ''}${n.record.status ? ` [${n.record.status}]` : ''}  ${n.record.path}`,
+    );
+  const line = (e: Edge, other: string) =>
+    `- ${e.edge} ${other}${
+      e.observed
+        ? ` (observed by ${e.on
+            .replace(/^sessions\//, 'session:')
+            .replace(/^\d{4}-\d{2}-\d{2}-/, '')
+            .replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})`
+        : ''
+    }`;
   const inbound = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   const outbound = n.out.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   if (inbound.length) out.push(`\nreferenced by:\n${inbound.map((e) => line(e, e.from)).join('\n')}`);
   if (outbound.length) out.push(`\nrefers to:\n${outbound.map((e) => line(e, e.to)).join('\n')}`);
-  if (n.members.length) out.push(`\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${lineOfRow(m) ? ` — ${lineOfRow(m)}` : ''}`).join('\n')}`);
+  if (n.members.length)
+    out.push(
+      `\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${lineOfRow(m) ? ` — ${lineOfRow(m)}` : ''}`).join('\n')}`,
+    );
   if (!n.record && !inbound.length && !outbound.length) out.push('nothing in the store references it');
   for (const c of n.changes) {
     const v = n.via[c.change.key];
-    out.push(`\n${'─'.repeat(60)}\n${v === 'self' ? '' : `reached ${c.change.key} through ${v}\n\n`}${formatChange(c).trimEnd()}`);
+    out.push(
+      `\n${'─'.repeat(60)}\n${v === 'self' ? '' : `reached ${c.change.key} through ${v}\n\n`}${formatChange(c).trimEnd()}`,
+    );
   }
   return out.join('\n') + '\n';
 }
@@ -407,7 +463,11 @@ export interface Reference {
  *  The last mention that is not weak is what a prompt is about. Never writes. */
 export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {}): Reference[] {
   // bare slugs: changes still in play (a dropped change is reached by its full key only)
-  const slugs = [...new Set(loaded.records.filter((r) => r.type === 'change' && r.data.status !== 'dropped').map((r) => r.changeSlug!))];
+  const slugs = [
+    ...new Set(
+      loaded.records.filter((r) => r.type === 'change' && r.data.status !== 'dropped').map((r) => r.changeSlug!),
+    ),
+  ];
   const tracker = trackerOf(loaded, opts.project);
   const out: Reference[] = [];
   for (const m of mentions(text, slugs)) {
@@ -429,12 +489,26 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
       if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) change = r.key;
     }
     const weak = !!m.weak;
-    out.push({ text: m.text, at: m.at, shape: m.shape, resolution, key, change, creatable: !weak && !change && resolution.status === 'key' && kind === tracker, weak });
+    out.push({
+      text: m.text,
+      at: m.at,
+      shape: m.shape,
+      resolution,
+      key,
+      change,
+      creatable: !weak && !change && resolution.status === 'key' && kind === tracker,
+      weak,
+    });
   }
   return out;
 }
 
 export function formatReferences(refs: Reference[]): string {
   if (!refs.length) return 'no references';
-  return refs.map((r) => `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''}${r.weak ? ', bare: never binds' : ''})${r.change ? ` · ${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`).join('\n');
+  return refs
+    .map(
+      (r) =>
+        `${r.text} → ${r.key} (${r.shape}${r.resolution.status === 'key' ? ', no record' : ''}${r.weak ? ', bare: never binds' : ''})${r.change ? ` · ${r.change}` : r.creatable ? ' · no change yet: ask the tracker' : ''}`,
+    )
+    .join('\n');
 }

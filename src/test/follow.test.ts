@@ -36,7 +36,10 @@ test('the followed session moves on a prompt into another session; the same sess
   f.set('session:a', 'prompt', Date.UTC(2026, 10, 11));
   f.set('session:a', 'prompt', Date.UTC(2026, 10, 11, 0, 1));
   f.set('session:b');
-  assert.deepEqual(seen.map((x) => x.session), ['session:a', 'session:b']);
+  assert.deepEqual(
+    seen.map((x) => x.session),
+    ['session:a', 'session:b'],
+  );
   assert.equal(f.get()?.session, 'session:b');
 });
 
@@ -68,7 +71,12 @@ after(() => {
   server?.close();
 });
 
-const post = (route: string, body: unknown = {}) => fetch(`${base}${route}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+const post = (route: string, body: unknown = {}) =>
+  fetch(`${base}${route}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
 
 /** An open stream and a way to wait for what it says. */
 async function stream(route: string) {
@@ -77,21 +85,25 @@ async function stream(route: string) {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let seen = '';
-  const until = (pred: (s: string) => boolean) => new Promise<void>((resolve, reject) => {
-    const deadline = setTimeout(() => reject(new Error(`not seen; saw:\n${seen}`)), 4000);
-    const pump = (): void => {
-      if (pred(seen)) {
-        clearTimeout(deadline);
-        return resolve();
-      }
-      void reader.read().then(({ value, done }) => {
-        if (done) return;
-        seen += decoder.decode(value);
-        pump();
-      }, () => {});
-    };
-    pump();
-  });
+  const until = (pred: (s: string) => boolean) =>
+    new Promise<void>((resolve, reject) => {
+      const deadline = setTimeout(() => reject(new Error(`not seen; saw:\n${seen}`)), 4000);
+      const pump = (): void => {
+        if (pred(seen)) {
+          clearTimeout(deadline);
+          return resolve();
+        }
+        void reader.read().then(
+          ({ value, done }) => {
+            if (done) return;
+            seen += decoder.decode(value);
+            pump();
+          },
+          () => {},
+        );
+      };
+      pump();
+    });
   return { until, close: () => ctl.abort() };
 }
 
@@ -116,7 +128,8 @@ test('a prompt moves the follow windows to the session; a window is counted, and
 test('ensure: while a window is open nobody opens one; once it closes one caller is told to, the next is not', async () => {
   const win = await stream('/follow');
   await new Promise((r) => setTimeout(r, 100));
-  const ensure = async () => ((await (await post('/follow/ensure')).json()) as { data: { open: boolean; reason?: string } }).data;
+  const ensure = async () =>
+    ((await (await post('/follow/ensure')).json()) as { data: { open: boolean; reason?: string } }).data;
   // a server just started answers after a window that was open has had its reconnect
   assert.deepEqual(await ensure(), { open: false, reason: 'open', windows: 1 });
   win.close();

@@ -25,7 +25,15 @@ let server: http.Server;
 
 const getJson = async (route: string) => {
   const res = await fetch(base + route);
-  return { status: res.status, seq: res.headers.get('x-pjman-seq'), body: (await res.json()) as { seq: number; data?: unknown; error?: { code: string; message: string; tried?: string[] } } };
+  return {
+    status: res.status,
+    seq: res.headers.get('x-pjman-seq'),
+    body: (await res.json()) as {
+      seq: number;
+      data?: unknown;
+      error?: { code: string; message: string; tried?: string[] };
+    },
+  };
 };
 
 before(async () => {
@@ -122,28 +130,50 @@ test('records by key, the listing, the store', async () => {
   assert.equal(missing.status, 404);
   assert.equal(missing.body.error?.code, 'not-found');
   const list = await getJson('/api/v1/records?type=change');
-  assert.deepEqual((list.body.data as { key: string }[]).map((r) => r.key), ['change:app/login']);
+  assert.deepEqual(
+    (list.body.data as { key: string }[]).map((r) => r.key),
+    ['change:app/login'],
+  );
   const s = await getJson('/api/v1/store');
   assert.equal((s.body.data as { name: string }).name, 'global');
-  assert.deepEqual((s.body.data as { projects: { key: string }[] }).projects.map((p) => p.key), ['project:app']);
+  assert.deepEqual(
+    (s.body.data as { projects: { key: string }[] }).projects.map((p) => p.key),
+    ['project:app'],
+  );
 });
 
 test('the getter: a neighbourhood by key, and resolve for anything', async () => {
   const n = await getJson('/api/v1/records/linear/APP-1/neighbourhood');
   assert.equal(n.status, 200);
-  assert.deepEqual((n.body.data as { changes: { change: { key: string } }[] }).changes.map((c) => c.change.key), ['change:app/login']);
+  assert.deepEqual(
+    (n.body.data as { changes: { change: { key: string } }[] }).changes.map((c) => c.change.key),
+    ['change:app/login'],
+  );
   const r = await getJson('/api/v1/resolve?ref=' + encodeURIComponent('https://linear.app/acme/issue/APP-1/login'));
   assert.equal((r.body.data as { resolution: { key: string } }).resolution.key, 'linear:APP-1');
   const refs = await getJson('/api/v1/refs?text=' + encodeURIComponent('start APP-1 now'));
   assert.equal(refs.status, 200);
-  assert.deepEqual((refs.body.data as { key: string; change?: string }[]).map((r) => [r.key, r.change]), [['linear:APP-1', 'change:app/login']]);
+  assert.deepEqual(
+    (refs.body.data as { key: string; change?: string }[]).map((r) => [r.key, r.change]),
+    [['linear:APP-1', 'change:app/login']],
+  );
   const none = await getJson('/api/v1/resolve?ref=zzz');
   assert.equal(none.status, 404);
   assert.ok(none.body.error?.tried?.length);
 });
 
 test("a session's view and a project's board", async () => {
-  type SessionView = { showing: { key?: string; board?: string }; session: { key: string; on?: string; binds: string[]; product?: string; state: string; log: { at: string; text: string }[] } };
+  type SessionView = {
+    showing: { key?: string; board?: string };
+    session: {
+      key: string;
+      on?: string;
+      binds: string[];
+      product?: string;
+      state: string;
+      log: { at: string; text: string }[];
+    };
+  };
   sessionLog(store, 'sess-1', 'session started');
   const before = await getJson('/api/v1/sessions/sess-1/view');
   const fresh = before.body.data as SessionView;
@@ -153,7 +183,10 @@ test("a session's view and a project's board", async () => {
   assert.deepEqual(fresh.session.binds, []);
   assert.equal(fresh.session.product, 'product:app');
   assert.equal(fresh.session.state, 'live');
-  assert.deepEqual(fresh.session.log.map((l) => l.text), ['session started']);
+  assert.deepEqual(
+    fresh.session.log.map((l) => l.text),
+    ['session started'],
+  );
   assert.match(fresh.session.log[0].at, /^\d{4}-\d{2}-\d{2}T/);
   sessionBind(store, 'sess-1', 'change:login');
   sessionLog(store, 'sess-1', 'session ended (other)');
@@ -166,9 +199,15 @@ test("a session's view and a project's board", async () => {
   // on a change the session keeps its product: the change's key sits under it (change:bridge-lost-on-session-page)
   assert.equal(bound.session.product, 'product:app');
   assert.equal(bound.session.state, 'ended');
-  assert.deepEqual(bound.session.log.map((l) => l.text), ['session started', 'bound change:app/login (by hand)', 'session ended (other)']);
+  assert.deepEqual(
+    bound.session.log.map((l) => l.text),
+    ['session started', 'bound change:app/login (by hand)', 'session ended (other)'],
+  );
   const board = await getJson('/api/v1/projects/app/board');
-  assert.deepEqual((board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key), ['change:app/login']);
+  assert.deepEqual(
+    (board.body.data as { changes: { key: string }[] }).changes.map((r) => r.key),
+    ['change:app/login'],
+  );
 });
 
 test('as of a moment: at= answers from the commit of that event, stamped with the moment; events between two points', async () => {
@@ -189,9 +228,18 @@ test('as of a moment: at= answers from the commit of that event, stamped with th
   const byInstant = await getJson(`/api/v1/scope?lens=feature&at=${encodeURIComponent(created.at)}`);
   assert.equal((byInstant.body as { moment?: { seq: number } }).moment?.seq, created.seq);
   assert.equal((await getJson('/api/v1/scope?lens=feature&at=yesterday')).status, 400);
-  const between = (await getJson(`/api/v1/events?since=${created.seq - 1}&until=${created.seq}`)).body.data as { seq: number }[];
-  assert.deepEqual(between.map((e) => e.seq), [created.seq]);
-  assert.equal((((await getJson('/api/v1/records/change/app/login')).body as { moment?: unknown }).moment), undefined, 'a live read carries no moment');
+  const between = (await getJson(`/api/v1/events?since=${created.seq - 1}&until=${created.seq}`)).body.data as {
+    seq: number;
+  }[];
+  assert.deepEqual(
+    between.map((e) => e.seq),
+    [created.seq],
+  );
+  assert.equal(
+    ((await getJson('/api/v1/records/change/app/login')).body as { moment?: unknown }).moment,
+    undefined,
+    'a live read carries no moment',
+  );
 });
 
 test('the event stream: a list, and server-sent events with ids', async () => {
@@ -237,9 +285,13 @@ test('the app is served with a history fallback; unknown api routes are 404 json
 });
 
 test('the index is data, one style: a member in the path, a record viewed as key, filters named as the CLI flags; the aliases are gone', async () => {
-  const index = (await getJson('/api/v1')).body.data as { routes: { method: string; path: string; query?: string[] }[]; conventions: Record<string, string> };
+  const index = (await getJson('/api/v1')).body.data as {
+    routes: { method: string; path: string; query?: string[] }[];
+    conventions: Record<string, string>;
+  };
   assert.ok(index.routes.some((r) => r.method === 'GET' && r.path === '/records' && r.query?.includes('parent')));
-  for (const r of index.routes.filter((x) => x.query?.includes('key'))) assert.ok(!r.query!.includes('node') && !r.query!.includes('root'), r.path);
+  for (const r of index.routes.filter((x) => x.query?.includes('key')))
+    assert.ok(!r.query!.includes('node') && !r.query!.includes('root'), r.path);
   assert.match(index.conventions.errors, /ambiguous 409/);
   assert.equal((await getJson('/api/v1/bridge?product=app')).status, 404);
   assert.equal((await getJson('/api/v1/board')).status, 404);
@@ -253,14 +305,28 @@ test('the index is data, one style: a member in the path, a record viewed as key
 test('the scope: one page as data, in a lens, at a node; a bad lens or node is a bad request', async () => {
   const root = await getJson('/api/v1/scope?lens=project');
   assert.equal(root.status, 200);
-  const data = root.body.data as { lens: string; node: null; tree: { key: string; children: { key: string; row?: { ticket?: { label: string } } }[] }[]; changes: { key: string }[] };
+  const data = root.body.data as {
+    lens: string;
+    node: null;
+    tree: { key: string; children: { key: string; row?: { ticket?: { label: string } } }[] }[];
+    changes: { key: string }[];
+  };
   assert.equal(data.lens, 'project');
   assert.equal(data.node, null);
   // the product init made with the project is the root; the project sits beneath it with its changes
-  assert.deepEqual(data.tree.map((n) => n.key), ['product:app']);
-  const project = data.tree[0].children[0] as unknown as { key: string; children: { key: string; row?: { ticket?: { label: string } } }[] };
+  assert.deepEqual(
+    data.tree.map((n) => n.key),
+    ['product:app'],
+  );
+  const project = data.tree[0].children[0] as unknown as {
+    key: string;
+    children: { key: string; row?: { ticket?: { label: string } } }[];
+  };
   assert.equal(project.key, 'project:app');
-  assert.deepEqual(project.children.map((n) => n.key), ['change:app/login', 'change:app/signup']);
+  assert.deepEqual(
+    project.children.map((n) => n.key),
+    ['change:app/login', 'change:app/signup'],
+  );
   assert.equal(project.children[0].row?.ticket?.label, 'APP-1');
   const at = await getJson('/api/v1/scope?lens=feature&key=change:login&days=7');
   assert.equal(at.status, 200);
@@ -272,11 +338,18 @@ test('the scope: one page as data, in a lens, at a node; a bad lens or node is a
   assert.equal((await getJson('/api/v1/scope?key=change:nope')).status, 404);
 });
 
-test('the one write: POST /order moves a change in its product\'s sequence as the person signed in; anything else is refused', async () => {
+test("the one write: POST /order moves a change in its product's sequence as the person signed in; anything else is refused", async () => {
   change(store, 'second', { title: 'Second', summary: 's' });
   const post = async (body: unknown) => {
-    const res = await fetch(base + '/api/v1/order', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    return { status: res.status, body: (await res.json()) as { data?: { sequence: string[] }; error?: { code: string; message: string } } };
+    const res = await fetch(base + '/api/v1/order', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return {
+      status: res.status,
+      body: (await res.json()) as { data?: { sequence: string[] }; error?: { code: string; message: string } },
+    };
   };
   let r = await post({ change: 'change:login', last: true });
   assert.equal(r.status, 200);
@@ -301,10 +374,15 @@ test('POST /decide decides a proposed decision as the person signed in, and POST
   decisionRec(store, 'login/sessions', { title: 'Sessions', decision: 'Cookies.', why: 'Simple.' });
   decisionRec(store, 'login/rotation', { title: 'Rotation', decision: 'Rotate.', why: 'Safe.' });
   const post = async (route: string, body: unknown) => {
-    const res = await fetch(base + '/api/v1' + route, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const res = await fetch(base + '/api/v1' + route, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     return { status: res.status, body: (await res.json()) as { error?: { message: string } } };
   };
-  const show = async (slug: string) => ((await getJson(`/api/v1/records/decision/app/login/${slug}`)).body.data as { data: Record<string, unknown> }).data;
+  const show = async (slug: string) =>
+    ((await getJson(`/api/v1/records/decision/app/login/${slug}`)).body.data as { data: Record<string, unknown> }).data;
   let r = await post('/decide', { decision: 'decision:login/sessions' });
   assert.equal(r.status, 200, r.body.error?.message);
   let d = await show('sessions');
@@ -337,19 +415,41 @@ test('a session the store does not hold is a 404 with its own code, so the page 
 test('who may call: the server answers to its own names and *.localhost, refuses any other Host or Origin, sends no CORS header, and a write is JSON', async () => {
   // http.request, not fetch: the Host header is set by hand
   const raw = (method: string, route: string, headers: Record<string, string>, body?: string) =>
-    new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: { error?: { code: string; message: string } } }>((resolve, reject) => {
+    new Promise<{
+      status: number;
+      headers: http.IncomingHttpHeaders;
+      body: { error?: { code: string; message: string } };
+    }>((resolve, reject) => {
       const u = new URL(base + route);
-      const req = http.request({ host: u.hostname, port: u.port, method, path: u.pathname + u.search, headers }, (res) => {
-        let text = '';
-        res.setEncoding('utf8');
-        res.on('data', (c: string) => { text += c; });
-        res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text.startsWith('{') ? JSON.parse(text) : {} }));
-      });
+      const req = http.request(
+        { host: u.hostname, port: u.port, method, path: u.pathname + u.search, headers },
+        (res) => {
+          let text = '';
+          res.setEncoding('utf8');
+          res.on('data', (c: string) => {
+            text += c;
+          });
+          res.on('end', () =>
+            resolve({
+              status: res.statusCode ?? 0,
+              headers: res.headers,
+              body: text.startsWith('{') ? JSON.parse(text) : {},
+            }),
+          );
+        },
+      );
       req.on('error', reject);
       req.end(body);
     });
   // the Host: loopback, the proxy's names (port ignored), a trailing dot; a rebound site is not one of this server's names
-  for (const host of ['127.0.0.1:1', 'localhost', '[::1]:7331', 'api.pjman.localhost:1355', 'worktree-x.api.pjman.localhost:1355', 'LOCALHOST.']) {
+  for (const host of [
+    '127.0.0.1:1',
+    'localhost',
+    '[::1]:7331',
+    'api.pjman.localhost:1355',
+    'worktree-x.api.pjman.localhost:1355',
+    'LOCALHOST.',
+  ]) {
     const r = await raw('GET', '/api/v1/store', { host });
     assert.equal(r.status, 200, `${host}: ${r.body.error?.message}`);
     assert.equal(r.headers['access-control-allow-origin'], undefined, 'no CORS header on a read');
@@ -364,12 +464,23 @@ test('who may call: the server answers to its own names and *.localhost, refuses
   // the Origin: the dev proxy's page and the server's own pass; another site's page, or an opaque one, is refused, on reads and writes alike
   const order = JSON.stringify({ change: 'change:login', last: true });
   const json = { 'content-type': 'application/json' };
-  for (const origin of ['http://pjman.localhost:1355', 'http://worktree-x.pjman.localhost:1355', base, 'http://localhost:7331']) {
+  for (const origin of [
+    'http://pjman.localhost:1355',
+    'http://worktree-x.pjman.localhost:1355',
+    base,
+    'http://localhost:7331',
+  ]) {
     const r = await raw('POST', '/api/v1/order', { ...json, origin }, order);
     assert.equal(r.status, 200, `${origin}: ${r.body.error?.message}`);
     assert.equal(r.headers['access-control-allow-origin'], undefined, 'no CORS header on a write');
   }
-  for (const origin of ['https://evil.example', 'http://evil.example:7331', 'null', 'http://localhost.evil.example', 'file://']) {
+  for (const origin of [
+    'https://evil.example',
+    'http://evil.example:7331',
+    'null',
+    'http://localhost.evil.example',
+    'file://',
+  ]) {
     const r = await raw('POST', '/api/v1/order', { ...json, origin }, order);
     assert.equal(r.status, 403, origin);
     assert.equal(r.body.error?.code, 'forbidden-origin');
@@ -383,13 +494,18 @@ test('who may call: the server answers to its own names and *.localhost, refuses
     assert.equal(r.status, 415, type);
     assert.equal(r.body.error?.code, 'unsupported-media-type');
   }
-  assert.equal((await raw('POST', '/api/v1/order', { 'content-type': 'Application/JSON; charset=utf-8' }, order)).status, 200);
+  assert.equal(
+    (await raw('POST', '/api/v1/order', { 'content-type': 'Application/JSON; charset=utf-8' }, order)).status,
+    200,
+  );
   // no preflight: OPTIONS is not a method the API answers
   assert.equal((await raw('OPTIONS', '/api/v1/order', {})).status, 405);
   // the event stream carries no CORS header either
   const stream = await new Promise<http.IncomingMessage>((resolve, reject) => {
     const u = new URL(base + '/api/v1/events');
-    http.get({ host: u.hostname, port: u.port, path: u.pathname, headers: { accept: 'text/event-stream' } }, resolve).on('error', reject);
+    http
+      .get({ host: u.hostname, port: u.port, path: u.pathname, headers: { accept: 'text/event-stream' } }, resolve)
+      .on('error', reject);
   });
   assert.equal(stream.statusCode, 200);
   assert.equal(stream.headers['access-control-allow-origin'], undefined);

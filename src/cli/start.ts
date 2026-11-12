@@ -3,7 +3,13 @@ import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultStaticDir, installedTool, readServeAddress, serveAddressPath, type ServeAddress } from '../server/server.js';
+import {
+  defaultStaticDir,
+  installedTool,
+  readServeAddress,
+  serveAddressPath,
+  type ServeAddress,
+} from '../server/server.js';
 import { CliError } from '../store/util.js';
 
 /** The tool's own checkout or install root (dist/cli → root). */

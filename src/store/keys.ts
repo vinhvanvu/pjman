@@ -14,7 +14,19 @@
 import { createHash } from 'node:crypto';
 
 /** Kinds whose keys name records inside the store. Every other kind is a source kind. */
-export const RECORD_KINDS = new Set(['person', 'agent', 'change', 'decision', 'session', 'session-kind', 'project', 'product', 'feature', 'aspect', 'release']);
+export const RECORD_KINDS = new Set([
+  'person',
+  'agent',
+  'change',
+  'decision',
+  'session',
+  'session-kind',
+  'project',
+  'product',
+  'feature',
+  'aspect',
+  'release',
+]);
 /** Kinds keyed beneath a product. */
 export const SCOPED_KINDS = new Set(['feature', 'change', 'decision', 'aspect', 'release']);
 
@@ -43,7 +55,12 @@ export function fieldKind(type: string, field: string): string | null {
   if (field === 'product') return 'product';
   if (field === 'supersedes') return 'decision';
   if (field === 'feature') return 'feature';
-  if (field === 'parent') return type === 'feature' || type === 'change' || type === 'aspect' || type === 'project' ? type : type === 'session' ? 'session' : null;
+  if (field === 'parent')
+    return type === 'feature' || type === 'change' || type === 'aspect' || type === 'project'
+      ? type
+      : type === 'session'
+        ? 'session'
+        : null;
   return null;
 }
 
@@ -105,7 +122,8 @@ export const decisionKey = (product: string | null, change: string | null, slug:
   product ? `decision:${product}/${change ? `${change}/` : ''}${slug}` : `decision:/${slug}`;
 
 /** An aspect's full key, or a place's under it. */
-export const aspectKey = (product: string, slug: string, place?: string): string => `aspect:${product}/${slug}${place ? `/${place}` : ''}`;
+export const aspectKey = (product: string, slug: string, place?: string): string =>
+  `aspect:${product}/${slug}${place ? `/${place}` : ''}`;
 
 /** A version as a release names it: plain semver, `0.2.0`, with no `v`. */
 export const VERSION_RE = /^\d+\.\d+\.\d+$/;
@@ -115,7 +133,8 @@ export const releaseKey = (product: string, version: string): string => `release
 export function parseReleaseRest(rest: string): { product: string | null; version: string } | null {
   const parts = rest.split('/');
   if (parts.length === 1) return VERSION_RE.test(parts[0]) ? { product: null, version: parts[0] } : null;
-  if (parts.length === 2 && SLUG_RE.test(parts[0]) && VERSION_RE.test(parts[1])) return { product: parts[0], version: parts[1] };
+  if (parts.length === 2 && SLUG_RE.test(parts[0]) && VERSION_RE.test(parts[1]))
+    return { product: parts[0], version: parts[1] };
   return null;
 }
 
@@ -128,7 +147,8 @@ export interface ScopedRest {
 export function parseScopedRest(rest: string): ScopedRest | null {
   const parts = rest.split('/');
   if (parts.length === 1) return SLUG_RE.test(parts[0]) ? { product: null, slug: parts[0] } : null;
-  if (parts.length === 2 && SLUG_RE.test(parts[0]) && SLUG_RE.test(parts[1])) return { product: parts[0], slug: parts[1] };
+  if (parts.length === 2 && SLUG_RE.test(parts[0]) && SLUG_RE.test(parts[1]))
+    return { product: parts[0], slug: parts[1] };
   return null;
 }
 
@@ -153,7 +173,9 @@ export function parseDecisionRest(rest: string): DecisionRest | null {
     if (parts[0] === '') return { head: null, change: null, slug, segments: 2 };
     return SLUG_RE.test(parts[0]) ? { head: parts[0], change: null, slug, segments: 2 } : null;
   }
-  return SLUG_RE.test(parts[0]) && SLUG_RE.test(parts[1]) ? { head: parts[0], change: parts[1], slug, segments: 3 } : null;
+  return SLUG_RE.test(parts[0]) && SLUG_RE.test(parts[1])
+    ? { head: parts[0], change: parts[1], slug, segments: 3 }
+    : null;
 }
 
 /** An aspect rest taken apart: `<slug>` a bare aspect · `<a>/<b>` a full aspect (`<product>/<slug>`) or a bare place
@@ -205,5 +227,8 @@ export function shortKey(key: string, product: string | null | undefined): strin
 export function shortenText(text: string, product: string | null | undefined): string {
   if (!product) return text;
   const p = product.startsWith('product:') ? product.slice('product:'.length) : product;
-  return text.replace(new RegExp(`\\b(feature|change|decision|aspect|release):${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g'), '$1:');
+  return text.replace(
+    new RegExp(`\\b(feature|change|decision|aspect|release):${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/`, 'g'),
+    '$1:',
+  );
 }

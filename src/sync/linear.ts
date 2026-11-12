@@ -27,7 +27,15 @@ export interface SyncOpts {
 }
 
 /** Linear state types → the canonical status, unless the store's vocabulary says otherwise. */
-export const STATE_TYPES: Record<string, string> = { triage: 'open', backlog: 'open', unstarted: 'planning', started: 'active', completed: 'done', canceled: 'dropped', cancelled: 'dropped' };
+export const STATE_TYPES: Record<string, string> = {
+  triage: 'open',
+  backlog: 'open',
+  unstarted: 'planning',
+  started: 'active',
+  completed: 'done',
+  canceled: 'dropped',
+  cancelled: 'dropped',
+};
 
 export function mapStatus(store: Store, state?: string, stateType?: string): string {
   const v = store.config.vocabulary;
@@ -41,7 +49,8 @@ export function mapStatus(store: Store, state?: string, stateType?: string): str
   return 'open';
 }
 
-const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v : typeof v === 'number' ? String(v) : undefined);
+const str = (v: unknown): string | undefined =>
+  typeof v === 'string' && v.trim() ? v : typeof v === 'number' ? String(v) : undefined;
 const ID = /^[A-Z][A-Z0-9]*-\d+$/;
 
 /** An issue from whatever field names the tool used. */
@@ -63,12 +72,21 @@ export function toIssue(raw: unknown): Issue | null {
     parent: str(parent?.identifier) ?? str(r.parentIdentifier) ?? (typeof r.parent === 'string' ? r.parent : undefined),
     updatedAt: str(r.updatedAt),
     team: str(team?.key) ?? str(r.teamKey) ?? id.slice(0, id.indexOf('-')),
-    labels: (Array.isArray(r.labels) ? (r.labels as unknown[]) : Array.isArray(obj(r.labels)?.nodes) ? (obj(r.labels)!.nodes as unknown[]) : []).map((l) => (typeof l === 'string' ? l : str(obj(l)?.name))).filter((x): x is string => !!x),
+    labels: (Array.isArray(r.labels)
+      ? (r.labels as unknown[])
+      : Array.isArray(obj(r.labels)?.nodes)
+        ? (obj(r.labels)!.nodes as unknown[])
+        : []
+    )
+      .map((l) => (typeof l === 'string' ? l : str(obj(l)?.name)))
+      .filter((x): x is string => !!x),
   };
 }
 
 export function issuesIn(data: unknown): Issue[] {
-  return itemsIn(data, (r) => toIssue(r) !== null).map(toIssue).filter((i): i is Issue => i !== null);
+  return itemsIn(data, (r) => toIssue(r) !== null)
+    .map(toIssue)
+    .filter((i): i is Issue => i !== null);
 }
 
 export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
@@ -78,9 +96,15 @@ export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
   const pres = resolve(loaded, projectKey.startsWith('project:') ? projectKey : `project:${projectKey}`);
   if (pres.status !== 'ok') throw notFound(projectKey, { as: 'project' });
   const project = pres.rec;
-  if (str(project.data.tracker) !== 'linear') throw new CliError(`${project.key} does not name linear as its tracker: pjman set ${project.key} tracker=linear ext.linear.team=<KEY>`);
+  if (str(project.data.tracker) !== 'linear')
+    throw new CliError(
+      `${project.key} does not name linear as its tracker: pjman set ${project.key} tracker=linear ext.linear.team=<KEY>`,
+    );
   const team = opts.team ?? str(obj(obj(project.data.ext)?.linear)?.team);
-  if (!team) throw new CliError(`${project.key} names no Linear team: pjman set ${project.key} ext.linear.team=<KEY> (the prefix of its issue ids)`);
+  if (!team)
+    throw new CliError(
+      `${project.key} names no Linear team: pjman set ${project.key} ext.linear.team=<KEY> (the prefix of its issue ids)`,
+    );
 
   let data: unknown;
   try {
@@ -96,11 +120,32 @@ export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
       continue;
     }
     tickets.push({
-      id: issue.id, slug: slugFor('linear', issue.id), title: issue.title, url: issue.url, status: mapStatus(store, issue.state, issue.stateType), parent: issue.parent, kind: issue.labels.some((l) => l.toLowerCase() === 'bug') ? 'bug' : undefined,
-      observed: { state: issue.state, state_type: issue.stateType, team: issue.team, parent: issue.parent, labels: issue.labels, updated_at: issue.updatedAt },
+      id: issue.id,
+      slug: slugFor('linear', issue.id),
+      title: issue.title,
+      url: issue.url,
+      status: mapStatus(store, issue.state, issue.stateType),
+      parent: issue.parent,
+      kind: issue.labels.some((l) => l.toLowerCase() === 'bug') ? 'bug' : undefined,
+      observed: {
+        state: issue.state,
+        state_type: issue.stateType,
+        team: issue.team,
+        parent: issue.parent,
+        labels: issue.labels,
+        updated_at: issue.updatedAt,
+      },
     });
   }
-  const r = applyTickets(store, { project, kind: 'linear', owner: 'linear', writer: WRITER, tickets, session: opts.session, label: `linear ${team}` });
+  const r = applyTickets(store, {
+    project,
+    kind: 'linear',
+    owner: 'linear',
+    writer: WRITER,
+    tickets,
+    session: opts.session,
+    label: `linear ${team}`,
+  });
   r.team = team;
   r.skipped.push(...skipped);
   return r;

@@ -50,9 +50,21 @@ test('init replaces a marketplace whose folder is gone and carries the adapter f
   const cfg = path.join(dir, 'claude');
   fs.mkdirSync(path.join(cfg, 'plugins', 'data', 'pjman-pjman', 'state'), { recursive: true });
   fs.writeFileSync(path.join(cfg, 'plugins', 'data', 'pjman-pjman', 'state', 's1.json'), '{"pane":"p1"}');
-  const known = (p: string) => fs.writeFileSync(path.join(cfg, 'plugins', 'known_marketplaces.json'), JSON.stringify({ pjman: { source: { source: 'directory', path: p } } }));
-  const saved = { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR, PJMAN_HOME: process.env.PJMAN_HOME };
-  Object.assign(process.env, { PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`, CLAUDE_CONFIG_DIR: cfg, PJMAN_HOME: path.join(dir, 'home') });
+  const known = (p: string) =>
+    fs.writeFileSync(
+      path.join(cfg, 'plugins', 'known_marketplaces.json'),
+      JSON.stringify({ pjman: { source: { source: 'directory', path: p } } }),
+    );
+  const saved = {
+    PATH: process.env.PATH,
+    CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+    PJMAN_HOME: process.env.PJMAN_HOME,
+  };
+  Object.assign(process.env, {
+    PATH: `${path.join(dir, 'bin')}:${process.env.PATH}`,
+    CLAUDE_CONFIG_DIR: cfg,
+    PJMAN_HOME: path.join(dir, 'home'),
+  });
   try {
     known(path.join(dir, 'gone'));
     const out = installClaudeAdapter();
@@ -65,8 +77,14 @@ test('init replaces a marketplace whose folder is gone and carries the adapter f
     fs.mkdirSync(other);
     known(other);
     assert.doesNotMatch(installClaudeAdapter(), /now loads from/);
-    assert.doesNotMatch(fs.readFileSync(calls, 'utf8'), /marketplace remove/, 'a checkout never takes over an install that exists');
+    assert.doesNotMatch(
+      fs.readFileSync(calls, 'utf8'),
+      /marketplace remove/,
+      'a checkout never takes over an install that exists',
+    );
   } finally {
-    for (const [k, v] of Object.entries(saved)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    for (const [k, v] of Object.entries(saved))
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
   }
 });

@@ -31,7 +31,10 @@ export class FollowState {
   private claimUntil = 0;
   private readonly started: number;
 
-  constructor(private readonly onChange: (f: Followed) => void, now = Date.now()) {
+  constructor(
+    private readonly onChange: (f: Followed) => void,
+    now = Date.now(),
+  ) {
     this.started = now;
   }
 

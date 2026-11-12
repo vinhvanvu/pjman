@@ -46,7 +46,13 @@ export interface Intake {
   /** Nodes of the map the request may alter, best first. */
   nodes: NodeCandidate[];
   /** Milestones in flight: the changes of kind milestone not done, nearest to done first. */
-  milestones: { key: string; gist?: string; status?: string; progress?: { done: number; total: number }; target?: string }[];
+  milestones: {
+    key: string;
+    gist?: string;
+    status?: string;
+    progress?: { done: number; total: number };
+    target?: string;
+  }[];
   /** The order's tail: the product, the last entries of its sequence, and how many open changes come after it as later. */
   tail: { product: string | null; sequence: string[]; later: number };
   /** The product has no map yet (decision cold-start-gaps/map-first-at-intake): what the repository holds and how the map
@@ -54,10 +60,14 @@ export interface Intake {
   map?: MapState;
 }
 
-const STOP = new Set(('a an the and or of to in on for with by from at as is are be was were it its this that these those we i you he she they ' +
-  'our my your their do does did not no so if then than when where which who what how into over under up down out off can could should would will ' +
-  'make makes made add adds added new now just also very more most some any all each every one two three please want wants need needs let lets ' +
-  'change changes feature features bug bugs fix fixes issue issues work thing things way about like get got have has had').split(/\s+/));
+const STOP = new Set(
+  (
+    'a an the and or of to in on for with by from at as is are be was were it its this that these those we i you he she they ' +
+    'our my your their do does did not no so if then than when where which who what how into over under up down out off can could should would will ' +
+    'make makes made add adds added new now just also very more most some any all each every one two three please want wants need needs let lets ' +
+    'change changes feature features bug bugs fix fixes issue issues work thing things way about like get got have has had'
+  ).split(/\s+/),
+);
 
 /** The words of a text that carry meaning: lower-cased, letters and digits, three or more characters, not stop words. */
 export function words(text: string): string[] {
@@ -107,14 +117,28 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
     const o = overlap(ask, hay);
     const isRef = referenced.has(c.key);
     return {
-      key: c.key, gist: str(c.data.gist), score: isRef ? 1 : o.score, words: o.words, status: str(c.data.status), kind: str(c.data.kind),
-      features: effectsOf(c).map((e) => live(loaded, e.key)?.key).filter((k): k is string => !!k), parent: live(loaded, c.data.parent)?.key, referenced: isRef,
+      key: c.key,
+      gist: str(c.data.gist),
+      score: isRef ? 1 : o.score,
+      words: o.words,
+      status: str(c.data.status),
+      kind: str(c.data.kind),
+      features: effectsOf(c)
+        .map((e) => live(loaded, e.key)?.key)
+        .filter((k): k is string => !!k),
+      parent: live(loaded, c.data.parent)?.key,
+      referenced: isRef,
     };
   };
   const rank = (a: Candidate, b: Candidate) => b.score - a.score || a.key.localeCompare(b.key);
   const keep = (x: Candidate) => x.score >= 0.34 || (x as ChangeCandidate).referenced;
   const duplicates = changes.filter(isOpen).map(candidate).filter(keep).sort(rank).slice(0, 8);
-  const done = changes.filter((c) => c.data.status === 'done').map(candidate).filter(keep).sort(rank).slice(0, 5);
+  const done = changes
+    .filter((c) => c.data.status === 'done')
+    .map(candidate)
+    .filter(keep)
+    .sort(rank)
+    .slice(0, 5);
 
   const features = loaded.records.filter((r) => r.type === 'feature' && r.valid);
   const pathOf = (f: Rec): string[] => {
@@ -128,8 +152,20 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   };
   const nodes: NodeCandidate[] = features
     .map((f) => {
-      const o = overlap(ask, `${(f.featureSlug ?? f.key).replace(/-/g, ' ')} ${str(f.data.name) ?? ''} ${str(f.data.title) ?? ''} ${f.sections.get('Summary') ?? ''}`);
-      return { key: f.key, title: str(f.data.title), name: str(f.data.name), score: o.score, words: o.words, level: levelOf(loaded, f), derived: str(f.data.status) ?? derivedStatus(loaded, f.key).status, path: pathOf(f) };
+      const o = overlap(
+        ask,
+        `${(f.featureSlug ?? f.key).replace(/-/g, ' ')} ${str(f.data.name) ?? ''} ${str(f.data.title) ?? ''} ${f.sections.get('Summary') ?? ''}`,
+      );
+      return {
+        key: f.key,
+        title: str(f.data.title),
+        name: str(f.data.name),
+        score: o.score,
+        words: o.words,
+        level: levelOf(loaded, f),
+        derived: str(f.data.status) ?? derivedStatus(loaded, f.key).status,
+        path: pathOf(f),
+      };
     })
     .filter((n) => n.score >= 0.2)
     .sort(rank)
@@ -138,7 +174,13 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   const childrenOf = (key: string) => changes.filter((c) => live(loaded, c.data.parent)?.key === key);
   const milestones = changes
     .filter((c) => isOpen(c) && c.data.kind === 'milestone')
-    .map((c) => ({ key: c.key, gist: str(c.data.gist), status: str(c.data.status), progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))), target: str(c.data.target) }))
+    .map((c) => ({
+      key: c.key,
+      gist: str(c.data.gist),
+      status: str(c.data.status),
+      progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))),
+      target: str(c.data.target),
+    }))
     .sort((a, b) => {
       const share = (p?: { done: number; total: number }) => (p?.total ? p.done / p.total : 0);
       return share(b.progress) - share(a.progress) || a.key.localeCompare(b.key);
@@ -159,9 +201,22 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
     }
     return false;
   };
-  const later = product ? changes.filter((c) => isOpen(c) && c.data.kind !== 'bug' && productOf(loaded, c)?.key === product.key && !onSequence(c)).length : 0;
+  const later = product
+    ? changes.filter(
+        (c) => isOpen(c) && c.data.kind !== 'bug' && productOf(loaded, c)?.key === product.key && !onSequence(c),
+      ).length
+    : 0;
   const map = projectRec ? mapState(loaded, projectRec, store.projectDir) : undefined;
-  return { text, words: ask, duplicates, done, nodes, milestones, tail: { product: product?.key ?? null, sequence: sequence.slice(-3), later }, map };
+  return {
+    text,
+    words: ask,
+    duplicates,
+    done,
+    nodes,
+    milestones,
+    tail: { product: product?.key ?? null, sequence: sequence.slice(-3), later },
+    map,
+  };
 }
 
 export function formatIntake(i: Intake): string {
@@ -170,7 +225,8 @@ export function formatIntake(i: Intake): string {
     out.push(`\n## No map yet (the map comes with this change, in the same breath)`);
     out.push(i.map.prompt);
   }
-  const line = (c: ChangeCandidate) => `- ${c.key} [${c.status ?? '?'}${c.kind === 'bug' ? ', bug' : ''}] — ${c.gist ?? ''}${c.referenced ? ' · named in the request' : ` · ${c.words.join(', ')}`}${c.features.length ? ` · ${c.features.join(', ')}` : ''}${c.parent ? ` · under ${c.parent}` : ''}`;
+  const line = (c: ChangeCandidate) =>
+    `- ${c.key} [${c.status ?? '?'}${c.kind === 'bug' ? ', bug' : ''}] — ${c.gist ?? ''}${c.referenced ? ' · named in the request' : ` · ${c.words.join(', ')}`}${c.features.length ? ` · ${c.features.join(', ')}` : ''}${c.parent ? ` · under ${c.parent}` : ''}`;
   out.push(`\n## Duplicates (open changes that may already cover it)`);
   out.push(i.duplicates.length ? i.duplicates.map(line).join('\n') : '(none: nothing open shares its words)');
   if (i.done.length) {
@@ -178,9 +234,29 @@ export function formatIntake(i: Intake): string {
     out.push(i.done.map(line).join('\n'));
   }
   out.push(`\n## Nodes (what on the map it may alter; name the most specific)`);
-  out.push(i.nodes.length ? i.nodes.map((n) => `- ${n.key} (${n.level}, ${n.derived}) — ${n.name ?? n.title ?? ''}${n.path.length ? ` · under ${n.path.join(' › ')}` : ''} · ${n.words.join(', ')}`).join('\n') : i.map ? '(none: the product has no map; see above)' : '(none: no feature shares its words; look at the tree for the feature it correlates to before creating a capability beneath it, only when it is a behaviour a user would recognise; a bug that breaks a behaviour no node has creates the live node, under the feature it correlates to)');
+  out.push(
+    i.nodes.length
+      ? i.nodes
+          .map(
+            (n) =>
+              `- ${n.key} (${n.level}, ${n.derived}) — ${n.name ?? n.title ?? ''}${n.path.length ? ` · under ${n.path.join(' › ')}` : ''} · ${n.words.join(', ')}`,
+          )
+          .join('\n')
+      : i.map
+        ? '(none: the product has no map; see above)'
+        : '(none: no feature shares its words; look at the tree for the feature it correlates to before creating a capability beneath it, only when it is a behaviour a user would recognise; a bug that breaks a behaviour no node has creates the live node, under the feature it correlates to)',
+  );
   out.push(`\n## Milestones in flight (nearest to done first)`);
-  out.push(i.milestones.length ? i.milestones.map((m) => `- ${m.key} [${m.status ?? '?'}]${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}${m.target ? ` · target ${m.target}` : ''} — ${m.gist ?? ''}`).join('\n') : '(none)');
+  out.push(
+    i.milestones.length
+      ? i.milestones
+          .map(
+            (m) =>
+              `- ${m.key} [${m.status ?? '?'}]${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}${m.target ? ` · target ${m.target}` : ''} — ${m.gist ?? ''}`,
+          )
+          .join('\n')
+      : '(none)',
+  );
   out.push(`\n## The order's tail${i.tail.product ? ` (${i.tail.product})` : ''}`);
   out.push(i.tail.sequence.length ? `… ${i.tail.sequence.join(' → ')}` : '(the sequence is empty)');
   out.push(`${i.tail.later} open change${i.tail.later === 1 ? '' : 's'} after it as later`);

@@ -25,7 +25,9 @@ let firstLine = 0;
 
 const tick = () => {
   const until = Date.now() + 5;
-  while (Date.now() < until) { /* wait */ }
+  while (Date.now() < until) {
+    /* wait */
+  }
 };
 const lastSeqNow = () => readEvents(store).at(-1)!.seq;
 

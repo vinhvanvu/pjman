@@ -6,7 +6,12 @@ import { handlerOf, windowPlan } from '../cli/follow-window.js';
 const URL_ = 'http://127.0.0.1:7331/follow';
 
 test('a Chromium browser opens an app window; Safari and Firefox a new window; Arc its own small window', () => {
-  assert.deepEqual(windowPlan(URL_, 'com.google.chrome', 'darwin'), { browser: 'Google Chrome', how: 'app', cmd: 'open', args: ['-na', 'Google Chrome', '--args', `--app=${URL_}`] });
+  assert.deepEqual(windowPlan(URL_, 'com.google.chrome', 'darwin'), {
+    browser: 'Google Chrome',
+    how: 'app',
+    cmd: 'open',
+    args: ['-na', 'Google Chrome', '--args', `--app=${URL_}`],
+  });
   assert.equal(windowPlan(URL_, 'Microsoft Edge', 'darwin').how, 'app');
   assert.equal(windowPlan(URL_, 'com.brave.browser', 'darwin').how, 'app');
   const safari = windowPlan(URL_, 'com.apple.safari', 'darwin');
@@ -18,13 +23,28 @@ test('a Chromium browser opens an app window; Safari and Firefox a new window; A
 });
 
 test('a browser it does not know is opened by name; none, or another system, takes the system opener', () => {
-  assert.deepEqual(windowPlan(URL_, 'Orion', 'darwin'), { browser: 'Orion', how: 'default', cmd: 'open', args: ['-a', 'Orion', URL_] });
-  assert.deepEqual(windowPlan(URL_, undefined, 'darwin'), { browser: 'default', how: 'default', cmd: 'open', args: [URL_] });
+  assert.deepEqual(windowPlan(URL_, 'Orion', 'darwin'), {
+    browser: 'Orion',
+    how: 'default',
+    cmd: 'open',
+    args: ['-a', 'Orion', URL_],
+  });
+  assert.deepEqual(windowPlan(URL_, undefined, 'darwin'), {
+    browser: 'default',
+    how: 'default',
+    cmd: 'open',
+    args: [URL_],
+  });
   assert.equal(windowPlan(URL_, 'com.google.chrome', 'linux').cmd, 'xdg-open');
 });
 
 test('the default browser is the https handler LaunchServices names', () => {
-  const prefs = { LSHandlers: [{ LSHandlerURLScheme: 'mailto', LSHandlerRoleAll: 'com.apple.mail' }, { LSHandlerURLScheme: 'https', LSHandlerRoleAll: 'com.Google.Chrome' }] };
+  const prefs = {
+    LSHandlers: [
+      { LSHandlerURLScheme: 'mailto', LSHandlerRoleAll: 'com.apple.mail' },
+      { LSHandlerURLScheme: 'https', LSHandlerRoleAll: 'com.Google.Chrome' },
+    ],
+  };
   assert.equal(handlerOf(prefs), 'com.google.chrome');
   assert.equal(handlerOf({}), undefined);
 });

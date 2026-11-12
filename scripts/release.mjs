@@ -28,7 +28,15 @@ const fail = (line) => {
   process.exit(1);
 };
 const run = (cmd, args, opts = {}) =>
-  (execFileSync(cmd, args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024, ...opts }) ?? '').trim();
+  (
+    execFileSync(cmd, args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 64 * 1024 * 1024,
+      ...opts,
+    }) ?? ''
+  ).trim();
 const soft = (cmd, args) => {
   try {
     return run(cmd, args);
@@ -56,16 +64,27 @@ const pjman = (args, opts = {}) => run(process.execPath, [path.join(root, 'bin',
 const TAP = 'vinhvanvu/homebrew-pjman';
 const FORMULA = 'Formula/pjman.rb';
 const formula = (version, sha256) =>
-  fs.readFileSync(path.join(root, 'scripts', 'pjman.rb'), 'utf8').replaceAll('__VERSION__', version).replaceAll('__SHA256__', sha256);
+  fs
+    .readFileSync(path.join(root, 'scripts', 'pjman.rb'), 'utf8')
+    .replaceAll('__VERSION__', version)
+    .replaceAll('__SHA256__', sha256);
 const sha256Of = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 /** Writes the formula to the tap through the GitHub API: an update when the file exists, a creation otherwise. */
 const writeFormula = (version, sha256) => {
   const existing = soft('gh', ['api', `repos/${TAP}/contents/${FORMULA}`, '-q', '.sha']);
   const content = Buffer.from(formula(version, sha256)).toString('base64');
   return run('gh', [
-    'api', '-X', 'PUT', `repos/${TAP}/contents/${FORMULA}`,
-    '-f', `message=pjman ${version}`, '-f', `content=${content}`, ...(existing ? ['-f', `sha=${existing}`] : []),
-    '-q', '.commit.html_url',
+    'api',
+    '-X',
+    'PUT',
+    `repos/${TAP}/contents/${FORMULA}`,
+    '-f',
+    `message=pjman ${version}`,
+    '-f',
+    `content=${content}`,
+    ...(existing ? ['-f', `sha=${existing}`] : []),
+    '-q',
+    '.commit.html_url',
   ]);
 };
 
@@ -76,7 +95,8 @@ const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const typed = args.find((a) => LEVELS.includes(a));
 const unknown = args.filter((a) => a !== '--dry-run' && !LEVELS.includes(a));
-if (unknown.length) fail(`unknown argument ${unknown.join(' ')}; usage: npm run release [-- patch|minor|major] [--dry-run]`);
+if (unknown.length)
+  fail(`unknown argument ${unknown.join(' ')}; usage: npm run release [-- patch|minor|major] [--dry-run]`);
 
 // ---- what main has shipped since the last tag -----------------------------------------------------------------------
 
@@ -95,7 +115,8 @@ const commits = git('log', '--first-parent', '--reverse', '--format=%H%x1f%s', s
     return { sha, short: sha.slice(0, 7), subject };
   });
 if (!commits.length) fail(`nothing to release: no commit on main since ${lastTag}`);
-if (lastTag && lastTag !== `v${current}`) say(`note: the last tag is ${lastTag} but package.json says ${current}; bumping from ${current}`);
+if (lastTag && lastTag !== `v${current}`)
+  say(`note: the last tag is ${lastTag} but package.json says ${current}; bumping from ${current}`);
 
 // ---- the changes those commits shipped, from the store --------------------------------------------------------------
 
@@ -159,7 +180,10 @@ const bump = (v, l) => {
 };
 const next = bump(current, level);
 for (const m of migrations) {
-  if (m.since !== next) fail(`the ${m.name} move says it is introduced in ${m.since}, but this release is ${next}; a store move ships in the release that introduces it (its since in src/ops/migrate.ts), at least a minor`);
+  if (m.since !== next)
+    fail(
+      `the ${m.name} move says it is introduced in ${m.since}, but this release is ${next}; a store move ships in the release that introduces it (its since in src/ops/migrate.ts), at least a minor`,
+    );
 }
 const tag = `v${next}`;
 const today = new Date().toISOString().slice(0, 10);
@@ -167,8 +191,13 @@ const today = new Date().toISOString().slice(0, 10);
 // ---- the derivation, printed ----------------------------------------------------------------------------------------
 
 const shortKey = (key) => key.replace(/^change:[^/]+\//, 'change:');
-say(`${current} → ${next} (${level}${typed ? ', typed' : derived === 'patch' && !entries.length ? ', nothing names a change' : ''}): ${commits.length} commit${commits.length === 1 ? '' : 's'} on main since ${lastTag ?? 'the first commit'}`);
-for (const e of entries) say(`  ${e.level.padEnd(5)}  ${shortKey(e.change.key)} — ${e.change.name ?? e.change.title}: ${e.change.data?.gist ?? ''}  (${e.why})`);
+say(
+  `${current} → ${next} (${level}${typed ? ', typed' : derived === 'patch' && !entries.length ? ', nothing names a change' : ''}): ${commits.length} commit${commits.length === 1 ? '' : 's'} on main since ${lastTag ?? 'the first commit'}`,
+);
+for (const e of entries)
+  say(
+    `  ${e.level.padEnd(5)}  ${shortKey(e.change.key)} — ${e.change.name ?? e.change.title}: ${e.change.data?.gist ?? ''}  (${e.why})`,
+  );
 for (const m of migrations) say(`  minor  the ${m.name} move of the store (${m.about}), introduced in ${m.since}`);
 for (const c of also) say(`  also   ${c.short} ${c.subject}`);
 if (typed && typed !== derived) say(`  typed ${typed} over the derived ${derived}`);
@@ -190,7 +219,10 @@ for (const group of GROUPS) {
 }
 if (migrations.length) {
   lines.push('### Store', '');
-  for (const m of migrations) lines.push(`- The ${m.name} move: ${m.about}. After installing, run \`pjman migrate\` until it reports nothing to migrate (each run makes one move; the stamp comes last).`);
+  for (const m of migrations)
+    lines.push(
+      `- The ${m.name} move: ${m.about}. After installing, run \`pjman migrate\` until it reports nothing to migrate (each run makes one move; the stamp comes last).`,
+    );
   lines.push('');
 }
 if (also.length) {
@@ -205,7 +237,11 @@ if (dryRun) {
   say(entry.trimEnd());
   say('');
   say(`the tap ${TAP} gets ${FORMULA} for ${next}:`);
-  say(formula(next, '<sha256 of the package>').replace(/^#.*\n/gm, '').trimEnd());
+  say(
+    formula(next, '<sha256 of the package>')
+      .replace(/^#.*\n/gm, '')
+      .trimEnd(),
+  );
   say('');
   say('dry run: nothing written');
   process.exit(0);
@@ -216,7 +252,8 @@ if (dryRun) {
 const branch = git('rev-parse', '--abbrev-ref', 'HEAD');
 if (branch !== 'main') fail(`on ${branch}, not main; a release is cut from main`);
 if (git('status', '--porcelain')) fail('the working tree is not clean; commit or set the work aside first');
-if (soft('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`])) fail(`tag ${tag} exists; a release that stopped after its tag is finished by hand with the commands it printed`);
+if (soft('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`]))
+  fail(`tag ${tag} exists; a release that stopped after its tag is finished by hand with the commands it printed`);
 if (!ok('gh', ['auth', 'status'])) fail('gh is not signed in; the release is created with gh');
 if (!ok('npm', ['whoami'])) fail('npm is not signed in (npm login); the release publishes the package to npm');
 if (!ok('gh', ['api', `repos/${TAP}`])) fail(`the tap ${TAP} is not reachable; the release writes ${FORMULA} there`);
@@ -244,15 +281,23 @@ stamp(path.join(root, 'adapters', 'claude-code', '.claude-plugin', 'plugin.json'
 // ---- the changelog --------------------------------------------------------------------------------------------------
 
 const changelogPath = path.join(root, 'CHANGELOG.md');
-const head = '# Changelog\n\nEvery release, derived from the record: one line per change shipped, in the words the change was written in.\n\n';
+const head =
+  '# Changelog\n\nEvery release, derived from the record: one line per change shipped, in the words the change was written in.\n\n';
 const existing = fs.existsSync(changelogPath) ? fs.readFileSync(changelogPath, 'utf8') : '';
-const body = existing.startsWith(head) ? existing.slice(head.length) : existing.replace(/^# Changelog\s*\n/, '').replace(/^\s+/, '');
+const body = existing.startsWith(head)
+  ? existing.slice(head.length)
+  : existing.replace(/^# Changelog\s*\n/, '').replace(/^\s+/, '');
 fs.writeFileSync(changelogPath, head + entry + (body ? '\n' + body : ''));
 
 // ---- the commit and the tag -----------------------------------------------------------------------------------------
 
 git('add', '-A');
-git('commit', '-q', '-m', `release ${next}: ${entries.length} change${entries.length === 1 ? '' : 's'}${also.length ? ` and ${also.length} other commit${also.length === 1 ? '' : 's'}` : ''} since ${lastTag ?? 'the first commit'}`);
+git(
+  'commit',
+  '-q',
+  '-m',
+  `release ${next}: ${entries.length} change${entries.length === 1 ? '' : 's'}${also.length ? ` and ${also.length} other commit${also.length === 1 ? '' : 's'}` : ''} since ${lastTag ?? 'the first commit'}`,
+);
 git('tag', '-a', tag, '-m', entry);
 say(`committed and tagged ${tag}`);
 
@@ -266,13 +311,29 @@ say(`packed ${packed[0].filename} (${packed[0].entryCount} files)`);
 // the product the release is of: the one the shipped changes are keyed under, else the project's
 const sha = git('rev-parse', 'HEAD');
 const ships = entries.map((e) => e.change.key);
-const product = ships[0]?.replace(/^change:([^/]+)\/.*$/, '$1') ?? JSON.parse(pjman(['where', '--json'])).product?.replace(/^product:/, '');
-if (!product) fail(`the release is of no product: nothing shipped names one and this directory maps to no project with a product`);
+const product =
+  ships[0]?.replace(/^change:([^/]+)\/.*$/, '$1') ??
+  JSON.parse(pjman(['where', '--json'])).product?.replace(/^product:/, '');
+if (!product)
+  fail(`the release is of no product: nothing shipped names one and this directory maps to no project with a product`);
 
 // from the push on, every step is outward or irreversible: a failure says exactly what is left to do by hand
 const notes = path.join(dest, 'notes.md');
 fs.writeFileSync(notes, entry);
-const recordArgs = ['new', 'release', `${product}/${next}`, '--at', new Date().toISOString(), '--level', level, '--commit', sha, ...ships.flatMap((k) => ['--ships', k]), '--body', '-'];
+const recordArgs = [
+  'new',
+  'release',
+  `${product}/${next}`,
+  '--at',
+  new Date().toISOString(),
+  '--level',
+  level,
+  '--commit',
+  sha,
+  ...ships.flatMap((k) => ['--ships', k]),
+  '--body',
+  '-',
+];
 const remaining = [
   `gh release create ${tag} ${tarball} --title ${tag} --notes-file ${notes} --verify-tag`,
   `npm publish ${tarball} --access public`,
@@ -283,14 +344,23 @@ const step = (what, fn) => {
   try {
     return fn();
   } catch (e) {
-    const lines = String(e.stderr || e.message).trim().split('\n').filter((l) => !/^npm notice/.test(l));
-    process.stderr.write(`release: ${what} failed: ${lines.find((l) => /err|fail|refus|denied|forbidden/i.test(l)) ?? lines[0] ?? 'no output'}\n`);
-    process.stderr.write(`the commit and the tag ${tag} are pushed; what is left, in order:\n${remaining.map((r) => `  ${r}`).join('\n')}\n`);
+    const lines = String(e.stderr || e.message)
+      .trim()
+      .split('\n')
+      .filter((l) => !/^npm notice/.test(l));
+    process.stderr.write(
+      `release: ${what} failed: ${lines.find((l) => /err|fail|refus|denied|forbidden/i.test(l)) ?? lines[0] ?? 'no output'}\n`,
+    );
+    process.stderr.write(
+      `the commit and the tag ${tag} are pushed; what is left, in order:\n${remaining.map((r) => `  ${r}`).join('\n')}\n`,
+    );
     process.exit(1);
   }
 };
 step('the push', () => git('push', '-q', 'origin', 'main', tag));
-const url = step('the GitHub release', () => run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag', '--latest']));
+const url = step('the GitHub release', () =>
+  run('gh', ['release', 'create', tag, tarball, '--title', tag, '--notes-file', notes, '--verify-tag', '--latest']),
+);
 say(`released ${tag}: ${url}`);
 remaining.shift();
 remaining[2] = remaining[2].replace('<the release URL>', url);
@@ -308,6 +378,8 @@ say(`wrote ${FORMULA} in ${TAP} for ${next}: ${commit}`);
 remaining.shift();
 
 // the release as a record: its creation is the event (decision releases-homebrew/release-is-a-record)
-const record = step('the release record', () => pjman([...recordArgs, '--url', url], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] }));
+const record = step('the release record', () =>
+  pjman([...recordArgs, '--url', url], { input: entry, stdio: ['pipe', 'pipe', 'pipe'] }),
+);
 fs.rmSync(dest, { recursive: true, force: true });
 say(record.split('\n')[0]);
