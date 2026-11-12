@@ -2,6 +2,21 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.6.0 — 2026-11-12
+
+### Changed
+
+- **Dock live lines**: The docked session shows a copyable change id, and its Claude and pjman lines say what is actually happening (change:dock-now-lines)
+- **One name per key**: Every alias of a source or change resolves through one resolver, prints in one form, and every view names how a record relates to a source (change:pjman-22)
+
+### Fixed
+
+- **Stop refusal keys**: The stop refusals suggest a decision key the command accepts, and follow the session off a change it unbound (change:pjman-23)
+- **Name unbound sessions**: A session that binds no change and ran a tool is refused once at stop until it is named, so no question-only session ends unnamed (change:pjman-20)
+- **Binding follows binds only**: A ticket in a prompt binds only a change that binds it, and a sync that creates a change binds it to the session (change:pjman-21)
+- **Sessions find the store**: pjman session name and pjman where find the global store from a session outside any project, and the brief states the one-to-four-word name limit (change:pjman-25)
+- **One dock per workspace**: In cmux the docked pane can be turned off, opens for no session outside a project, and is shared by a workspace's sessions instead of one per terminal (change:pjman-24)
+
 ## 0.5.0 — 2026-11-12
 
 ### Changed

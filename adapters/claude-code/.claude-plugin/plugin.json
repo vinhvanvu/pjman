@@ -1,7 +1,7 @@
 {
   "name": "pjman",
   "displayName": "pjman",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Session records, context injection and observed edges for a pjman store: every session starts from the record and writes back to it through the pjman tool.",
   "author": {
     "name": "Vinh Van Vu"
