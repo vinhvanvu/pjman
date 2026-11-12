@@ -1,6 +1,6 @@
 # pjman — thesis and roadmap
 
-*Working name. The pitch and the plan. The decisions are records in the store (`.pjman/`; `pjman ls decision`, `pjman show <key>`); the Phase 1 record contract is `SCHEMA.md`; the tool is documented in `docs/reference.md`; the layer catalog is `LAYERS.md`; the research is under `reports/`; adversarial reviews under `reviews/`. This document states what is true now; history lives in the decision records and in git.*
+*Working name. The pitch and the plan. The decisions are records in the store (`pjman ls decision`, `pjman show <key>`); the Phase 1 record contract is `SCHEMA.md`; the tool is documented in `docs/reference.md`. This document states what is true now; history lives in the decision records and in git.*
 
 ---
 
@@ -115,7 +115,7 @@ More record types, more readers and more writers on the same graph.
 
 **Domain-agnostic core, software first.** Nothing in the entities says "code". Software is built first because its observed state is machine-readable; where it is not, the model applies and drift detection degrades to human report.
 
-**What the research found** (`reports/pjman worth building analysis.md`): the join pjman proposes exists nowhere while every neighbour has the fragments; the measured pain is at the authorize-and-accept gate; Phase 1's real competitor is a `docs/decisions` folder; the solo tier cannot fund a business; the window is open while organisations are multi-harness.
+**What the research found**: the join pjman proposes exists nowhere while every neighbour has the fragments; the measured pain is at the authorize-and-accept gate; Phase 1's real competitor is a `docs/decisions` folder; the solo tier cannot fund a business; the window is open while organisations are multi-harness.
 
 ---
 
