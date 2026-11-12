@@ -55,7 +55,7 @@ export function violations(list: RoadmapRow[], today: string): Violation[] {
   // a milestone later in the sequence with an earlier target than one before it
   const dated = list
     .filter((r) => isOpen(r) && r.target && r.position !== undefined)
-    .sort((a, b) => a.position! - b.position!);
+    .toSorted((a, b) => a.position! - b.position!);
   for (let i = 1; i < dated.length; i++) {
     for (let j = 0; j < i; j++) {
       // same column is not an order; a child of a milestone shares its place

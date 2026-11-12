@@ -119,7 +119,7 @@ test('a sync applies the bound team: sources, changes, status, parent; a second 
   const r = syncLinear(store, { from: issues });
   assert.equal(r.team, 'APP');
   assert.equal(r.issues, 3);
-  assert.deepEqual(r.created.sort(), ['change:app/app-1', 'change:app/app-2', 'change:app/app-3']);
+  assert.deepEqual(r.created.toSorted(), ['change:app/app-1', 'change:app/app-2', 'change:app/app-3']);
   assert.deepEqual(r.skipped, [{ id: 'XYZ-9', reason: 'team XYZ is not APP' }]);
   assert.ok(r.commit);
   const loaded = loadStore(store);

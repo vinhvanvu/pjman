@@ -679,7 +679,7 @@ test("SessionStart exports the session and the agent as writer to the agent's sh
   assert.match(text, /^export PJMAN_SESSION="session:sess-env"$/m);
   // what the shell then runs carries them: a decision opened from it is stamped with the session and the agent
   const shellEnv = { ...env };
-  for (const m of text.matchAll(/^export (\w+)="(.*)"$/gm)) (shellEnv as Record<string, string>)[m[1]!] = m[2]!;
+  for (const m of text.matchAll(/^export (\w+)="(.*)"$/gm)) (shellEnv as Record<string, string>)[m[1]] = m[2]!;
   execFileSync(
     process.execPath,
     [

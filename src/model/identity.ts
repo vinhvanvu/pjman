@@ -118,7 +118,7 @@ export function cached(inner: Checker, fresh = false): Checker {
   const all = readCache();
   const live =
     all[inner.kind] && Date.now() - all[inner.kind].at < DAY && !fresh ? all[inner.kind] : { at: Date.now() };
-  const entry: CacheEntry = { ...live, exists: { ...(live.exists ?? {}) } };
+  const entry: CacheEntry = { ...live, exists: { ...live.exists } };
   all[inner.kind] = entry;
   return {
     kind: inner.kind,
@@ -159,7 +159,7 @@ function gh(args: string[]): { out: string } | { err: string } {
     }).trim();
     return { out };
   } catch (e) {
-    return { err: String((e as { stderr?: string }).stderr || (e as Error).message) };
+    return { err: String((e as { stderr?: unknown }).stderr || (e as Error).message) };
   }
 }
 

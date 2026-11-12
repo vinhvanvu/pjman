@@ -191,7 +191,7 @@ export function set(
       const fresh = targets.filter((t) => !have.includes(t.key));
       if (fresh.length) {
         data.supersedes = [...have, ...fresh.map((t) => t.key)];
-        marked = markSuperseded(fresh, env.writer as string | undefined);
+        marked = markSuperseded(fresh, env.writer);
         changed.push(field);
       }
       continue;
@@ -250,7 +250,7 @@ export function set(
   }
   // the value a set leaves in status, or that aside decided_by, rides on the event so a reader can say what the move was
   const moved = changed.find((f) => f === 'status' || f === 'decided_by');
-  const value = moved && typeof data[moved] === 'string' ? (data[moved] as string) : undefined;
+  const value = moved && typeof data[moved] === 'string' ? data[moved] : undefined;
   const commit = finishWrite(
     store,
     `pjman: set ${rec.key} ${changed.join(' ')}${opts.because ? ` (${opts.because})` : ''}`,

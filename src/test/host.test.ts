@@ -71,9 +71,7 @@ esac
 );
 const seen = () => fs.readFileSync(calls, 'utf8').split('\n').filter(Boolean);
 const clean = () =>
-  Object.fromEntries(
-    Object.entries(process.env).filter(([k]) => !k.startsWith('REX_') && !k.startsWith('CMUX_')),
-  ) as NodeJS.ProcessEnv;
+  Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('REX_') && !k.startsWith('CMUX_')));
 const withRex = {
   ...clean(),
   PATH: `${fakes}:${process.env.PATH ?? ''}`,

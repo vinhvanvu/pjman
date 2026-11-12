@@ -160,7 +160,10 @@ export function rm(
       !detached.some((d) => d.path === x.rec.path) ||
       x.fields.some((f) => !detached.find((d) => d.path === x.rec.path)!.fields.includes(f)),
   );
-  const errors = errorsAt(store, [...refs.map((x) => x.rec.path)]);
+  const errors = errorsAt(
+    store,
+    refs.map((x) => x.rec.path),
+  );
   if (errors.length || still.length) {
     undo();
     const why = still.length
@@ -177,7 +180,7 @@ export function rm(
   const env = envelope(opts);
   const events: EventInput[] = [
     ...going
-      .sort((a, b) => (a.path === rec.path ? -1 : b.path === rec.path ? 1 : 0))
+      .toSorted((a, b) => (a.path === rec.path ? -1 : b.path === rec.path ? 1 : 0))
       .map((r) => ({ op: 'removed' as const, key: r.key, type: r.type, path: r.path, writer: env.writer })),
     ...detached.map((d) => ({
       op: 'set' as const,

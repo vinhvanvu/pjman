@@ -251,7 +251,7 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
       throw usageError(
         `--kind ${opts.kind} is not a session kind (${ofType(loaded, 'session-kind')
           .map((r) => r.key.slice('session-kind:'.length))
-          .sort()
+          .toSorted()
           .join(', ')})`,
       );
     }
@@ -315,7 +315,7 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
   if (opts.kind === 'bug') {
     const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
     return [...recs]
-      .sort((a, b) =>
+      .toSorted((a, b) =>
         bugOrder(
           { severity: s(a.data.severity), created: s(a.data.created), key: a.key },
           { severity: s(b.data.severity), created: s(b.data.created), key: b.key },
@@ -339,7 +339,7 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
   ];
   const dateOf = (r: Rec) => r.fileDate ?? (typeof r.data.created === 'string' ? r.data.created : '');
   return [...recs]
-    .sort(
+    .toSorted(
       (a, b) =>
         typeOrder.indexOf(a.type) - typeOrder.indexOf(b.type) ||
         dateOf(a).localeCompare(dateOf(b)) ||
@@ -508,7 +508,8 @@ function contextIndex(loaded: Loaded): ContextIndex {
     for (const s of ofType(loaded, 'session')) {
       if (!s.valid) continue;
       if (Array.isArray(s.data.changes))
-        for (const k of new Set((s.data.changes as unknown[]).map((k) => liveKey(k)))) if (k) push(cx.sessions, k, s);
+        for (const k of new Set((s.data.changes as unknown[]).map((raw) => liveKey(raw))))
+          if (k) push(cx.sessions, k, s);
       if (!Array.isArray(s.data.observed)) continue;
       for (const o of s.data.observed as unknown[]) {
         if (!o || typeof o !== 'object') continue;
@@ -606,7 +607,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
       at: str(r.data.at),
       url: str(r.data.url),
     }))
-    .sort((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
+    .toSorted((a, b) => (a.at ?? '').localeCompare(b.at ?? ''));
   return {
     change: row(rec),
     sections,

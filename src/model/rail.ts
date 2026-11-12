@@ -179,7 +179,9 @@ export function rail(store: Store, loaded: Loaded, keyRaw: string, opts: RailOpt
     touched.set(lane, t);
   }
   // lanes in order of last touch; beyond the handful, the rest fold into one
-  const ordered = [...touched.entries()].sort((a, b) => (a[1].last < b[1].last ? 1 : a[1].last > b[1].last ? -1 : 0));
+  const ordered = [...touched.entries()].toSorted((a, b) =>
+    a[1].last < b[1].last ? 1 : a[1].last > b[1].last ? -1 : 0,
+  );
   const kept = ordered.slice(0, lanesMax);
   const folded = ordered.slice(lanesMax);
   const foldedIds = new Set(folded.map(([id]) => id));
@@ -405,7 +407,7 @@ function treeLanes(loaded: Loaded, scope: Rec): Map<string, Rec> {
 /** A session's log as it is written: one line an entry, `- <when> — <text>`. */
 function logLines(body: string): { at: string; text: string }[] {
   const out: { at: string; text: string }[] = [];
-  for (const m of body.matchAll(/^- (\d{4}-\d\d-\d\dT[^ ]+) — (.*)$/gm)) out.push({ at: m[1]!, text: m[2]!.trim() });
+  for (const m of body.matchAll(/^- (\d{4}-\d\d-\d\dT[^ ]+) — (.*)$/gm)) out.push({ at: m[1], text: m[2].trim() });
   return out;
 }
 

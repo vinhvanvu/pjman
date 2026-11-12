@@ -199,11 +199,11 @@ export function tailEvents(store: Store, back: { seq?: number; at?: string }): S
       for (let i = lines.length - 1; i >= 0; i--) {
         const e = lines[i].trim() ? parseLine(lines[i]) : null;
         if (!e) continue;
-        if (before(e)) return out.reverse();
+        if (before(e)) return out.toReversed();
         out.push(e);
       }
     }
-    return out.reverse();
+    return out.toReversed();
   } finally {
     fs.closeSync(fd);
   }

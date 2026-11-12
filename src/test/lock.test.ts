@@ -143,7 +143,7 @@ test('two commands writing the store at once each land in their own commit', asy
   const last = git(store.root, 'show', '--name-only', '--format=%s', 'HEAD').split('\n').filter(Boolean);
   const prior = git(store.root, 'show', '--name-only', '--format=%s', 'HEAD~1').split('\n').filter(Boolean);
   for (const c of [last, prior]) {
-    const subject = c[0]!;
+    const subject = c[0];
     const which = /left/.test(subject) ? 'left' : 'right';
     assert.match(subject, /^pjman: new change:(project\/)?(left|right)/);
     assert.ok(

@@ -344,12 +344,12 @@ const step = (what, fn) => {
   try {
     return fn();
   } catch (e) {
-    const lines = String(e.stderr || e.message)
+    const said = String(e.stderr || e.message)
       .trim()
       .split('\n')
-      .filter((l) => !/^npm notice/.test(l));
+      .filter((l) => !l.startsWith('npm notice'));
     process.stderr.write(
-      `release: ${what} failed: ${lines.find((l) => /err|fail|refus|denied|forbidden/i.test(l)) ?? lines[0] ?? 'no output'}\n`,
+      `release: ${what} failed: ${said.find((l) => /err|fail|refus|denied|forbidden/i.test(l)) ?? said[0] ?? 'no output'}\n`,
     );
     process.stderr.write(
       `the commit and the tag ${tag} are pushed; what is left, in order:\n${remaining.map((r) => `  ${r}`).join('\n')}\n`,

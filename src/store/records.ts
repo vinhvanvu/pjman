@@ -257,7 +257,7 @@ export function diskSource(root: string): Source {
         return fs
           .readdirSync(abs(rel))
           .filter((n) => !n.startsWith('.'))
-          .sort();
+          .toSorted();
       } catch {
         return [];
       }
@@ -329,7 +329,7 @@ export function isLegacyLayout(root: string | Source): boolean {
   return src.list('products').some((n) => n.endsWith('.md'));
 }
 
-const STORE_FILES = [
+const STORE_FILES = new Set([
   'products',
   'projects',
   'decisions',
@@ -341,7 +341,7 @@ const STORE_FILES = [
   'index.db',
   'events.jsonl',
   'README.md',
-];
+]);
 
 export function loadStore(store: Store, src: Source = indexedSource(store)): Loaded {
   const records: Rec[] = [];
@@ -593,7 +593,7 @@ export function loadStore(store: Store, src: Source = indexedSource(store)): Loa
 
   // anything else at the root that is not a store file
   for (const name of listDir('')) {
-    if (STORE_FILES.includes(name)) continue;
+    if (STORE_FILES.has(name)) continue;
     if ((name === 'changes' || name === 'features') && listDir(path.join(root, name)).length === 0) continue; // emptied by the migration
     unexpected(name);
   }
@@ -607,10 +607,10 @@ export function loadStore(store: Store, src: Source = indexedSource(store)): Loa
   const aliases = new Map<string, string[]>();
   const alias = (form: string, key: string) => aliases.set(form, [...(aliases.get(form) ?? []), key]);
   for (const r of records) {
-    const aliases = headField(r, 'aliases');
-    if (!Array.isArray(aliases)) continue;
+    const formerKeys = headField(r, 'aliases');
+    if (!Array.isArray(formerKeys)) continue;
     const kind = r.key.slice(0, r.key.indexOf(':'));
-    for (const a of aliases) {
+    for (const a of formerKeys) {
       if (typeof a !== 'string') continue;
       if (SCOPED_KINDS.has(r.type)) {
         // `old` names the slug it had in this product; `other/old` the full rest it had in another

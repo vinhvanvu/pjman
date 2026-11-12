@@ -77,7 +77,7 @@ export function treeIndex(loaded: Loaded): TreeIndex {
       for (const k of new Set(
         effectsOf(c)
           .map((e) => live(loaded, e.key)?.key)
-          .filter((k): k is string => !!k),
+          .filter((key): key is string => !!key),
       ))
         push(ix.naming, k, c);
       if (typeof c.data.project === 'string') push(ix.inProject, c.data.project, c);
@@ -129,7 +129,7 @@ export function ancestorsOf(loaded: Loaded, key: string): string[] {
 function ancestorsOnce(loaded: Loaded, key: string): string[] {
   const out: string[] = [];
   const seen = new Set<string>([key]);
-  const push = (k: string | undefined) => {
+  const visit = (k: string | undefined) => {
     if (k && !seen.has(k)) {
       seen.add(k);
       out.push(k);
@@ -140,7 +140,7 @@ function ancestorsOnce(loaded: Loaded, key: string): string[] {
   const climb = (rec: Rec | undefined) => {
     while (rec) {
       const parent = structuralParent(loaded, rec);
-      if (!parent || !push(parent.key)) break;
+      if (!parent || !visit(parent.key)) break;
       rec = parent;
     }
   };
@@ -152,19 +152,19 @@ function ancestorsOnce(loaded: Loaded, key: string): string[] {
       while (cur) {
         for (const e of effectsOf(cur)) {
           const f = live(loaded, e.key);
-          if (f && push(f.key)) climb(f);
+          if (f && visit(f.key)) climb(f);
         }
         // an aspect the change names is above it too, and a place's aspect above that; never the place's feature:
         // the feature tree is reached only through the features a change names
         for (const raw of Array.isArray(cur.data.aspects) ? cur.data.aspects : []) {
           const a = live(loaded, typeof raw === 'string' ? raw.replace(/^(adds|changes|removes)\s+/, '') : undefined);
-          if (a && push(a.key) && a.type === 'place') push(a.aspectKey);
-          if (a) push(`product:${a.productSlug}`);
+          if (a && visit(a.key) && a.type === 'place') visit(a.aspectKey);
+          if (a) visit(`product:${a.productSlug}`);
         }
         const p = live(loaded, cur.data.project);
-        if (p && push(p.key)) climb(p);
+        if (p && visit(p.key)) climb(p);
         const parent = live(loaded, cur.data.parent);
-        if (!parent || !push(parent.key)) break;
+        if (!parent || !visit(parent.key)) break;
         cur = parent;
       }
       break;
@@ -172,8 +172,8 @@ function ancestorsOnce(loaded: Loaded, key: string): string[] {
     case 'decision': {
       if (rec.changeKey) {
         const c = live(loaded, rec.changeKey);
-        if (c && push(c.key)) for (const a of ancestorsOf(loaded, c.key)) push(a);
-      } else if (rec.productSlug) push(`product:${rec.productSlug}`);
+        if (c && visit(c.key)) for (const a of ancestorsOf(loaded, c.key)) visit(a);
+      } else if (rec.productSlug) visit(`product:${rec.productSlug}`);
       break;
     }
     case 'feature':
@@ -181,11 +181,11 @@ function ancestorsOnce(loaded: Loaded, key: string): string[] {
       climb(rec);
       break;
     case 'place':
-      push(rec.aspectKey);
-      push(`product:${rec.productSlug}`);
+      visit(rec.aspectKey);
+      visit(`product:${rec.productSlug}`);
       break;
     case 'aspect':
-      push(`product:${rec.productSlug}`);
+      visit(`product:${rec.productSlug}`);
       break;
     default:
       break;
@@ -289,9 +289,9 @@ function derivedStatusOnce(loaded: Loaded, key: string): DerivedStatus {
   const inFlight = affecting.filter((r) => ['active', 'review', 'blocked'].includes(String(r.data.status)));
   if (inFlight.length) return { status: 'building', because: `${inFlight.map((r) => r.key).join(', ')} in flight` };
   const children = ix.parented.get(key) ?? [];
-  const childStates = children.map((c) => derivedStatus(loaded, c.key).status);
-  if (childStates.includes('live')) return { status: 'live', because: 'a child is live' };
-  if (childStates.includes('building')) return { status: 'building', because: 'a child is building' };
+  const childStates = new Set(children.map((c) => derivedStatus(loaded, c.key).status));
+  if (childStates.has('live')) return { status: 'live', because: 'a child is live' };
+  if (childStates.has('building')) return { status: 'building', because: 'a child is building' };
   // nothing to derive from: the authored status stands (a cold-started map is read from the documentation until a change decides it)
   const authored = loaded.byKey.get(key)?.[0]?.data.status;
   if (typeof authored === 'string' && (FEATURE_STATUSES as readonly string[]).includes(authored))
@@ -338,12 +338,12 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
         return [n.key, ...n.children.flatMap(all)];
       }),
     ]);
-    const inSubtree = [...new Set([...subtree].flatMap((k) => ix.naming.get(k) ?? []))].sort(
+    const inSubtree = [...new Set([...subtree].flatMap((k) => ix.naming.get(k) ?? []))].toSorted(
       (a, b) => order.get(a)! - order.get(b)!,
     );
     const backlog: Record<string, number> = {};
     for (const c of inSubtree) backlog[String(c.data.status ?? '?')] = (backlog[String(c.data.status ?? '?')] ?? 0) + 1;
-    const projects = [...new Set(inSubtree.map((c) => str(c.data.project)).filter((p): p is string => !!p))].sort();
+    const projects = [...new Set(inSubtree.map((c) => str(c.data.project)).filter((p): p is string => !!p))].toSorted();
     const eo = effectiveOwners(loaded, rec.key);
     const n: TreeNode = {
       key: rec.key,

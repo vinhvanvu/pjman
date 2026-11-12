@@ -8,11 +8,10 @@ import { readUserConfig, type Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
 import { sourceFileSlug } from '../store/keys.js';
 import { loadStore, type Rec } from '../store/records.js';
-import { productOfProject } from '../ops/new.js';
+import { productOfProject, newSession, originText } from '../ops/new.js';
 import { personOf } from '../model/refs.js';
 import { localDate, nowIso } from '../store/util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../ops/write.js';
-import { newSession, originText } from '../ops/new.js';
 import { sessionLog } from '../ops/session.js';
 import { foundationHash, foundationOf, stepsOf } from '../model/foundation.js';
 import { sections as parseSections } from '../store/frontmatter.js';
@@ -140,13 +139,13 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       (t.url ?? src.data.url) === src.data.url;
     if (!same) {
       const srcData: Record<string, unknown> = {
-        ...(src?.data ?? {}),
+        ...src?.data,
         kind,
         key: t.id,
         title: t.title,
         url: t.url ?? src?.data.url,
         ...(src ? {} : stamp),
-        ext: { ...(obj(src?.data.ext) ?? {}), [owner]: observed },
+        ext: { ...obj(src?.data.ext), [owner]: observed },
       };
       write(src, 'source', srcRel, sourceKey, srcData, src?.body ?? '', ['title', 'url', 'ext']);
     }
@@ -259,7 +258,7 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
 }
 
 /** The observed data: a path, `-` for stdin, inline JSON text, or the parsed value itself. */
-export function readObserved(from: string | unknown): unknown {
+export function readObserved(from: unknown): unknown {
   if (from === undefined)
     throw new Error(
       "nothing to sync: pass --from <file> or --from - (the issues as JSON, as the tracker's tools answered)",

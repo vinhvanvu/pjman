@@ -17,7 +17,7 @@ test('a Chromium browser opens an app window; Safari and Firefox a new window; A
   const safari = windowPlan(URL_, 'com.apple.safari', 'darwin');
   assert.equal(safari.how, 'window');
   assert.equal(safari.cmd, 'osascript');
-  assert.match(safari.args[1]!, /make new document with properties \{URL:"http:\/\/127\.0\.0\.1:7331\/follow"\}/);
+  assert.match(safari.args[1], /make new document with properties \{URL:"http:\/\/127\.0\.0\.1:7331\/follow"\}/);
   assert.deepEqual(windowPlan(URL_, 'Firefox', 'darwin').args, ['--new-window', URL_]);
   assert.equal(windowPlan(URL_, 'company.thebrowser.browser', 'darwin').how, 'little');
 });

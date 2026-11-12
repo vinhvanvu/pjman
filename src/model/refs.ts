@@ -216,7 +216,7 @@ export interface Mention {
   /** Its offset in the input. */
   at: number;
   /** `change`, `url`, or the grammar's kind for a short form. */
-  shape: 'change' | 'url' | 'slug' | string;
+  shape: string;
   /** A short form too ambiguous to act on (the grammar's `weak`). */
   weak?: boolean;
 }
@@ -231,22 +231,22 @@ export function mentions(text: string, slugs: string[] = []): Mention[] {
   text = text.replace(PLACEHOLDER, (p) => ' '.repeat(p.length)); // blanked, so every offset still points into the input
   const found: Mention[] = [];
   for (const m of text.matchAll(/\bchange:([a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)?)/g))
-    found.push({ text: `change:${m[1]}`, at: m.index!, shape: 'change' });
+    found.push({ text: `change:${m[1]}`, at: m.index, shape: 'change' });
   for (const m of text.matchAll(/https?:\/\/[^\s<>()"']+/g))
-    found.push({ text: m[0].replace(/[.,;:!?]+$/, ''), at: m.index!, shape: 'url' });
+    found.push({ text: m[0].replace(/[.,;:!?]+$/, ''), at: m.index, shape: 'url' });
   for (const g of GRAMMARS) {
     if (!g.id) continue;
     for (const m of text.matchAll(g.id))
       if (!g.not?.test(m[0]))
-        found.push({ text: m[0], at: m.index!, shape: g.kind, ...(g.weak?.(m) ? { weak: true } : {}) });
+        found.push({ text: m[0], at: m.index, shape: g.kind, ...(g.weak?.(m) ? { weak: true } : {}) });
   }
   for (const slug of slugs) {
     if (!slug.includes('-')) continue;
     const re = new RegExp(`(^|[^a-z0-9:/#-])(${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![a-z0-9-])`, 'gi');
-    for (const m of text.matchAll(re)) found.push({ text: m[2], at: m.index! + m[1].length, shape: 'slug' });
+    for (const m of text.matchAll(re)) found.push({ text: m[2], at: m.index + m[1].length, shape: 'slug' });
   }
   // longest first at a position; the caller drops a span inside one it already accepted (the id inside a URL)
-  return found.sort((a, b) => a.at - b.at || b.text.length - a.text.length);
+  return found.toSorted((a, b) => a.at - b.at || b.text.length - a.text.length);
 }
 
 // --- identity: the accounts a person holds ----------------------------------------------------------------------

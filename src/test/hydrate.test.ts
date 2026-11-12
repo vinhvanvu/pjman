@@ -114,7 +114,7 @@ test('neighbours: other live sessions on the same change, or on a change naming 
   sessionLog(store, 'gone', 'session ended (other)');
   const loaded = loadStore(store);
   const ns = neighboursOf(loaded, session('me'), loaded.byKey.get('change:web/auth')![0], readEvents(store));
-  assert.deepEqual(ns.map((n) => [n.session, n.on, n.feature ?? null, n.shared]).sort(), [
+  assert.deepEqual(ns.map((n) => [n.session, n.on, n.feature ?? null, n.shared]).toSorted(), [
     ['session:near', 'change:web/sso', 'feature:web/login', []],
     ['session:peer', 'change:web/auth', null, ['file:src/auth.ts']],
   ]);

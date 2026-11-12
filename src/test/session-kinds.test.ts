@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
 import { init } from '../cli/init.js';
-import { loadStoreConfig, writeStoreConfig } from '../store/config.js';
+import { loadStoreConfig, writeStoreConfig, findStore, type Store } from '../store/config.js';
 import { migrate, pendingMigration } from '../ops/migrate.js';
 import { mv } from '../ops/mv.js';
 import { newRecord } from '../ops/new.js';
@@ -17,7 +17,6 @@ import { rm } from '../ops/rm.js';
 import { sessionBind, sessionLog, sessionName, sessionObserve } from '../ops/session.js';
 import { set } from '../ops/set.js';
 import { ls } from '../model/view.js';
-import { findStore, type Store } from '../store/config.js';
 import { get } from '../model/graph.js';
 import { findSession, loadStore } from '../store/records.js';
 import { DEFAULT_SESSION_KINDS, inferSessionKind, ownSources } from '../ops/session-kinds.js';
@@ -46,7 +45,10 @@ before(() => {
 
 test('the four kinds come with the store, each a record with a name and a gist, listed as an entity', () => {
   const rows = ls(store, { type: 'session-kind' });
-  assert.deepEqual(rows.map((r) => r.key).sort(), DEFAULT_SESSION_KINDS.map((k) => `session-kind:${k.slug}`).sort());
+  assert.deepEqual(
+    rows.map((r) => r.key).toSorted(),
+    DEFAULT_SESSION_KINDS.map((k) => `session-kind:${k.slug}`).toSorted(),
+  );
   for (const r of rows) {
     assert.ok(r.name, `${r.key} has a name`);
     assert.ok(r.gist, `${r.key} has a gist`);
@@ -199,8 +201,8 @@ test('the session-kinds move: a store stamped before 0.3.0 that lacks the four g
     ls(old, { type: 'session-kind' })
       .map((x) => x.key)
       .filter((k) => four.includes(k))
-      .sort(),
-    [...four].sort(),
+      .toSorted(),
+    [...four].toSorted(),
   );
   assert.equal(pendingMigration(old), 'stamp');
   assert.equal(migrate(old, {}).kind, 'stamp');

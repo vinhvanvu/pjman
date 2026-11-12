@@ -43,7 +43,7 @@ const git = (cwd: string, ...args: string[]) => {
     return execFileSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8' });
   } catch (e) {
     const err = e as { stdout?: string; stderr?: string };
-    throw new Error(`git ${args.join(' ')}: ${err.stdout ?? ''}${err.stderr ?? ''}`);
+    throw new Error(`git ${args.join(' ')}: ${err.stdout ?? ''}${err.stderr ?? ''}`, { cause: e });
   }
 };
 

@@ -36,9 +36,13 @@ export interface DoctorOpts {
 
 const claudeDirOf = (o: DoctorOpts) =>
   o.claudeDir ?? process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
-const readJson = <T>(file: string): T | null => {
+/** What the harness records of its installed plugins (installed_plugins.json), as far as the doctor reads it. */
+interface InstalledPlugins {
+  plugins?: Record<string, { version?: string; lastUpdated?: string; installedAt?: string }[]>;
+}
+const readInstalled = (file: string): InstalledPlugins | null => {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as InstalledPlugins;
   } catch {
     return null;
   }
@@ -133,7 +137,7 @@ function checkPlugin(o: DoctorOpts): Finding[] {
   // package), else this one
   const first = binaries(o.path ?? process.env.PATH ?? '')[0];
   const here = stableRoot(
-    first && /\/bin\/pjman\.js$/.test(first.real) ? path.dirname(path.dirname(first.real)) : undefined,
+    first && first.real.endsWith('/bin/pjman.js') ? path.dirname(path.dirname(first.real)) : undefined,
   );
   if (!fs.existsSync(market))
     out.push({
@@ -162,9 +166,7 @@ function checkPlugin(o: DoctorOpts): Finding[] {
       level: 'ok',
       message: `the plugin marketplace reads the pjman on the PATH (${market})`,
     });
-  const installed = readJson<{ plugins?: Record<string, { version?: string; lastUpdated?: string }[]> }>(
-    path.join(dir, 'plugins', 'installed_plugins.json'),
-  )?.plugins?.['pjman@pjman']?.[0];
+  const installed = readInstalled(path.join(dir, 'plugins', 'installed_plugins.json'))?.plugins?.['pjman@pjman']?.[0];
   if (!installed)
     out.push({
       area: 'plugin',
@@ -198,9 +200,9 @@ function claudeProcesses(): { pid: number; started: Date }[] {
 }
 
 function checkSessions(o: DoctorOpts): Finding[] {
-  const installed = readJson<{ plugins?: Record<string, { lastUpdated?: string; installedAt?: string }[]> }>(
-    path.join(claudeDirOf(o), 'plugins', 'installed_plugins.json'),
-  )?.plugins?.['pjman@pjman']?.[0];
+  const installed = readInstalled(path.join(claudeDirOf(o), 'plugins', 'installed_plugins.json'))?.plugins?.[
+    'pjman@pjman'
+  ]?.[0];
   const since = installed?.lastUpdated ?? installed?.installedAt;
   if (!since) return [];
   const at = new Date(since);

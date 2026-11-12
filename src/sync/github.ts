@@ -25,7 +25,8 @@ export interface SyncOpts {
   project?: string;
   /** `owner/name`; default: the project's `ext.github.repo`, else its `git-repo:` link. */
   repo?: string;
-  from?: string | unknown;
+  /** A path, `-` for stdin, inline JSON text, or the parsed value itself. */
+  from?: unknown;
   session?: string;
 }
 

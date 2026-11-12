@@ -132,12 +132,12 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   };
   const rank = (a: Candidate, b: Candidate) => b.score - a.score || a.key.localeCompare(b.key);
   const keep = (x: Candidate) => x.score >= 0.34 || (x as ChangeCandidate).referenced;
-  const duplicates = changes.filter(isOpen).map(candidate).filter(keep).sort(rank).slice(0, 8);
+  const duplicates = changes.filter(isOpen).map(candidate).filter(keep).toSorted(rank).slice(0, 8);
   const done = changes
     .filter((c) => c.data.status === 'done')
     .map(candidate)
     .filter(keep)
-    .sort(rank)
+    .toSorted(rank)
     .slice(0, 5);
 
   const features = loaded.records.filter((r) => r.type === 'feature' && r.valid);
@@ -168,7 +168,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
       };
     })
     .filter((n) => n.score >= 0.2)
-    .sort(rank)
+    .toSorted(rank)
     .slice(0, 8);
 
   const childrenOf = (key: string) => changes.filter((c) => live(loaded, c.data.parent)?.key === key);
@@ -181,7 +181,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
       progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))),
       target: str(c.data.target),
     }))
-    .sort((a, b) => {
+    .toSorted((a, b) => {
       const share = (p?: { done: number; total: number }) => (p?.total ? p.done / p.total : 0);
       return share(b.progress) - share(a.progress) || a.key.localeCompare(b.key);
     });

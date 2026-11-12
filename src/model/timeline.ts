@@ -87,10 +87,7 @@ export function productOfRecord(loaded: Loaded, rec: Rec): Rec | undefined {
 /** The change a session is on: its last bound change that still resolves. */
 function sessionChange(loaded: Loaded, rec: Rec): Rec | undefined {
   const bound = Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : [];
-  return bound
-    .map((k) => live(loaded, k))
-    .filter((r): r is Rec => !!r)
-    .at(-1);
+  return bound.map((k) => live(loaded, k)).findLast((r): r is Rec => !!r);
 }
 
 /** A record's status as a commit left it, by commit and path; a commit never changes, so what is read is kept. */
@@ -197,8 +194,8 @@ export function timeline(store: Store, loaded: Loaded, opts: TimelineOpts = {}):
     const c = commitOf.get(e.seq);
     const s = e.decision && c ? statusAt.get(`${c.commit}:${c.path}`) : undefined;
     if (s) e.status = s;
-    const now = str(live(loaded, e.key)?.data.status);
-    if (now) e.statusNow = now;
+    const current = str(live(loaded, e.key)?.data.status);
+    if (current) e.statusNow = current;
   }
   const last = all.at(-1);
   return {

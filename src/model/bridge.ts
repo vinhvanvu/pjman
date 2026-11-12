@@ -227,7 +227,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
   // the proposed decisions in the product, by change, oldest first within a change: a session stopped on one waits
   const inProduct = (c: Rec | undefined) => !!c && (!productKey || productOf(loaded, c)?.key === productKey);
   const proposedOn = new Map<string, WaitingDecision[]>();
-  for (const d of proposedDecisions(loaded, (d) => inProduct(live(loaded, d.changeKey)))) {
+  for (const d of proposedDecisions(loaded, (w) => inProduct(live(loaded, w.changeKey)))) {
     const c = live(loaded, d.change)!;
     proposedOn.set(c.key, [...(proposedOn.get(c.key) ?? []), d]);
   }
@@ -247,7 +247,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     const act = acts.get(rec.key);
     const last = [closing?.at, line?.at, act]
       .filter((x): x is string => !!x)
-      .sort()
+      .toSorted()
       .at(-1);
     if (!last || last < since) continue;
     const bound = (Array.isArray(rec.data.changes) ? (rec.data.changes as unknown[]) : [])
@@ -320,7 +320,7 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
         loaded,
         c,
         last,
-        [...(onChange.get(key) ?? [])].sort(newestFirst).map((r) => r.key),
+        [...(onChange.get(key) ?? [])].toSorted(newestFirst).map((r) => r.key),
       ),
     );
   }

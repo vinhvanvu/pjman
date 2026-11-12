@@ -332,12 +332,12 @@ function staleWorktrees(cwd, done) {
   if (!done.length) return [];
   const list = sh('git', ['worktree', 'list', '--porcelain'], cwd);
   if (!list) return [];
-  const main = sh('git', ['rev-parse', '--verify', '--quiet', 'main'], cwd)
+  const trunk = sh('git', ['rev-parse', '--verify', '--quiet', 'main'], cwd)
     ? 'main'
     : sh('git', ['rev-parse', '--verify', '--quiet', 'master'], cwd)
       ? 'master'
       : null;
-  if (!main) return [];
+  if (!trunk) return [];
   const byBranch = new Map();
   const byName = new Map();
   let dir = null;
@@ -354,9 +354,9 @@ function staleWorktrees(cwd, done) {
   for (const c of done) {
     if (!c.branch) continue;
     const w = byBranch.get(c.branch.name) ?? byName.get(c.branch.worktree);
-    if (!w || w.branch === main || out.some((o) => o.dir === w.dir)) continue;
+    if (!w || w.branch === trunk || out.some((o) => o.dir === w.dir)) continue;
     merged ??= new Set(
-      (sh('git', ['branch', '--merged', main, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
+      (sh('git', ['branch', '--merged', trunk, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
     );
     if (!merged.has(w.branch)) continue;
     out.push({ dir: w.dir, branch: w.branch, change: c.key });
@@ -689,8 +689,8 @@ function choiceQuestions(text) {
     if (inCode) continue;
     const line = raw.trim();
     if (!line) continue;
-    if (/^>/.test(line)) continue; // the person's words, quoted
-    if (/^#/.test(line)) {
+    if (line.startsWith('>')) continue; // the person's words, quoted
+    if (line.startsWith('#')) {
       underHeading = /open questions?/i.test(line);
       continue;
     }
@@ -746,7 +746,7 @@ function firstLine(text, max = 200) {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   const body = lines
-    .filter((l) => !l.startsWith('#') && !/^```/.test(l))
+    .filter((l) => !l.startsWith('#') && !l.startsWith('```'))
     .map((l) =>
       l
         .replace(/^[>*\-\d.)\s]+/, '')
@@ -819,7 +819,7 @@ function promptChange(prompt, { cwd, env }) {
       hint: `This prompt names several changes (${named.join(', ')}); none was bound. If one of them is the work, bind it: pjman session bind <this session> <change>.`,
       sources,
     };
-  for (const r of refs.reverse()) {
+  for (const r of refs.toReversed()) {
     if (r.weak) continue; // a bare #1: as often a list item as an issue
     if (r.change) return { key: r.change, sources };
     if (!r.creatable) continue;
@@ -906,21 +906,21 @@ function refreshPlugin() {
   }
 }
 async function sessionStart(input, store, sid, env, st, cwd) {
-  const main = !input.agent_id;
+  const isMain = !input.agent_id;
   const source = input.source || 'startup';
-  const docking = main ? parkView(sid, cwd, store) : Promise.resolve();
-  const branch = main ? currentBranch(cwd) : null;
+  const docking = isMain ? parkView(sid, cwd, store) : Promise.resolve();
+  const branch = isMain ? currentBranch(cwd) : null;
   const read = await promiseObject({
     brief: pjmanAsync(['brief'], { cwd }),
     context: pjmanAsync(['context'], { cwd }),
     receipt: st.seq === undefined ? pjmanAsync(['events', '--receipt', '--json'], { cwd, json: true }) : null,
     who:
-      main && (source === 'startup' || source === 'clear')
+      isMain && (source === 'startup' || source === 'clear')
         ? pjmanAsync(['whoami', '--verify', '--json'], { cwd, json: true })
         : null,
-    done: main ? pjmanAsync(['ls', 'change', '--status', 'done', '--json'], { cwd, json: true }) : null,
+    done: isMain ? pjmanAsync(['ls', 'change', '--status', 'done', '--json'], { cwd, json: true }) : null,
     pr:
-      main && branch && store_sourceKinds().includes('github-pr')
+      isMain && branch && store_sourceKinds().includes('github-pr')
         ? shAsync('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd)
         : null,
   });
@@ -953,7 +953,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
       AGENT,
       '--log',
       started[source] ?? `session started (${source})`,
-      ...(main && !st.bound && branch ? ['--branch', branch] : []),
+      ...(isMain && !st.bound && branch ? ['--branch', branch] : []),
       ...(rehydrated && st.bound ? ['--full'] : []),
       '--json',
     ],
@@ -963,8 +963,8 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     await docking;
     return;
   }
-  if (main) exportToShell(env);
-  if (main) startFollowWindow(sid, cwd);
+  if (isMain) exportToShell(env);
+  if (isMain) startFollowWindow(sid, cwd);
   if (st.seq === undefined) st.seq = read.receipt?.seq ?? 0; // receipts start from here
   if (start.bound) st.bound = start.bound;
   if (st.bound) taken(st, st.bound);
@@ -972,10 +972,10 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   let text =
     (read.brief ?? '') +
     `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
-  if (main && (source === 'startup' || source === 'clear')) text += refreshPlugin();
+  if (isMain && (source === 'startup' || source === 'clear')) text += refreshPlugin();
   if (st.unscoped)
     text += `This session started outside any registered repository (${input.cwd || process.cwd()}). It is recorded with no project until a tool call lands in one: edit a file there or \`cd\` into it in a shell command, and the session is resolved to that project. Run pjman from inside the repository you work in, so its writes resolve to that project.\n\n`;
-  const stale = main ? staleWorktreesText(staleWorktrees(cwd, read.done ?? [])) : '';
+  const stale = isMain ? staleWorktreesText(staleWorktrees(cwd, read.done ?? [])) : '';
   if (stale) text += `${stale}\n---\n`;
   text += read.context ?? '';
   const b = briefText(st, start.brief);
@@ -985,7 +985,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (read.who?.notices?.length)
     text += `\n---\nIdentity (pjman whoami --verify):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person and never run a rename or a claim unasked.\n`;
   emitContext(EVENT, text);
-  if (main) {
+  if (isMain) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
     await docking;
     if (st.bound) await followView(sid, cwd); // the session has its subject (the branch's change, or one bound before): the parked pane follows it

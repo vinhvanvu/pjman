@@ -957,7 +957,7 @@ export function entityHelp(e: Entity): string {
 
 /** The commands an entity's rows use, for the pointer to each in full. */
 const commandsOf = (e: Entity): string[] =>
-  [...new Set(e.ops.flatMap(([, how]) => [...how.matchAll(/pjman ([a-z]+)/g)].map((m) => m[1]!)))].filter((c) =>
+  [...new Set(e.ops.flatMap(([, how]) => [...how.matchAll(/pjman ([a-z]+)/g)].map((m) => m[1])))].filter((c) =>
     commandOf(c),
   );
 

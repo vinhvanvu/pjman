@@ -38,7 +38,7 @@ const SKIP = new Set([
 const DOC_DIRS = new Set(['docs', 'doc', 'documentation', 'adr', 'adrs', 'rfcs', 'specs', 'design']);
 const NOT_DOCS = /^(license|licence|notice|changelog|contributing|code_of_conduct|security|authors|patents)(\.|$)/i;
 const DOC_EXT = new Set(['.md', '.mdx', '.rst', '.adoc', '.txt']);
-const MANIFESTS = [
+const MANIFESTS = new Set([
   'package.json',
   'pyproject.toml',
   'setup.py',
@@ -57,7 +57,7 @@ const MANIFESTS = [
   'Makefile',
   'deno.json',
   'bun.lockb',
-];
+]);
 /** Source in a language: one file is code. */
 const CODE_EXT = new Set([
   '.ts',
@@ -104,7 +104,7 @@ function entries(dir: string): fs.Dirent[] {
     return fs
       .readdirSync(dir, { withFileTypes: true })
       .filter((e) => !SKIP.has(e.name))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .toSorted((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
   }
@@ -148,7 +148,7 @@ export function inventory(dir: string): Inventory {
       continue;
     }
     const ext = path.extname(e.name).toLowerCase();
-    if (MANIFESTS.includes(e.name)) code.unshift(e.name);
+    if (MANIFESTS.has(e.name)) code.unshift(e.name);
     else if (/^readme(\.|$)/i.test(e.name)) {
       if (size(full) >= README_MIN) docs.unshift(e.name);
     } else if (DOC_EXT.has(ext) && !NOT_DOCS.test(e.name)) docs.push(e.name);

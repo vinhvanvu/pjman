@@ -82,7 +82,7 @@ export function receiptLines(events: StoreEvent[], loaded: Loaded, opts: { count
       // a batch is one line on the record it was for, before the records it touched
       const what = [
         r.ops.has('applied')
-          ? `applied as one batch (${[...r.fields].filter((f) => /writes$/.test(f)).join(', ') || 'writes'})`
+          ? `applied as one batch (${[...r.fields].filter((f) => f.endsWith('writes')).join(', ') || 'writes'})`
           : '',
         r.ops.has('reverted') ? 'a batch reverted' : '',
       ]

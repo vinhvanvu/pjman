@@ -32,7 +32,7 @@ const live = (loaded: Loaded, raw: unknown, scope: string | null): Rec | undefin
 export function placesOf(loaded: Loaded, aspect: Rec): Rec[] {
   return loaded.records
     .filter((r) => r.type === 'place' && r.aspectKey === aspect.key)
-    .sort((a, b) => a.key.localeCompare(b.key));
+    .toSorted((a, b) => a.key.localeCompare(b.key));
 }
 
 /** The feature a place applies at, resolved. */
@@ -84,7 +84,7 @@ export function aspectAt(loaded: Loaded, aspect: Rec, feature: Rec): AspectAt | 
   const covering = placesOf(loaded, aspect)
     .map((p) => ({ p, f: featureOfPlace(loaded, p) }))
     .filter((x): x is { p: Rec; f: Rec } => !!x.f && chain.some((c) => c.key === x.f!.key))
-    .sort((a, b) => chain.findIndex((c) => c.key === b.f.key) - chain.findIndex((c) => c.key === a.f.key));
+    .toSorted((a, b) => chain.findIndex((c) => c.key === b.f.key) - chain.findIndex((c) => c.key === a.f.key));
   if (!covering.length) return undefined;
   const layers: Layer[] = [];
   if (aspect.body.trim()) layers.push({ from: aspect.key, text: aspect.body.trim() });

@@ -658,6 +658,8 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           }
         }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        // isDateString narrows what it refuses to never; the name is still the string read from the file
+        // oxlint-disable-next-line typescript/restrict-template-expressions
         if (r.fileDate && !isDateString(r.fileDate)) err(r, `file name date '${r.fileDate}' is not a date`);
         break;
       }
@@ -745,18 +747,18 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
         // host: where the session runs (change:rex-adapter): the host's name and its own ids, the version it ran on and
         // whether the adapter had validated that version
         if (d.host !== undefined) {
-          const h = d.host as Record<string, unknown>;
-          if (!h || typeof h !== 'object' || Array.isArray(h))
+          const host = d.host as Record<string, unknown>;
+          if (!host || typeof host !== 'object' || Array.isArray(host))
             err(r, `'host' must be a mapping {name, session, block?, version?, validated?}`);
           else {
-            if (typeof h.name !== 'string' || !h.name.trim()) err(r, `host.name must be the host's name`);
-            if (typeof h.session !== 'string' || !h.session.trim())
+            if (typeof host.name !== 'string' || !host.name.trim()) err(r, `host.name must be the host's name`);
+            if (typeof host.session !== 'string' || !host.session.trim())
               err(r, `host.session must be the host's id for the session`);
-            if (h.block !== undefined && typeof h.block !== 'string') err(r, `host.block must be a string`);
-            if (h.version !== undefined && typeof h.version !== 'string') err(r, `host.version must be a string`);
-            if (h.validated !== undefined && typeof h.validated !== 'boolean')
+            if (host.block !== undefined && typeof host.block !== 'string') err(r, `host.block must be a string`);
+            if (host.version !== undefined && typeof host.version !== 'string') err(r, `host.version must be a string`);
+            if (host.validated !== undefined && typeof host.validated !== 'boolean')
               err(r, `host.validated must be true or false`);
-            for (const k of Object.keys(h))
+            for (const k of Object.keys(host))
               if (!['name', 'session', 'block', 'version', 'validated'].includes(k))
                 warn(r, `host: unknown field '${k}'`);
           }
@@ -923,7 +925,7 @@ export function summarise(problems: Problem[]): { errors: number; warnings: numb
 export function formatProblems(problems: Problem[]): string {
   const order = { error: 0, warning: 1, info: 2 };
   return [...problems]
-    .sort((a, b) => order[a.level] - order[b.level] || a.path.localeCompare(b.path))
+    .toSorted((a, b) => order[a.level] - order[b.level] || a.path.localeCompare(b.path))
     .map((p) => `${p.level.padEnd(7)} ${p.path}: ${p.message}`)
     .join('\n');
 }

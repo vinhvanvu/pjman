@@ -21,7 +21,7 @@ test('every layer imports only from layers below it', () => {
     for (const name of fs.readdirSync(dir).filter((n) => n.endsWith('.ts'))) {
       const file = path.join(dir, name);
       for (const [, spec] of fs.readFileSync(file, 'utf8').matchAll(IMPORT)) {
-        const target = path.relative(SRC, path.resolve(dir, spec!)).split(path.sep)[0]!;
+        const target = path.relative(SRC, path.resolve(dir, spec)).split(path.sep)[0];
         if (rank(target) > rank(layer)) upward.push(`${layer}/${name} imports ${spec} (${target} is above ${layer})`);
       }
     }
@@ -30,6 +30,6 @@ test('every layer imports only from layers below it', () => {
 });
 
 test('the source holds only the layers, the bench and the tests', () => {
-  const entries = fs.readdirSync(SRC).sort();
-  assert.deepEqual(entries, [...LAYERS, 'bench', 'test'].sort());
+  const entries = fs.readdirSync(SRC).toSorted();
+  assert.deepEqual(entries, [...LAYERS, 'bench', 'test'].toSorted());
 });

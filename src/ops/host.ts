@@ -5,10 +5,9 @@ import type { Store } from '../store/config.js';
 import { nextStep, stepsOf } from '../model/foundation.js';
 import { hostOfRecord, hostPresent, inRange, type HostId, type HostStatus, type SessionHost } from '../hosts/host.js';
 import { worktreeNameFor } from '../model/branch.js';
-import { resolve } from '../store/records.js';
+import { resolve, findSession, loadStore, type Loaded, type Rec } from '../store/records.js';
 import { changeOfDecision } from '../model/bridge.js';
 import { sessionLogOf } from '../model/session-state.js';
-import { findSession, loadStore, type Loaded, type Rec } from '../store/records.js';
 import { proposedDecisions } from '../model/scope.js';
 import { live } from '../model/tree.js';
 import { CliError, notFound } from '../store/util.js';
@@ -179,7 +178,7 @@ export function hostLaunch(store: Store, changeRef: string, env: NodeJS.ProcessE
   const c = res.rec;
   if (c.type !== 'change') throw new CliError(`${c.key} is a ${c.type}, not a change`);
   if (c.data.status === 'done' || c.data.status === 'dropped')
-    throw new CliError(`${c.key} is ${String(c.data.status)}; a session is launched for open work`);
+    throw new CliError(`${c.key} is ${c.data.status}; a session is launched for open work`);
   const cwd = store.projectDir ?? process.cwd();
   const command = launchCommand(c.key);
   const id = here.adapter.launch({ cwd, name: worktreeNameFor(c.key), command }, env);

@@ -570,10 +570,10 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
   // rewrites: every flat key in every record, longest slugs first so a slug that prefixes another is never clipped
   const features = records
     .filter((r) => r.type === 'feature')
-    .sort((a, b) => b.featureSlug!.length - a.featureSlug!.length);
+    .toSorted((a, b) => b.featureSlug!.length - a.featureSlug!.length);
   const changes = records
     .filter((r) => r.type === 'change')
-    .sort((a, b) => b.changeSlug!.length - a.changeSlug!.length);
+    .toSorted((a, b) => b.changeSlug!.length - a.changeSlug!.length);
   const rewrite = (text: string): string => {
     let out = text;
     for (const f of features) out = rewriteFlat(out, 'feature', f.featureSlug!, home.get(f.key)!);

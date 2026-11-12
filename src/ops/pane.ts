@@ -182,7 +182,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
   const facts: string[] = [`**${c.change.status ?? '?'}**`];
   if (typeof d.project === 'string') facts.push(d.project);
   if (c.parent) facts.push(`part of \`${c.parent.key}\``);
-  for (const s of c.sources.filter((s) => s.via === 'binds')) facts.push(`binds ${link(s.key, s.url)}`);
+  for (const s of c.sources.filter((src) => src.via === 'binds')) facts.push(`binds ${link(s.key, s.url)}`);
   out.push(facts.join(' · '));
   for (const l of readinessLines(c, 'change')) out.push(`\n> ${esc(l)}`);
   if (c.next) out.push(`\n> **next:** ${esc(nextLine(c.next))}`);
@@ -259,7 +259,7 @@ function neighbourhoodDoc(n: Neighbourhood, loaded: Loaded): string[] {
   if (r.status === 'none') return [`# ${esc(n.input)}`, `\nresolves to nothing; tried: ${r.tried.join('; ')}`];
   const out: string[] = [];
   if (n.record?.type === 'change') {
-    const c = n.changes.find((c) => c.change.key === n.record!.key);
+    const c = n.changes.find((x) => x.change.key === n.record!.key);
     if (c) out.push(...changeDoc(c, loaded));
   } else {
     out.push(`# ${r.key}`);

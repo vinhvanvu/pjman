@@ -308,9 +308,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         session: v.session,
       };
       // a value naming a record takes the slug alone, as an argument does; a bare URL in --links is a url: source
-      const typed = (v: string | undefined, field: string) => {
-        const kind = v === undefined ? null : fieldKind(type, field);
-        return kind ? typedRef(v!, kind) : v;
+      const typed = (value: string | undefined, field: string) => {
+        const kind = value === undefined ? null : fieldKind(type, field);
+        return kind ? typedRef(value!, kind) : value;
       };
       const typedAll = (vs: string[] | undefined, field: string) => vs?.map((x) => typed(x, field)!);
       Object.assign(flags, {
@@ -555,8 +555,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const tail = lastSeq(store);
       const print = (w: Wake) => out(v.json ? JSON.stringify(w) : `#${w.seq} ${w.why}`);
       if (!v.follow) {
-        const stop = followWakes(store, v.session, v.since !== undefined ? Number(v.since) : 0, print);
-        stop();
+        const close = followWakes(store, v.session, v.since !== undefined ? Number(v.since) : 0, print);
+        close();
         return 0;
       }
       followWakes(store, v.session, v.since !== undefined ? Number(v.since) : tail, print);
@@ -911,15 +911,15 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const r = migrate(store, { session: v.session, writer: v.writer });
       if (v.json) json(r);
       else {
-        const undo = r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : '';
-        if (r.kind === 'stamp') out(`stamped: the store is in format ${r.version}${undo}`);
+        const reverts = r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} reverts it)` : '';
+        if (r.kind === 'stamp') out(`stamped: the store is in format ${r.version}${reverts}`);
         else if (r.kind === 'foundation')
           out(
-            `migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.decisions ?? 0, 'decision')} mapped into the foundation (introduced in ${r.since}), each marked migrated until it is next written${undo}`,
+            `migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.decisions ?? 0, 'decision')} mapped into the foundation (introduced in ${r.since}), each marked migrated until it is next written${reverts}`,
           );
         else if (r.kind === 'kinds')
           out(
-            `migrated: ${plural(r.changes ?? 0, 'parent change')} now a milestone by kind (introduced in ${r.since}); steps one carried are in its Notes, since a milestone's plan is its children${undo}`,
+            `migrated: ${plural(r.changes ?? 0, 'parent change')} now a milestone by kind (introduced in ${r.since}); steps one carried are in its Notes, since a milestone's plan is its children${reverts}`,
           );
         else if (r.kind === 'session-kinds')
           out(
@@ -927,7 +927,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           );
         else
           out(
-            `migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product (introduced in ${r.since})${undo}`,
+            `migrated: ${plural(r.products, 'product')}, ${plural(r.moved, 'record folder')} moved beneath them, ${plural(r.rewritten, 'file')} rewritten with keys under the product (introduced in ${r.since})${reverts}`,
           );
         const next = pendingMigration(store);
         if (next) out(`the store still waits for ${describeMigration(next)}: run pjman migrate again`);

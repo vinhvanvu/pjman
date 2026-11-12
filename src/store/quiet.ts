@@ -5,4 +5,3 @@ process.on('warning', (w: Error & { code?: string }) => {
   if (w.name === 'ExperimentalWarning' && /SQLite/.test(w.message)) return;
   process.stderr.write(`(node:${process.pid}) ${w.code ? `[${w.code}] ` : ''}${w.name}: ${w.message}\n`);
 });
-export {};

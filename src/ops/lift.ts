@@ -54,7 +54,7 @@ export function liftsFor(loaded: Loaded, events: EventInput[]): Lift[] {
     } else if (e.type === 'session' && e.op === 'observe') {
       // the edge just observed names the change the file was written for
       const s = live(loaded, e.key);
-      const observed = Array.isArray(s?.data.observed) ? (s!.data.observed as { from?: string; to?: string }[]) : [];
+      const observed = Array.isArray(s?.data.observed) ? (s.data.observed as { from?: string; to?: string }[]) : [];
       const last = observed.at(-1);
       if (!s || !last?.to?.startsWith('file:')) continue;
       add(liftOf(live(loaded, last.from), 'active', `${s.key} wrote ${last.to}`));

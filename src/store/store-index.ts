@@ -22,6 +22,7 @@ import path from 'node:path';
 import { userDir, type Store } from './config.js';
 import { parseRecord } from './frontmatter.js';
 import { TOOL_VERSION } from './version.js';
+import type * as NodeSqlite from 'node:sqlite';
 
 /** One file or folder of the store as the index holds it. */
 /** The fields a load reads from every record, kept apart so a load parses no record whole. */
@@ -87,12 +88,12 @@ export function resetIndex(store: Store): void {
   lastRead.delete(store.root);
 }
 
-type Sqlite = typeof import('node:sqlite');
+type Sqlite = typeof NodeSqlite;
 let sqlite: Sqlite | undefined;
 
 /** The index in SQLite, in the store's folder. */
 export class SqliteIndex implements IndexBackend {
-  private db: import('node:sqlite').DatabaseSync;
+  private db: NodeSqlite.DatabaseSync;
 
   constructor(file: string) {
     sqlite ??= createRequire(import.meta.url)('node:sqlite') as Sqlite;

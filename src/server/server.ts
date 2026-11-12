@@ -276,7 +276,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   ]);
   const own = (name: string) => ownNames.has(name) || name.endsWith('.localhost');
 
-  const send = (res: http.ServerResponse, status: number, body: unknown) => {
+  const sendJson = (res: http.ServerResponse, status: number, body: unknown) => {
     const seq = lastSeq(store);
     const text = JSON.stringify({ seq, ...(body as object) });
     res.writeHead(status, {
@@ -286,7 +286,6 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     });
     res.end(text);
   };
-  const sendAll = send;
 
   // the host watch (change:rex-adapter): every session the store holds that runs in a host and has not ended is
   // followed on its host, and what its program reports is handed to every read as a fact beside the record's own. A
@@ -367,17 +366,17 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   };
   const fail = (res: http.ServerResponse, e: unknown) => {
     if (e instanceof HttpError)
-      return send(res, e.status, { error: { code: e.code, message: e.message, tried: e.tried } });
+      return sendJson(res, e.status, { error: { code: e.code, message: e.message, tried: e.tried } });
     // a refusal from the library answers with the CLI's code: not found 404, ambiguous 409, anything else 400
     if (e instanceof CliError)
-      return send(res, e.code === 'not-found' ? 404 : e.code === 'ambiguous' ? 409 : 400, {
+      return sendJson(res, e.code === 'not-found' ? 404 : e.code === 'ambiguous' ? 409 : 400, {
         error: {
           code: e.code === 'usage' || e.code === 'refused' ? 'bad-request' : e.code,
           message: e.message,
           ...(e.tried ? { tried: e.tried } : {}),
         },
       });
-    send(res, 500, { error: { code: 'internal', message: (e as Error).message } });
+    sendJson(res, 500, { error: { code: 'internal', message: (e as Error).message } });
   };
 
   /** The writes, each through the same function the command uses, as the person signed in: reorder the roadmap, and
@@ -414,12 +413,12 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           const r = resolve(current(), key);
           if ((r.status !== 'ok' && r.status !== 'alias') || r.rec.type !== 'session')
             throw new HttpError(404, 'not-found', `no session ${key}`);
-          return send(res, 200, { data: { ...following.set(r.rec.key), windows: following.windows } });
+          return sendJson(res, 200, { data: { ...following.set(r.rec.key), windows: following.windows } });
         }
         if (route === '/follow/ensure') {
           // a server just started gives a window that was open its reconnect before answering, so none opens twice
           const wait = following.waitFor();
-          const answer = () => send(res, 200, { data: following.ensure() });
+          const answer = () => sendJson(res, 200, { data: following.ensure() });
           if (wait > 0) setTimeout(answer, wait);
           else answer();
           return;
@@ -429,11 +428,11 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         if (route === '/open') {
           // not a write to the store: the host is asked to bring the session's block to the front (change:rex-adapter)
           if (!s(body.session)) throw new HttpError(400, 'bad-request', 'session is required');
-          return send(res, 200, { data: hostOpen(store, s(body.session)!) });
+          return sendJson(res, 200, { data: hostOpen(store, s(body.session)!) });
         }
         if (route === '/launch') {
           if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
-          return send(res, 200, { data: hostLaunch(store, s(body.change)!) });
+          return sendJson(res, 200, { data: hostLaunch(store, s(body.change)!) });
         }
         if (route === '/order') {
           if (!s(body.change)) throw new HttpError(400, 'bad-request', 'change is required');
@@ -447,7 +446,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
               writer,
             }),
           );
-          return send(res, 200, { data: r });
+          return sendJson(res, 200, { data: r });
         }
         const key = s(body.decision);
         if (!key) throw new HttpError(400, 'bad-request', 'decision is required');
@@ -457,7 +456,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
             ? decide(store, key, { by: writer, option: s(body.option), words: s(body.words)?.trim() || undefined })
             : reopen(store, key),
         );
-        send(res, 200, { data: r });
+        sendJson(res, 200, { data: r });
       } catch (e) {
         fail(res, e);
       }
@@ -480,12 +479,12 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     else loaded = current();
     const asOf = moment ? { now: Date.parse(moment.at), until: moment.seq } : {};
     const send = (r: http.ServerResponse, status: number, body: unknown) =>
-      sendAll(r, status, moment ? { moment, ...(body as object) } : body);
+      sendJson(r, status, moment ? { moment, ...(body as object) } : body);
     // a bare key on a request resolves in the product the page is in (the record it is about), else the current project's
     const at = url.searchParams.get('key');
     if (at) {
-      const res = resolve(loaded, at);
-      const rec = res.status === 'ok' || res.status === 'alias' ? res.rec : undefined;
+      const found = resolve(loaded, at);
+      const rec = found.status === 'ok' || found.status === 'alias' ? found.rec : undefined;
       const p = rec
         ? rec.type === 'product'
           ? rec.productSlug
@@ -734,7 +733,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
 
   const serveStatic = (req: http.IncomingMessage, res: http.ServerResponse, pathname: string): void => {
     if (!staticDir) {
-      send(res, 404, { error: { code: 'no-ui', message: 'no UI assets are built; the API is under /api/v1' } });
+      sendJson(res, 404, { error: { code: 'no-ui', message: 'no UI assets are built; the API is under /api/v1' } });
       return;
     }
     const safe = path.normalize(decodeURIComponent(pathname)).replace(/^(\.\.[/\\])+/, '');
@@ -779,7 +778,8 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         if (!url.pathname.startsWith('/api/v1')) throw new HttpError(404, 'not-found', 'the API is under /api/v1');
         const route = url.pathname.slice('/api/v1'.length).replace(/\/+$/, '') || '/';
-        if (route === '/') return send(res, 200, { data: { version: 1, routes: ROUTES, conventions: CONVENTIONS } });
+        if (route === '/')
+          return sendJson(res, 200, { data: { version: 1, routes: ROUTES, conventions: CONVENTIONS } });
         return api(req, res, route, url);
       }
       serveStatic(req, res, url.pathname);

@@ -231,7 +231,7 @@ test('mv renames the folder, leaves an alias, rewrites references', () => {
   const dated = ls(store, { type: 'decision' }).map((r) => r.path);
   assert.deepEqual(
     dated,
-    [...dated].sort((a, b) => a.localeCompare(b)),
+    [...dated].toSorted((a, b) => a.localeCompare(b)),
   );
 });
 
@@ -903,17 +903,17 @@ test('a feature rename keeps the old slug as an alias; apply lands a batch as on
       const [type, ident, ...flags] = rest;
       const f: Record<string, unknown> = {};
       for (let i = 0; i < flags.length; i += 2) {
-        const name = flags[i]!.replace(/^--/, '');
-        if (name === 'features') f.features = [...((f.features as string[] | undefined) ?? []), flags[i + 1]!];
+        const name = flags[i].replace(/^--/, '');
+        if (name === 'features') f.features = [...((f.features as string[] | undefined) ?? []), flags[i + 1]];
         else f[name] = flags[i + 1];
       }
-      newRecord(store, type as 'feature', ident!, f);
-    } else if (cmd === 'set') set(store, rest[0]!, rest.slice(1), {});
+      newRecord(store, type, ident, f);
+    } else if (cmd === 'set') set(store, rest[0], rest.slice(1), {});
     else if (cmd === 'step')
-      step(store, rest[0]!, rest[1]!, rest[1] === 'add' ? undefined : Number(rest[2]), {
+      step(store, rest[0], rest[1], rest[1] === 'add' ? undefined : Number(rest[2]), {
         text: rest.slice(2).join(' '),
       });
-    else if (cmd === 'mv') mv(store, rest[0]!, rest[1]!, {});
+    else if (cmd === 'mv') mv(store, rest[0], rest[1], {});
     else throw new Error(`no ${cmd}`);
   };
   const before = git(store.root, 'rev-parse', 'HEAD');
@@ -961,7 +961,7 @@ test('a feature rename keeps the old slug as an alias; apply lands a batch as on
   assert.equal(back.byKey.get('feature:shop/lanes')![0].data.product, 'product:shop');
   assert.equal(back.byKey.get('change:project/board-work')![0].data.plan, undefined);
   const undone = readEvents(store, evs.at(-1)!.seq);
-  assert.deepEqual(undone.map((e) => [e.op, e.key]).sort(), [
+  assert.deepEqual(undone.map((e) => [e.op, e.key]).toSorted(), [
     ['removed', 'feature:shop/io'],
     ['reverted', 'change:project/board-work'],
     ['set', 'change:project/board-work'],
@@ -1032,7 +1032,9 @@ test('init asks about the map once and records the answer; the context says when
   assert.match(live, /file it with no feature and propose the map in the same breath/);
   const third = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
   assert.ok(
-    third.some((l) => /^the first change through intake proposes a product map \(project:other map=propose/.test(l)),
+    third.some((l) =>
+      l.startsWith('the first change through intake proposes a product map (project:other map=propose'),
+    ),
     third.join('\n'),
   );
   assert.equal(

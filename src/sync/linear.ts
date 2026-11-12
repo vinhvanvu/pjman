@@ -22,7 +22,8 @@ export interface Issue {
 export interface SyncOpts {
   project?: string;
   team?: string;
-  from?: string | unknown;
+  /** A path, `-` for stdin, inline JSON text, or the parsed value itself. */
+  from?: unknown;
   session?: string;
 }
 

@@ -6,6 +6,7 @@ import { allEdges, sourceKeysOnly } from '../model/graph.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
 import { uuidv7 } from '../store/util.js';
 import { validate } from '../model/validate.js';
+import type * as NodeSqlite from 'node:sqlite';
 
 export interface IndexReport {
   path: string;
@@ -16,7 +17,7 @@ export interface IndexReport {
   problems: { errors: number; warnings: number; infos: number };
 }
 
-type Sqlite = typeof import('node:sqlite');
+type Sqlite = typeof NodeSqlite;
 let sqlite: Sqlite | undefined;
 /** Loaded on first use so that commands that never touch the index never load node:sqlite. */
 function dbOpen(file: string, opts?: { readOnly?: boolean }) {

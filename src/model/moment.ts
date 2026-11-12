@@ -114,7 +114,7 @@ export function gitSource(root: string, commit: string): Source {
   }
   const norm = (rel: string) => (rel === '.' ? '' : rel.split(path.sep).join('/').replace(/\/$/, ''));
   return {
-    list: (rel) => [...(children.get(norm(rel)) ?? [])].filter((n) => !n.startsWith('.')).sort(),
+    list: (rel) => [...(children.get(norm(rel)) ?? [])].filter((n) => !n.startsWith('.')).toSorted(),
     isDir: (rel) => dirs.has(norm(rel)),
     exists: (rel) => fileSet.has(norm(rel)) || dirs.has(norm(rel)),
     read: (rel) => {

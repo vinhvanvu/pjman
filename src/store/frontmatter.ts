@@ -151,7 +151,7 @@ export function stringifyRecord(data: Record<string, unknown>, body: string, ord
 /** The body with one `## <name>` section replaced (or appended; an empty text removes it). Other sections are untouched. */
 export function replaceSection(body: string, name: string, text: string): string {
   const lines = body.split(/\r?\n/);
-  const isHeading = (l: string) => /^## /.test(l);
+  const isHeading = (l: string) => l.startsWith('## ');
   const start = lines.findIndex((l) => new RegExp(`^## ${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`).test(l));
   const block = text.trim() ? [`## ${name}`, '', text.trim(), ''] : [];
   if (start < 0) {

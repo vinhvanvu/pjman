@@ -145,7 +145,7 @@ test("bridge: the product's sessions in the window, each with its state, its cha
   const b = bridge(store, loadStore(store), { product: 'product:shop' });
   assert.equal(b.product, 'product:shop');
   const by = Object.fromEntries(b.sessions.map((s) => [s.key, s]));
-  assert.deepEqual(Object.keys(by).sort(), [
+  assert.deepEqual(Object.keys(by).toSorted(), [
     'session:s-end',
     'session:s-fresh',
     'session:s-stop',
@@ -180,13 +180,13 @@ test("bridge: the product's sessions in the window, each with its state, its cha
   assert.equal('waitingOn' in b, false); // the bridge lists no decision (decision bridge-rework/cards-and-transport)
   // most recent first
   const lasts = b.sessions.map((s) => s.last ?? '');
-  assert.deepEqual(lasts, [...lasts].sort().reverse());
+  assert.deepEqual(lasts, [...lasts].toSorted().toReversed());
 });
 
 test("bridge: the changes in motion, every change touched in the window that is not finished, with its card's facts and the sessions on it", () => {
   const b = bridge(store, loadStore(store), { product: 'product:shop' });
   const by = Object.fromEntries(b.changes.map((c) => [c.key, c]));
-  assert.deepEqual(Object.keys(by).sort(), [
+  assert.deepEqual(Object.keys(by).toSorted(), [
     'change:shop/card-form',
     'change:shop/chore',
     'change:shop/kid-on',
@@ -201,7 +201,7 @@ test("bridge: the changes in motion, every change touched in the window that is 
   assert.deepEqual(by['change:shop/kid-on'].steps, { done: 0, total: 1, dropped: 0 });
   // most recently touched first
   const lasts = b.changes.map((c) => c.last);
-  assert.deepEqual(lasts, [...lasts].sort().reverse());
+  assert.deepEqual(lasts, [...lasts].toSorted().toReversed());
   const chore = by['change:shop/chore'];
   assert.equal(chore.status, 'review');
   // on it, most recent first; the subagent on no change of its own is on its parent's
@@ -268,7 +268,7 @@ test("timeline: the product's events in the window, decisions marked, titles as 
   assert.ok(t.events.every((e) => e.key.startsWith('decision:') || !e.decision));
   assert.deepEqual(
     t.events.map((e) => e.seq),
-    [...t.events.map((e) => e.seq)].sort((a, b) => a - b),
+    t.events.map((e) => e.seq).toSorted((a, b) => a - b),
     'in stream order',
   );
   assert.equal(

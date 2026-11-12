@@ -5,7 +5,7 @@
 import type { Store } from '../store/config.js';
 import { eventsByKey, readEvents, type StoreEvent } from '../store/events.js';
 import { eventKeysOf, memo, ofType, push, resolve, type Loaded, type Rec } from '../store/records.js';
-import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row } from './view.js';
+import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row, nextLine } from './view.js';
 import { ahead, productOf } from './order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import {
@@ -42,7 +42,6 @@ import {
   type DecisionState,
   type StepState,
 } from './foundation.js';
-import { nextLine } from './view.js';
 import {
   hostFactsOf,
   lastActs,
@@ -50,6 +49,7 @@ import {
   sessionState,
   type SessionHostFacts,
   type SessionState,
+  LIVE_MINUTES,
 } from './session-state.js';
 import type { HostStatus } from '../hosts/host.js';
 
@@ -58,7 +58,6 @@ export const LENSES = ['project', 'feature', 'milestone', 'roadmap'] as const;
 export type Lens = (typeof LENSES)[number];
 export const IN_FLIGHT = ['active', 'review', 'blocked'];
 export { LIVE_MINUTES } from './session-state.js';
-import { LIVE_MINUTES } from './session-state.js';
 const DAY = 86_400_000;
 
 export interface Health {
@@ -215,7 +214,7 @@ export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = ()
         created: str(d.data.created),
       };
     })
-    .sort((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
+    .toSorted((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));
 }
 
 export interface Scope {
@@ -331,7 +330,7 @@ function baseOf(loaded: Loaded, events: readonly StoreEvent[]): Base {
   };
   const changes = ofType(loaded, 'change')
     .filter((r) => r.valid)
-    .sort(
+    .toSorted(
       (a, b) =>
         (str(a.data.created) ?? '').localeCompare(str(b.data.created) ?? '') ||
         seqOf(a) - seqOf(b) ||
@@ -354,8 +353,8 @@ function baseOf(loaded: Loaded, events: readonly StoreEvent[]): Base {
   for (const s of ofType(loaded, 'session')) {
     for (const k of new Set(
       list(s.data.changes)
-        .map((k) => live(loaded, k)?.key)
-        .filter((k): k is string => !!k),
+        .map((raw) => live(loaded, raw)?.key)
+        .filter((key): key is string => !!key),
     ))
       push(sessionsOn, k, s);
   }
@@ -420,7 +419,7 @@ class Index {
       const r = this.loaded.byKey.get(k)?.[0];
       if (r && this.base.position.has(r)) out.push(r);
     }
-    return out.sort((a, b) => this.base.position.get(a)! - this.base.position.get(b)!);
+    return out.toSorted((a, b) => this.base.position.get(a)! - this.base.position.get(b)!);
   }
 
   /** The events under a record's key and every alias it had, in the stream's order. */
@@ -434,7 +433,7 @@ class Index {
         groups++;
       }
     }
-    return groups > 1 ? out.sort((a, b) => a.seq - b.seq) : out;
+    return groups > 1 ? out.toSorted((a, b) => a.seq - b.seq) : out;
   }
 
   parentOf(c: Rec): string | undefined {
@@ -552,7 +551,7 @@ class Index {
     const all = new Set(keys);
     for (const k of keys) {
       const r = live(loaded, k);
-      if (r?.type === 'change') for (const k of eventKeysOf(r)) all.add(k);
+      if (r?.type === 'change') for (const former of eventKeysOf(r)) all.add(former);
     }
     const since = new Date(this.now - days * DAY).toISOString();
     const mine = this.eventsOf(all);
@@ -758,7 +757,9 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       ownersFrom: eo.from,
       open: open.length,
       inFlight: open.filter((c) => IN_FLIGHT.includes(String(c.data.status))).length,
-      projects: [...new Set(open.map((c) => live(loaded, c.data.project)?.key).filter((p): p is string => !!p))].sort(),
+      projects: [
+        ...new Set(open.map((c) => live(loaded, c.data.project)?.key).filter((p): p is string => !!p)),
+      ].toSorted(),
       health: ix.health(keys, days),
       progress:
         rec.type === 'project' && counted.length
@@ -830,10 +831,10 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       children,
     };
   };
-  const flat = <T extends Rec>(recs: T[], node: (r: T) => ScopeNode | null): ScopeNode[] =>
+  const flat = <T extends Rec>(recs: T[], toNode: (r: T) => ScopeNode | null): ScopeNode[] =>
     [...new Map(recs.map((r) => [r.key, r])).values()]
-      .sort((a, b) => a.key.localeCompare(b.key))
-      .map(node)
+      .toSorted((a, b) => a.key.localeCompare(b.key))
+      .map(toNode)
       .filter((n): n is ScopeNode => n !== null);
 
   let tree: ScopeNode[] = [];
@@ -847,8 +848,8 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       tree = [
         ...children,
         ...rows(
-          shown.filter((c) => names(c, container!.key)),
-          (k) => names(k, container!.key) || namesNothing(k),
+          shown.filter((c) => names(c, container.key)),
+          (k) => names(k, container.key) || namesNothing(k),
           true,
         ),
       ];
@@ -877,8 +878,8 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       tree = [
         ...projectChildren(container.key).map(projectNode),
         ...rows(
-          shown.filter((c) => live(loaded, c.data.project)?.key === container!.key),
-          (k) => live(loaded, k.data.project)?.key === container!.key,
+          shown.filter((c) => live(loaded, c.data.project)?.key === container.key),
+          (k) => live(loaded, k.data.project)?.key === container.key,
         ),
       ];
     else
@@ -890,7 +891,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     // milestones: the milestones in scope whose parent is not, nested all the way down
     if (container?.type === 'change')
       tree = rows(
-        shown.filter((c) => ix.parentOf(c) === container!.key),
+        shown.filter((c) => ix.parentOf(c) === container.key),
         () => true,
       );
     else {
@@ -952,7 +953,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       };
     })
     .filter((s) => !node || (s.on && nodeKeys.has(s.on)))
-    .sort((a, b) => b.last.localeCompare(a.last));
+    .toSorted((a, b) => b.last.localeCompare(a.last));
   const aliasKeys = new Set(nodeKeys);
   for (const k of nodeKeys) {
     const r = live(loaded, k);
@@ -999,7 +1000,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   const bugs = openBugs
     .filter((c) => nodeKeys.has(c.key))
     .map((c) => ix.row(c))
-    .sort(bugOrder);
+    .toSorted(bugOrder);
 
   // the roadmap: the product's sequence as it falls in this scope, what comes after, and the checks
   let product: Rec | undefined;
@@ -1036,7 +1037,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   // the aspects: the product's, whole; and on a feature, those that apply there, read there
   const aspects: ScopeAspect[] = ofType(loaded, 'aspect')
     .filter((a) => a.valid && (!product || a.productSlug === product.productSlug))
-    .sort((a, b) => a.key.localeCompare(b.key))
+    .toSorted((a, b) => a.key.localeCompare(b.key))
     .map((a) => ({ ...aspectWhole(loaded, a), name: str(a.data.name), parent: live(loaded, a.data.parent)?.key }));
   const aspectsHere = node?.type === 'feature' ? aspectsForFeatures(loaded, [node]).at : [];
   return {
@@ -1057,7 +1058,7 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     products: products.map(row),
     tree,
     changes,
-    projects: [...new Set(changes.map((c) => c.project).filter((p): p is string => !!p))].sort(),
+    projects: [...new Set(changes.map((c) => c.project).filter((p): p is string => !!p))].toSorted(),
     doneHidden,
     retiredHidden,
     health,

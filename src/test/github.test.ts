@@ -148,7 +148,12 @@ test('a sync applies the repository from the project link: sources, changes, par
   set(store, 'project:app', ['tracker=github-issue'], {});
   const r = syncGithub(store, { from: issues });
   assert.equal(r.team, 'acme/app');
-  assert.deepEqual(r.created.sort(), ['change:app/app-1', 'change:app/app-2', 'change:app/app-3', 'change:app/app-4']);
+  assert.deepEqual(r.created.toSorted(), [
+    'change:app/app-1',
+    'change:app/app-2',
+    'change:app/app-3',
+    'change:app/app-4',
+  ]);
   const loaded = loadStore(store);
   const c1 = loaded.byKey.get('change:app/app-1')![0];
   assert.deepEqual(c1.data.binds, ['github-issue:acme/app#1']);

@@ -71,9 +71,9 @@ export function installClaudeAdapter(): string {
     try {
       return run(args);
     } catch (e) {
-      const msg = String((e as { stderr?: string }).stderr || (e as Error).message);
+      const msg = String((e as { stderr?: unknown }).stderr || (e as Error).message);
       if (/already/i.test(msg)) return msg;
-      throw new Error(msg.trim().split('\n')[0]);
+      throw new Error(msg.trim().split('\n')[0], { cause: e });
     }
   };
   try {

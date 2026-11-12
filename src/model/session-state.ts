@@ -66,7 +66,7 @@ export function sessionState(f: StateFacts, now = Date.now(), liveMinutes = LIVE
   }
   const last = [f.line, f.act]
     .filter((x): x is string => !!x)
-    .sort()
+    .toSorted()
     .at(-1);
   const liveSince = new Date(now - liveMinutes * 60_000).toISOString();
   const stopped = !!f.line && (!f.act || f.act <= f.line);

@@ -118,7 +118,7 @@ test('the committer name is the second fallback; the email is an account but not
   assert.equal(id.accounts[0].verdict, 'verified'); // the email is on the signed-in account
   assert.deepEqual(id.signed_in, [{ kind: 'github-user', id: 'ada-l', key: 'github-user:ada-l', claimed_by: null }]);
   let lines = init({ cwd: project, checkers: [other] });
-  assert.ok(!lines.some((l) => /^claimed /.test(l)), lines.join('\n'));
+  assert.ok(!lines.some((l) => l.startsWith('claimed ')), lines.join('\n'));
   assert.deepEqual(person(store, 'person:ada-lovelace')!.data.links, ['email:ada@example.com']);
 
   // the login is the handle: a re-run of init claims it, and the handle stops being provisional
@@ -173,7 +173,7 @@ test('a sign-in claimed by another person is always said; an account the forge d
   );
   // a re-run of init does not claim a login someone else holds
   const lines = init({ cwd: project, checkers: [forge({ self: 'bob', known: ['bob'] })] });
-  assert.ok(!lines.some((l) => /^claimed /.test(l)));
+  assert.ok(!lines.some((l) => l.startsWith('claimed ')));
   // accounts the record names: one the forge knows (but is not the sign-in), one it does not, one nobody can ask
   set(
     store,

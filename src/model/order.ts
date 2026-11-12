@@ -93,7 +93,7 @@ export function sequenceOf(loaded: Loaded, ref: string | null): { product: strin
       r.type === 'change' &&
       isOpen(r) &&
       !sequence.includes(r.key) &&
-      productOf(loaded, r)?.key === product!.key,
+      productOf(loaded, r)?.key === product.key,
   ).length;
   return { product: product.key, sequence, later };
 }

@@ -48,7 +48,7 @@ before(() => {
 });
 
 test('doctor names what is off in each area, with the command that fixes it', () => {
-  const before = fs.readdirSync(home).sort();
+  const before = fs.readdirSync(home).toSorted();
   const f = doctor({
     path: `${path.join(tmp, 'npm-bin')}:${path.join(tmp, 'brew-bin')}`,
     claudeDir: claude,
@@ -83,7 +83,7 @@ test('doctor names what is off in each area, with the command that fixes it', ()
     lines.slice(0, -1).every((l) => / — fix: /.test(l)),
     'every line names its fix',
   );
-  assert.deepEqual(fs.readdirSync(home).sort(), before, 'doctor writes nothing');
+  assert.deepEqual(fs.readdirSync(home).toSorted(), before, 'doctor writes nothing');
 });
 
 test('a dashboard that is alive but does not answer is an error; one that answers is fine', () => {

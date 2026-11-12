@@ -193,9 +193,7 @@ export const rex: HostAdapter = {
   version: (env) => {
     const j = runJson('rex', ['version', '--json'], env) as Record<string, unknown> | null;
     const fromJson = j
-      ? versionIn(
-          [j.version, j.rex_version, j.client, j.server].find((v) => typeof v === 'string') as string | undefined,
-        )
+      ? versionIn([j.version, j.rex_version, j.client, j.server].find((v) => typeof v === 'string'))
       : null;
     return fromJson ?? versionIn(run('rex', ['version'], env));
   },

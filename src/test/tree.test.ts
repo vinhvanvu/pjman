@@ -111,13 +111,13 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   });
 
   // ancestry across chains: a change climbs its project and its features to the product
-  assert.deepEqual(ancestorsOf(loaded, 'change:shop/card-form').sort(), [
+  assert.deepEqual(ancestorsOf(loaded, 'change:shop/card-form').toSorted(), [
     'feature:shop/checkout',
     'feature:shop/saved-cards',
     'product:shop',
     'project:web',
   ]);
-  assert.deepEqual(ancestorsOf(loaded, 'decision:shop/card-form/why').sort(), [
+  assert.deepEqual(ancestorsOf(loaded, 'decision:shop/card-form/why').toSorted(), [
     'change:shop/card-form',
     'feature:shop/checkout',
     'feature:shop/saved-cards',
@@ -221,7 +221,10 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
 
   // the getter reaches a feature and the changes that affect it
   const n = get(loaded, 'feature:shop/saved-cards');
-  assert.deepEqual(n.changes.map((c) => c.change.key).sort(), ['change:shop/card-endpoint', 'change:shop/card-form']);
+  assert.deepEqual(n.changes.map((c) => c.change.key).toSorted(), [
+    'change:shop/card-endpoint',
+    'change:shop/card-form',
+  ]);
   assert.ok(n.in.some((e) => e.edge === 'adds' && e.from === 'change:shop/card-form'));
 });
 

@@ -135,6 +135,6 @@ test('ensure: while a window is open nobody opens one; once it closes one caller
   win.close();
   await new Promise((r) => setTimeout(r, 100));
   const [a, b] = await Promise.all([ensure(), ensure()]);
-  assert.deepEqual([a.open, b.open].sort(), [false, true]);
+  assert.deepEqual([a.open, b.open].toSorted(), [false, true]);
   assert.equal((a.open ? b : a).reason, 'opening');
 });

@@ -40,7 +40,7 @@ test('a start on a branch named for a change is one write: the record, the start
   assert.equal(r.bound, 'change:web/login');
   assert.equal(r.observed, 'branch:worktree-login');
   assert.equal(r.brief?.mode, 'full');
-  assert.match(r.brief!.text, /bound to change:web\/login; its context in full/);
+  assert.match(r.brief.text, /bound to change:web\/login; its context in full/);
   const loaded = loadStore(store);
   const rec = findSession(loaded, 's1')!;
   assert.deepEqual(rec.data.changes, ['change:web/login']);
@@ -114,9 +114,7 @@ test('a session started outside any project is resolved to the project of the re
     rec.sections.get('Log') ?? '',
     /— resolved to project:web from the repository it works in \(started outside any project\)$/,
   );
-  const ev = readEvents(store)
-    .filter((e) => e.key === 'session:s-loose' && e.op === 'set')
-    .at(-1)!;
+  const ev = readEvents(store).findLast((e) => e.key === 'session:s-loose' && e.op === 'set')!;
   assert.deepEqual(ev.fields, ['project', 'log']);
   assert.equal(ev.value, 'project:web');
   assert.equal(sessionProject(store, 's-loose', 'web').moved, false, 'the same project again is no write');

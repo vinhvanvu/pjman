@@ -37,7 +37,7 @@ export function splitLine(line: string): string[] {
   let quote: string | null = null;
   let has = false;
   for (let i = 0; i < line.length; i++) {
-    const c = line[i]!;
+    const c = line[i];
     if (quote) {
       if (c === quote) quote = null;
       // inside double quotes \n is a line break, so one line can carry a multi-line text (an aspect's base, a fork)
@@ -77,7 +77,7 @@ export function parseBatch(text: string): { line: number; argv: string[] }[] {
     }
     if (argv[0] === 'pjman') argv.shift();
     if (!argv.length) return;
-    if (!(BATCH_COMMANDS as readonly string[]).includes(argv[0]!)) {
+    if (!(BATCH_COMMANDS as readonly string[]).includes(argv[0])) {
       throw new CliError(`line ${i + 1}: '${argv[0]}' does not go in a batch (${BATCH_COMMANDS.join(', ')} do)`);
     }
     out.push({ line: i + 1, argv });
@@ -215,7 +215,7 @@ export function undo(store: Store, opts: { commit?: string; session?: string; wr
     .split('\n')
     .filter(Boolean)
     .map((r) => r.split('\t'))
-    .map(([status, a, b]) => ({ status: status!, p: b ?? a! }));
+    .map(([status, a, b]) => ({ status: status, p: b ?? a }));
   const events: EventInput[] = [];
   for (const { status, p } of rows) {
     const type = typeOfPath(p);

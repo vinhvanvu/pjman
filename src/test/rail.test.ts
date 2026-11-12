@@ -81,7 +81,7 @@ test('a change names every session that touched it over its life, with its agent
 
 test('a milestone: its children are the lanes, and a write beneath a child falls in that lane', () => {
   const r = rail(store, loadStore(store), 'change:platform');
-  assert.deepEqual(r.lanes.map((l) => l.id).sort(), ['change:web/child-a', 'change:web/child-b']);
+  assert.deepEqual(r.lanes.map((l) => l.id).toSorted(), ['change:web/child-a', 'change:web/child-b']);
   assert.ok(r.lanes.every((l) => l.kind === 'change'));
   const stepRow = r.rows.find((row) => row.key === 'change:web/child-a' && row.fields?.includes('plan'))!;
   assert.equal(stepRow.lane, 'change:web/child-a');
@@ -158,31 +158,31 @@ test('a page: the last n passing rows, paged back by sequence; every older row b
   assert.equal(whole.total, whole.rows.length);
   assert.equal(whole.earlier, 0);
   assert.deepEqual(whole.buckets, []);
-  assert.equal(whole.from, whole.rows[0]!.at);
+  assert.equal(whole.from, whole.rows[0].at);
 
   const page = rail(store, loadStore(store), 'change:auth', { limit: 1 });
   assert.deepEqual(page.rows, whole.rows.slice(-1));
   assert.equal(page.total, whole.total);
   assert.equal(page.earlier, whole.total - 1);
-  assert.equal(page.from, page.rows[0]!.at);
+  assert.equal(page.from, page.rows[0].at);
   assert.equal(page.buckets.length, 1);
-  const b = page.buckets[0]!;
+  const b = page.buckets[0];
   assert.match(b.day, /^\d{4}-\d\d-\d\d$/);
   assert.equal(b.count, whole.total - 1);
   assert.equal(b.health.created, 1);
   assert.equal(b.health.waiting, 2);
   assert.equal(b.health.done, 0);
   assert.ok(b.health.moved >= 1);
-  assert.ok(b.lanes['trunk']! >= 2);
+  assert.ok(b.lanes['trunk'] >= 2);
 
-  const next = rail(store, loadStore(store), 'change:auth', { limit: 2, before: page.rows[0]!.seq });
+  const next = rail(store, loadStore(store), 'change:auth', { limit: 2, before: page.rows[0].seq });
   assert.deepEqual(next.rows, whole.rows.slice(-3, -1));
   assert.equal(next.earlier, whole.total - 3);
   assert.equal(
     next.buckets.reduce((n, d) => n + d.count, 0),
     next.earlier,
   );
-  const first = whole.rows[0]!.seq;
+  const first = whole.rows[0].seq;
   const end = rail(store, loadStore(store), 'change:auth', { limit: 2, before: first + 1 });
   assert.deepEqual(end.rows, [whole.rows[0]]);
   assert.equal(end.earlier, 0);
@@ -190,7 +190,7 @@ test('a page: the last n passing rows, paged back by sequence; every older row b
 
 test('the pages down to a day: from the day on, before the page already shown, without a limit', () => {
   const whole = rail(store, loadStore(store), 'change:auth');
-  const day = whole.rows[0]!.at.slice(0, 10);
+  const day = whole.rows[0].at.slice(0, 10);
   const down = rail(store, loadStore(store), 'change:auth', {
     from: `${day}T00:00:00.000Z`,
     before: whole.rows.at(-1)!.seq,
@@ -213,7 +213,7 @@ test('the filter: only these kinds, only these lanes; the lanes stay listed and 
   assert.equal(trunk.lanes.length, 2);
   const tokens = rail(store, loadStore(store), 'change:auth', { lanes: ['decision:web/auth/tokens'], limit: 1 });
   assert.equal(tokens.rows.length, 1);
-  assert.equal(tokens.rows[0]!.lane, 'decision:web/auth/tokens');
+  assert.equal(tokens.rows[0].lane, 'decision:web/auth/tokens');
   assert.equal(tokens.earlier, all.rows.filter((row) => row.lane === 'decision:web/auth/tokens').length - 1);
   assert.ok(tokens.buckets.every((d) => Object.keys(d.lanes).every((l) => l === 'decision:web/auth/tokens')));
   const none = rail(store, loadStore(store), 'change:auth', { kinds: ['switch'] });

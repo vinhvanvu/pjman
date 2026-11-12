@@ -13,7 +13,7 @@ function listDir(abs: string): string[] {
     return fs
       .readdirSync(abs)
       .filter((n) => !n.startsWith('.'))
-      .sort();
+      .toSorted();
   } catch {
     return [];
   }
@@ -129,7 +129,7 @@ export function loadLegacy(store: Store): Rec[] {
     const handle = f.slice(0, -3);
     const r = readRec(store, path.join('actors', f), 'actor', `?:${handle}`);
     r.handle = handle;
-    if (r.data.kind === 'person' || r.data.kind === 'agent') r.key = `${String(r.data.kind)}:${handle}`;
+    if (r.data.kind === 'person' || r.data.kind === 'agent') r.key = `${r.data.kind}:${handle}`;
     records.push(r);
   }
   return records;

@@ -43,8 +43,7 @@ function changeOfEvent(loaded: Loaded, e: StoreEvent): Rec | undefined {
 export function boundOf(loaded: Loaded, session: Rec): Rec | undefined {
   return list(session.data.changes)
     .map((k) => live(loaded, k))
-    .filter((r): r is Rec => !!r)
-    .at(-1);
+    .findLast((r): r is Rec => !!r);
 }
 
 /** What the session is looking at, and since when: the latest of the context it read (`focus`), a change or a decision it
@@ -166,7 +165,7 @@ export function neighboursOf(
       shared: [...new Set(theirs.filter((f) => myFiles.has(f)))],
     });
   }
-  return out.sort((a, b) => b.last.localeCompare(a.last));
+  return out.toSorted((a, b) => b.last.localeCompare(a.last));
 }
 
 export function formatNeighbour(n: Neighbour, now = Date.now()): string {
@@ -349,11 +348,11 @@ export interface Wake {
   why: string;
 }
 
-/** The events after `since` that wake the session, then each one as it lands while `follow` holds: what the adapter's
+/** The events after `after` that wake the session, then each one as it lands while `follow` holds: what the adapter's
  *  waking module reads for the session's life. The store is read again only for an event that could wake it. */
-export function followWakes(store: Store, id: string, since: number, fn: (w: Wake) => void): () => void {
+export function followWakes(store: Store, id: string, after: number, fn: (w: Wake) => void): () => void {
   const sid = id.replace(/^session:/, '');
-  return follow(store, since, (e) => {
+  return follow(store, after, (e) => {
     const maybe = isNote(e) || (e.type === 'decision' && e.op === 'set' && !!e.fields?.includes('status'));
     if (!maybe) return;
     const loaded = loadStore(store);

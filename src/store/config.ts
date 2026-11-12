@@ -105,12 +105,12 @@ export function readUserConfig(): UserConfig {
   const p = userConfigPath();
   if (!fs.existsSync(p)) return { stores: [] };
   const raw = parse(fs.readFileSync(p, 'utf8')) as Partial<UserConfig> | null;
-  const stores = (Array.isArray(raw?.stores) ? raw!.stores : []).map((s) => {
-    const st = s as { name?: string; path?: string; projects?: unknown };
-    const projects = (Array.isArray(st.projects) ? st.projects : []).map((p): ProjectBinding =>
-      typeof p === 'string'
-        ? { path: p }
-        : { path: String((p as ProjectBinding).path), project: (p as ProjectBinding).project },
+  const stores = (Array.isArray(raw?.stores) ? raw.stores : []).map((s) => {
+    const st = s as { name?: unknown; path?: unknown; projects?: unknown };
+    const projects = (Array.isArray(st.projects) ? st.projects : []).map((b): ProjectBinding =>
+      typeof b === 'string'
+        ? { path: b }
+        : { path: String((b as { path?: unknown }).path), project: (b as ProjectBinding).project },
     );
     return { name: String(st.name ?? ''), path: String(st.path ?? ''), projects };
   });

@@ -59,8 +59,8 @@ test('a note is one line under Notes on its change or session, an event of its o
   assert.ok(rec.status === 'ok');
   const notes = notesOf(rec.rec.sections.get('Notes'));
   assert.equal(notes.length, 1);
-  assert.equal(notes[0]!.writer, 'person:tester');
-  assert.equal(notes[0]!.text, 'try the refresh token first');
+  assert.equal(notes[0].writer, 'person:tester');
+  assert.equal(notes[0].text, 'try the refresh token first');
   const e = readEvents(store).at(-1)!;
   assert.equal(e.op, 'log');
   assert.deepEqual(e.fields, ['notes']);
@@ -78,7 +78,7 @@ test('the brief gives a note in full, never as a count, and not the session its 
   assert.deepEqual(b.lines, []);
   assert.equal(b.notes?.length, 1);
   assert.match(
-    b.notes![0]!,
+    b.notes[0],
     /^person:tester on change:web\/auth, \d{4}-\d\d-\d\d \d\d:\d\d: try the refresh token first$/,
   );
   assert.match(b.text, /\nNotes:\n- person:tester on change:web\/auth/);
