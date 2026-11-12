@@ -515,7 +515,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       } else if (sub === 'name') {
         if (!id)
           throw usageError(
-            'usage: pjman session name <id> ["<name>"] [--kind <kind>]   (what is not given is inferred from the session\'s own record)',
+            'usage: pjman session name <id> ["<one to four words>"] [--kind <kind>]   (what is not given is inferred from the session\'s own record)',
           );
         const r = sessionName(store, id, {
           name: rest.length ? rest.join(' ') : undefined,

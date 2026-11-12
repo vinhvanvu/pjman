@@ -362,7 +362,7 @@ pjman session unbind <id> <change>
 pjman session observe <id> <edge> <from> <to>
 pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)
 pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in)
-pjman session name <id> ["<name>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)
+pjman session name <id> ["<one to four words>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)
     a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did
 
 pjman brief

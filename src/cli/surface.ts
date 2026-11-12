@@ -498,7 +498,7 @@ export const COMMANDS: Command[] = [
       'pjman session observe <id> <edge> <from> <to>',
       'pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)',
       'pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in)',
-      'pjman session name <id> ["<name>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)',
+      'pjman session name <id> ["<one to four words>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)',
     ],
     flags: {
       start: ['agent', 'on-behalf-of', 'parent', 'log', 'branch', 'full', 'no-host'],
