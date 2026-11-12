@@ -5,6 +5,7 @@
 // the harness runs once the session is idle; the plugin's prompt hook then briefs as on any prompt, which carries the
 // decision or the note and moves the watermark. Everything else waits for the person's next prompt.
 import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult, Register } from 'claude-code';
+import { clearNow, registerNow } from './now.ts';
 
 const PAUSE_MS = 5_000;
 const PAUSE_MAX_MS = 300_000;
@@ -97,7 +98,10 @@ async function start($: EngineInterface): Promise<void> {
   }
 }
 
-export const register: Register = (on) => {
+export const register: Register = (on, options) => {
+  // the dock's now line (decision dock-redesign/agent-signal): every tool call told to the dashboard
+  registerNow(on, options);
+
   on('session.start', async ($, e, next) => {
     const started = await next(e);
     // interactive sessions only: a headless run has nobody to wake it for
@@ -107,6 +111,7 @@ export const register: Register = (on) => {
 
   on('session.end', async ($, e, next) => {
     const ended = await next(e);
+    void clearNow($);
     // a /clear ends the session with no start after it: the next session's follower begins here
     if (e.reason === 'clear') void start($);
     else stop();

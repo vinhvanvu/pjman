@@ -21,6 +21,7 @@ import { ago, agoWords } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Wash } from '@/lib/motion';
 import { statusTone } from '@/lib/tones';
+import { stands, useNowAction } from '@/state/now';
 import type { DockArrivals } from './model';
 import { bandOf, type Band, type BandTone, planRead, sourcePlace, sourcesRead, writeWords } from './calm';
 
@@ -275,11 +276,14 @@ function Head({ label, figure }: { label: string; figure?: string }) {
   );
 }
 
+/** How recent a tool call keeps the line working when the store has heard nothing. */
+const BUSY_MS = 2 * 60_000;
+
 /** The newest write to the change, as the rail reads it; the live stream refetches it as writes land. */
 const LATEST = { limit: 1, kinds: ['write', 'decision', 'file'] as RailRowKind[] };
 
 /** Now (decision calm-dock): two lines, each the latest only and replaced in place. The agent's: a spinner while the
- *  session works, a grey dot and when it stopped at rest (its action in words lands with decision agent-signal). pjman's:
+ *  session works, a grey dot and when it stopped at rest; while it works, its latest tool call in words (decision agent-signal). pjman's:
  *  the newest write to the change behind a diamond, washed when a new one lands. */
 function Now({
   change,
@@ -300,6 +304,10 @@ function Now({
   const arrived = !moment && row && first !== undefined && row.seq !== first ? row.seq : undefined;
   const words = row && writeWords(row);
   const ended = session.state === 'ended';
+  // the agent's latest action (decision agent-signal): a tool call is proof of work even when nothing reached the
+  // store, so a fresh one keeps the spinner on while the session reads, searches or runs tests; held moments show none
+  const action = useNowAction(session.key);
+  const busy = !moment && !ended && (working || (!!action && stands(action, BUSY_MS)));
   return (
     <div
       aria-label="Now"
@@ -307,7 +315,7 @@ function Now({
       className="flex flex-col rounded-lg border border-line bg-surface px-3 py-0.5 text-[12.5px]"
     >
       <div className="grid min-h-[32px] grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2">
-        {working ? (
+        {busy ? (
           <span
             aria-hidden="true"
             className="size-2.5 animate-spin rounded-full border-[1.5px] border-live/30 border-t-live motion-reduce:animate-none"
@@ -315,8 +323,12 @@ function Now({
         ) : (
           <span aria-hidden="true" className="ml-px size-2 rounded-full bg-line-strong" />
         )}
-        <span className="truncate text-ink-muted">{working ? 'Working' : ended ? 'The session ended' : 'Stopped'}</span>
-        <span className="text-[11px] text-ink-faint">{working ? 'now' : ago(session.last)}</span>
+        <span className="truncate text-ink-muted" title={busy ? action?.text : undefined}>
+          {busy ? (action?.text ?? 'Working') : ended ? 'The session ended' : 'Stopped'}
+        </span>
+        <span className="text-[11px] text-ink-faint">
+          {busy ? (action ? ago(action.at) : 'now') : ago(session.last)}
+        </span>
       </div>
       {row && words && (
         <div className="relative grid min-h-[32px] grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2 border-t border-line">

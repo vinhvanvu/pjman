@@ -132,7 +132,10 @@ class HttpError extends Error {
 
 /** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
 /** The routes that write; everything else reads. */
-const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch', '/follow', '/follow/ensure'];
+const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch', '/follow', '/follow/ensure', '/now'];
+
+/** How long a session's action stands without a newer one: past it the dock says Working again. */
+const NOW_MS = 10 * 60_000;
 
 /** The API's index, as data (GET /api/v1): one style throughout (change:interface-audit). A collection's member is
  *  named in the path (/records/{kind}/{rest}, /products/{slug}/…, /projects/{slug}/…, /sessions/{id}/…); a view over
@@ -245,6 +248,13 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
   },
   {
     method: 'POST',
+    path: '/now',
+    body: '{session, text?, tool?}',
+    about:
+      "what a session's agent is doing now, the latest action only (decision dock-redesign/agent-signal): held in memory, never written to the store, a `now` frame on the event stream; no text clears it",
+  },
+  {
+    method: 'POST',
     path: '/follow/ensure',
     about: 'whether the caller opens a follow window: yes to one caller while none is open or being opened',
   },
@@ -345,6 +355,21 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const following = new FollowState((f) => {
     for (const res of followStreams) res.write(followFrame(f));
   });
+  // what each session's agent is doing now (decision dock-redesign/agent-signal): the plugin's mod posts every tool
+  // call, the latest is held here and nowhere else, sent to every open stream as a `now` frame and to a stream that
+  // opens, so a dock that loads mid-turn reads it at once. Nothing is written to the store; a restart forgets it.
+  const nowOf = new Map<
+    string,
+    { op: 'now'; type: 'session'; key: string; at: string; text?: string; tool?: string }
+  >();
+  const nowFrame = (n: { key: string }) => `event: now\ndata: ${JSON.stringify(n)}\n\n`;
+  const setNow = (key: string, text: string | undefined, tool: string | undefined) => {
+    const n = { op: 'now' as const, type: 'session' as const, key, at: new Date().toISOString(), text, tool };
+    if (text) nowOf.set(key, n);
+    else nowOf.delete(key);
+    for (const res of streams) res.write(nowFrame(n));
+    return n;
+  };
   // the host this machine runs, asked once: a session can be launched on it from the dashboard
   let hostHereMemo: ReturnType<typeof hostHere> | undefined;
   const hostOnMachine = () => (hostHereMemo === undefined ? (hostHereMemo = hostHere()) : hostHereMemo);
@@ -414,6 +439,14 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           if ((r.status !== 'ok' && r.status !== 'alias') || r.rec.type !== 'session')
             throw new HttpError(404, 'not-found', `no session ${key}`);
           return sendJson(res, 200, { data: { ...following.set(r.rec.key), windows: following.windows } });
+        }
+        if (route === '/now') {
+          // not a write to the store: the agent's latest action, held in memory (decision dock-redesign/agent-signal)
+          const given = s(body.session);
+          if (!given) throw new HttpError(400, 'bad-request', 'session is required');
+          const key = given.startsWith('session:') ? given : `session:${given}`;
+          const action = s(body.text)?.trim().slice(0, 200) || undefined;
+          return sendJson(res, 200, { data: setNow(key, action, s(body.tool)) });
         }
         if (route === '/follow/ensure') {
           // a server just started gives a window that was open its reconnect before answering, so none opens twice
@@ -716,6 +749,9 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
         const stop = follow(store, sinceParam ? since : lastSeq(store), (e) =>
           res.write(`id: ${e.seq}\nevent: ${e.op}\ndata: ${JSON.stringify(e)}\n\n`),
         );
+        // the actions standing now, so a page that opens mid-turn reads them at once
+        const fresh = Date.now() - NOW_MS;
+        for (const n of nowOf.values()) if (Date.parse(n.at) >= fresh) res.write(nowFrame(n));
         const beat = setInterval(() => res.write(': keep-alive\n\n'), 15000);
         streams.add(res);
         req.on('close', () => {
