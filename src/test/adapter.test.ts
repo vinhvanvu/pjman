@@ -1130,9 +1130,67 @@ test('the refusals print a decision command that runs; after an unbind the hook 
   );
   assert.ok(loadStore(store).byKey.has('decision:project/abc-1/which-one'));
   at('Stop', { last_assistant_message: 'Which one?\n- a\n- b', stop_hook_active: true });
-  // the last change backed out: the hook holds none, and a turn that wrote code is not judged on a change
+  // the last change backed out: the hook holds none, and a turn that wrote code is not judged on a change (only, now that
+  // the session has neither change nor name, sent back to name it: change:pjman-20)
   shell('session', 'unbind', 'sess-ub', 'change:abc-1');
   at('UserPromptSubmit', { prompt: 'go' });
   wrote();
-  assert.ok(!/"decision":"block"/.test(at('Stop', { last_assistant_message: 'Wrote more.' })));
+  reason = (JSON.parse(at('Stop', { last_assistant_message: 'Wrote more.' })) as { reason: string }).reason;
+  assert.match(reason, /^pjman: this session is bound to no change and has no name/);
+  assert.ok(!/not at a resting point/.test(reason));
+});
+
+test('a session bound to no change that ran a tool is sent back once to be named; a named or bound one, or a subagent, is not (change:pjman-20)', () => {
+  const cli = (...args: string[]) =>
+    execFileSync(process.execPath, [path.resolve(here, '..', '..', 'bin', 'pjman.js'), ...args], {
+      cwd: project,
+      encoding: 'utf8',
+      env,
+    });
+  const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-q', ...input });
+  const passes = (out: string, what: string) => assert.ok(!/"decision":"block"/.test(out), `${what}: ${out}`);
+  const read = () =>
+    at('PostToolUse', { tool_name: 'Read', tool_input: { file_path: path.join(project, 'README.md') } });
+  at('SessionStart', { source: 'startup' });
+  // a turn that only talked ends where it likes, named or not
+  at('UserPromptSubmit', { prompt: 'what does the stop hook do?' });
+  passes(at('Stop', { last_assistant_message: 'It judges the turn.' }), 'a turn that ran no tool');
+  // a turn of questions that ran a tool, with no change and no name: refused once, handed the naming command
+  at('UserPromptSubmit', { prompt: 'and where does it live?' });
+  read();
+  const out = at('Stop', { last_assistant_message: 'In the adapter.' });
+  assert.match(out, /"decision":"block"/);
+  const reason = (JSON.parse(out) as { reason: string }).reason;
+  assert.match(reason, /^pjman: this session is bound to no change and has no name/);
+  assert.match(reason, /pjman session name sess-q "…" --kind review\|backlog\|chat\|other/);
+  assert.match(reason, /one to four words/);
+  passes(at('Stop', { last_assistant_message: 'In the adapter.', stop_hook_active: true }), 'the marked retry');
+  // named through the shell, as the refusal says: the record says so, and the stop passes from then on
+  at('UserPromptSubmit', { prompt: 'thanks' });
+  cli('session', 'name', 'sess-q', 'Stop hook questions', '--kind', 'chat');
+  at('PostToolUse', {
+    tool_name: 'Bash',
+    tool_input: { command: 'pjman session name sess-q "Stop hook questions" --kind chat' },
+  });
+  passes(at('Stop', { last_assistant_message: 'Named.' }), 'the session named this turn');
+  at('UserPromptSubmit', { prompt: 'one more' });
+  read();
+  passes(at('Stop', { last_assistant_message: 'Read it.' }), 'a named session');
+  const rec = loadStore(store).byKey.get('session:sess-q')![0];
+  assert.equal(rec.data.name, 'Stop hook questions');
+  // a bound session is judged on its change, never on a name
+  const bound = (event: string, input: Record<string, unknown> = {}) =>
+    hook(event, { session_id: 'sess-qb', ...input });
+  bound('SessionStart', { source: 'startup' });
+  bound('UserPromptSubmit', { prompt: 'look at change:eight-week-test' });
+  bound('PostToolUse', { tool_name: 'Read', tool_input: { file_path: path.join(project, 'README.md') } });
+  passes(bound('Stop', { last_assistant_message: 'Read it.' }), 'a bound session');
+  // a subagent is never refused
+  hook('SubagentStart', { agent_id: 'sub-q', agent_type: 'Explore' });
+  hook('PostToolUse', {
+    agent_id: 'sub-q',
+    tool_name: 'Read',
+    tool_input: { file_path: path.join(project, 'README.md') },
+  });
+  passes(hook('SubagentStop', { agent_id: 'sub-q', last_assistant_message: 'Found it.' }), 'a subagent');
 });
