@@ -83,6 +83,8 @@ export interface UserConfig {
   branch_prefix?: string;
   /** A session started in a host with no dock (Rex) opens the follow window when none is open (default true). */
   follow_window?: boolean;
+  /** Inside cmux, the dashboard docked in a pane beside the workspace's sessions (default true). */
+  dock?: boolean;
   /** The browser the follow window opens in (`Safari`, `Google Chrome`), else the default one. */
   follow_browser?: string;
   stores: UserStore[];
@@ -120,6 +122,7 @@ export function readUserConfig(): UserConfig {
     auto_register: raw?.auto_register,
     branch_prefix: typeof raw?.branch_prefix === 'string' ? raw.branch_prefix : undefined,
     ...(typeof raw?.follow_window === 'boolean' ? { follow_window: raw.follow_window } : {}),
+    ...(typeof raw?.dock === 'boolean' ? { dock: raw.dock } : {}),
     ...(typeof raw?.follow_browser === 'string' ? { follow_browser: raw.follow_browser } : {}),
   };
 }

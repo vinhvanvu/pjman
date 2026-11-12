@@ -35,11 +35,14 @@
 //                     whatever page the person had browsed it to (one already on the bridge keeps its pins)
 //
 //   The view beside the session. In cmux: the dashboard (pjman serve, started if none is running) is docked in a browser pane
-//   at session start, opened on the product's bridge, and the pane is pointed at the session's page once the session binds a
-//   change (from its branch at start, from a prompt, or by the agent filing or binding one); a session that never binds leaves it on the bridge. The pane belongs
-//   to the terminal: it closes at session end, and a /clear keeps it, sent back to the bridge from whatever page it showed and
-//   parked there for the next session to take over the same way. Elsewhere, and whenever the pane was closed, `pjman open --session` brings the page back; the
-//   session's id is exported to the agent's shell as PJMAN_SESSION.
+//   beside the workspace's sessions, one pane per workspace (decision pjman-24/shared-pane): opened on the product's bridge by
+//   the first session to start there, and moved to a session's page when the person prompts a session that holds a change
+//   (or, while it is parked, when a session takes its first change from its branch or the agent's own bind). When the
+//   session it shows ends it goes to the most recently prompted session there that holds a change, else back to the
+//   bridge; the workspace's last session closes it, and a /clear parks it for the next. A session with no project opens
+//   none. A pane the person closed stays closed while the workspace's sessions run; `dock: false` in ~/.pjman/config.yaml
+//   turns the dock off (decision pjman-24/dock-off-switch). Elsewhere, and whenever the pane was closed, `pjman open
+//   --session` brings the page back; the session's id is exported to the agent's shell as PJMAN_SESSION.
 //
 //   The follow window (change:follow-window). Every prompt in a main session tells a running dashboard that the person is on
 //   this session, and the follow window goes there. Where there is no dock (Rex, Claude Code's desktop app), a session's start
@@ -515,46 +518,101 @@ function cmux(args) {
     return null;
   }
 }
-// The pane is kept per terminal surface, not per session: /clear ends one session and starts the next in the same
-// terminal, so the pane stays; a second terminal keeps its own. The dock file holds the pane and the session it follows;
-// `sid: null` is a pane parked on the bridge, at a start or after a clear (change:clear-moves-the-dock, decision where-the-pane-goes;
-// change:start-on-the-bridge),
-// which the next session takes over only once it binds a change, so no page is shown for a session with no record or
-// no subject yet.
+// The dock: one pane per cmux workspace, shared by every session in it (decision pjman-24/shared-pane). The dock file,
+// ~/.pjman/dock/<workspace>.json, holds the pane, the session it shows (`sid: null` is a pane parked on the bridge), and the
+// workspace's sessions, each with its terminal, when the person last prompted it and whether it holds a change. Every
+// change to it runs under a lock, so tabs that start together open one pane. The pane moves only when the person prompts
+// a session that holds a change, or when it is parked and a session takes its first change; when the session it shows
+// ends it goes to the most recently prompted session there that still holds one, else back to the bridge, and it closes
+// with the workspace's last session (a /clear parks it for the next). A pane the person closed stays closed while the
+// workspace's sessions run; a new session there docks again. `dock: false` in ~/.pjman/config.yaml turns it off
+// (decision pjman-24/dock-off-switch). `pjman open` adopts the same file (src/cli/open.ts). Surfaces are kept by UUID,
+// never by the short refs cmux reuses. Outside a workspace id (an older cmux) the terminal stands in for the workspace.
 const terminal = () => process.env.CMUX_SURFACE_ID || process.env.CMUX_PANEL_ID || null;
+const workspace = () => process.env.CMUX_WORKSPACE_ID || terminal();
+const dockDir = () => path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'dock');
 function dockFile() {
-  const t = terminal();
-  return t ? path.join(dataDir, 'dock', `${t.replace(/[^\w.-]/g, '_')}.json`) : null;
+  const w = workspace();
+  return w ? path.join(dockDir(), `${w.replace(/[^\w.-]/g, '_')}.json`) : null;
 }
-function loadDock() {
+/** The user config says dock: false. Read as text: the hook has no YAML parser. */
+function dockOff() {
   try {
-    return JSON.parse(fs.readFileSync(dockFile(), 'utf8'));
+    const file = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml');
+    return /^dock:\s*false\s*$/m.test(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return false;
+  }
+}
+const dockOn = () => inCmux() && !dockOff() && Boolean(dockFile());
+function readDock() {
+  const file = dockFile();
+  try {
+    const d = JSON.parse(fs.readFileSync(file, 'utf8'));
+    return { pane: d.pane ?? null, sid: d.sid ?? null, sessions: d.sessions ?? {} };
+  } catch {}
+  // what an earlier version kept per terminal, carried across once: the pane stays known, never orphaned
+  const t = terminal();
+  const legacy = t ? path.join(dataDir, 'dock', `${t.replace(/[^\w.-]/g, '_')}.json`) : null;
+  try {
+    const d = JSON.parse(fs.readFileSync(legacy, 'utf8'));
+    fs.rmSync(legacy, { force: true });
+    return { pane: d.pane ?? null, sid: d.sid ?? null, sessions: {} };
   } catch {
     return null;
   }
 }
-function saveDock(dock) {
+/** The dock read, changed by `fn` and written back under the workspace's lock; `fn` returning null removes it. A lock
+ *  older than 20s is a hook that died holding it. */
+async function withDock(fn) {
   const file = dockFile();
   if (!file) return;
+  const lock = `${file}.lock`;
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const until = Date.now() + 10000;
+  for (;;) {
+    try {
+      fs.closeSync(fs.openSync(lock, 'wx'));
+      break;
+    } catch {
+      try {
+        if (Date.now() - fs.statSync(lock).mtimeMs > 20000) fs.rmSync(lock, { force: true });
+      } catch {}
+      if (Date.now() > until) return note('dock: the workspace lock is held; left as it is');
+      await sleep(50);
+    }
+  }
   try {
-    if (!dock) return fs.rmSync(file, { force: true });
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, JSON.stringify(dock));
+    const next = await fn(readDock());
+    if (next === undefined) return;
+    if (next === null) fs.rmSync(file, { force: true });
+    else fs.writeFileSync(file, JSON.stringify(next));
   } catch (e) {
     note(`dock: ${e.message}`);
+  } finally {
+    fs.rmSync(lock, { force: true });
   }
 }
-/** The terminal's pane when it is parked on the bridge, waiting for a session to bind a change. */
-function parkedPane() {
-  const dock = loadDock();
-  return dock?.pane && dock.sid === null ? dock.pane : null;
+/** The surfaces alive in the workspace, by UUID; null when cmux could not say. */
+async function liveSurfaces() {
+  const w = process.env.CMUX_WORKSPACE_ID;
+  const r = await runAsync('cmux', ['--id-format', 'uuids', 'tree', ...(w ? ['--workspace', w] : [])]);
+  if (!r.ok) return null;
+  return new Set([...r.out.matchAll(/\bsurface\s+(\S+)/g)].map((m) => m[1]));
+}
+/** The workspace's sessions whose terminal is gone dropped: a tab killed without its end reaching the hook. */
+function prune(dock, alive, keep) {
+  if (!alive) return;
+  for (const [s, v] of Object.entries(dock.sessions))
+    if (s !== keep && v.surface && !alive.has(v.surface)) delete dock.sessions[s];
 }
 function bridgeUrl(server, store) {
   return `${server.url}/bridge${store?.product ? `/${store.product}` : ''}`;
 }
-/** A new browser pane at the url: its surface id, or null when cmux could not open one or did not say which. */
+const sessionUrl = (server, sid) => `${server.url}/session/${encodeURIComponent(sid)}`;
+/** A new browser pane at the url: its surface UUID, or null when cmux could not open one or did not say which. */
 async function openPane(url) {
-  const r = await runAsync('cmux', ['browser', 'open', url]);
+  const r = await runAsync('cmux', ['--id-format', 'uuids', 'browser', 'open', url]);
   if (!r.ok) {
     note(`cmux browser open failed: ${r.err}`);
     return null;
@@ -563,73 +621,126 @@ async function openPane(url) {
   if (!m && r.out) note(`dock: could not read the surface from: ${r.out.trim().split('\n')[0]}`);
   return m ? m[1] : null;
 }
-/** The view docked at a session's start: the terminal's pane on the product's bridge, parked, until the session binds a
- *  change (change:start-on-the-bridge). A pane already on this session (resumed, compacted) or already parked is left as it
- *  is; one on another session is pointed at the bridge; a terminal with no pane, or whose pane the person closed, gets one. */
-async function parkView(sid, cwd, store, st) {
-  if (!inCmux()) return;
-  // a session with no project opens no pane: there is no product to show (change:pjman-24); it gets one if it later
-  // binds a change, once a tool call has resolved it to a project
-  if (!store?.project) {
-    st.paneless = true;
-    return;
-  }
-  const dock = loadDock();
-  if (dock?.sid === sid || dock?.sid === null) return;
-  const server = await ensureServer(cwd);
-  if (!server) return; // no dashboard, no dock; `pjman open --session` brings it back once one runs
-  const url = bridgeUrl(server, store);
-  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok)
-    return saveDock({ pane: dock.pane, sid: null });
-  const pane = await openPane(url);
-  if (pane) saveDock({ pane, sid: null });
+const navigate = async (pane, url) => (await runAsync('cmux', ['browser', '--surface', pane, 'navigate', url])).ok;
+/** The pane is up: listed among the workspace's surfaces, or, when cmux could not list them, answering a read. */
+async function paneUp(pane, alive) {
+  if (!pane) return false;
+  if (alive) return alive.has(pane);
+  return (await runAsync('cmux', ['browser', '--surface', pane, 'get', 'url'])).ok;
 }
-/** The pane pointed at the session's page: the terminal's pane, or a new one when the person closed it. */
-async function dockView(sid, cwd) {
-  if (!inCmux()) return;
-  const dock = loadDock();
-  if (dock?.sid === sid) return; // the pane already shows this session
+const entry = (dock, sid) => (dock.sessions[sid] ??= { surface: terminal(), prompted: 0, bound: false });
+/** The session that last had the person's prompt among those holding a change, other than `except`. */
+function nextHolder(dock, except) {
+  return (
+    Object.entries(dock.sessions)
+      .filter(([s, v]) => s !== except && v.bound)
+      .toSorted((a, b) => b[1].prompted - a[1].prompted)[0]?.[0] ?? null
+  );
+}
+
+/** At a session's start: the session joins its workspace's dock. A new session (a start or a clear) opens the pane on the
+ *  product's bridge when the workspace has none up, the person's closed one included; a resumed or compacted one never
+ *  reopens it. A pane left on a session that is gone is parked on the bridge; one on a live session is left as it is.
+ *  A session with no project joins no dock: there is no product to show until it resolves and takes a change. */
+async function parkView(sid, cwd, store, source) {
+  if (!dockOn() || !store?.project) return;
+  await withDock(async (dock) => {
+    dock ??= { pane: null, sid: null, sessions: {} };
+    const alive = await liveSurfaces();
+    prune(dock, alive, sid);
+    // a terminal runs one session at a time: one left on this terminal ended without its end reaching the hook
+    for (const [s, v] of Object.entries(dock.sessions))
+      if (s !== sid && v.surface === terminal()) delete dock.sessions[s];
+    entry(dock, sid);
+    const fresh = source === 'startup' || source === 'clear';
+    if (await paneUp(dock.pane, alive)) {
+      if (dock.sid && !dock.sessions[dock.sid]) {
+        const server = await ensureServer(cwd);
+        if (server && (await navigate(dock.pane, bridgeUrl(server, store)))) dock.sid = null;
+      }
+      return dock;
+    }
+    if (dock.pane && !fresh) return dock; // closed by the person: it stays closed while these sessions run
+    const server = await ensureServer(cwd);
+    if (!server) return dock; // no dashboard, no dock; `pjman open` brings it back once one runs
+    dock.pane = await openPane(bridgeUrl(server, store));
+    dock.sid = null;
+    return dock;
+  });
+}
+/** The pane shows the session: navigated there, or opened when the workspace has no pane recorded; a pane the person
+ *  closed is left closed. */
+async function showIn(dock, sid, cwd, alive) {
+  if (dock.sid === sid && (await paneUp(dock.pane, alive))) return;
   const server = await ensureServer(cwd);
   if (!server) return;
-  const url = `${server.url}/session/${encodeURIComponent(sid)}`;
-  if (dock?.pane && (await runAsync('cmux', ['browser', '--surface', dock.pane, 'navigate', url])).ok)
-    return saveDock({ pane: dock.pane, sid });
-  const pane = await openPane(url);
-  if (pane) saveDock({ pane, sid });
-}
-/** A parked pane follows the session the moment it binds a change: pointed at the session's page. A session that started
- *  with no project, and so opened no pane, gets its pane then. */
-async function followView(sid, cwd, st) {
-  if (!inCmux()) return;
-  if (parkedPane() || (st.paneless && !loadDock()?.pane)) await dockView(sid, cwd);
-  st.paneless = false;
-}
-/** At session end the pane closes; cleared, it is parked on the product's bridge instead, for the next session in this
- *  terminal to take over once it has a change. A pane parked by an earlier clear closes with the session too. */
-async function undockView(st, sid, reason, store) {
-  const dock = loadDock();
-  const pane = dock?.sid === sid || dock?.sid === null ? dock.pane : st.pane; // st.pane: a session docked by an earlier version of this adapter
-  st.pane = null;
-  if (!pane) return;
-  if (reason === 'clear') {
-    const server = readServeAddress();
-    if (!server) return;
-    const url = bridgeUrl(server, store);
-    // the dock records which session the pane follows, never the page it shows: a parked pane the person browsed to
-    // another page goes back to the bridge too (change:clear-returns-to-the-bridge); one already on the bridge is left
-    // as it is, its pins and position kept
-    const at = await runAsync('cmux', ['browser', '--surface', pane, 'get', 'url']);
-    if (at.ok && onPage(at.out.trim(), url)) {
-      if (dock?.sid !== null) saveDock({ pane, sid: null });
-      return;
-    }
-    // a pane the person closed fails; the next session then opens its own
-    if ((await runAsync('cmux', ['browser', '--surface', pane, 'navigate', url])).ok) saveDock({ pane, sid: null });
-    else if (dock?.pane === pane) saveDock(null);
+  const url = sessionUrl(server, sid);
+  if (dock.pane) {
+    if ((await paneUp(dock.pane, alive)) && (await navigate(dock.pane, url))) dock.sid = sid;
     return;
   }
-  cmux(['close-surface', '--surface', pane]);
-  if (dock?.pane === pane) saveDock(null);
+  dock.pane = await openPane(url);
+  if (dock.pane) dock.sid = sid;
+}
+/** The person prompted this session: noted, and the pane brought to it when it holds a change. */
+async function promptedView(sid, cwd, st) {
+  if (!dockOn()) return;
+  await withDock(async (dock) => {
+    if (!dock && !st.bound) return undefined; // nothing docked and nothing to show
+    dock ??= { pane: null, sid: null, sessions: {} };
+    const e = entry(dock, sid);
+    e.prompted = Date.now();
+    e.bound = Boolean(st.bound);
+    if (st.bound) await showIn(dock, sid, cwd, await liveSurfaces());
+    return dock;
+  });
+}
+/** The session took a change without a prompt (its branch at start, the agent's own bind): it holds one now, and takes
+ *  the pane only when the pane is parked or this is the session the person last prompted, so a tab working in the
+ *  background never pulls the pane away. */
+async function boundView(sid, cwd) {
+  if (!dockOn()) return;
+  await withDock(async (dock) => {
+    dock ??= { pane: null, sid: null, sessions: {} };
+    const e = entry(dock, sid);
+    e.bound = true;
+    const alive = await liveSurfaces();
+    const last = Object.entries(dock.sessions).toSorted((a, b) => b[1].prompted - a[1].prompted)[0];
+    const lastPrompted = last && last[0] === sid && last[1].prompted > 0;
+    if (dock.sid === null || !dock.sessions[dock.sid] || lastPrompted) await showIn(dock, sid, cwd, alive);
+    return dock;
+  });
+}
+/** At a session's end it leaves the dock. The pane on it goes to the most recently prompted session there that holds a
+ *  change; with none, a clear parks it on the bridge (from whatever page the person browsed it to; one already on the
+ *  bridge keeps its pins), and the workspace's last session closes it. */
+async function undockView(sid, reason, store) {
+  if (!inCmux() || !dockFile()) return;
+  await withDock(async (dock) => {
+    if (!dock) return undefined;
+    delete dock.sessions[sid];
+    const alive = await liveSurfaces();
+    prune(dock, alive);
+    const left = Object.keys(dock.sessions).length;
+    if (!(await paneUp(dock.pane, alive))) return left || reason === 'clear' ? dock : null;
+    if (dock.sid && dock.sid !== sid && dock.sessions[dock.sid]) return dock; // it shows another live session
+    const next = nextHolder(dock, sid);
+    const server = readServeAddress();
+    if (next && server) {
+      if (await navigate(dock.pane, sessionUrl(server, next))) dock.sid = next;
+      return dock;
+    }
+    if (!left && reason !== 'clear') {
+      cmux(['close-surface', '--surface', dock.pane]);
+      return null;
+    }
+    if (!server) return dock;
+    const url = bridgeUrl(server, store);
+    const at = await runAsync('cmux', ['browser', '--surface', dock.pane, 'get', 'url']);
+    if (!(at.ok && onPage(at.out.trim(), url)) && !(await navigate(dock.pane, url))) return left ? dock : null;
+    dock.sid = null;
+    return dock;
+  });
 }
 /** Whether a pane's url is the page at `base`, with or without a query, a hash or a deeper path beneath it. */
 const onPage = (at, base) => at === base || ['?', '#', '/'].some((c) => at.startsWith(base + c));
@@ -959,7 +1070,7 @@ function refreshPlugin() {
 async function sessionStart(input, store, sid, env, st, cwd) {
   const isMain = !input.agent_id;
   const source = input.source || 'startup';
-  const docking = isMain ? parkView(sid, cwd, store, st) : Promise.resolve();
+  const docking = isMain ? parkView(sid, cwd, store, source) : Promise.resolve();
   const branch = isMain ? currentBranch(cwd) : null;
   const read = await promiseObject({
     brief: pjmanAsync(['brief'], { cwd }),
@@ -1024,6 +1135,14 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     (read.brief ?? '') +
     `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
   if (isMain && (source === 'startup' || source === 'clear')) text += refreshPlugin();
+  // the dock is said once, the first time it can open, with the line that turns it off (decision pjman-24/dock-off-switch)
+  if (isMain && dockOn() && store.project && !fs.existsSync(path.join(dockDir(), '.told'))) {
+    text += `pjman docks its dashboard in a pane beside this cmux workspace, one pane shared by the workspace's sessions. Tell the person once, in passing: \`dock: false\` in ~/.pjman/config.yaml turns it off, and \`pjman open\` brings a closed pane back.\n\n`;
+    try {
+      fs.mkdirSync(dockDir(), { recursive: true });
+      fs.writeFileSync(path.join(dockDir(), '.told'), new Date().toISOString() + '\n');
+    } catch {}
+  }
   if (st.unscoped)
     text += `This session started outside any registered repository (${input.cwd || process.cwd()}). It is recorded with no project until a tool call lands in one: edit a file there or \`cd\` into it in a shell command, and the session is resolved to that project. Run pjman from inside the repository you work in, so its writes resolve to that project.\n\n`;
   const stale = isMain ? staleWorktreesText(staleWorktrees(cwd, read.done ?? [])) : '';
@@ -1039,7 +1158,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (isMain) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
     await docking;
-    if (st.bound) await followView(sid, cwd, st); // the session has its subject (the branch's change, or one bound before): the parked pane follows it
+    if (st.bound) await boundView(sid, cwd); // the session has its subject (the branch's change, or one bound before): a parked pane follows it
     if (st.bound) hostLabel(sid, cwd, env);
     saveState(sid, st);
   }
@@ -1133,7 +1252,6 @@ async function main() {
           st.bound = taken(st, found.key);
           hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);
-          if (!input.agent_id) await followView(sid, cwd, st); // the first subject: a pane parked by a clear follows now
         }
       }
       // a prompt that binds nothing but names a source (a PR to review, a branch): the session reads it, recorded on the
@@ -1145,7 +1263,8 @@ async function main() {
       if (b) parts.push(b);
       emitContext(EVENT, parts.join('\n---\n'));
       saveState(sid, st);
-      if (!input.agent_id) await followPrompted(sid); // the person is on this session: the follow window goes there
+      if (!input.agent_id) await promptedView(sid, cwd, st); // the person is on this session: the workspace's pane goes there
+      if (!input.agent_id) await followPrompted(sid); // and the follow window
       return;
     }
     case 'PostToolUse': {
@@ -1180,7 +1299,7 @@ async function main() {
           st.bound = taken(st, last);
           hostLabel(sid, cwd, env);
           observeWork(st, sid, cwd, env);
-          if (!input.agent_id) await followView(sid, cwd, st);
+          if (!input.agent_id) await boundView(sid, cwd);
         }
       }
       if (
@@ -1319,7 +1438,7 @@ async function main() {
     case 'SessionEnd': {
       tryPjman(['session', 'log', sid, `session ended (${input.reason || 'other'})`], { cwd, env });
       stopLegacyWatcher(st);
-      await undockView(st, sid, input.reason, store);
+      await undockView(sid, input.reason, store);
       hostLabel(sid, cwd, env, { clear: true });
       saveState(sid, st);
       return;

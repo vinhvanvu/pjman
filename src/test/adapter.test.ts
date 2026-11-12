@@ -870,20 +870,24 @@ test('a start inside Rex records the host on the session, through the environmen
   assert.equal(labels[1], 'block rename -s session:r1 block:r1 pjman');
 });
 
-test('in cmux the pane belongs to the terminal: a start opens it on the bridge and the session takes it once it binds a change; a clear parks it again; another terminal keeps its own', () => {
+test('in cmux the pane belongs to the workspace (to the terminal when cmux names no workspace): a start opens it on the bridge and the session takes it once it binds a change; a clear parks it again; sessions that share a workspace share one pane', async () => {
   // a cmux that knows the surfaces it opened and records every call; a dashboard that is running
   const cbin = path.join(tmp, 'cmux-bin');
   const calls = path.join(tmp, 'cmux-calls');
   const open = path.join(tmp, 'cmux-open');
   const urls = path.join(tmp, 'cmux-urls'); // the page each surface shows: set by open and navigate, read by get url
+  const terms = path.join(tmp, 'cmux-terms'); // the terminals alive, listed by tree with the panes
   fs.mkdirSync(cbin, { recursive: true });
   fs.writeFileSync(open, '');
   fs.writeFileSync(urls, '');
+  fs.writeFileSync(terms, 'T1\nT2\nT3\nW1a\nW1b\nW1c\nW1d\n');
   fs.writeFileSync(
     path.join(cbin, 'cmux'),
     `#!/bin/sh
+[ "$1" = "--id-format" ] && shift 2
 echo "$*" >> '${calls}'
 case "$1 $2" in
+  "tree "*) while read -r s; do [ -n "$s" ] && echo "surface $s [browser]"; done < '${open}'; while read -r t; do [ -n "$t" ] && echo "surface $t [terminal]"; done < '${terms}';;
   "browser open") n=$(($(wc -l < '${open}') + 1)); echo "surface:$n" >> '${open}'; echo "surface:$n $3" >> '${urls}'; echo "OK surface=surface:$n";;
   "browser --surface") grep -qx "$3" '${open}' || { echo "Error: invalid_params" >&2; exit 1; }
     case "$4 $5" in
@@ -972,15 +976,16 @@ esac
     at('T2', 'SessionStart', { session_id: 'dock-3', source: 'startup' });
     at('T2', 'SessionEnd', { session_id: 'dock-3', reason: 'prompt_input_exit' });
     assert.deepEqual(seen().slice(4), [`browser open ${bridge}`, 'close-surface --surface surface:2']);
-    // a pane the person closed while parked: the session that binds opens a new one
+    // a pane the person closed: a new session in the workspace docks again, on the bridge, and its bind moves it there
+    // (decision pjman-24/dock-off-switch)
     at('T1', 'SessionEnd', { session_id: 'dock-2', reason: 'clear' });
     assert.deepEqual(seen().slice(6), [`browser --surface surface:1 navigate ${bridge}`]);
     fs.writeFileSync(open, '');
     at('T1', 'SessionStart', { session_id: 'dock-4', source: 'clear' });
     at('T1', 'UserPromptSubmit', { session_id: 'dock-4', prompt: 'work on change:eight-week-test' });
     assert.deepEqual(seen().slice(7), [
+      `browser open ${bridge}`,
       'browser --surface surface:1 navigate http://dash.test/session/dock-4',
-      'browser open http://dash.test/session/dock-4',
     ]);
     // a parked pane closes with its terminal's session, as a followed one does
     at('T1', 'SessionEnd', { session_id: 'dock-4', reason: 'clear' });
@@ -1095,6 +1100,90 @@ esac
       'resolved to a project and bound to a change, the session gets its pane',
     );
     at('T3', 'SessionEnd', { cwd: loose, session_id: 'dock-12', reason: 'logout' });
+
+    // one pane per workspace (decision pjman-24/shared-pane): four tabs that start together open one pane
+    const { promisify } = await import('node:util');
+    const { execFile } = await import('node:child_process');
+    const run = promisify(execFile);
+    const wEnv = (tab: string) => ({
+      ...env,
+      PATH: `${cbin}:${(env as Record<string, string>).PATH}`,
+      CMUX_BUNDLE_ID: 'com.cmuxterm.app',
+      CMUX_WORKSPACE_ID: 'W1',
+      CMUX_SURFACE_ID: tab,
+    });
+    const atW = (tab: string, event: string, input: Record<string, unknown>) =>
+      execFileSync(process.execPath, [HOOK, event], {
+        input: JSON.stringify({ cwd: project, ...input }),
+        encoding: 'utf8',
+        env: wEnv(tab),
+      });
+    const startW = async (tab: string, sid: string) => {
+      const child = run(process.execPath, [HOOK, 'SessionStart'], { env: wEnv(tab) });
+      child.child.stdin?.end(JSON.stringify({ cwd: project, session_id: sid, source: 'startup' }));
+      await child;
+    };
+    const mark = seen().length;
+    await Promise.all([startW('W1a', 'w-1'), startW('W1b', 'w-2'), startW('W1c', 'w-3'), startW('W1d', 'w-4')]);
+    assert.deepEqual(seen().slice(mark), [`browser open ${bridge}`], 'tabs that start together open one pane');
+    const pane = fs.readFileSync(open, 'utf8').trim().split('\n').pop() as string;
+    // the pane goes to the session the person prompts, when it holds a change
+    atW('W1a', 'UserPromptSubmit', { session_id: 'w-1', prompt: 'work on change:eight-week-test' });
+    atW('W1b', 'UserPromptSubmit', { session_id: 'w-2', prompt: 'work on change:eight-week-test' });
+    assert.deepEqual(seen().slice(mark + 1), [
+      `browser --surface ${pane} navigate http://dash.test/session/w-1`,
+      `browser --surface ${pane} navigate http://dash.test/session/w-2`,
+    ]);
+    // a tab binding in the background, and a prompt in a session with no change, leave it where it is
+    execFileSync(
+      process.execPath,
+      [pjmanBin, 'session', 'bind', 'w-3', 'change:eight-week-test', '--reason', 'created'],
+      { cwd: project, env },
+    );
+    atW('W1c', 'PostToolUse', {
+      session_id: 'w-3',
+      tool_name: 'Bash',
+      tool_input: { command: 'pjman new change eight-week-test --name "…"' },
+    });
+    atW('W1d', 'UserPromptSubmit', { session_id: 'w-4', prompt: 'look around' });
+    assert.equal(seen().length, mark + 3, 'a background bind and an unbound prompt never move the pane');
+    // the session it shows ends: it goes to the most recently prompted session still holding a change
+    atW('W1b', 'SessionEnd', { session_id: 'w-2', reason: 'prompt_input_exit' });
+    assert.deepEqual(seen().slice(mark + 3), [`browser --surface ${pane} navigate http://dash.test/session/w-1`]);
+    // a tab killed without its end reaching the hook is dropped: the pane goes to the session that holds a change
+    fs.writeFileSync(terms, fs.readFileSync(terms, 'utf8').replace('W1a\n', ''));
+    atW('W1d', 'SessionEnd', { session_id: 'w-4', reason: 'prompt_input_exit' });
+    assert.deepEqual(seen().slice(mark + 4), [`browser --surface ${pane} navigate http://dash.test/session/w-3`]);
+    // the person closes the pane: it stays closed while the workspace's sessions run
+    fs.writeFileSync(open, fs.readFileSync(open, 'utf8').replace(`${pane}\n`, ''));
+    atW('W1c', 'UserPromptSubmit', { session_id: 'w-3', prompt: 'work on change:eight-week-test' });
+    atW('W1c', 'SessionStart', { session_id: 'w-3', source: 'compact' });
+    assert.equal(seen().length, mark + 5, 'a closed pane is not reopened by a prompt or a compaction');
+    // pjman open brings it back as the workspace's pane, which the dock then moves as its own
+    const pjmanOpen = (...args: string[]) =>
+      execFileSync(process.execPath, [pjmanBin, 'open', ...args], { cwd: project, encoding: 'utf8', env: wEnv('W1c') });
+    assert.match(pjmanOpen('--session', 'w-3'), /^docked http:\/\/dash\.test\/session\/w-3/);
+    const back = fs.readFileSync(open, 'utf8').trim().split('\n').pop() as string;
+    assert.deepEqual(seen().slice(mark + 5), ['browser open http://dash.test/session/w-3']);
+    pjmanOpen();
+    assert.deepEqual(seen().slice(mark + 6), [`browser --surface ${back} navigate http://dash.test`]);
+    atW('W1c', 'UserPromptSubmit', { session_id: 'w-3', prompt: 'work on change:eight-week-test' });
+    assert.deepEqual(seen().slice(mark + 7), [`browser --surface ${back} navigate http://dash.test/session/w-3`]);
+    // the workspace's last session closes it, and the dock is gone
+    atW('W1c', 'SessionEnd', { session_id: 'w-3', reason: 'prompt_input_exit' });
+    assert.deepEqual(seen().slice(mark + 8), [`close-surface --surface ${back}`]);
+    assert.ok(!fs.existsSync(path.join(env.PJMAN_HOME, 'dock', 'W1.json')));
+    // dock: false turns it off: a start opens nothing
+    const cfg = path.join(env.PJMAN_HOME, 'config.yaml');
+    const saved = fs.readFileSync(cfg, 'utf8');
+    fs.writeFileSync(cfg, saved + 'dock: false\n');
+    try {
+      atW('W1a', 'SessionStart', { session_id: 'w-5', source: 'startup' });
+      atW('W1a', 'UserPromptSubmit', { session_id: 'w-5', prompt: 'work on change:eight-week-test' });
+      assert.equal(seen().length, mark + 9, 'dock: false opens no pane');
+    } finally {
+      fs.writeFileSync(cfg, saved);
+    }
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });

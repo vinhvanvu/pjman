@@ -1135,7 +1135,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       }
       const s = start({ cwd, log: out });
       const url = openUrl(s.address, session);
-      const where = openPage(url);
+      const where = openPage(url, process.env, session);
       out(`${where === 'docked' ? 'docked' : 'opened'} ${url}${s.started ? ' (dashboard started)' : ''}`);
       return 0;
     }
