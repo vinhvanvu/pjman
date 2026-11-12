@@ -42,6 +42,8 @@ export function keysExpanded(ix: ReturnType<typeof indexNodes>, before: string[]
   return [...new Set([...before.filter((k) => !closed.has(k)), ...opened])].filter((k): k is string => !!k);
 }
 
+const real = (n: ScopeNode) => n.type !== 'unassigned';
+
 export function StructureTree({
   nodes,
   expanded,
@@ -73,7 +75,6 @@ export function StructureTree({
     }),
     [nodes],
   );
-  const real = (n: ScopeNode) => n.type !== 'unassigned';
   const ids = (keys: string[]) => keys.flatMap((k) => ix.idsOf.get(k) ?? []);
   return (
     <Tree<ScopeNode>

@@ -7,13 +7,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents } from '../events.js';
-import { loadStore } from '../records.js';
-import { stepsOf } from '../foundation.js';
-import { COMMANDS, ENTITIES, referenceMarkdown } from '../surface.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents } from '../store/events.js';
+import { loadStore } from '../store/records.js';
+import { stepsOf } from '../model/foundation.js';
+import { COMMANDS, ENTITIES, referenceMarkdown } from '../cli/surface.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-surface-'));
 const home = path.join(tmp, 'home');
@@ -31,7 +31,22 @@ const pj = (args: string[], input?: string) => {
   return { code: r.status, out: r.stdout, err: r.stderr };
 };
 const filed = (slug: string, extra: string[] = []) =>
-  pj(['new', 'change', slug, '--name', slug, '--gist', `The ${slug} change`, '--origin', 'asked', '--intent', 'a need', '--done-when', 'it is done', ...extra]);
+  pj([
+    'new',
+    'change',
+    slug,
+    '--name',
+    slug,
+    '--gist',
+    `The ${slug} change`,
+    '--origin',
+    'asked',
+    '--intent',
+    'a need',
+    '--done-when',
+    'it is done',
+    ...extra,
+  ]);
 const record = (key: string) => loadStore(store).byKey.get(key)![0];
 let store: Store;
 
@@ -43,7 +58,11 @@ before(() => {
   init({ checkers: [], cwd: project, name: 'app' });
   store = findStore(project)!;
   newRecord(store, 'actor', 'person:vinh', { name: 'Vinh' });
-  newRecord(store, 'feature', 'checkout', { title: 'People pay for what is in the cart', name: 'Checkout', product: 'product:app' });
+  newRecord(store, 'feature', 'checkout', {
+    title: 'People pay for what is in the cart',
+    name: 'Checkout',
+    product: 'product:app',
+  });
   newRecord(store, 'feature', 'cards', { title: 'Pay by card', name: 'Cards', parent: 'feature:checkout' });
 });
 
@@ -65,7 +84,7 @@ test('a flag a command does not take is refused naming the ones it does; a retir
   assert.equal(pj(['frobnicate']).code, 2);
 });
 
-test('the error contract: usage exits 2, not found 1 with what was tried, and --json answers in the API\'s shape on stdout', () => {
+test("the error contract: usage exits 2, not found 1 with what was tried, and --json answers in the API's shape on stdout", () => {
   let r = pj(['get', 'nope']);
   assert.equal(r.code, 1);
   assert.equal(r.out, '');
@@ -81,8 +100,14 @@ test('the error contract: usage exits 2, not found 1 with what was tried, and --
   r = pj(['ls', 'change', '--status', 'bogus']);
   assert.equal(r.code, 2);
   assert.match(r.err, /--status bogus is not a status of a change \(open, planning/);
-  assert.match(pj(['ls', 'change', '--kind', 'nope']).err, /--kind nope is not a kind of change \(work, bug, milestone\)/);
-  assert.match(pj(['ls', 'step']).err, /unknown entity 'step' \(product, feature, aspect, place, project, change, decision, release, source, session, session-kind, actor\)/);
+  assert.match(
+    pj(['ls', 'change', '--kind', 'nope']).err,
+    /--kind nope is not a kind of change \(work, bug, milestone\)/,
+  );
+  assert.match(
+    pj(['ls', 'step']).err,
+    /unknown entity 'step' \(product, feature, aspect, place, project, change, decision, release, source, session, session-kind, actor\)/,
+  );
   r = pj([]);
   assert.equal(r.code, 2);
   assert.match(r.out, /^pjman — /);
@@ -96,7 +121,10 @@ test('a record argument resolves as get resolves it: the slug alone, ambiguity r
   assert.match(r.out, /changes\/login\/change\.md/);
   r = pj(['show', 'checkout']);
   assert.equal(r.code, 1);
-  assert.match(r.err, /checkout is ambiguous: .*change:app\/checkout.*feature:app\/checkout|checkout is ambiguous: .*feature:app\/checkout.*change:app\/checkout/);
+  assert.match(
+    r.err,
+    /checkout is ambiguous: .*change:app\/checkout.*feature:app\/checkout|checkout is ambiguous: .*feature:app\/checkout.*change:app\/checkout/,
+  );
   assert.equal(pj(['set', 'login', 'notes=from a slug']).code, 0);
   assert.match(record('change:app/login').sections.get('Notes') ?? '', /from a slug/);
   // the product and its project share the name app; tree asks only for products and features
@@ -125,12 +153,17 @@ test('step add takes several texts as one commit, or lines on stdin; edit rewrit
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /step 1,2 add/);
   // one write for both (the change lifted to planning is its own event)
-  const adds = readEvents(store).slice(head).filter((e) => e.fields?.includes('step add'));
+  const adds = readEvents(store)
+    .slice(head)
+    .filter((e) => e.fields?.includes('step add'));
   assert.equal(adds.length, 1);
   assert.deepEqual(adds[0].fields, ['plan', 'step add', '2 steps']);
   r = pj(['step', 'login', 'add', '--from', '-', '--first'], 'Design the mail\n\nWrite the copy\n');
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(stepsOf(record('change:app/login').data).map((s) => s.text), ['Design the mail', 'Write the copy', 'Send the mail', 'Verify the link']);
+  assert.deepEqual(
+    stepsOf(record('change:app/login').data).map((s) => s.text),
+    ['Design the mail', 'Write the copy', 'Send the mail', 'Verify the link'],
+  );
   r = pj(['step', 'login', 'add', 'fix', 'the', 'bug']);
   assert.equal(r.code, 2);
   assert.match(r.err, /some of one word \('fix'\)/);
@@ -143,8 +176,16 @@ test('step add takes several texts as one commit, or lines on stdin; edit rewrit
   r = pj(['step', 'login', 'done', '1', '3']);
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /step 1,3 done/);
-  assert.deepEqual(stepsOf(record('change:app/login').data).map((s) => s.state), ['done', 'open', 'done', 'open']);
-  assert.equal(readEvents(store).slice(before).filter((e) => e.fields?.includes('step done')).length, 1);
+  assert.deepEqual(
+    stepsOf(record('change:app/login').data).map((s) => s.state),
+    ['done', 'open', 'done', 'open'],
+  );
+  assert.equal(
+    readEvents(store)
+      .slice(before)
+      .filter((e) => e.fields?.includes('step done')).length,
+    1,
+  );
   assert.match(pj(['step', 'login', 'done', '1', '2']).err, /step 1 is already done/);
   assert.equal(stepsOf(record('change:app/login').data)[1].state, 'open', 'a refusal leaves every step as it was');
 });
@@ -152,7 +193,13 @@ test('step add takes several texts as one commit, or lines on stdin; edit rewrit
 test('new change --step files the change with its plan in one write', () => {
   const r = filed('signup', ['--step', 'Draft the form', '--step', 'Wire the mail']);
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(stepsOf(record('change:app/signup').data).map((s) => [s.text, s.state]), [['Draft the form', 'open'], ['Wire the mail', 'open']]);
+  assert.deepEqual(
+    stepsOf(record('change:app/signup').data).map((s) => [s.text, s.state]),
+    [
+      ['Draft the form', 'open'],
+      ['Wire the mail', 'open'],
+    ],
+  );
 });
 
 test('set adds and removes one item of a list with += and -=, idempotent; = still replaces', () => {
@@ -181,7 +228,10 @@ test('set and rm over several records land as one commit, one applied event, and
   assert.equal(r.code, 0, r.err);
   assert.match(r.out, /2 records as one commit/);
   const ev = readEvents(store).slice(head);
-  assert.deepEqual(ev.map((e) => e.op), ['set', 'set', 'applied']);
+  assert.deepEqual(
+    ev.map((e) => e.op),
+    ['set', 'set', 'applied'],
+  );
   assert.equal(new Set(ev.map((e) => e.commit)).size, 1);
   assert.equal(record('change:app/old-two').data.status, 'dropped');
   r = pj(['rm', 'old-one', 'old-two']);
@@ -200,9 +250,18 @@ test('set and rm over several records land as one commit, one applied event, and
 test('ls filters by parent, feature and product; order with no move prints the order', () => {
   filed('epic', ['--kind', 'milestone']);
   assert.equal(pj(['set', 'signup', 'parent=change:epic', 'features+=adds feature:cards']).code, 0);
-  assert.deepEqual(JSON.parse(pj(['ls', 'change', '--parent', 'epic', '--json']).out).map((r: { key: string }) => r.key), ['change:app/signup']);
-  assert.deepEqual(JSON.parse(pj(['ls', 'change', '--feature', 'feature:checkout', '--json']).out).map((r: { key: string }) => r.key), ['change:app/signup']);
-  assert.deepEqual(JSON.parse(pj(['ls', 'feature', '--parent', 'feature:checkout', '--json']).out).map((r: { key: string }) => r.key), ['feature:app/cards']);
+  assert.deepEqual(
+    JSON.parse(pj(['ls', 'change', '--parent', 'epic', '--json']).out).map((r: { key: string }) => r.key),
+    ['change:app/signup'],
+  );
+  assert.deepEqual(
+    JSON.parse(pj(['ls', 'change', '--feature', 'feature:checkout', '--json']).out).map((r: { key: string }) => r.key),
+    ['change:app/signup'],
+  );
+  assert.deepEqual(
+    JSON.parse(pj(['ls', 'feature', '--parent', 'feature:checkout', '--json']).out).map((r: { key: string }) => r.key),
+    ['feature:app/cards'],
+  );
   assert.equal(pj(['order', 'signup', '--first']).code, 0);
   const o = JSON.parse(pj(['order', '--json']).out) as { product: string; sequence: string[] };
   assert.equal(o.product, 'product:app');
@@ -220,9 +279,17 @@ test('the help reads by entity, every command has a group and its usage, and doc
   assert.match(pj(['help', 'step']).out, /^step — .*\n(.*\n)*usage:\n {2}pjman step <change> add/);
   assert.equal(pj(['help', 'nonsense']).code, 2);
   // every entity names each of create, read and update, or says why not; every command is declared once
-  for (const e of ENTITIES) for (const op of ['create', 'read', 'update']) assert.ok(e.ops.some(([o]) => o === op), `${e.name} ${op}`);
+  for (const e of ENTITIES)
+    for (const op of ['create', 'read', 'update'])
+      assert.ok(
+        e.ops.some(([o]) => o === op),
+        `${e.name} ${op}`,
+      );
   assert.equal(new Set(COMMANDS.map((c) => c.name)).size, COMMANDS.length);
-  const doc = fs.readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'docs', 'reference.md'), 'utf8');
+  const doc = fs.readFileSync(
+    path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'docs', 'reference.md'),
+    'utf8',
+  );
   assert.ok(doc.includes(referenceMarkdown()), 'docs/reference.md is behind the declaration: npm run docs');
 });
 
@@ -236,23 +303,46 @@ test('what a fresh agent tripped on: a slug in a flag or a field, a bare URL as 
   assert.equal(pj(['set', 'login', 'links+=https://example.com/pci']).code, 0);
   assert.ok((record('change:app/login').data.links as string[]).includes('url:https://example.com/pci'));
   assert.equal(pj(['set', 'login', 'links-=https://example.com/pci']).code, 0);
-  assert.ok(!((record('change:app/login').data.links as string[] | undefined) ?? []).includes('url:https://example.com/pci'));
+  assert.ok(
+    !((record('change:app/login').data.links as string[] | undefined) ?? []).includes('url:https://example.com/pci'),
+  );
   r = pj(['new', 'change', 'x', '--title', 'X']);
   assert.equal(r.code, 2);
   assert.match(r.err, /--title is retired here: a change has no title/);
-  assert.match(pj(['new', 'change', 'x', '--feature', 'feature:cards']).err, /takes no --feature \(did you mean --features\?\)/);
+  assert.match(
+    pj(['new', 'change', 'x', '--feature', 'feature:cards']).err,
+    /takes no --feature \(did you mean --features\?\)/,
+  );
   assert.doesNotMatch(pj(['new', 'change', 'x', '--feature', 'feature:cards']).err, /--title/);
   assert.match(pj(['set', 'login', '--step', 'more']).err, /a step is added with pjman step <change> add/);
   assert.equal(pj(['new', 'change', 'x', '--name', 'X']).code, 2);
   // a decision by its slug alone; a misspelt key is said not to exist
-  assert.equal(pj(['decision', 'login/storage', '--name', 'Storage', '--gist', 'Where a card is kept', '--question', 'Where?', '--option', 'vault=A vault']).code, 0);
+  assert.equal(
+    pj([
+      'decision',
+      'login/storage',
+      '--name',
+      'Storage',
+      '--gist',
+      'Where a card is kept',
+      '--question',
+      'Where?',
+      '--option',
+      'vault=A vault',
+    ]).code,
+    0,
+  );
   r = pj(['decision', 'storage', '--comment', 'a vault is fine']);
   assert.equal(r.code, 0, r.err);
   r = pj(['decision', 'login/storag', '--comment', 'hi']);
   assert.equal(r.code, 2);
   assert.match(r.err, /decision:app\/login\/storag does not exist yet, and a new decision needs --name/);
   // a feature lists by the status the tree shows
-  assert.ok(JSON.parse(pj(['ls', 'feature', '--status', 'planned', '--json']).out).some((x: { key: string }) => x.key === 'feature:app/wallet'));
+  assert.ok(
+    JSON.parse(pj(['ls', 'feature', '--status', 'planned', '--json']).out).some(
+      (x: { key: string }) => x.key === 'feature:app/wallet',
+    ),
+  );
   assert.match(pj(['help', 'change']).out, /every flag of each, in full: pjman help new · pjman help context/);
 });
 

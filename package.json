@@ -29,10 +29,13 @@
   },
   "files": [
     "bin",
-    "dist/*.js",
-    "dist/*.d.ts",
-    "dist/commands",
+    "dist/store",
+    "dist/hosts",
+    "dist/model",
+    "dist/ops",
     "dist/sync",
+    "dist/server",
+    "dist/cli",
     "dist/ui",
     "adapters",
     ".claude-plugin",
@@ -47,6 +50,10 @@
     "build:ui": "npm run build && npm --prefix ui run build",
     "install:local": "node scripts/install-local.mjs",
     "test": "npm run build && node --test dist/test/*.test.js",
+    "lint": "oxlint --type-aware --deny-warnings",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "check": "npm run lint && npm run fmt:check && npm test",
     "prepare": "npm run build",
     "dev": "node scripts/dev.mjs",
     "release": "node scripts/release.mjs",
@@ -58,6 +65,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "oxfmt": "^0.78.0",
+    "oxlint": "^1.93.0",
+    "oxlint-tsgolint": "^7.0.2006",
     "portless": "^0.15.12",
     "typescript": "^5.6.3"
   }

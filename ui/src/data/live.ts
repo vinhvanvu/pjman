@@ -29,10 +29,10 @@ function subscribe(url: string, onFrame: (f: Frame) => void): () => void {
   const port = worker.port;
   // a worker that fails to load leaves the page to a stream of its own
   let own: (() => void) | undefined;
-  worker.onerror = () => {
+  worker.addEventListener('error', () => {
     own ??= openStream(url, onFrame);
-  };
-  port.onmessage = (ev: MessageEvent<Frame>) => onFrame(ev.data);
+  });
+  port.addEventListener('message', (ev: MessageEvent<Frame>) => onFrame(ev.data));
   port.start();
   const send = (r: Request) => port.postMessage(r);
   const join = () => send({ kind: 'start', url: new URL(url, location.href).href });
@@ -89,7 +89,7 @@ export function useLiveInvalidation(): LiveState {
         reached = null;
         timer ??= setTimeout(flush, Math.max(150, last + 1000 - Date.now()));
       } else {
-        const e = JSON.parse(f.data) as StoreEvent;
+        const e: StoreEvent = JSON.parse(f.data);
         setState({ connected: true, last: e });
         useArrivals.getState().arrive(e);
         invalidate(e);
@@ -99,6 +99,8 @@ export function useLiveInvalidation(): LiveState {
       if (timer) clearTimeout(timer);
       unsubscribe();
     };
+    // the effect invalidates through `client`; the rule misreads a dependency used inside the stream's callback
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [client]);
 
   return state;

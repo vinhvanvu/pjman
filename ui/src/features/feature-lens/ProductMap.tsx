@@ -157,7 +157,9 @@ export function ProductMap({
           rootId={MAP_ROOT}
           getItem={(id) => (id === MAP_ROOT ? root : map.items.get(id)!)}
           getChildren={(id) => map.children.get(id) ?? []}
-          isFolder={(n) => n.type !== 'change' && (map.children.get(n.type === 'unassigned' ? UNASSIGNED : n.key)?.length ?? 0) > 0}
+          isFolder={(n) =>
+            n.type !== 'change' && (map.children.get(n.type === 'unassigned' ? UNASSIGNED : n.key)?.length ?? 0) > 0
+          }
           getName={(n) => n.name ?? n.title ?? n.key}
           expanded={shownExpanded}
           onExpandedChange={filtering ? () => undefined : onExpandedChange}
@@ -182,7 +184,12 @@ export function ProductMap({
             }
             if (n.type === 'unassigned') {
               return (
-                <div className={cn('flex min-w-0 flex-1 items-center gap-2 pr-2', holding && !heldLit.has(UNASSIGNED) && 'opacity-45')}>
+                <div
+                  className={cn(
+                    'flex min-w-0 flex-1 items-center gap-2 pr-2',
+                    holding && !heldLit.has(UNASSIGNED) && 'opacity-45',
+                  )}
+                >
                   <span className="truncate text-ink-muted">{n.title ?? 'No feature named'}</span>
                   {alive.has(UNASSIGNED) && <Pulse className="size-[6px]" />}
                   <span className="ml-auto text-meta text-ink-faint">{n.open ? `${n.open} open` : '—'}</span>
@@ -193,7 +200,9 @@ export function ProductMap({
               <FeatureRow
                 node={n}
                 top={level === 0}
-                capabilities={(map.children.get(n.key) ?? []).filter((id) => map.items.get(id)?.type !== 'change').length}
+                capabilities={
+                  (map.children.get(n.key) ?? []).filter((id) => map.items.get(id)?.type !== 'change').length
+                }
                 dim={(filtering && !matches(n, filter, places)) || (holding && !heldLit.has(n.key))}
                 lit={heldLit.has(n.key) || !!hoverLit?.has(n.key)}
                 alive={alive.has(n.key)}

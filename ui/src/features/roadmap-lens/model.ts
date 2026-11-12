@@ -345,9 +345,6 @@ export function bySeverity(bugs: ChangeRow[]): { severity: string; label: string
   return groups.filter((g) => g.rows.length > 0);
 }
 
-/** The worst severity among bugs, or undefined. */
-export const worstOf = (bugs: ChangeRow[]): string | undefined => bugs[0]?.severity;
-
 /** Loud only when a product or a feature is out. */
 export const loud = (bugs: ChangeRow[]): number =>
   bugs.filter((b) => b.severity === 'product' || b.severity === 'feature').length;

@@ -31,8 +31,6 @@ export interface MilestoneFrame {
   onPick?: (key: string) => void;
 }
 
-export const EMPTY_FRAME: MilestoneFrame = { rows: new Map(), sessions: [], waiting: [] };
-
 export function MilestoneChildren({
   ctx,
   lens,

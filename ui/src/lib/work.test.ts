@@ -71,40 +71,39 @@ describe('work by intent', () => {
 });
 
 describe('by motion', () => {
-  const row = (key: string, o: Partial<ChangeRow> = {}): ChangeRow =>
-    ({
-      key: `change:${key}`,
-      features: [],
-      waiting: 0,
-      decided: 0,
-      live: false,
-      children: 0,
-      dependsOn: [],
-      aspects: [],
-      needs: [],
-      stale: false,
-      status: 'active',
-      ...o,
-    }) as ChangeRow;
+  const motionRow = (key: string, o: Partial<ChangeRow> = {}): ChangeRow => ({
+    key: `change:${key}`,
+    features: [],
+    waiting: 0,
+    decided: 0,
+    live: false,
+    children: 0,
+    dependsOn: [],
+    aspects: [],
+    needs: [],
+    stale: false,
+    status: 'active',
+    ...o,
+  });
 
   it("reads a change's motion as the bridge does, what waits on the person first", () => {
-    expect(motionOf(row('w', { waiting: 1, live: true }))).toBe('waiting');
-    expect(motionOf(row('live', { live: true, status: 'blocked' }))).toBe('working');
-    expect(motionOf(row('b', { status: 'blocked' }))).toBe('blocked');
-    expect(motionOf(row('r', { status: 'review' }))).toBe('review');
-    expect(motionOf(row('s', { step: { n: 2, text: 'next', state: 'open' } }))).toBe('stopped');
-    expect(motionOf(row('n', { next: '2. next' }))).toBe('stopped');
-    expect(motionOf(row('o', { status: 'planning' }))).toBe('open');
+    expect(motionOf(motionRow('w', { waiting: 1, live: true }))).toBe('waiting');
+    expect(motionOf(motionRow('live', { live: true, status: 'blocked' }))).toBe('working');
+    expect(motionOf(motionRow('b', { status: 'blocked' }))).toBe('blocked');
+    expect(motionOf(motionRow('r', { status: 'review' }))).toBe('review');
+    expect(motionOf(motionRow('s', { step: { n: 2, text: 'next', state: 'open' } }))).toBe('stopped');
+    expect(motionOf(motionRow('n', { next: '2. next' }))).toBe('stopped');
+    expect(motionOf(motionRow('o', { status: 'planning' }))).toBe('open');
   });
 
   it('groups in the order of motion, each most recently moved first, done and dropped left out', () => {
     const groups = byMotion([
-      row('old', { status: 'open', moved: '2026-11-01' }),
-      row('done', { status: 'done' }),
-      row('live', { live: true, moved: '2026-11-03' }),
-      row('new', { status: 'open', moved: '2026-11-02' }),
-      row('wait', { waiting: 2, moved: '2026-10-01' }),
-      row('dropped', { status: 'dropped', waiting: 1 }),
+      motionRow('old', { status: 'open', moved: '2026-11-01' }),
+      motionRow('done', { status: 'done' }),
+      motionRow('live', { live: true, moved: '2026-11-03' }),
+      motionRow('new', { status: 'open', moved: '2026-11-02' }),
+      motionRow('wait', { waiting: 2, moved: '2026-10-01' }),
+      motionRow('dropped', { status: 'dropped', waiting: 1 }),
     ]);
     expect(groups.map((g) => [g.motion, g.rows.map((r) => r.key)])).toEqual([
       ['waiting', ['change:wait']],

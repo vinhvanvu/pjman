@@ -33,7 +33,7 @@ export function cursorOf(search: { at?: string | number; event?: number }): Curs
 }
 
 export function useCursor(): Cursor {
-  return cursorOf(useSearch({ strict: false }) as { at?: string | number; event?: number });
+  return cursorOf(useSearch({ strict: false }));
 }
 
 /** What every query sends as `at=`: the selected event's number when there is one (exact), else the time; undefined

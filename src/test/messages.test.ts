@@ -5,19 +5,18 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { note, notesOf } from '../commands/note.js';
-import { set } from '../commands/set.js';
-import { sessionBind } from '../commands/session.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents, rebuildEvents } from '../events.js';
-import { brief, wakeOf } from '../hydrate.js';
-import { findSession, loadStore, resolve } from '../records.js';
-import { receiptLines } from '../receipt.js';
-import { validate } from '../validate.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { note, notesOf } from '../ops/note.js';
+import { sessionBind } from '../ops/session.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents, rebuildEvents } from '../store/events.js';
+import { brief, wakeOf } from '../ops/hydrate.js';
+import { findSession, loadStore, resolve } from '../store/records.js';
+import { receiptLines } from '../model/receipt.js';
+import { validate } from '../model/validate.js';
 import { accept, change, decisionRec, next } from './shape.js';
-import { decision as writeDecision } from '../commands/decision.js';
+import { decision as writeDecision } from '../ops/decision.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.resolve(here, '..', '..', 'bin', 'pjman.js');
@@ -28,7 +27,9 @@ let store: Store;
 const session = (id: string) => findSession(loadStore(store), id)!;
 const wakes = (id: string, since: number) => {
   const loaded = loadStore(store);
-  return readEvents(store, since).map((e) => wakeOf(loaded, findSession(loaded, id)!, e)).filter(Boolean);
+  return readEvents(store, since)
+    .map((e) => wakeOf(loaded, findSession(loaded, id)!, e))
+    .filter(Boolean);
 };
 
 before(() => {
@@ -45,7 +46,8 @@ before(() => {
   change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
   decisionRec(store, 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w' });
   decisionRec(store, 'billing/cards', { title: 'Cards', decision: 'd', why: 'w' });
-  for (const id of ['me', 'idle', 'peer']) newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  for (const id of ['me', 'idle', 'peer'])
+    newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionBind(store, 'me', 'change:auth', 'prompt');
   brief(store, 'me');
 });
@@ -57,14 +59,17 @@ test('a note is one line under Notes on its change or session, an event of its o
   assert.ok(rec.status === 'ok');
   const notes = notesOf(rec.rec.sections.get('Notes'));
   assert.equal(notes.length, 1);
-  assert.equal(notes[0]!.writer, 'person:tester');
-  assert.equal(notes[0]!.text, 'try the refresh token first');
+  assert.equal(notes[0].writer, 'person:tester');
+  assert.equal(notes[0].text, 'try the refresh token first');
   const e = readEvents(store).at(-1)!;
   assert.equal(e.op, 'log');
   assert.deepEqual(e.fields, ['notes']);
   assert.deepEqual(receiptLines([e], loadStore(store)), ['noted change:web/auth — Auth']);
   assert.throws(() => note(store, 'decision:auth/tokens', 'x'), /addressed to a change or a session/);
-  assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error'), []);
+  assert.deepEqual(
+    validate(loadStore(store)).filter((p) => p.level === 'error'),
+    [],
+  );
 });
 
 test('the brief gives a note in full, never as a count, and not the session its own', () => {
@@ -72,12 +77,18 @@ test('the brief gives a note in full, never as a count, and not the session its 
   assert.equal(b.mode, 'delta');
   assert.deepEqual(b.lines, []);
   assert.equal(b.notes?.length, 1);
-  assert.match(b.notes![0]!, /^person:tester on change:web\/auth, \d{4}-\d\d-\d\d \d\d:\d\d: try the refresh token first$/);
+  assert.match(
+    b.notes[0],
+    /^person:tester on change:web\/auth, \d{4}-\d\d-\d\d \d\d:\d\d: try the refresh token first$/,
+  );
   assert.match(b.text, /\nNotes:\n- person:tester on change:web\/auth/);
   note(store, 'change:auth', 'my own aside', { session: 'session:me' });
   note(store, 'session:me', 'look at billing after', { writer: 'person:tester' });
   const next = brief(store, 'me');
-  assert.deepEqual(next.notes?.map((n) => n.replace(/, .*: /, ': ')), ['person:tester to this session: look at billing after']);
+  assert.deepEqual(
+    next.notes?.map((n) => n.replace(/, .*: /, ': ')),
+    ['person:tester to this session: look at billing after'],
+  );
 });
 
 test('an unbound session is still given a note addressed to it, and its watermark stands on no change', () => {
@@ -89,7 +100,10 @@ test('an unbound session is still given a note addressed to it, and its watermar
   const mark = session('idle').data.briefed as { change?: string; seq: number };
   assert.equal(mark.change, undefined);
   assert.equal(brief(store, 'idle').mode, 'none');
-  assert.deepEqual(validate(loadStore(store)).filter((p) => p.level === 'error'), []);
+  assert.deepEqual(
+    validate(loadStore(store)).filter((p) => p.level === 'error'),
+    [],
+  );
   // binding later gives the change in full
   sessionBind(store, 'idle', 'change:billing', 'prompt');
   assert.equal(brief(store, 'idle').mode, 'full');
@@ -106,9 +120,16 @@ test('what wakes a session: a decision on its bound change decided, a note on th
   accept(store, 'decision:auth/tokens', 'person:tester', '2026-10-29');
   note(store, 'change:auth', 'go');
   note(store, 'session:me', 'and you', { session: 'session:peer' });
-  assert.deepEqual(wakes('me', from), ['decision:web/auth/tokens decided by person:tester', 'a note on change:web/auth', 'a note to this session']);
+  assert.deepEqual(wakes('me', from), [
+    'decision:web/auth/tokens decided by person:tester',
+    'a note on change:web/auth',
+    'a note to this session',
+  ]);
   // the other session bound to billing is woken by billing's
-  assert.deepEqual(wakes('idle', from), ['decision:web/billing/cards decided by person:tester', 'a note on change:web/billing']);
+  assert.deepEqual(wakes('idle', from), [
+    'decision:web/billing/cards decided by person:tester',
+    'a note on change:web/billing',
+  ]);
 });
 
 test('the events rebuilt from history keep a note a note', () => {
@@ -120,7 +141,11 @@ test('the events rebuilt from history keep a note a note', () => {
 
 test('pjman wakes --follow prints a line for each wake as it lands, and nothing for the rest', async () => {
   const env = { ...process.env, PJMAN_SESSION: '', PJMAN_WRITER: '' };
-  const child = spawn(process.execPath, [BIN, 'wakes', '--session', 'me', '--follow', '--json'], { cwd: dir, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [BIN, 'wakes', '--session', 'me', '--follow', '--json'], {
+    cwd: dir,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
   let out = '';
   child.stdout.on('data', (d) => (out += d));
   try {
@@ -129,8 +154,14 @@ test('pjman wakes --follow prints a line for each wake as it lands, and nothing 
     execFileSync(process.execPath, [BIN, 'note', 'change:auth', 'wake up'], { cwd: dir, env });
     const deadline = Date.now() + 5000;
     while (!out.includes('\n') && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
-    const lines = out.trim().split('\n').map((l) => JSON.parse(l) as { why: string; key: string });
-    assert.deepEqual(lines.map((l) => l.why), ['a note on change:auth']); // the command names records as the context does inside the product
+    const lines = out
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as { why: string; key: string });
+    assert.deepEqual(
+      lines.map((l) => l.why),
+      ['a note on change:auth'],
+    ); // the command names records as the context does inside the product
   } finally {
     child.kill();
   }

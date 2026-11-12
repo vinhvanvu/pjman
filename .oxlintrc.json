@@ -1,0 +1,158 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import", "unicorn", "oxc", "node"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn",
+    "perf": "warn"
+  },
+  "env": {
+    "node": true,
+    "es2024": true
+  },
+  "rules": {
+    "import/no-self-import": "error",
+    "import/no-duplicates": "error",
+    "typescript/consistent-type-imports": "error",
+    "typescript/no-explicit-any": "error",
+    "eqeqeq": "error",
+    // the command line prints with `v.json ? json(x) : out(y)`
+    "eslint/no-unused-expressions": ["error", { "allowTernary": true, "allowShortCircuit": true }],
+
+    // Idioms the root code keeps on purpose, each off for the reason given.
+    // the store reads records as YAML into unknown and narrows them by assertion once validate has checked them
+    "typescript/no-unsafe-type-assertion": "off",
+    // record fields are YAML values typed unknown; String() is how one is shown, and validate refuses a non-scalar
+    // where it matters
+    "typescript/no-base-to-string": "off",
+    // loops spread a Set or Map to snapshot it while the body adds to or deletes from it; the rule's fix would change
+    // what they visit
+    "unicorn/no-useless-spread": "off",
+    // a closure is kept beside its only caller; hoisting it is a micro-optimisation
+    "unicorn/consistent-function-scoping": "off",
+    // the awaits in loops are sequential on purpose: one write, one hook, one bench run at a time
+    "eslint/no-await-in-loop": "off",
+    // records are copied, never mutated, when a map changes a field
+    "oxc/no-map-spread": "off",
+    "oxc/no-accumulating-spread": "off",
+    // side-effect imports are deliberate: the warning filter loads first, the bin loads the command line
+    "import/no-unassigned-import": "off",
+    // TypeScript checks return types; a function that returns undefined on one path says so in its type
+    "typescript/consistent-return": "off",
+    // a field read from the tool's own JSON keeps its name
+    "eslint/no-underscore-dangle": "off",
+    // the waking module's loop ends when another task moves its generation, which the rule cannot see
+    "eslint/no-unmodified-loop-condition": "off"
+  },
+  // the waking module is typed by the harness's own declarations (adapters/claude-code/tsconfig.json extends them),
+  // which exist only where the harness generated them
+  "ignorePatterns": ["dist", "node_modules", "ui", "adapters/claude-code/hooks/wake.ts"],
+  "overrides": [
+    {
+      "files": ["src/test/**/*.ts"],
+      "rules": {
+        // node:test's test() returns a promise the runner awaits
+        "typescript/no-floating-promises": "off",
+        // a test sorts booleans and tuples by their default order to compare them as sets
+        "typescript/require-array-sort-compare": "off",
+        "eslint/no-shadow": "off"
+      }
+    },
+    {
+      "files": ["src/store/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../hosts/*", "../model/*", "../ops/*", "../sync/*", "../server/*", "../cli/*"],
+                "message": "store is the bottom layer: it imports nothing above it (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/hosts/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../model/*", "../ops/*", "../sync/*", "../server/*", "../cli/*"],
+                "message": "hosts imports only store (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/model/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../ops/*", "../sync/*", "../server/*", "../cli/*"],
+                "message": "model reads; it imports only store and hosts (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/ops/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../sync/*", "../server/*", "../cli/*"],
+                "message": "ops imports only store, hosts and model (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/sync/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../server/*", "../cli/*"],
+                "message": "sync sits below the server and the command line (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["src/server/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["../cli/*"],
+                "message": "the server never imports the command line (decision repo-hygiene/src-layers)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

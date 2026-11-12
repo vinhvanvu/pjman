@@ -48,7 +48,10 @@ export function ChangeLine({
       )}
       title={c.title}
     >
-      <span aria-hidden="true" className={cn('ml-1 size-2 shrink-0 rounded-full', working ? workingDot : statusTone(c.status).bg)} />
+      <span
+        aria-hidden="true"
+        className={cn('ml-1 size-2 shrink-0 rounded-full', working ? workingDot : statusTone(c.status).bg)}
+      />
       <span className="min-w-0 truncate font-medium">{nameOf(c)}</span>
       <StatusChip status={c.status} className="shrink-0" />
       {c.waiting > 0 && (

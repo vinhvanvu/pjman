@@ -12,12 +12,14 @@ export function useFollowWindow(): void {
   const isWindow = useFollow((s) => s.window);
   const router = useRouter();
   useEffect(() => {
-    if (!isWindow || typeof EventSource === 'undefined') return;
+    if (!isWindow || typeof EventSource === 'undefined') return undefined;
     const es = new EventSource(`${BASE}/follow?stream=1`);
-    es.addEventListener('follow', ((ev: MessageEvent) => {
+    es.addEventListener('follow', (ev) => {
+      if (!(ev instanceof MessageEvent) || typeof ev.data !== 'string') return;
       let key: string | undefined;
       try {
-        key = (JSON.parse(ev.data as string) as { key?: string }).key;
+        const frame: { key?: string } = JSON.parse(ev.data);
+        key = frame.key;
       } catch {
         return;
       }
@@ -33,7 +35,7 @@ export function useFollowWindow(): void {
       const act = onPrompted(home, id, standing);
       if (act === 'go') void router.navigate({ to: '/session/$id', params: { id }, search: {} });
       else if (act === 'hold') offer(id);
-    }) as EventListener);
+    });
     return () => es.close();
   }, [isWindow, router]);
 }

@@ -7,15 +7,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { describeMigration, FORMAT_VERSION, formatMismatch, migrate, MIGRATIONS, pendingMigration, storeVersion } from '../commands/migrate.js';
-import { newRecord } from '../commands/new.js';
-import { findStore, loadStoreConfig, writeStoreConfig, type Store } from '../config.js';
-import { readEvents } from '../events.js';
-import { loadStore } from '../records.js';
-import { validate } from '../validate.js';
-import { compareVersions, TOOL_VERSION, UNSTAMPED_VERSION } from '../version.js';
-import { stepsOf } from '../foundation.js';
+import { init } from '../cli/init.js';
+import {
+  describeMigration,
+  FORMAT_VERSION,
+  formatMismatch,
+  migrate,
+  MIGRATIONS,
+  pendingMigration,
+  storeVersion,
+} from '../ops/migrate.js';
+import { newRecord } from '../ops/new.js';
+import { findStore, loadStoreConfig, writeStoreConfig, type Store } from '../store/config.js';
+import { readEvents } from '../store/events.js';
+import { loadStore } from '../store/records.js';
+import { validate } from '../model/validate.js';
+import { compareVersions, TOOL_VERSION, UNSTAMPED_VERSION } from '../store/version.js';
+import { stepsOf } from '../model/foundation.js';
 import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-version-'));
@@ -65,7 +73,9 @@ test('a store from before the stamp reads as 0.1.0: validate says so, its one pe
   const unstamped = findStore(path.join(tmp, 'web'))!;
   assert.equal(unstamped.config.version, undefined);
   assert.equal(storeVersion(unstamped), UNSTAMPED_VERSION);
-  assert.ok(validate(loadStore(unstamped)).some((p) => p.level === 'info' && /names no format version/.test(p.message)));
+  assert.ok(
+    validate(loadStore(unstamped)).some((p) => p.level === 'info' && /names no format version/.test(p.message)),
+  );
   // never refused: the moves guard themselves, and the stamp follows them
   assert.equal(formatMismatch(unstamped, TOOL_VERSION), null);
   assert.equal(pendingMigration(unstamped), 'stamp');
@@ -92,15 +102,26 @@ test('the kinds move: a store from before 0.3.0 whose parent changes are not mil
   change(store, 'goal', { title: 'Goal', summary: 'g', next: 'own step' });
   change(store, 'piece', { title: 'Piece', summary: 'p' });
   const piece = loadStore(store).byKey.get('change:web/piece')![0];
-  fs.writeFileSync(piece.abs, fs.readFileSync(piece.abs, 'utf8').replace(/^status: (.*)$/m, 'status: $1\nparent: change:web/goal'));
+  fs.writeFileSync(
+    piece.abs,
+    fs.readFileSync(piece.abs, 'utf8').replace(/^status: (.*)$/m, 'status: $1\nparent: change:web/goal'),
+  );
   writeStoreConfig(store.root, { ...loadStoreConfig(store.root), version: '0.2.0' });
   git(store.root, 'add', '-A');
   git(store.root, 'commit', '-qm', 'before the kinds');
   const old = findStore(path.join(tmp, 'web'))!;
   assert.equal(pendingMigration(old), 'kinds');
-  const problems = validate(loadStore(old)).filter((p) => p.level === 'error').map((p) => p.message);
-  assert.ok(problems.some((m) => /parent: change:web\/goal is not a milestone/.test(m)), problems.join('\n'));
-  assert.ok(problems.some((m) => /change:web\/piece names this change as parent, so it must be a milestone/.test(m)), problems.join('\n'));
+  const problems = validate(loadStore(old))
+    .filter((p) => p.level === 'error')
+    .map((p) => p.message);
+  assert.ok(
+    problems.some((m) => /parent: change:web\/goal is not a milestone/.test(m)),
+    problems.join('\n'),
+  );
+  assert.ok(
+    problems.some((m) => /change:web\/piece names this change as parent, so it must be a milestone/.test(m)),
+    problems.join('\n'),
+  );
   assert.match(formatMismatch(old, TOOL_VERSION)!, /run pjman migrate/);
   const before = readEvents(old).length;
   const r = migrate(old);
@@ -111,9 +132,15 @@ test('the kinds move: a store from before 0.3.0 whose parent changes are not mil
   const goal = loadStore(old).byKey.get('change:web/goal')![0];
   assert.equal(goal.data.kind, 'milestone');
   assert.deepEqual(stepsOf(goal.data), []);
-  assert.match(goal.sections.get('Notes')!, /plan \(before the milestone kind; a milestone's plan is its children\): 1\. \[ \] own step/);
+  assert.match(
+    goal.sections.get('Notes')!,
+    /plan \(before the milestone kind; a milestone's plan is its children\): 1\. \[ \] own step/,
+  );
   assert.equal(loadStore(old).byKey.get('change:web/piece')![0].data.parent, 'change:web/goal');
-  assert.deepEqual(validate(loadStore(old)).filter((p) => p.level === 'error'), []);
+  assert.deepEqual(
+    validate(loadStore(old)).filter((p) => p.level === 'error'),
+    [],
+  );
   const events = readEvents(old).slice(before);
   assert.equal(events.filter((e) => e.op === 'migrated').length, 1);
   assert.deepEqual(events.find((e) => e.op === 'migrated')!.fields, ['1 milestones']);
@@ -132,7 +159,10 @@ test('the kinds move: a store from before 0.3.0 whose parent changes are not mil
 
 test('a store stamped newer than the tool is refused for writing, naming the version to install; one stamped older is told to migrate', () => {
   const newer: Store = { ...store, config: { ...store.config, version: '99.0.0' } };
-  assert.match(formatMismatch(newer, TOOL_VERSION)!, /format 99\.0\.0, newer than this pjman .*install pjman 99\.0\.0 or newer/);
+  assert.match(
+    formatMismatch(newer, TOOL_VERSION)!,
+    /format 99\.0\.0, newer than this pjman .*install pjman 99\.0\.0 or newer/,
+  );
   const older: Store = { ...store, config: { ...store.config, version: '0.0.1' } };
   assert.match(formatMismatch(older, TOOL_VERSION)!, /format 0\.0\.1; this pjman .*brings format .*run pjman migrate/);
   // a store at the format, or below it with the sniffs saying nothing, has only the stamp to make

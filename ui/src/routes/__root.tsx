@@ -8,7 +8,7 @@ import { useLiveInvalidation } from '@/data/live';
 import { useFollowWindow } from '@/features/session-follow';
 import { useApplyTheme } from '@/features/theme';
 import { MotionRoot } from '@/lib/motion';
-import { atSearch, eventSearch } from './-search';
+import { atSearch, eventSearch } from '@/lib/search';
 
 export interface RouterContext {
   queryClient: QueryClient;

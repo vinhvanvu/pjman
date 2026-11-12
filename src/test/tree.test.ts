@@ -4,17 +4,26 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { activity } from '../activity.js';
-import { init } from '../commands/init.js';
-import { mv } from '../commands/mv.js';
-import { newRecord } from '../commands/new.js';
-import { rm } from '../commands/rm.js';
-import { set } from '../commands/set.js';
-import { findStore, type Store } from '../config.js';
-import { get } from '../graph.js';
-import { loadStore, resolve } from '../records.js';
-import { ancestorsOf, derivedStatus, descendantsOf, effectiveOwners, formatTree, levelOf, parseEffect, tree } from '../tree.js';
-import { validate } from '../validate.js';
+import { activity } from '../model/activity.js';
+import { init } from '../cli/init.js';
+import { mv } from '../ops/mv.js';
+import { newRecord } from '../ops/new.js';
+import { rm } from '../ops/rm.js';
+import { set } from '../ops/set.js';
+import { findStore, type Store } from '../store/config.js';
+import { get } from '../model/graph.js';
+import { loadStore, resolve } from '../store/records.js';
+import {
+  ancestorsOf,
+  derivedStatus,
+  descendantsOf,
+  effectiveOwners,
+  formatTree,
+  levelOf,
+  parseEffect,
+  tree,
+} from '../model/tree.js';
+import { validate } from '../model/validate.js';
 import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-tree-'));
@@ -53,10 +62,25 @@ test('effects parse: a bare key changes; adds and removes are named; anything el
 test('the tree: a product root, features at labelled levels, owners inherited, changes as effects, derived status, roll-ups', () => {
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', { title: 'Pay with a saved card', parent: 'feature:shop/checkout' });
-  newRecord(store, 'feature', 'card-scan', { title: 'Scan a card', parent: 'feature:shop/saved-cards', owners: ['person:other'] });
+  newRecord(store, 'feature', 'card-scan', {
+    title: 'Scan a card',
+    parent: 'feature:shop/saved-cards',
+    owners: ['person:other'],
+  });
   newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
-  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active' });
-  change(store, 'card-endpoint', { title: 'Card endpoint', summary: 's', project: 'project:api', features: ['adds feature:shop/saved-cards'] });
+  change(store, 'card-form', {
+    title: 'Card form',
+    summary: 's',
+    project: 'project:web',
+    features: ['adds feature:shop/saved-cards'],
+    status: 'active',
+  });
+  change(store, 'card-endpoint', {
+    title: 'Card endpoint',
+    summary: 's',
+    project: 'project:api',
+    features: ['adds feature:shop/saved-cards'],
+  });
   change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web' });
   decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
   assert.deepEqual(errors(), []);
@@ -73,13 +97,33 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   assert.equal(levelOf(loaded, loaded.byKey.get('feature:shop/card-scan')![0]), 'sub-capability');
 
   // owners: own, else the nearest ancestor's
-  assert.deepEqual(effectiveOwners(loaded, 'feature:shop/saved-cards'), { owners: ['person:tester'], from: 'product:shop' });
-  assert.deepEqual(effectiveOwners(loaded, 'feature:shop/card-scan'), { owners: ['person:other'], from: 'feature:shop/card-scan' });
-  assert.deepEqual(effectiveOwners(loaded, 'change:shop/card-form'), { owners: ['person:tester'], from: 'product:shop' });
+  assert.deepEqual(effectiveOwners(loaded, 'feature:shop/saved-cards'), {
+    owners: ['person:tester'],
+    from: 'product:shop',
+  });
+  assert.deepEqual(effectiveOwners(loaded, 'feature:shop/card-scan'), {
+    owners: ['person:other'],
+    from: 'feature:shop/card-scan',
+  });
+  assert.deepEqual(effectiveOwners(loaded, 'change:shop/card-form'), {
+    owners: ['person:tester'],
+    from: 'product:shop',
+  });
 
   // ancestry across chains: a change climbs its project and its features to the product
-  assert.deepEqual(ancestorsOf(loaded, 'change:shop/card-form').sort(), ['feature:shop/checkout', 'feature:shop/saved-cards', 'product:shop', 'project:web']);
-  assert.deepEqual(ancestorsOf(loaded, 'decision:shop/card-form/why').sort(), ['change:shop/card-form', 'feature:shop/checkout', 'feature:shop/saved-cards', 'product:shop', 'project:web']);
+  assert.deepEqual(ancestorsOf(loaded, 'change:shop/card-form').toSorted(), [
+    'feature:shop/checkout',
+    'feature:shop/saved-cards',
+    'product:shop',
+    'project:web',
+  ]);
+  assert.deepEqual(ancestorsOf(loaded, 'decision:shop/card-form/why').toSorted(), [
+    'change:shop/card-form',
+    'feature:shop/checkout',
+    'feature:shop/saved-cards',
+    'product:shop',
+    'project:web',
+  ]);
   assert.ok(descendantsOf(loaded, 'feature:shop/checkout').has('change:shop/card-endpoint'));
   assert.ok(descendantsOf(loaded, 'product:shop').has('change:shop/chore'));
   assert.ok(!descendantsOf(loaded, 'feature:shop/search').has('change:shop/chore'));
@@ -95,7 +139,13 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   loaded = loadStore(store);
   assert.equal(derivedStatus(loaded, 'feature:shop/saved-cards').status, 'live');
   assert.equal(derivedStatus(loaded, 'feature:shop/checkout').status, 'live');
-  change(store, 'drop-scan', { title: 'Drop card scan', summary: 's', project: 'project:web', features: ['removes feature:shop/card-scan'], status: 'done' });
+  change(store, 'drop-scan', {
+    title: 'Drop card scan',
+    summary: 's',
+    project: 'project:web',
+    features: ['removes feature:shop/card-scan'],
+    status: 'done',
+  });
   loaded = loadStore(store);
   assert.equal(derivedStatus(loaded, 'feature:shop/card-scan').status, 'retired');
   // nothing to derive from: the authored status stands (a cold-started map), and lifts its parent
@@ -103,32 +153,66 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   newRecord(store, 'feature', 'cold-kid', { title: 'Cold kid', parent: 'feature:shop/cold', status: 'live' });
   newRecord(store, 'feature', 'cold-plan', { title: 'Cold plan', parent: 'feature:shop/cold' });
   loaded = loadStore(store);
-  assert.deepEqual(derivedStatus(loaded, 'feature:shop/cold-kid'), { status: 'live', because: 'authored; no change affects it yet' });
+  assert.deepEqual(derivedStatus(loaded, 'feature:shop/cold-kid'), {
+    status: 'live',
+    because: 'authored; no change affects it yet',
+  });
   assert.equal(derivedStatus(loaded, 'feature:shop/cold').status, 'live');
   assert.equal(derivedStatus(loaded, 'feature:shop/cold-plan').status, 'planned');
   // an open change decides nothing: the authored status still stands; one in flight reads building
-  change(store, 'rework-kid', { title: 'Rework', summary: 's', project: 'project:web', features: ['feature:shop/cold-kid'], status: 'open' });
-  assert.deepEqual(derivedStatus(loadStore(store), 'feature:shop/cold-kid'), { status: 'live', because: 'authored; nothing affecting it is done or in flight' });
+  change(store, 'rework-kid', {
+    title: 'Rework',
+    summary: 's',
+    project: 'project:web',
+    features: ['feature:shop/cold-kid'],
+    status: 'open',
+  });
+  assert.deepEqual(derivedStatus(loadStore(store), 'feature:shop/cold-kid'), {
+    status: 'live',
+    because: 'authored; nothing affecting it is done or in flight',
+  });
   set(store, 'change:shop/rework-kid', ['status=active'], {});
   assert.equal(derivedStatus(loadStore(store), 'feature:shop/cold-kid').status, 'building');
   // a done change that changes a node derives live, whatever was authored
   set(store, 'change:shop/rework-kid', ['status=done'], {});
-  assert.deepEqual(derivedStatus(loadStore(store), 'feature:shop/cold-kid'), { status: 'live', because: 'change:shop/rework-kid (changes) is done' });
-  change(store, 'touch-plan', { title: 'Touch plan', summary: 's', project: 'project:web', features: ['feature:shop/cold-plan'], status: 'done' });
+  assert.deepEqual(derivedStatus(loadStore(store), 'feature:shop/cold-kid'), {
+    status: 'live',
+    because: 'change:shop/rework-kid (changes) is done',
+  });
+  change(store, 'touch-plan', {
+    title: 'Touch plan',
+    summary: 's',
+    project: 'project:web',
+    features: ['feature:shop/cold-plan'],
+    status: 'done',
+  });
   assert.equal(derivedStatus(loadStore(store), 'feature:shop/cold-plan').status, 'live');
-  for (const k of ['change:shop/touch-plan', 'change:shop/rework-kid', 'feature:shop/cold-plan', 'feature:shop/cold-kid', 'feature:shop/cold']) rm(store, k);
+  for (const k of [
+    'change:shop/touch-plan',
+    'change:shop/rework-kid',
+    'feature:shop/cold-plan',
+    'feature:shop/cold-kid',
+    'feature:shop/cold',
+  ])
+    rm(store, k);
   loaded = loadStore(store);
 
   // the tree with roll-ups
   const [shop] = tree(loaded);
   assert.equal(shop.key, 'product:shop');
-  assert.deepEqual(shop.children.map((c) => c.key), ['feature:shop/checkout', 'feature:shop/search']);
+  assert.deepEqual(
+    shop.children.map((c) => c.key),
+    ['feature:shop/checkout', 'feature:shop/search'],
+  );
   const checkout = shop.children[0];
   assert.deepEqual(checkout.backlog, { done: 2, open: 1 });
   assert.deepEqual(checkout.projects, ['project:api', 'project:web']);
   assert.equal(shop.unassigned, 1); // change:chore names no feature
   assert.equal(shop.children[1].status, 'live');
-  assert.deepEqual(tree(loaded, 'feature:shop/saved-cards')[0].children.map((c) => c.key), ['feature:shop/card-scan']);
+  assert.deepEqual(
+    tree(loaded, 'feature:shop/saved-cards')[0].children.map((c) => c.key),
+    ['feature:shop/card-scan'],
+  );
   assert.deepEqual(tree(loaded, 'change:shop/chore'), []);
   const text = formatTree(tree(loaded));
   assert.match(text, /product:shop \(product\) — Shop · person:tester/);
@@ -137,16 +221,28 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
 
   // the getter reaches a feature and the changes that affect it
   const n = get(loaded, 'feature:shop/saved-cards');
-  assert.deepEqual(n.changes.map((c) => c.change.key).sort(), ['change:shop/card-endpoint', 'change:shop/card-form']);
+  assert.deepEqual(n.changes.map((c) => c.change.key).toSorted(), [
+    'change:shop/card-endpoint',
+    'change:shop/card-form',
+  ]);
   assert.ok(n.in.some((e) => e.edge === 'adds' && e.from === 'change:shop/card-form'));
 });
 
 test('validation: a feature needs a product or a parent; effects are checked; parent cycles are refused on features and projects', () => {
   assert.throws(() => newRecord(store, 'feature', 'orphan', { title: 'Orphan' }), /--product|--parent/);
-  assert.throws(() => change(store, 'bad', { title: 'b', summary: 's', features: ['deletes feature:checkout'] }), /must be '<effect> feature:<slug>'/);
-  assert.throws(() => change(store, 'bad', { title: 'b', summary: 's', features: ['adds feature:shop/nope'] }), /does not resolve/);
+  assert.throws(
+    () => change(store, 'bad', { title: 'b', summary: 's', features: ['deletes feature:checkout'] }),
+    /must be '<effect> feature:<slug>'/,
+  );
+  assert.throws(
+    () => change(store, 'bad', { title: 'b', summary: 's', features: ['adds feature:shop/nope'] }),
+    /does not resolve/,
+  );
   assert.throws(() => set(store, 'feature:shop/checkout', ['parent=feature:saved-cards'], {}), /cycles/);
-  assert.throws(() => set(store, 'feature:shop/search', ['status=shipped'], {}), /not one of planned, building, live, retired/);
+  assert.throws(
+    () => set(store, 'feature:shop/search', ['status=shipped'], {}),
+    /not one of planned, building, live, retired/,
+  );
   set(store, 'project:api', ['parent=project:web'], {});
   assert.throws(() => set(store, 'project:web', ['parent=project:api'], {}), /cycles/);
   assert.deepEqual(errors(), []);
@@ -178,7 +274,10 @@ test('rename and remove reach products and features; a product with members refu
   assert.equal(loaded.byKey.get('feature:store/checkout')![0].data.product, 'product:store');
   assert.deepEqual(loaded.byKey.get('product:store')![0].data.aliases, ['shop']);
   assert.equal(loaded.byKey.get('feature:store/card-scan')![0].data.parent, 'feature:store/stored-cards');
-  assert.equal(loaded.byKey.get('change:store/card-form')![0].data.features![0 as never], 'adds feature:store/stored-cards');
+  assert.equal(
+    loaded.byKey.get('change:store/card-form')![0].data.features![0 as never],
+    'adds feature:store/stored-cards',
+  );
   // the old product segment still resolves
   assert.equal(resolve(loaded, 'feature:shop/checkout').status, 'ok');
   assert.equal(loaded.byKey.get('project:web')![0].data.product, 'product:store');

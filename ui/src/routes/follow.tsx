@@ -19,7 +19,11 @@ function FollowPage() {
     becomeWindow();
     let gone = false;
     void fetch(`${BASE}/follow`)
-      .then((r) => (r.ok ? (r.json() as Promise<{ data: { followed: { session: string } | null } }>) : null))
+      .then(async (r) => {
+        if (!r.ok) return null;
+        const body: { data: { followed: { session: string } | null } } = await r.json();
+        return body;
+      })
       .then((body) => {
         if (gone) return;
         const to = body?.data.followed?.session ?? (home ? `session:${home}` : undefined);
@@ -36,7 +40,9 @@ function FollowPage() {
       <div className="max-w-sm space-y-2">
         <h1 className="text-sm font-medium text-ink">Follow window</h1>
         <p className="text-xs text-ink-muted">
-          {asked ? 'Waiting for a prompt: this window shows the session you type into next.' : 'Finding the session you are on…'}
+          {asked
+            ? 'Waiting for a prompt: this window shows the session you type into next.'
+            : 'Finding the session you are on…'}
         </p>
       </div>
     </main>

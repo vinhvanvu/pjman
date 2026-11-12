@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ChangeRow, Scope, ScopeAspect, ScopeNode } from '@/data/contract';
+import type { Scope, ScopeAspect, ScopeNode } from '@/data/contract';
 import {
   allFeatureKeys,
   allWork,
@@ -48,7 +48,7 @@ const change = (key: string): ScopeNode => ({
     aspects: [],
     needs: [],
     stale: false,
-  } as ChangeRow,
+  },
   children: [],
 });
 const feature = (key: string, children: ScopeNode[] = []): ScopeNode => ({
@@ -145,8 +145,8 @@ describe('the product map', () => {
     const t = [feature('top', [feature('mid', [live]), feature('other')]), feature('store')];
     expect([...liveBeneath(t)]).toEqual(['feature:top', 'feature:mid']);
     expect(liveBeneath(tree).size).toBe(0);
-    expect([...litBy(t, ['change:live'])].sort()).toEqual(['change:live', 'feature:mid', 'feature:top']);
-    expect([...litBy(tree, ['change:loose'])].sort()).toEqual(['change:loose', UNASSIGNED]);
+    expect([...litBy(t, ['change:live'])].toSorted()).toEqual(['change:live', 'feature:mid', 'feature:top']);
+    expect([...litBy(tree, ['change:loose'])].toSorted()).toEqual(['change:loose', UNASSIGNED]);
     expect(litBy(t, []).size).toBe(0);
   });
 
@@ -157,9 +157,9 @@ describe('the product map', () => {
     expect(nav.children.map((n) => n.key)).toEqual(['feature:auto-navigation', 'change:v2']);
     // the text names the change alone: its node is kept for it, the other changes left out
     const byChange = filterTree(tree, { q: 'v2' });
-    expect(
-      byChange[0]!.children.find((n) => n.key === 'feature:navigation')!.children.map((n) => n.key),
-    ).toEqual(['change:v2']);
+    expect(byChange[0]!.children.find((n) => n.key === 'feature:navigation')!.children.map((n) => n.key)).toEqual([
+      'change:v2',
+    ]);
     expect(byChange[0]!.children.filter((n) => n.type === 'change')).toEqual([]);
     // a state filter keeps the changes with the node it keeps
     const live = { ...feature('live', [change('on-live')]), derived: 'live' };
@@ -173,7 +173,7 @@ describe('changes at a node', () => {
   it('separates what sits here from what is filed beneath', () => {
     const at = tree[0]!.children; // standing on feature:dashboard: its tree is its children
     expect(changesHere(at).map((r) => r.key)).toEqual(['change:here']);
-    const beneath = changesBeneath({ tree: at } as Scope);
+    const beneath = changesBeneath({ tree: at });
     expect(beneath.map((g) => [g.feature.key, g.rows.map((r) => r.key)])).toEqual([
       ['feature:navigation', ['change:v2']],
       ['feature:auto-navigation', ['change:auto']],
@@ -248,14 +248,14 @@ describe('the overview', () => {
     const broken = { ...feature('cli'), bugs: { here: 1, beneath: 1, worst: 'nuisance' } };
     const io = { ...feature('io', [broken, feature('server')]), bugs: { here: 0, beneath: 1, worst: 'nuisance' } };
     const store = feature('store');
-    const tree = [io, store];
+    const bugMap = [io, store];
     expect(isFiltering({ bugs: true })).toBe(true);
     expect(matches(broken, { bugs: true })).toBe(true);
     expect(matches(io, { bugs: true })).toBe(false);
-    const narrowed = filterTree(tree, { bugs: true });
+    const narrowed = filterTree(bugMap, { bugs: true });
     expect(narrowed.map((n) => n.key)).toEqual(['feature:io']);
     expect(narrowed[0]!.children.map((n) => n.key)).toEqual(['feature:cli']);
-    expect(filterTree(tree, { bugs: true, q: 'store' })).toEqual([]);
+    expect(filterTree(bugMap, { bugs: true, q: 'store' })).toEqual([]);
   });
 
   it('narrows the map to an aspect: each place a leaf, the path to it kept, intersecting the other filters', () => {
@@ -266,12 +266,12 @@ describe('the overview', () => {
       parent: parent && `aspect:p/${parent}`,
       places: places.map((f) => ({ place: `aspect:p/${key}/${f}`, feature: `feature:${f}`, forked: f === 'dock' })),
     });
-    const tree = [feature('app', [feature('dock', [feature('header')]), feature('map')]), feature('cli')];
+    const map = [feature('app', [feature('dock', [feature('header')]), feature('map')]), feature('cli')];
     const aspects = [aspect('text', ['dock', 'cli']), aspect('motion', ['map'])];
     const places = placesAt(aspects, 'aspect:p/text');
     const f = { aspect: 'aspect:p/text' };
     expect(isFiltering(f)).toBe(true);
-    const narrowed = filterTree(tree, f, places);
+    const narrowed = filterTree(map, f, places);
     expect(narrowed.map((n) => n.key)).toEqual(['feature:app', 'feature:cli']);
     // the place at dock is a leaf: what is beneath it is covered, not drawn
     expect(narrowed[0]!.children.map((n) => n.key)).toEqual(['feature:dock']);
@@ -280,17 +280,17 @@ describe('the overview', () => {
     expect(matches(narrowed[0]!, f, places)).toBe(false);
     expect(places.get('feature:dock')?.forked).toBe(true);
     // with a text too, the two intersect
-    expect(filterTree(tree, { ...f, q: 'cli' }, places).map((n) => n.key)).toEqual(['feature:cli']);
+    expect(filterTree(map, { ...f, q: 'cli' }, places).map((n) => n.key)).toEqual(['feature:cli']);
     // a place beneath a place is still drawn: the broad place does not hide the forks under it
     const nested = filterTree(
-      tree,
+      map,
       { aspect: 'aspect:p/wide' },
       placesAt([aspect('wide', ['app', 'map'])], 'aspect:p/wide'),
     );
     expect(nested[0]!.key).toBe('feature:app');
     expect(nested[0]!.children.map((n) => n.key)).toEqual(['feature:map']);
     // an unknown aspect keeps nothing
-    expect(filterTree(tree, { aspect: 'aspect:p/none' }, placesAt(aspects, 'aspect:p/none'))).toEqual([]);
+    expect(filterTree(map, { aspect: 'aspect:p/none' }, placesAt(aspects, 'aspect:p/none'))).toEqual([]);
   });
 
   it('outlines the aspects by parent, siblings by name', () => {

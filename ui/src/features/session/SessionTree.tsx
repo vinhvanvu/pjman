@@ -34,7 +34,7 @@ import { UNFOLDED } from '@/features/rail/model';
 import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
 import { TONE } from '@/lib/tones';
-import type { PageSearch } from '@/routes/-search';
+import type { PageSearch } from '@/lib/search';
 import { useFreshEvents } from '@/state/arrivals';
 import { useAt } from '@/state/moment';
 import { type ChipView, chipViews, sessionBar, shownOf, viewing } from './model';
@@ -45,13 +45,13 @@ const NO_EVENTS: readonly StoreEvent[] = [];
 const LANES_QUERY = { limit: 1, fold: UNFOLDED } as const;
 const chipKey = (c: ChipView) => c.key;
 /** The lane's colour, as the custom property the chips, the bars and the dots read. */
-const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
+const laneStyle = (colour: string): React.CSSProperties => ({ '--lane': colour });
 const SLIDE = { duration: 0.18, ease: 'easeOut' as const };
 
 /** The page's two session parameters: the change held shown, and the decision open (decision one-shown-change,
  *  decision-card). Both live in the URL, so a link lands where the person was. */
 export function useSessionSearch() {
-  const search = useSearch({ strict: false }) as PageSearch;
+  const search = useSearch({ strict: false });
   const navigate = useNavigate();
   const set = (patch: Partial<Pick<PageSearch, 'show' | 'decision'>>) =>
     void navigate({
@@ -135,7 +135,11 @@ export function SessionTree({
       parts={bar.parts}
       waits={bar.waits}
       alarm={bar.alarm}
-      host={session.host && session.state !== 'ended' ? { name: session.host.name, open: () => openHost.mutate({ session: session.key }), busy: openHost.isPending } : undefined}
+      host={
+        session.host && session.state !== 'ended'
+          ? { name: session.host.name, open: () => openHost.mutate({ session: session.key }), busy: openHost.isPending }
+          : undefined
+      }
     />
   );
   const header = (
@@ -310,7 +314,19 @@ export function SessionTree({
 /** The session bar: a separator travels with the word after it, so a wrapped line never ends in a dot. */
 /** The bar; with a host, the way to the session's block: one button that asks the host to bring it to the front
  *  (change:rex-adapter). */
-function SessionBar({ live, parts, waits, alarm, host }: { live: boolean; parts: string[]; waits: string; alarm: boolean; host?: { name: string; open: () => void; busy: boolean } }) {
+function SessionBar({
+  live,
+  parts,
+  waits,
+  alarm,
+  host,
+}: {
+  live: boolean;
+  parts: string[];
+  waits: string;
+  alarm: boolean;
+  host?: { name: string; open: () => void; busy: boolean };
+}) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-ink-muted">
       {live && <Pulse />}

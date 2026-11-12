@@ -20,7 +20,7 @@ export type Segment = 'done' | 'on' | 'open' | 'dropped';
  *  order the steps were worked in. */
 const SEGMENT_ORDER: readonly Segment[] = ['done', 'on', 'open', 'dropped'];
 export const sortSegments = (segments: readonly Segment[]): Segment[] =>
-  [...segments].sort((a, b) => SEGMENT_ORDER.indexOf(a) - SEGMENT_ORDER.indexOf(b));
+  segments.toSorted((a, b) => SEGMENT_ORDER.indexOf(a) - SEGMENT_ORDER.indexOf(b));
 
 /** The plan's head and bar: "step 2 of 4", the dropped counted apart; a segment a step, in the bar's order; the row
  *  docked shows. */
@@ -49,7 +49,7 @@ export function planView(plan: readonly Step[]): { sum: string; segments: Segmen
 export function planFold(plan: readonly Step[], keep = 3): { folded: Step[]; shown: Step[]; sum?: string } {
   const behind = plan.filter((s) => s.state === 'done' || s.state === 'dropped');
   if (plan.length <= keep + 1 || behind.length < 2) return { folded: [], shown: [...plan], sum: undefined };
-  const lastDone = behind.filter((s) => s.state === 'done').at(-1);
+  const lastDone = behind.findLast((s) => s.state === 'done');
   const folded = behind.filter((s) => s !== lastDone);
   const done = folded.filter((s) => s.state === 'done').length;
   const dropped = folded.length - done;

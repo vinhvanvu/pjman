@@ -4,7 +4,7 @@
 // tree folded.
 import { createFileRoute } from '@tanstack/react-router';
 import { ChangePage } from './-ChangePage';
-import { pageSearch } from './-search';
+import { pageSearch } from '@/lib/search';
 
 export const Route = createFileRoute('/change/$')({
   validateSearch: pageSearch,

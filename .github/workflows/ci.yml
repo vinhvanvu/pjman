@@ -1,0 +1,43 @@
+# Every push to main and every pull request: the tool and the dashboard are linted, format-checked, typechecked,
+# tested and built, on the oldest Node the package supports and the current one (decision repo-hygiene/guardrails).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.13', '24']
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+      # the tests write stores that commit to git
+      - run: git config --global user.name "pjman ci" && git config --global user.email "ci@pjman.invalid"
+      - run: npm ci
+      - run: npm ci --prefix ui
+      - name: the tool — lint, format, test
+        run: npm run check
+      - name: the dashboard — typecheck, lint, format, test
+        run: npm --prefix ui run check
+      - name: the dashboard — build
+        run: npm --prefix ui run build

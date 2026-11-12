@@ -21,8 +21,16 @@ execFileSync(portless, ['proxy', 'start'], { cwd: root, env, stdio: ['ignore', '
 
 const api = url('api.pjman');
 const children = [
-  spawn(portless, ['run', '--name', 'api.pjman', 'node', path.join(root, 'bin', 'pjman.js'), 'serve'], { cwd: root, env, stdio: 'inherit' }),
-  spawn(portless, ['run', '--name', 'pjman', path.join(root, 'ui', 'node_modules', '.bin', 'vite')], { cwd: path.join(root, 'ui'), env: { ...env, PJMAN_SERVE: api }, stdio: 'inherit' }),
+  spawn(portless, ['run', '--name', 'api.pjman', 'node', path.join(root, 'bin', 'pjman.js'), 'serve'], {
+    cwd: root,
+    env,
+    stdio: 'inherit',
+  }),
+  spawn(portless, ['run', '--name', 'pjman', path.join(root, 'ui', 'node_modules', '.bin', 'vite')], {
+    cwd: path.join(root, 'ui'),
+    env: { ...env, PJMAN_SERVE: api },
+    stdio: 'inherit',
+  }),
 ];
 process.stdout.write(`dashboard ${url('pjman')}\napi       ${api}\n`);
 

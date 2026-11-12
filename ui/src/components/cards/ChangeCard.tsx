@@ -24,6 +24,8 @@ export interface ChangeMetaProps {
   className?: string;
 }
 
+const name = (f: ChangeRow['features'][number]) => (f.title && f.title.length <= 24 ? f.title : short(f.key));
+
 export function ChangeMeta({
   row,
   showStatus = true,
@@ -37,7 +39,6 @@ export function ChangeMeta({
   const first = here ?? row.features[0];
   const shown = allFeatures ? row.features : first ? [first] : [];
   const others = allFeatures ? 0 : row.features.length - shown.length;
-  const name = (f: ChangeRow['features'][number]) => (f.title && f.title.length <= 24 ? f.title : short(f.key));
   return (
     <div className={cn('flex flex-wrap items-center gap-1.5', className)}>
       {showStatus && <StatusChip status={row.status} />}

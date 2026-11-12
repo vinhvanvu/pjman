@@ -82,7 +82,17 @@ export function NodeRecord({ scope, lens, aspect, held, onHold, onRelease, hover
       />
 
       {held.length > 0 && (
-        <Held scope={scope} held={held} work={work} names={names} onHold={onHold} onRelease={onRelease} hover={hover} onHover={onHover} now={now} />
+        <Held
+          scope={scope}
+          held={held}
+          work={work}
+          names={names}
+          onHold={onHold}
+          onRelease={onRelease}
+          hover={hover}
+          onHover={onHover}
+          now={now}
+        />
       )}
 
       {scope.aspectsHere.length > 0 && (
@@ -108,7 +118,17 @@ export function NodeRecord({ scope, lens, aspect, held, onHold, onRelease, hover
         </Section>
       )}
 
-      <Work scope={scope} lens={lens} rows={work} names={names} held={held} onHold={onHold} hover={hover} onHover={onHover} now={now} />
+      <Work
+        scope={scope}
+        lens={lens}
+        rows={work}
+        names={names}
+        held={held}
+        onHold={onHold}
+        hover={hover}
+        onHover={onHover}
+        now={now}
+      />
 
       {at && (
         <ActivityRail
@@ -119,7 +139,7 @@ export function NodeRecord({ scope, lens, aspect, held, onHold, onRelease, hover
           note={
             <span className="text-meta text-ink-faint">
               {held.length
-                ? `only ${held.length === 1 ? names.get(held[0]!) ?? short(held[0]!) : plural(held.length, 'held change')}`
+                ? `only ${held.length === 1 ? (names.get(held[0]!) ?? short(held[0]!)) : plural(held.length, 'held change')}`
                 : node
                   ? `everything beneath ${title}`
                   : 'everything'}
@@ -340,7 +360,13 @@ function Work({
                 now={now}
               >
                 {waits && waits.length > 0 && (
-                  <DecisionGroup decisions={waits.map(fromWaiting)} lens={lens} where="session" wide onDecide={decide} />
+                  <DecisionGroup
+                    decisions={waits.map(fromWaiting)}
+                    lens={lens}
+                    where="session"
+                    wide
+                    onDecide={decide}
+                  />
                 )}
               </MotionCard>
             );

@@ -4,15 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { bridge, changeOfDecision, sessionState } from '../bridge.js';
-import { timeline } from '../timeline.js';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { sessionBind, sessionLog } from '../commands/session.js';
-import { set } from '../commands/set.js';
-import { findStore, type Store } from '../config.js';
-import { loadStore } from '../records.js';
-import { accept, change, decisionRec, next } from './shape.js';
+import { bridge, changeOfDecision, sessionState } from '../model/bridge.js';
+import { timeline } from '../model/timeline.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { sessionBind, sessionLog } from '../ops/session.js';
+import { set } from '../ops/set.js';
+import { findStore, type Store } from '../store/config.js';
+import { loadStore } from '../store/records.js';
+import { accept, change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-bridge-'));
 let store: Store;
@@ -20,7 +20,9 @@ let store: Store;
 /** Let the clock move, so the next write is stamped after the last. */
 const tick = () => {
   const until = Date.now() + 5;
-  while (Date.now() < until) { /* wait */ }
+  while (Date.now() < until) {
+    /* wait */
+  }
 };
 
 before(() => {
@@ -35,13 +37,49 @@ before(() => {
   newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
-  newRecord(store, 'feature', 'saved-cards', { title: 'Saved cards for faster checkout', name: 'Saved cards', parent: 'feature:shop/checkout' });
-  change(store, 'card-form', { title: 'Card form', summary: 's', project: 'project:web', features: ['adds feature:shop/saved-cards'], status: 'active', next: 'Wire the form.' });
-  change(store, 'chore', { title: 'Chore', summary: 's', project: 'project:web', status: 'review', next: 'Review it.' });
+  newRecord(store, 'feature', 'saved-cards', {
+    title: 'Saved cards for faster checkout',
+    name: 'Saved cards',
+    parent: 'feature:shop/checkout',
+  });
+  change(store, 'card-form', {
+    title: 'Card form',
+    summary: 's',
+    project: 'project:web',
+    features: ['adds feature:shop/saved-cards'],
+    status: 'active',
+    next: 'Wire the form.',
+  });
+  change(store, 'chore', {
+    title: 'Chore',
+    summary: 's',
+    project: 'project:web',
+    status: 'review',
+    next: 'Review it.',
+  });
   // a milestone with its own plan and two children, one done: its card reads the children, not its steps
-  change(store, 'release', { title: 'Release', summary: 's', project: 'project:web', status: 'open', kind: 'milestone' });
-  change(store, 'kid-done', { title: 'Kid done', summary: 's', project: 'project:web', status: 'done', parent: 'change:shop/release' });
-  change(store, 'kid-on', { title: 'Kid on', summary: 's', project: 'project:web', status: 'active', parent: 'change:shop/release', next: 'Do it.' });
+  change(store, 'release', {
+    title: 'Release',
+    summary: 's',
+    project: 'project:web',
+    status: 'open',
+    kind: 'milestone',
+  });
+  change(store, 'kid-done', {
+    title: 'Kid done',
+    summary: 's',
+    project: 'project:web',
+    status: 'done',
+    parent: 'change:shop/release',
+  });
+  change(store, 'kid-on', {
+    title: 'Kid on',
+    summary: 's',
+    project: 'project:web',
+    status: 'active',
+    parent: 'change:shop/release',
+    next: 'Do it.',
+  });
   decisionRec(store, 'card-form/later', { title: 'Later', decision: 'd2', why: 'w' });
   decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
   // waiting: bound, then stopped with a line, and a decision proposed on its change
@@ -67,7 +105,11 @@ before(() => {
   tick();
   sessionLog(store, 's-end', 'session ended (prompt_input_exit)');
   // a subagent of s-work: carried under it, never a row
-  newRecord(store, 'session', 's-kid', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', parent: 'session:s-work' });
+  newRecord(store, 'session', 's-kid', {
+    agent: 'agent:claude-code',
+    onBehalfOf: 'person:tester',
+    parent: 'session:s-work',
+  });
   sessionLog(store, 's-kid', 'spawned by session:s-work (fork)');
   tick();
   sessionLog(store, 's-kid', 'Built the thing.');
@@ -75,7 +117,14 @@ before(() => {
   newRecord(store, 'session', 's-fresh', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
   sessionLog(store, 's-fresh', 'session started');
   // in motion without a session: blocked, touched by a write; finished, touched but never listed
-  change(store, 'stuck', { title: 'Stuck', summary: 's', project: 'project:web', status: 'blocked', blockedOn: 'a key from the vendor', next: 'Wire it up.' });
+  change(store, 'stuck', {
+    title: 'Stuck',
+    summary: 's',
+    project: 'project:web',
+    status: 'blocked',
+    blockedOn: 'a key from the vendor',
+    next: 'Wire it up.',
+  });
   change(store, 'shipped', { title: 'Shipped', summary: 's', project: 'project:web', status: 'done' });
 });
 
@@ -92,11 +141,17 @@ test('sessionState: ended beats everything; working while the last act is recent
   assert.equal(sessionState({ ended: false, line: t(90), act: t(40), proposed: true }, now), 'waiting');
 });
 
-test('bridge: the product\'s sessions in the window, each with its state, its change and feature path, the decision that waits or the next', () => {
+test("bridge: the product's sessions in the window, each with its state, its change and feature path, the decision that waits or the next", () => {
   const b = bridge(store, loadStore(store), { product: 'product:shop' });
   assert.equal(b.product, 'product:shop');
   const by = Object.fromEntries(b.sessions.map((s) => [s.key, s]));
-  assert.deepEqual(Object.keys(by).sort(), ['session:s-end', 'session:s-fresh', 'session:s-stop', 'session:s-wait', 'session:s-work']);
+  assert.deepEqual(Object.keys(by).toSorted(), [
+    'session:s-end',
+    'session:s-fresh',
+    'session:s-stop',
+    'session:s-wait',
+    'session:s-work',
+  ]);
   assert.equal(by['session:s-wait'].state, 'waiting');
   assert.equal(by['session:s-wait'].decision?.key, 'decision:shop/card-form/later'); // the oldest proposed, by key on the same day
   assert.equal(by['session:s-wait'].change?.key, 'change:shop/card-form');
@@ -116,19 +171,28 @@ test('bridge: the product\'s sessions in the window, each with its state, its ch
   assert.equal(by['session:s-end'].ended?.reason, 'prompt_input_exit');
   assert.equal(by['session:s-work'].ended, undefined);
   assert.equal(by['session:s-kid'], undefined); // a subagent's session is no row of its own
-  assert.deepEqual(by['session:s-work'].children.map((c) => [c.key, c.state, c.line?.text]), [['session:s-kid', 'stopped', 'Built the thing.']]);
+  assert.deepEqual(
+    by['session:s-work'].children.map((c) => [c.key, c.state, c.line?.text]),
+    [['session:s-kid', 'stopped', 'Built the thing.']],
+  );
   assert.equal(by['session:s-fresh'].state, 'stopped');
   assert.equal(by['session:s-fresh'].change, undefined);
   assert.equal('waitingOn' in b, false); // the bridge lists no decision (decision bridge-rework/cards-and-transport)
   // most recent first
   const lasts = b.sessions.map((s) => s.last ?? '');
-  assert.deepEqual(lasts, [...lasts].sort().reverse());
+  assert.deepEqual(lasts, [...lasts].toSorted().toReversed());
 });
 
-test('bridge: the changes in motion, every change touched in the window that is not finished, with its card\'s facts and the sessions on it', () => {
+test("bridge: the changes in motion, every change touched in the window that is not finished, with its card's facts and the sessions on it", () => {
   const b = bridge(store, loadStore(store), { product: 'product:shop' });
   const by = Object.fromEntries(b.changes.map((c) => [c.key, c]));
-  assert.deepEqual(Object.keys(by).sort(), ['change:shop/card-form', 'change:shop/chore', 'change:shop/kid-on', 'change:shop/release', 'change:shop/stuck']); // shipped and kid-done are done: not in motion
+  assert.deepEqual(Object.keys(by).toSorted(), [
+    'change:shop/card-form',
+    'change:shop/chore',
+    'change:shop/kid-on',
+    'change:shop/release',
+    'change:shop/stuck',
+  ]); // shipped and kid-done are done: not in motion
   // a milestone's card reads its children done over children and the child in work, not its own plan
   // (change:bridge-card-reads-the-plan)
   assert.equal(by['change:shop/release'].kind, 'milestone');
@@ -137,7 +201,7 @@ test('bridge: the changes in motion, every change touched in the window that is 
   assert.deepEqual(by['change:shop/kid-on'].steps, { done: 0, total: 1, dropped: 0 });
   // most recently touched first
   const lasts = b.changes.map((c) => c.last);
-  assert.deepEqual(lasts, [...lasts].sort().reverse());
+  assert.deepEqual(lasts, [...lasts].toSorted().toReversed());
   const chore = by['change:shop/chore'];
   assert.equal(chore.status, 'review');
   // on it, most recent first; the subagent on no change of its own is on its parent's
@@ -147,7 +211,10 @@ test('bridge: the changes in motion, every change touched in the window that is 
   assert.equal(chore.last, by['change:shop/chore'].last);
   const card = by['change:shop/card-form'];
   assert.deepEqual(card.sessions, ['session:s-wait']);
-  assert.deepEqual(card.path.map((f) => f.name), ['Checkout', 'Saved cards']);
+  assert.deepEqual(
+    card.path.map((f) => f.name),
+    ['Checkout', 'Saved cards'],
+  );
   assert.equal(card.gist, 'Card form');
   assert.equal(card.blockedOn, undefined);
   const stuck = by['change:shop/stuck'];
@@ -157,7 +224,7 @@ test('bridge: the changes in motion, every change touched in the window that is 
   assert.equal(stuck.step?.text, 'Wire it up.');
 });
 
-test('changeOfDecision: a decision\'s key names its change', () => {
+test("changeOfDecision: a decision's key names its change", () => {
   assert.equal(changeOfDecision('decision:shop/card-form/later'), 'change:shop/card-form');
   assert.equal(changeOfDecision('change:shop/card-form'), undefined);
   assert.equal(changeOfDecision('decision:odd'), undefined);
@@ -174,26 +241,52 @@ test('bridge: another product sees none of them; a window that has passed sees n
   assert.equal(bridge(store, loadStore(store), { now: Date.now() + 3 * 24 * 60 * 60_000, days: 7 }).sessions.length, 5); // the subagent's is under its parent
 });
 
-test('timeline: the product\'s events in the window, decisions marked, titles as they read now, the store\'s last event beside them', () => {
+test("timeline: the product's events in the window, decisions marked, titles as they read now, the store's last event beside them", () => {
   newRecord(store, 'product', 'other', { title: 'Other', owners: ['person:tester'], summary: 'Another.' });
   const t = timeline(store, loadStore(store), { product: 'product:shop' });
   assert.equal(t.product, 'product:shop');
   const keys = new Set(t.events.map((e) => e.key));
-  for (const k of ['product:shop', 'feature:shop/checkout', 'change:shop/card-form', 'decision:shop/card-form/why', 'session:s-wait', 'session:s-fresh'])
+  for (const k of [
+    'product:shop',
+    'feature:shop/checkout',
+    'change:shop/card-form',
+    'decision:shop/card-form/why',
+    'session:s-wait',
+    'session:s-fresh',
+  ])
     assert.ok(keys.has(k), `${k} is the product's`);
-  assert.ok(!keys.has('product:other'), 'another product\'s write is not');
+  assert.ok(!keys.has('product:other'), "another product's write is not");
   const opened = t.events.find((e) => e.key === 'decision:shop/card-form/why' && e.op === 'created')!;
   assert.equal(opened.decision, true);
   assert.equal(opened.status, 'proposed', 'opened, read from its commit');
   assert.equal(opened.label, 'Why');
-  assert.equal(t.events.find((e) => e.key === 'session:s-wait' && e.op === 'bind')!.label, 'Card form', 'a session reads by its change');
+  assert.equal(
+    t.events.find((e) => e.key === 'session:s-wait' && e.op === 'bind')!.label,
+    'Card form',
+    'a session reads by its change',
+  );
   assert.ok(t.events.every((e) => e.key.startsWith('decision:') || !e.decision));
-  assert.deepEqual(t.events.map((e) => e.seq), [...t.events.map((e) => e.seq)].sort((a, b) => a - b), 'in stream order');
-  assert.equal(t.last?.seq, Math.max(...t.events.map((e) => e.seq)) + 1, 'the other product\'s write is the store\'s last');
-  assert.equal(timeline(store, loadStore(store), { product: 'product:shop', to: '2000-01-01T00:00:00Z' }).events.length, 0);
+  assert.deepEqual(
+    t.events.map((e) => e.seq),
+    t.events.map((e) => e.seq).toSorted((a, b) => a - b),
+    'in stream order',
+  );
+  assert.equal(
+    t.last?.seq,
+    Math.max(...t.events.map((e) => e.seq)) + 1,
+    "the other product's write is the store's last",
+  );
+  assert.equal(
+    timeline(store, loadStore(store), { product: 'product:shop', to: '2000-01-01T00:00:00Z' }).events.length,
+    0,
+  );
   // the count after a moment reaches now whatever the window
   const third = t.events[2].seq;
-  const early = timeline(store, loadStore(store), { product: 'product:shop', to: '2000-01-01T00:00:00Z', after: third });
+  const early = timeline(store, loadStore(store), {
+    product: 'product:shop',
+    to: '2000-01-01T00:00:00Z',
+    after: third,
+  });
   assert.equal(early.arrivedAfter, t.events.filter((e) => e.seq > third).length);
 });
 

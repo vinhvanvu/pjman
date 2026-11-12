@@ -4,17 +4,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { bridge } from '../bridge.js';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { sessionBind, sessionLog } from '../commands/session.js';
-import { set } from '../commands/set.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents } from '../events.js';
-import { eventsBetween, gitSource, loadAt, momentCache, resolveMoment } from '../moment.js';
-import { loadStore } from '../records.js';
-import { live } from '../tree.js';
-import { change, decisionRec } from './shape.js';
+import { bridge } from '../model/bridge.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { sessionBind, sessionLog } from '../ops/session.js';
+import { set } from '../ops/set.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents } from '../store/events.js';
+import { eventsBetween, gitSource, loadAt, momentCache, resolveMoment } from '../model/moment.js';
+import { loadStore } from '../store/records.js';
+import { live } from '../model/tree.js';
+import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-moment-'));
 let store: Store;
@@ -25,7 +25,9 @@ let firstLine = 0;
 
 const tick = () => {
   const until = Date.now() + 5;
-  while (Date.now() < until) { /* wait */ }
+  while (Date.now() < until) {
+    /* wait */
+  }
 };
 const lastSeqNow = () => readEvents(store).at(-1)!.seq;
 

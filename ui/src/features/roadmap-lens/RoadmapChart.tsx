@@ -57,6 +57,23 @@ export interface RoadmapChartProps {
   now?: number;
 }
 
+const bugsLink = (key: string, n: number, worst?: string) => (
+  <Link
+    to="/$lens/$"
+    params={{ lens: 'feature', _splat: key }}
+    search={{ bugs: true }}
+    title={`${plural(n, 'open bug')}${worst ? `, worst ${worst}` : ''} · on the map`}
+    className={cn(
+      'ml-auto inline-flex h-5 shrink-0 items-center gap-1 rounded-chip px-1.5 text-meta font-medium hover:bg-raised',
+      worst === 'product' || worst === 'feature' ? TONE.alarm.text : 'text-ink-faint',
+    )}
+    onClick={(e) => e.stopPropagation()}
+  >
+    <Bug className="size-3" aria-hidden="true" />
+    {n}
+  </Link>
+);
+
 export function RoadmapChart({
   scope,
   expanded,
@@ -223,22 +240,6 @@ export function RoadmapChart({
   };
 
   const gridCols = `${LABEL_W}px ${PAST_W}px ${track.map((c) => `${c === SLOT ? SLOT_W : COL_W}px`).join(' ')}`;
-  const bugsLink = (key: string, n: number, worst?: string) => (
-    <Link
-      to="/$lens/$"
-      params={{ lens: 'feature', _splat: key }}
-      search={{ bugs: true }}
-      title={`${plural(n, 'open bug')}${worst ? `, worst ${worst}` : ''} · on the map`}
-      className={cn(
-        'ml-auto inline-flex h-5 shrink-0 items-center gap-1 rounded-chip px-1.5 text-meta font-medium hover:bg-raised',
-        worst === 'product' || worst === 'feature' ? TONE.alarm.text : 'text-ink-faint',
-      )}
-      onClick={(e) => e.stopPropagation()}
-    >
-      <Bug className="size-3" aria-hidden="true" />
-      {n}
-    </Link>
-  );
 
   return (
     <section aria-label="Roadmap" className="flex min-h-0 flex-1 flex-col">

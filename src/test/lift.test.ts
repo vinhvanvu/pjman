@@ -4,15 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { sessionBind, sessionObserve } from '../commands/session.js';
-import { set } from '../commands/set.js';
-import { step } from '../commands/step.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents } from '../events.js';
-import { liftsOfStore } from '../lift.js';
-import { loadStore, resolve } from '../records.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { sessionBind, sessionObserve } from '../ops/session.js';
+import { set } from '../ops/set.js';
+import { step } from '../ops/step.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents } from '../store/events.js';
+import { liftsOfStore } from '../ops/lift.js';
+import { loadStore, resolve } from '../store/records.js';
 import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-lift-'));
@@ -112,5 +112,8 @@ test('the backfill lists the changes whose status is behind their plan', () => {
   set(store, 'change:behind', ['status=open'], {});
   assert.equal(statusOf('behind'), 'open');
   const lifts = liftsOfStore(loadStore(store));
-  assert.deepEqual(lifts.map((l) => [l.key.split('/').pop(), l.from, l.to]), [['behind', 'open', 'planning']]);
+  assert.deepEqual(
+    lifts.map((l) => [l.key.split('/').pop(), l.from, l.to]),
+    [['behind', 'open', 'planning']],
+  );
 });

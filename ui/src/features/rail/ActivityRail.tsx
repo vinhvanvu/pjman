@@ -53,7 +53,7 @@ import {
 export type RailRendering = 'rail' | 'list';
 
 /** The lane's colour, as the custom property the dots and words read. */
-const laneStyle = (colour: string) => ({ '--lane': colour }) as React.CSSProperties;
+const laneStyle = (colour: string): React.CSSProperties => ({ '--lane': colour });
 const rowKey = (r: RowView) => String(r.seq);
 const toggled = (list: readonly string[], id: string) =>
   list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
@@ -162,7 +162,13 @@ export function ActivityRail({
         <>
           {/* keyed on the fixed lane: a new lane is a new list, so the hold takes it as it stands and no row of the last
               lane stays on */}
-          <Rows key={fixedLanes.length ? fixedLanes.join(',') : 'all'} rows={liveRuns.rows} heads={liveRuns.heads} lens={lens} held={held} />
+          <Rows
+            key={fixedLanes.length ? fixedLanes.join(',') : 'all'}
+            rows={liveRuns.rows}
+            heads={liveRuns.heads}
+            lens={lens}
+            held={held}
+          />
           {older.length > 0 && <Rows rows={olderRuns.rows} heads={olderRuns.heads} lens={lens} />}
         </>
       ) : (

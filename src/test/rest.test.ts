@@ -4,12 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { set } from '../commands/set.js';
-import { step } from '../commands/step.js';
-import { findStore, type Store } from '../config.js';
-import { loadStore } from '../records.js';
-import { formatRest, restOf } from '../rest.js';
+import { init } from '../cli/init.js';
+import { set } from '../ops/set.js';
+import { step } from '../ops/step.js';
+import { findStore, type Store } from '../store/config.js';
+import { loadStore } from '../store/records.js';
+import { formatRest, restOf } from '../model/rest.js';
 import { accept, change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-rest-'));
@@ -35,11 +35,24 @@ test('a change with steps open and nothing waiting does not rest, and the open s
   step(store, 'change:build', 'start', 1);
   const r = rest('build');
   assert.equal(r.rests, false);
-  assert.deepEqual(r.open.map((s) => [s.n, s.step.state]), [[1, 'active'], [2, 'open'], [3, 'open']]);
-  assert.equal(formatRest(r), 'change:web/build does not rest: 3 steps are open\n- 1. first (in progress)\n- 2. second\n- 3. third');
+  assert.deepEqual(
+    r.open.map((s) => [s.n, s.step.state]),
+    [
+      [1, 'active'],
+      [2, 'open'],
+      [3, 'open'],
+    ],
+  );
+  assert.equal(
+    formatRest(r),
+    'change:web/build does not rest: 3 steps are open\n- 1. first (in progress)\n- 2. second\n- 3. third',
+  );
   // a step dropped is not open; the plan still has work
   step(store, 'change:build', 'drop', 3);
-  assert.deepEqual(rest('build').open.map((s) => s.n), [1, 2]);
+  assert.deepEqual(
+    rest('build').open.map((s) => s.n),
+    [1, 2],
+  );
 });
 
 test('a proposed decision on the change is a resting point; accepted, it no longer is', () => {

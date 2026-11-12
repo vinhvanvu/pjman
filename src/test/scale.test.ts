@@ -28,7 +28,10 @@ test('at ten times this project, every read stays inside its budget', { timeout:
       if (t.name.startsWith('cli ')) return t.ms > BUDGET.cli;
       return false;
     });
-    assert.deepEqual(over.map((t) => `${t.name}: ${t.ms.toFixed(0)}ms`), []);
+    assert.deepEqual(
+      over.map((t) => `${t.name}: ${t.ms.toFixed(0)}ms`),
+      [],
+    );
   } finally {
     if (home === undefined) delete process.env.PJMAN_HOME;
     else process.env.PJMAN_HOME = home;

@@ -6,7 +6,7 @@ The API under `/api/v1` is the only thing it talks to.
 ## Run
 
 ```
-npm run build          # at the repository root first: the app's contract types come from dist/*.d.ts
+npm run build          # at the repository root first: the app's contract types come from dist/server/contract.d.ts
 cd ui && npm install
 npm run dev            # Vite on :5173, API proxied to the running `pjman start` (PJMAN_SERVE overrides)
 npm run check          # typecheck, lint, format check, tests
@@ -17,7 +17,7 @@ npm run build          # into ../dist/ui
 
 | State  | What                                                               | Owner                                                                                |
 | ------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| URL    | lens, node, view, grouping, filter, done and retired flags, window | TanStack Router; `routes/-search.ts` is the schema                                   |
+| URL    | lens, node, view, grouping, filter, done and retired flags, window | TanStack Router; `lib/search.ts` is the schema                                       |
 | Server | everything from the API                                            | TanStack Query (`data/queries.ts`); `data/live.ts` invalidates from the event stream |
 | Client | theme, pane splits, pinned session, expanded tree nodes            | zustand stores in `state/`, preferences persisted (expanded nodes are not)           |
 
@@ -67,7 +67,7 @@ Rules, enforced by `.oxlintrc.json` (a violation fails `npm run lint`):
 - Components are presentational: data in, callbacks out. They never fetch and never import features, state or routes.
   Types from `data/contract` are fine.
 - Data never imports components, features or routes. State, lib and themes are leaves.
-- Contract types are imported type-only from the tool's own declarations (`@contract/*` → `../dist/*`), so the API
+- Contract types are imported type-only from the tool's own declarations (`@contract` → `../dist/server/contract`, the API's one contract module), so the API
   has one definition.
 
 ## Themes

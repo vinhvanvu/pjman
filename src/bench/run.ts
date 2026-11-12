@@ -6,10 +6,10 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { openStore } from '../config.js';
-import { loadStore } from '../records.js';
-import { set } from '../commands/set.js';
-import { createServer } from '../server.js';
+import { openStore } from '../store/config.js';
+import { loadStore } from '../store/records.js';
+import { set } from '../ops/set.js';
+import { createServer } from '../server/server.js';
 import { generateStore, type Generated } from './generate.js';
 
 export interface Timing {
@@ -53,7 +53,9 @@ function get(port: number, route: string): Promise<number> {
     http
       .get({ host: '127.0.0.1', port, path: `/api/v1${route}`, headers: { host: 'localhost' } }, (r) => {
         r.resume();
-        r.on('end', () => (r.statusCode === 200 ? res(performance.now() - t) : rej(new Error(`${route}: ${r.statusCode}`))));
+        r.on('end', () =>
+          r.statusCode === 200 ? res(performance.now() - t) : rej(new Error(`${route}: ${r.statusCode}`)),
+        );
       })
       .on('error', rej);
   });

@@ -6,17 +6,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { rm } from '../commands/rm.js';
-import { set } from '../commands/set.js';
-import { changeContext, ls } from '../commands/view.js';
-import { findStore, type Store } from '../config.js';
-import { keyOfPath, readEvents, typeOfPath } from '../events.js';
-import { get } from '../graph.js';
-import { parseReleaseRest, releaseKey, shortenText } from '../keys.js';
-import { loadStore, resolve } from '../records.js';
-import { validate } from '../validate.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { rm } from '../ops/rm.js';
+import { set } from '../ops/set.js';
+import { changeContext, ls } from '../model/view.js';
+import { findStore, type Store } from '../store/config.js';
+import { keyOfPath, readEvents, typeOfPath } from '../store/events.js';
+import { get } from '../model/graph.js';
+import { parseReleaseRest, releaseKey, shortenText } from '../store/keys.js';
+import { loadStore, resolve } from '../store/records.js';
+import { validate } from '../model/validate.js';
 import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-releases-'));
@@ -44,7 +44,13 @@ before(() => {
   newRecord(store, 'product', 'other', { title: 'Other' });
   newRecord(store, 'feature', 'cart', { title: 'The cart', product: 'product:shop' });
   change(store, 'cart-lines', { title: 'Lines in the cart', project: 'project:web', features: ['adds feature:cart'] });
-  change(store, 'cart-total', { title: 'The total was off by the tax', project: 'project:web', kind: 'bug', severity: 'capability', features: ['feature:cart'] });
+  change(store, 'cart-total', {
+    title: 'The total was off by the tax',
+    project: 'project:web',
+    kind: 'bug',
+    severity: 'capability',
+    features: ['feature:cart'],
+  });
   newRecord(store, 'project', 'other-app', { title: 'The other app', product: 'product:other' });
   change(store, 'other/elsewhere', { title: 'A change of another product', project: 'project:other-app' });
 });
@@ -62,8 +68,12 @@ test('the key grammar: a version, bare or under a product', () => {
 
 test('a release is created with what it ships, keyed under the product by version; its creation is the event', () => {
   const r = newRecord(store, 'release', '0.2.0', {
-    at: '2026-11-06T10:00:00.000Z', level: 'minor', commit: 'abc1234', url: 'https://example.test/releases/v0.2.0',
-    ships: ['change:cart-lines', 'change:cart-total'], body: '## 0.2.0\n\n### Added\n\n- Cart lines',
+    at: '2026-11-06T10:00:00.000Z',
+    level: 'minor',
+    commit: 'abc1234',
+    url: 'https://example.test/releases/v0.2.0',
+    ships: ['change:cart-lines', 'change:cart-total'],
+    body: '## 0.2.0\n\n### Added\n\n- Cart lines',
   });
   assert.equal(r.key, 'release:shop/0.2.0');
   assert.equal(r.path, 'products/shop/releases/0.2.0.md');
@@ -86,13 +96,19 @@ test('the graph: a change reads which release shipped it; the release lists its 
   const fromChange = get(loaded, 'change:cart-lines');
   assert.ok(fromChange.in.some((e) => e.edge === 'ships' && e.from === 'release:shop/0.2.0'));
   const fromRelease = get(loaded, 'release:0.2.0');
-  assert.deepEqual(fromRelease.out.filter((e) => e.edge === 'ships').map((e) => e.to), ['change:shop/cart-lines', 'change:shop/cart-total']);
+  assert.deepEqual(
+    fromRelease.out.filter((e) => e.edge === 'ships').map((e) => e.to),
+    ['change:shop/cart-lines', 'change:shop/cart-total'],
+  );
   assert.ok(ls(store, { type: 'release' }).some((row) => row.key === 'release:shop/0.2.0'));
 });
 
 test("a change's context names the releases that shipped it, with the version and the instant", () => {
   const ctx = changeContext(store, 'change:cart-lines');
-  assert.deepEqual(ctx.releases.map((r) => [r.key, r.version, r.at]), [['release:shop/0.2.0', '0.2.0', '2026-11-06T10:00:00.000Z']]);
+  assert.deepEqual(
+    ctx.releases.map((r) => [r.key, r.version, r.at]),
+    [['release:shop/0.2.0', '0.2.0', '2026-11-06T10:00:00.000Z']],
+  );
   assert.equal(ctx.releases[0].url, 'https://example.test/releases/v0.2.0');
 });
 
@@ -101,10 +117,26 @@ test('refused: a second release of the same version, a version that is not semve
   assert.throws(() => newRecord(store, 'release', 'v0.3.0', { at: '2026-11-06T11:00:00.000Z' }), /not a version/);
   assert.throws(() => newRecord(store, 'release', '0.3.0', {}), /--at is required/);
   assert.throws(() => newRecord(store, 'release', '0.3.0', { at: 'yesterday' }), /timestamp/);
-  assert.throws(() => newRecord(store, 'release', '0.3.0', { at: '2026-11-06T11:00:00.000Z', level: 'huge' }), /--level/);
-  assert.throws(() => newRecord(store, 'release', '0.3.0', { at: '2026-11-06T11:00:00.000Z', ships: ['change:other/elsewhere'] }), /another product/);
-  assert.throws(() => newRecord(store, 'release', '0.3.0', { at: '2026-11-06T11:00:00.000Z', ships: ['change:cart-lines', 'change:cart-lines'] }), /twice/);
-  assert.throws(() => newRecord(store, 'release', '0.3.0', { at: '2026-11-06T11:00:00.000Z', ships: ['change:ghost'] }), /does not resolve|missing/);
+  assert.throws(
+    () => newRecord(store, 'release', '0.3.0', { at: '2026-11-06T11:00:00.000Z', level: 'huge' }),
+    /--level/,
+  );
+  assert.throws(
+    () => newRecord(store, 'release', '0.3.0', { at: '2026-11-06T11:00:00.000Z', ships: ['change:other/elsewhere'] }),
+    /another product/,
+  );
+  assert.throws(
+    () =>
+      newRecord(store, 'release', '0.3.0', {
+        at: '2026-11-06T11:00:00.000Z',
+        ships: ['change:cart-lines', 'change:cart-lines'],
+      }),
+    /twice/,
+  );
+  assert.throws(
+    () => newRecord(store, 'release', '0.3.0', { at: '2026-11-06T11:00:00.000Z', ships: ['change:ghost'] }),
+    /does not resolve|missing/,
+  );
   assert.deepEqual(errors(), []);
   // nothing half-written survives a refusal
   assert.ok(!fs.existsSync(path.join(store.root, 'products/shop/releases/0.3.0.md')));

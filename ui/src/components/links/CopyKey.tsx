@@ -36,19 +36,3 @@ export function CopyKey({ refKey, bare, className }: { refKey: string; bare?: bo
     </button>
   );
 }
-
-/** Copies any text for pasting into a session (a branch name); says so for a moment. */
-export function CopyRef({ text, className }: { text: string; className?: string }) {
-  const { done, copy } = useCopy(text);
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      className={cn('inline-flex items-center gap-1 hover:text-ink', className)}
-      title="Copy the reference"
-    >
-      {done ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
-      {done ? 'copied' : 'copy'}
-    </button>
-  );
-}

@@ -15,14 +15,13 @@ import { useAt } from '@/state/moment';
 import { ActivityRail } from '@/features/rail/ActivityRail';
 import type { RunSession } from '@/features/rail/model';
 import { sessionTitle } from '@/features/session/model';
-import type { PageSearch } from '@/routes/-search';
 import { beneathOf, figuresOf, MilestoneBar, MilestoneChildren } from '@/features/milestones';
 import { ChangeBar } from './ChangeBar';
 import { ChangeTree, Sources } from './ChangeTree';
 import { featureNames, workingOn } from './model';
 
 /** The lane's colour on the change page: the step the work is on in the primary, as nothing else is lit. */
-const PAGE_LANE = { '--lane': 'var(--primary)' } as React.CSSProperties;
+const PAGE_LANE: React.CSSProperties = { '--lane': 'var(--primary)' };
 const LAST_QUERY = { limit: 1 } as const;
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
@@ -45,7 +44,7 @@ export function ChangeView({
 }) {
   const c = ctx.change;
   const milestone = c.data.kind === 'milestone'; // by its kind, never by child count (decision milestone-kind/kind-not-children)
-  const search = useSearch({ strict: false }) as PageSearch;
+  const search = useSearch({ strict: false });
   const navigate = useNavigate();
   const onLink = (decision: string | undefined) =>
     void navigate({ to: '.', search: (prev: Record<string, unknown>) => ({ ...prev, decision }), replace: true });
@@ -104,7 +103,11 @@ export function ChangeView({
             live={scope.sessions}
             last={last}
             waits={waits}
-            launch={store?.host && !at && c.data.status !== 'done' && c.data.status !== 'dropped' ? { host: store.host.name, run: () => launch.mutate({ change: c.key }), busy: launch.isPending } : undefined}
+            launch={
+              store?.host && !at && c.data.status !== 'done' && c.data.status !== 'dropped'
+                ? { host: store.host.name, run: () => launch.mutate({ change: c.key }), busy: launch.isPending }
+                : undefined
+            }
           />
         )
       }

@@ -4,19 +4,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { aspectAt, parseAspectEffect } from '../aspects.js';
-import { splitLine } from '../commands/apply.js';
-import { init } from '../commands/init.js';
-import { mv } from '../commands/mv.js';
-import { newRecord } from '../commands/new.js';
-import { rm } from '../commands/rm.js';
-import { set } from '../commands/set.js';
-import { changeContext, formatChangeContext, show } from '../commands/view.js';
-import { findStore, type Store } from '../config.js';
-import { loadStore, resolve } from '../records.js';
-import { scope } from '../scope.js';
-import { ancestorsOf } from '../tree.js';
-import { validate } from '../validate.js';
+import { aspectAt, parseAspectEffect } from '../model/aspects.js';
+import { splitLine } from '../ops/apply.js';
+import { init } from '../cli/init.js';
+import { mv } from '../ops/mv.js';
+import { newRecord } from '../ops/new.js';
+import { rm } from '../ops/rm.js';
+import { set } from '../ops/set.js';
+import { changeContext, formatChangeContext, show } from '../model/view.js';
+import { findStore, type Store } from '../store/config.js';
+import { loadStore, resolve } from '../store/records.js';
+import { scope } from '../model/scope.js';
+import { ancestorsOf } from '../model/tree.js';
+import { validate } from '../model/validate.js';
 import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-aspects-'));
@@ -46,7 +46,10 @@ before(() => {
 });
 
 test('an aspect and its places: keyed under the product, bare and full keys resolve, the store validates', () => {
-  newRecord(store, 'aspect', 'text', { title: 'Text reads at a glance', body: '## Length\n\nShort.\n\n## Formatting\n\nMarkdown, lists and code.' });
+  newRecord(store, 'aspect', 'text', {
+    title: 'Text reads at a glance',
+    body: '## Length\n\nShort.\n\n## Formatting\n\nMarkdown, lists and code.',
+  });
   newRecord(store, 'place', 'text/app', { feature: 'feature:app' });
   newRecord(store, 'place', 'text/cart', { feature: 'feature:cart', body: 'A line clamps to one row.' });
   newRecord(store, 'place', 'text/search', { feature: 'feature:search' });
@@ -62,7 +65,10 @@ test('an aspect and its places: keyed under the product, bare and full keys reso
 });
 
 test('one place per feature; a place needs an aspect and a feature that exist', () => {
-  assert.throws(() => newRecord(store, 'place', 'text/cart-again', { feature: 'feature:cart' }), /one place per feature/);
+  assert.throws(
+    () => newRecord(store, 'place', 'text/cart-again', { feature: 'feature:cart' }),
+    /one place per feature/,
+  );
   assert.throws(() => newRecord(store, 'place', 'nothing/cart', { feature: 'feature:cart' }), /resolves to nothing/);
   assert.throws(() => newRecord(store, 'place', 'text/ghost', { feature: 'feature:ghost' }), /does not resolve/);
   assert.throws(() => newRecord(store, 'place', 'text/no-feature', {}), /--feature is required/);
@@ -75,10 +81,16 @@ test('a place is read as the base, then the forks above it, then its own; a feat
   const text = loaded.byKey.get('aspect:shop/text')![0];
   const at = aspectAt(loaded, text, loaded.byKey.get('feature:shop/cart-line')![0])!;
   assert.equal(at.place, 'aspect:shop/text/cart-line');
-  assert.deepEqual(at.layers.map((l) => l.from), ['aspect:shop/text', 'aspect:shop/text/cart', 'aspect:shop/text/cart-line']);
+  assert.deepEqual(
+    at.layers.map((l) => l.from),
+    ['aspect:shop/text', 'aspect:shop/text/cart', 'aspect:shop/text/cart-line'],
+  );
   // the app's place has no fork: it adds no layer
   const atCart = aspectAt(loaded, text, loaded.byKey.get('feature:shop/cart')![0])!;
-  assert.deepEqual(atCart.layers.map((l) => l.from), ['aspect:shop/text', 'aspect:shop/text/cart']);
+  assert.deepEqual(
+    atCart.layers.map((l) => l.from),
+    ['aspect:shop/text', 'aspect:shop/text/cart'],
+  );
   // the base is never copied: a place reads it from the aspect
   assert.ok(!loaded.byKey.get('aspect:shop/text/cart')![0].body.includes('Short.'));
 });
@@ -86,7 +98,10 @@ test('a place is read as the base, then the forks above it, then its own; a feat
 test("a change's context: the aspect read at a feature it names in full, places beneath a broad feature one line each, a named aspect whole", () => {
   change(store, 'cart-copy', { title: 'Cart copy', summary: 's', features: ['changes feature:cart-line'] });
   const at = changeContext(store, 'change:cart-copy');
-  assert.deepEqual(at.aspects?.at.map((x) => x.place), ['aspect:shop/text/cart-line']);
+  assert.deepEqual(
+    at.aspects?.at.map((x) => x.place),
+    ['aspect:shop/text/cart-line'],
+  );
   const text = formatChangeContext(at);
   assert.match(text, /## Aspects/);
   assert.match(text, /Short\./);
@@ -94,8 +109,14 @@ test("a change's context: the aspect read at a feature it names in full, places 
 
   change(store, 'app-wide', { title: 'App wide', summary: 's', features: ['changes feature:app'] });
   const wide = changeContext(store, 'change:app-wide');
-  assert.deepEqual(wide.aspects?.at.map((x) => x.place), ['aspect:shop/text/app']);
-  assert.deepEqual(wide.aspects?.beneath.map((b) => b.place), ['aspect:shop/text/cart', 'aspect:shop/text/cart-line', 'aspect:shop/text/search']);
+  assert.deepEqual(
+    wide.aspects?.at.map((x) => x.place),
+    ['aspect:shop/text/app'],
+  );
+  assert.deepEqual(
+    wide.aspects?.beneath.map((b) => b.place),
+    ['aspect:shop/text/cart', 'aspect:shop/text/cart-line', 'aspect:shop/text/search'],
+  );
 
   change(store, 'text-base', { title: 'The text base', summary: 's', aspects: ['changes aspect:text'] });
   const named = changeContext(store, 'change:text-base');
@@ -136,7 +157,10 @@ test("the dashboard's scope carries the product's aspects whole, and at a featur
   const cart = scope(store, loadStore(store), { node: 'feature:shop/cart' });
   const here = cart.aspectsHere.find((x) => x.aspect === 'aspect:shop/text');
   assert.equal(here?.place, 'aspect:shop/text/cart');
-  assert.deepEqual(here?.layers.map((l) => l.from), ['aspect:shop/text', 'aspect:shop/text/cart']);
+  assert.deepEqual(
+    here?.layers.map((l) => l.from),
+    ['aspect:shop/text', 'aspect:shop/text/cart'],
+  );
 });
 
 test('a change row carries the aspects and places it names, as live keys: the roadmap narrows by them', () => {
@@ -151,15 +175,28 @@ test("a change naming a place is filed at the place's feature by the dashboard, 
   const atCart = scope(store, loadStore(store), { node: 'feature:shop/cart', lens: 'roadmap' });
   const row = atCart.changes.find((r) => r.key === 'change:shop/cart-wording');
   assert.ok(row, "on the feature's roadmap");
-  assert.deepEqual(row.features, [{ effect: 'changes', key: 'feature:shop/cart', title: rec('feature:cart')?.data.title, viaPlace: true }]);
-  assert.ok(atCart.tree.some((n) => n.key === 'change:shop/cart-wording'), 'in its tree, so in its lane');
+  assert.deepEqual(row.features, [
+    { effect: 'changes', key: 'feature:shop/cart', title: rec('feature:cart')?.data.title, viaPlace: true },
+  ]);
+  assert.ok(
+    atCart.tree.some((n) => n.key === 'change:shop/cart-wording'),
+    'in its tree, so in its lane',
+  );
   // the store's ancestry is untouched: the feature's own counts leave it out
   const product = scope(store, loadStore(store), { node: 'product:shop' });
   const find = (list: typeof product.tree, key: string): (typeof product.tree)[number] | undefined =>
     list.map((n) => (n.key === key ? n : find(n.children, key))).find((n) => n);
   const cart = find(product.tree, 'feature:shop/cart');
-  assert.ok(cart?.children.some((n) => n.key === 'change:shop/cart-wording'), 'under the feature on the map');
-  assert.equal(cart?.open, scope(store, loadStore(store), { node: 'feature:shop/cart' }).changes.filter((r) => !r.features.every((f) => f.viaPlace)).length);
+  assert.ok(
+    cart?.children.some((n) => n.key === 'change:shop/cart-wording'),
+    'under the feature on the map',
+  );
+  assert.equal(
+    cart?.open,
+    scope(store, loadStore(store), { node: 'feature:shop/cart' }).changes.filter(
+      (r) => !r.features.every((f) => f.viaPlace),
+    ).length,
+  );
 });
 
 test('a feature with a place is not removed from under it; a moved feature takes its places along; an aspect removed takes its places', () => {
@@ -192,28 +229,52 @@ test('an aspect is renamed with its places, a place within its aspect; every ref
 });
 
 test('a batch line carries a multi-line text: \\n inside double quotes is a line break', () => {
-  assert.deepEqual(splitLine('set aspect:text "body=## Length\\n\\nShort."'), ['set', 'aspect:text', 'body=## Length\n\nShort.']);
+  assert.deepEqual(splitLine('set aspect:text "body=## Length\\n\\nShort."'), [
+    'set',
+    'aspect:text',
+    'body=## Length\n\nShort.',
+  ]);
   assert.deepEqual(splitLine('set x "a\\"b"'), ['set', 'x', 'a"b']);
 });
 
 test('a decision that reads as applying across the product cues an aspect, until its change names one or an aspect answers it', () => {
   change(store, 'one-badge', { title: 'One badge', summary: 's', features: ['changes feature:cart'] });
-  const opened = decisionRec(store, 'one-badge/badge', { title: 'How the badge reads', decision: 'One component draws the badge on every surface' });
-  assert.ok(opened.notes.some((n) => /says "One component".*propose one/.test(n)), opened.notes.join('\n'));
+  const opened = decisionRec(store, 'one-badge/badge', {
+    title: 'How the badge reads',
+    decision: 'One component draws the badge on every surface',
+  });
+  assert.ok(
+    opened.notes.some((n) => /says "One component".*propose one/.test(n)),
+    opened.notes.join('\n'),
+  );
   let ctx = changeContext(store, 'change:one-badge');
-  assert.deepEqual(ctx.aspectCues.map((c) => c.decision), ['decision:shop/one-badge/badge']);
-  assert.match(formatChangeContext(ctx), /## May be an aspect\n\n- decision:shop\/one-badge\/badge says "One component"/);
+  assert.deepEqual(
+    ctx.aspectCues.map((c) => c.decision),
+    ['decision:shop/one-badge/badge'],
+  );
+  assert.match(
+    formatChangeContext(ctx),
+    /## May be an aspect\n\n- decision:shop\/one-badge\/badge says "One component"/,
+  );
   // a plain decision is no cue
   decisionRec(store, 'one-badge/colour', { title: 'The colour', decision: 'Amber' });
   assert.equal(changeContext(store, 'change:one-badge').aspectCues.length, 1);
   // a change that works on an aspect and names the decision answers it
   newRecord(store, 'aspect', 'badge', { title: 'The badge', body: 'One badge.' });
-  change(store, 'badge-aspect', { title: 'Badge aspect', summary: 's', aspects: ['adds aspect:badge'], notes: 'Drawn from decision:one-badge/badge.' });
+  change(store, 'badge-aspect', {
+    title: 'Badge aspect',
+    summary: 's',
+    aspects: ['adds aspect:badge'],
+    notes: 'Drawn from decision:one-badge/badge.',
+  });
   ctx = changeContext(store, 'change:one-badge');
   assert.deepEqual(ctx.aspectCues, []);
   assert.doesNotMatch(formatChangeContext(ctx), /May be an aspect/);
   // a decision on a change that names an aspect is no cue
-  const onAspect = decisionRec(store, 'badge-aspect/where', { title: 'Where', decision: 'Everywhere the cart shows a count' });
+  const onAspect = decisionRec(store, 'badge-aspect/where', {
+    title: 'Where',
+    decision: 'Everywhere the cart shows a count',
+  });
   assert.ok(!onAspect.notes.some((n) => /propose one/.test(n)));
   assert.deepEqual(errors(), []);
 });

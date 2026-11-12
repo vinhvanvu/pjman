@@ -79,7 +79,7 @@ export function stepFrom(
     return next ? { event: next.seq } : 'live';
   }
   // a time between events stands on the one before it, so previous is that event itself
-  const before = [...events].reverse().find((e) => on !== undefined && (c.event || !c.at ? e.seq < on : e.seq <= on));
+  const before = events.findLast((e) => on !== undefined && (c.event || !c.at ? e.seq < on : e.seq <= on));
   return before ? { event: before.seq } : undefined;
 }
 

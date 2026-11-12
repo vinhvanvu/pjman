@@ -4,14 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { sessionBind, sessionObserve, sessionUnbind } from '../commands/session.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents, rebuildEvents } from '../events.js';
-import { findSession, loadStore } from '../records.js';
-import { validate } from '../validate.js';
-import { change, decisionRec } from './shape.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { sessionBind, sessionObserve, sessionUnbind } from '../ops/session.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents, rebuildEvents } from '../store/events.js';
+import { findSession, loadStore } from '../store/records.js';
+import { validate } from '../model/validate.js';
+import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-unbind-'));
 let store: Store;
@@ -39,8 +39,14 @@ test('unbind backs out the change and the edges observed on it, and logs that it
   assert.equal(r.dropped, 1);
   const loaded = loadStore(store);
   const rec = findSession(loaded, 's1')!;
-  assert.deepEqual((rec.data.changes as string[]).map((c) => c.split('/').pop()), ['right']);
-  assert.deepEqual((rec.data.observed as { from: string }[]).map((o) => o.from.split('/').pop()), ['right']);
+  assert.deepEqual(
+    (rec.data.changes as string[]).map((c) => c.split('/').pop()),
+    ['right'],
+  );
+  assert.deepEqual(
+    (rec.data.observed as { from: string }[]).map((o) => o.from.split('/').pop()),
+    ['right'],
+  );
   assert.match(rec.body, /unbound change:\S*wrong; dropped 1 edge observed on it/);
   assert.equal(validate(loaded).filter((p) => p.level === 'error').length, 0);
   for (const read of [() => readEvents(store), () => (rebuildEvents(store), readEvents(store))]) {

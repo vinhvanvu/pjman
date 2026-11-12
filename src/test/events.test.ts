@@ -7,12 +7,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
-import { init } from '../commands/init.js';
-import { newRecord } from '../commands/new.js';
-import { sessionBind, sessionFocus } from '../commands/session.js';
-import { set } from '../commands/set.js';
-import { findStore, type Store } from '../config.js';
-import { readEvents, rebuildEvents, type StoreEvent } from '../events.js';
+import { init } from '../cli/init.js';
+import { newRecord } from '../ops/new.js';
+import { sessionBind, sessionFocus } from '../ops/session.js';
+import { set } from '../ops/set.js';
+import { findStore, type Store } from '../store/config.js';
+import { readEvents, rebuildEvents, type StoreEvent } from '../store/events.js';
 import { accept, change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-events-'));
@@ -59,7 +59,12 @@ test('a decision opened carries no value; accepted, its event names the status a
 });
 
 test('a decision superseded by a new one is set superseded, with the value on its event', () => {
-  decisionRec(store, 'auth/tokens-2', { title: 'Tokens again', decision: 'd', why: 'w', supersedes: 'decision:auth/tokens' });
+  decisionRec(store, 'auth/tokens-2', {
+    title: 'Tokens again',
+    decision: 'd',
+    why: 'w',
+    supersedes: 'decision:auth/tokens',
+  });
   const e = on('decision:web/auth/tokens').at(-1)!;
   assert.equal(e.op, 'set');
   assert.deepEqual(e.fields, ['status']);

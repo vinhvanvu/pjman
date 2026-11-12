@@ -2,7 +2,7 @@
 // milestones in flight nearest to done first, the done folded. The rest of the path is the product's key.
 import { createFileRoute } from '@tanstack/react-router';
 import { MilestonesPage } from './-MilestonesPage';
-import { pageSearch } from './-search';
+import { pageSearch } from '@/lib/search';
 
 export const Route = createFileRoute('/milestones/$')({
   validateSearch: pageSearch,

@@ -45,7 +45,9 @@ async function start($: EngineInterface): Promise<void> {
     queued = [];
     try {
       // resolves as the turn starts: the prompt hook has briefed by then, so a later line is a new wake
-      await $.prompt.submit({ text: `pjman: ${why.join('; ')}. The pjman brief with this turn carries it; act on it as the record now says.` });
+      await $.prompt.submit({
+        text: `pjman: ${why.join('; ')}. The pjman brief with this turn carries it; act on it as the record now says.`,
+      });
     } catch (err) {
       $.ui.log(`pjman: the wake was not submitted (${String(err)})`, { to: 'debug' });
     } finally {
@@ -60,7 +62,10 @@ async function start($: EngineInterface): Promise<void> {
     const began = await $.clock.now();
     let pending = '';
     try {
-      const child = $.process.spawn({ argv: [...argv, 'wakes', '--session', sid, '--follow', '--json'], env: { PJMAN_SESSION: `session:${sid}` } });
+      const child = $.process.spawn({
+        argv: [...argv, 'wakes', '--session', sid, '--follow', '--json'],
+        env: { PJMAN_SESSION: `session:${sid}` },
+      });
       follower = child;
       for await (const chunk of child) {
         if (mine !== generation) break;
