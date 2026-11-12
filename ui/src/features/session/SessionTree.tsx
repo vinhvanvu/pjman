@@ -34,7 +34,7 @@ import { UNFOLDED } from '@/features/rail/model';
 import { useHeldList, useHold } from '@/lib/hold';
 import { short } from '@/lib/keys';
 import { TONE } from '@/lib/tones';
-import type { PageSearch } from '@/routes/-search';
+import type { PageSearch } from '@/lib/search';
 import { useFreshEvents } from '@/state/arrivals';
 import { useAt } from '@/state/moment';
 import { type ChipView, chipViews, sessionBar, shownOf, viewing } from './model';

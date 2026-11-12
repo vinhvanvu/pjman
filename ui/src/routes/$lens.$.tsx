@@ -2,7 +2,7 @@
 import { createFileRoute, notFound } from '@tanstack/react-router';
 import { LENSES, type Lens } from '@/data/contract';
 import { LensPage } from './-LensPage';
-import { pageSearch } from './-search';
+import { pageSearch } from '@/lib/search';
 
 export const Route = createFileRoute('/$lens/$')({
   params: {

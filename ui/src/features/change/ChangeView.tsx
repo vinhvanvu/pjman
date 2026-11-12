@@ -15,7 +15,7 @@ import { useAt } from '@/state/moment';
 import { ActivityRail } from '@/features/rail/ActivityRail';
 import type { RunSession } from '@/features/rail/model';
 import { sessionTitle } from '@/features/session/model';
-import type { PageSearch } from '@/routes/-search';
+import type { PageSearch } from '@/lib/search';
 import { beneathOf, figuresOf, MilestoneBar, MilestoneChildren } from '@/features/milestones';
 import { ChangeBar } from './ChangeBar';
 import { ChangeTree, Sources } from './ChangeTree';

@@ -11,7 +11,7 @@ import { useFollow } from '@/state/follow';
 import { Pending } from '@/components/Pending';
 import { SessionAbsent } from '@/features/session';
 import { LensPage } from './-LensPage';
-import { pageSearch } from './-search';
+import { pageSearch } from '@/lib/search';
 import { SessionWide } from './-SessionWide';
 
 export const Route = createFileRoute('/session/$id')({

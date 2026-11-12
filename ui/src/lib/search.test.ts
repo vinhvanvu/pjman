@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { atParam, cursorOf } from '@/state/moment';
-import { pageSearch } from './-search';
+import { pageSearch } from './search';
 
 // The router parses search values as JSON: `?event=1842` and an old `?at=1842` arrive as numbers, `?at=<instant>` as
 // text. Each must survive the schema, or the router rewrites the URL without the cursor and the page reads now.

@@ -269,9 +269,6 @@ export function filterTree(tree: ScopeNode[], f: MapFilter, places?: Places): Sc
   return walk(tree);
 }
 
-/** Every feature key in a tree: what to expand so the matches are visible. */
-export const keysIn = (tree: ScopeNode[]): string[] => allFeatureKeys(tree);
-
 // --- the overview -------------------------------------------------------------------------------------------
 
 /** One word for a node's health: moved inside the window, moved before it, or never. */

@@ -22,7 +22,7 @@ import { ThemePicker } from '@/features/theme';
 import { useWide } from '@/hooks/useMediaQuery';
 import { restOf, short } from '@/lib/keys';
 import { usePreferences } from '@/state/preferences';
-import { pageSearch } from './-search';
+import { pageSearch } from '@/lib/search';
 
 export const Route = createFileRoute('/bridge/$')({
   validateSearch: pageSearch,

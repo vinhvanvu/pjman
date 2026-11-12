@@ -32,7 +32,7 @@ import { useNow } from '@/hooks/useNow';
 import { productOf, short } from '@/lib/keys';
 import { usePreferences } from '@/state/preferences';
 import { freshScope, pageProduct } from '@/lib/identity';
-import type { PageSearch } from './-search';
+import type { PageSearch } from '@/lib/search';
 
 export interface LensPageProps {
   lens: Lens;
@@ -449,7 +449,7 @@ export function LensPage({ lens, node, following }: LensPageProps) {
   const primary = wide ? (
     <div className="relative flex min-h-0 flex-1 flex-col">
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-auto"
+        className="relative flex min-h-0 flex-1 flex-col overflow-auto"
         data-scroll-restoration-id={`${splitId}.structure`}
       >
         {structure}

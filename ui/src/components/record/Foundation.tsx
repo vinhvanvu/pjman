@@ -9,11 +9,6 @@ import { TONE } from '@/lib/tones';
 
 type Step = ChangeContext['plan'][number];
 
-/** The next step as one line: its number, text and note; what the cards show where next was. */
-export function nextLine(next: ChangeContext['next']): string | undefined {
-  return next ? `${next.n}. ${next.step.text}${next.step.note ? ` — ${next.step.note}` : ''}` : undefined;
-}
-
 /** What the record still needs before it is worked, that its rungs are stale, or that it was migrated and not yet
  *  reviewed: chips in the waits tone, so a person sees a record is not yet whole instead of reading text that is. */
 export function Readiness({
@@ -114,35 +109,5 @@ export function Plan({
         })}
       </ol>
     </section>
-  );
-}
-
-/** The sections a change's foundation opens with, in order of depth; the rest follow the plan. */
-export const LEAD_SECTIONS = ['Origin', 'Intent', 'Done when'];
-
-/** The sections in order of depth, as written: `only` these, or everything but `omit` (a section the record holds
- *  that the shape does not name is drawn with the rest, never lost). */
-export function Sections({
-  sections,
-  only,
-  omit = [],
-  className,
-}: {
-  sections: Record<string, string>;
-  only?: string[];
-  omit?: string[];
-  className?: string;
-}) {
-  const entries = Object.entries(sections).filter(([k, v]) => v && (only ? only.includes(k) : !omit.includes(k)));
-  if (!entries.length) return null;
-  return (
-    <div className={cn('flex flex-col gap-4', className)}>
-      {entries.map(([k, v]) => (
-        <section key={k} className="flex flex-col gap-1.5">
-          <Label>{k}</Label>
-          <p className="whitespace-pre-line text-[13px] leading-relaxed text-ink-muted">{v}</p>
-        </section>
-      ))}
-    </div>
   );
 }

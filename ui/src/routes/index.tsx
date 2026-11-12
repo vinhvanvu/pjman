@@ -5,7 +5,7 @@ import { createFileRoute, Navigate } from '@tanstack/react-router';
 import { useStore } from '@/data/queries';
 import { usePreferences } from '@/state/preferences';
 import { LensPage } from './-LensPage';
-import { pageSearch } from './-search';
+import { pageSearch } from '@/lib/search';
 
 export const Route = createFileRoute('/')({
   validateSearch: pageSearch,

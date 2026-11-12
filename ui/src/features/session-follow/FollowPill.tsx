@@ -6,7 +6,7 @@ import { cn } from 'cn';
 import { ArrowRight, Play, X } from 'lucide-react';
 import { useSessionView } from '@/data/queries';
 import { Pulse } from '@/components/presence/Presence';
-import type { PageSearch } from '@/routes/-search';
+import type { PageSearch } from '@/lib/search';
 import { useFollow } from '@/state/follow';
 import { dockArrivals } from '@/features/dock/model';
 import { Flash } from '@/lib/motion';

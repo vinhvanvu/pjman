@@ -14,7 +14,6 @@ export const queryKeys = {
   store: (at?: string) => ['pjman', 'store', at ?? 'now'] as const,
   records: (q: { type?: string; status?: string; project?: string }, at?: string) =>
     ['pjman', 'records', q, at ?? 'now'] as const,
-  record: (key: string, at?: string) => ['pjman', 'record', key, at ?? 'now'] as const,
   resolve: (ref: string, at?: string) => ['pjman', 'resolve', ref, at ?? 'now'] as const,
   sessionView: (id: string, at?: string) => ['pjman', 'session-view', id, at ?? 'now'] as const,
   scope: (q: ScopeQuery, at?: string) => ['pjman', 'scope', q, at ?? 'now'] as const,
@@ -50,15 +49,6 @@ export function useRecords(q: { type?: string; status?: string; project?: string
     queryFn: () => api.records(q, at),
     enabled,
     staleTime: 60_000,
-  });
-}
-
-export function useRecord(key: string | undefined) {
-  const at = useAt();
-  return useQuery({
-    queryKey: queryKeys.record(key ?? '', at),
-    queryFn: () => api.record(key!, at),
-    enabled: !!key,
   });
 }
 

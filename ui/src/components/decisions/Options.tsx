@@ -7,9 +7,6 @@ import type { DecisionState, OptionState } from '@/data/contract';
 import { Chip } from '@/components/chips/Chip';
 import { TONE } from '@/lib/tones';
 
-/** Accepting from a card chooses nothing the person did not read: the thread recommends an option, or holds one. */
-export const acceptable = (s: DecisionState): boolean => !!s.recommendation || s.options.length === 1;
-
 /** An option's case as its points: one per line, a leading bullet mark dropped (the tool's `pointsOf`). */
 export function pointsOf(text: string | undefined): string[] {
   if (!text) return [];

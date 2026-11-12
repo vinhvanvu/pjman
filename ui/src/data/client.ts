@@ -77,24 +77,12 @@ async function post<T>(route: string, body: unknown): Promise<T> {
   return json.data as T;
 }
 
-/** `kind:rest` → `/records/kind/rest`, each path segment encoded. */
-const recordPath = (key: string) => {
-  const i = key.indexOf(':');
-  return `/records/${key.slice(0, i)}/${key
-    .slice(i + 1)
-    .split('/')
-    .map(encodeURIComponent)
-    .join('/')}`;
-};
-
 export const api = {
   store: (at?: string) => call<StoreInfo>('/store', at),
   records: (q: { type?: string; status?: string; project?: string } = {}, at?: string) => {
     const p = new URLSearchParams(Object.entries(q).filter(([, v]) => v) as [string, string][]);
     return call<Row[]>(`/records${p.size ? `?${p}` : ''}`, at);
   },
-  record: (key: string, at?: string) =>
-    call<Row & { body: string; sections: Record<string, string> }>(recordPath(key), at),
   resolve: (ref: string, at?: string) => call<Resolution>(`/resolve?ref=${encodeURIComponent(ref)}`, at),
   sessionView: (id: string, at?: string) => call<SessionView>(`/sessions/${encodeURIComponent(id)}/view`, at),
   /** The bridge's data: the product's sessions by state. `product` is the key; the slug is what the route takes. */
