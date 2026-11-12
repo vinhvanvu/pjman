@@ -1,5 +1,5 @@
 // Versions: the tool's own, from its package, and the order of plain semver strings. The store's format version and
-// the migrations that move it live in commands/migrate.ts (decision releases-homebrew/store-names-its-version).
+// the migrations that move it live in ops/migrate.ts (decision releases-homebrew/store-names-its-version).
 import { createRequire } from 'node:module';
 
 /** The version of this pjman, as the package declares it. */

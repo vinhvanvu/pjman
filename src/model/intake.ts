@@ -4,7 +4,7 @@
 import type { Store } from '../store/config.js';
 import { findReferences, type GetOpts } from './graph.js';
 import type { Loaded, Rec } from '../store/records.js';
-import { ahead, productOf } from '../ops/order.js';
+import { ahead, productOf } from './order.js';
 import { mapState, progressOf, type MapState } from './view.js';
 import { derivedStatus, effectsOf, levelOf, live, structuralParent } from './tree.js';
 import { lineOf } from './foundation.js';

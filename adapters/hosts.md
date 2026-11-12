@@ -3,7 +3,7 @@
 A host is the place a session runs: a terminal multiplexer today (Rex, cmux), a cloud session later. The harness
 adapter beside this document (`claude-code/`) is for the agent's harness; a host adapter is for the terminal the
 harness runs in. pjman asks six things of a host, and each host is one implementation of the same interface
-(`src/host.ts`), so pjman stays host-agnostic and a second host is a second implementation, never a second design.
+(`src/hosts/host.ts`), so pjman stays host-agnostic and a second host is a second implementation, never a second design.
 
 | What pjman asks | What it is for | Rex | cmux (0.62) |
 |---|---|---|---|
@@ -20,7 +20,7 @@ harness runs in. pjman asks six things of a host, and each host is one implement
 
 Each adapter carries a manifest (decision rex-adapter/adapter-versioning, bundled-ranged): the environment it serves,
 the version of this interface it implements, the environment version range it was validated against, and the command
-the environment answers to. The registry in `src/host.ts` (`HOSTS`) is the only place that knows where adapters come
+the environment answers to. The registry in `src/hosts/host.ts` (`HOSTS`) is the only place that knows where adapters come
 from, so moving one to a package of its own later is a move, not a rewrite.
 
 | Adapter | Interface | Validated against | Validated on |
@@ -50,9 +50,9 @@ hook hands it; `--no-host` refuses it. The views read it off the record: the bri
 
 ## The state
 
-The dashboard server follows every hosted session that has not ended (`src/host-watch.ts`): the host's stream, and a
+The dashboard server follows every hosted session that has not ended (`src/hosts/host-watch.ts`): the host's stream, and a
 poll of `status` until the stream speaks. What the program reports is handed to every read as a fact beside the
-record's own, and it decides first (`src/session-state.ts`): `blocked` is **waiting** on the person, `working` is
+record's own, and it decides first (`src/model/session-state.ts`): `blocked` is **waiting** on the person, `working` is
 **working**, a program at rest (`idle`, `done`, `error`) **waits** only when a decision is proposed on its change and
 is **stopped** otherwise; `ended` stays with the closing log line. A session in no host, or whose host reports nothing,
 is read as before: working while something it did reached the stream inside the live window and its last act was not
@@ -79,7 +79,7 @@ by-agent): one voice per session. A session whose agent's harness adapter wakes 
 wake module submits a turn that the prompt hook briefs) hears it from there. Every other session on the change that
 runs in a host, has not ended and spoke inside the window is told through the host's `send`, wherever the acceptance
 came from (the dashboard, `pjman decision --accept`): one line naming the decision, the option and the person's words,
-and where to read on. The agents with a waking adapter are listed in `src/commands/host.ts` (`WAKING_AGENTS`); a
+and where to read on. The agents with a waking adapter are listed in `src/ops/host.ts` (`WAKING_AGENTS`); a
 harness adapter that gains a wake module adds its agent there. The decision's result lists each delivery and whether
 the host took it.
 
@@ -96,6 +96,6 @@ that will move the window too; a host's dock, where it has one (cmux), stays as 
 
 ## Adding a host
 
-One object in `src/host.ts` implementing `HostAdapter`, with its manifest, added to `HOSTS`; a fake command in
+One object in `src/hosts/host.ts` implementing `HostAdapter`, with its manifest, added to `HOSTS`; a fake command in
 `src/test/host.test.ts` recording every call, so each of the six things is tested without the host installed; a row
 in the tables above. Nothing else knows a host's name.

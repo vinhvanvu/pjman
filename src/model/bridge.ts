@@ -7,7 +7,7 @@
 // shows none.
 import type { Store } from '../store/config.js';
 import { eventsSince, readEvents } from '../store/events.js';
-import { productOf } from '../ops/order.js';
+import { productOf } from './order.js';
 import { memo, ofType, push, type Loaded, type Rec } from '../store/records.js';
 import { proposedDecisions, type WaitingDecision } from './scope.js';
 import { hostFactsOf, lastActs, sessionLogOf, sessionState, type SessionHostFacts, type SessionState } from './session-state.js';

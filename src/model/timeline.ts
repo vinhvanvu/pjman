@@ -6,7 +6,7 @@
 import { execFileSync } from 'node:child_process';
 import type { Store } from '../store/config.js';
 import { readEvents, type StoreEvent } from '../store/events.js';
-import { productOf } from '../ops/order.js';
+import { productOf } from './order.js';
 import type { Loaded, Rec } from '../store/records.js';
 import { live, rootProductOf } from './tree.js';
 import { lineOf } from './foundation.js';

@@ -6,7 +6,7 @@ import type { Store } from '../store/config.js';
 import { eventsByKey, readEvents, type StoreEvent } from '../store/events.js';
 import { eventKeysOf, memo, ofType, push, resolve, type Loaded, type Rec } from '../store/records.js';
 import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row } from './view.js';
-import { ahead, productOf } from '../ops/order.js';
+import { ahead, productOf } from './order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import { ancestorsOf, depthOf, descendantsOf, treeIndex, derivedStatus, effectiveOwners, effectsOf, levelOf, live, rootProductOf, structuralParent, type EffectName } from './tree.js';
 import { CliError, localDate, notFound } from '../store/util.js';

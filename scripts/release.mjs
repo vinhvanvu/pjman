@@ -159,7 +159,7 @@ const bump = (v, l) => {
 };
 const next = bump(current, level);
 for (const m of migrations) {
-  if (m.since !== next) fail(`the ${m.name} move says it is introduced in ${m.since}, but this release is ${next}; a store move ships in the release that introduces it (its since in src/commands/migrate.ts), at least a minor`);
+  if (m.since !== next) fail(`the ${m.name} move says it is introduced in ${m.since}, but this release is ${next}; a store move ships in the release that introduces it (its since in src/ops/migrate.ts), at least a minor`);
 }
 const tag = `v${next}`;
 const today = new Date().toISOString().slice(0, 10);
