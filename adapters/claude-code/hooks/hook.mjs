@@ -41,8 +41,8 @@
 //   session's id is exported to the agent's shell as PJMAN_SESSION.
 //
 //   The follow window (change:follow-window). Every prompt in a main session tells a running dashboard that the person is on
-//   this session, and the follow window goes there. In a host with no dock (Rex), a session's start opens that window when
-//   none is open: a detached copy of this hook (FollowWindow) starts the dashboard if none runs, tells it the session, asks
+//   this session, and the follow window goes there. Where there is no dock (Rex, Claude Code's desktop app), a session's start
+//   opens that window when none is open (decision desktop-app/desktop-view): a detached copy of this hook (FollowWindow) starts the dashboard if none runs, tells it the session, asks
 //   it whether to open one (yes to one caller only, so sessions started together never open two) and runs
 //   `pjman open --follow`. `follow_window: false` in ~/.pjman/config.yaml turns the opening off.
 
@@ -448,6 +448,9 @@ async function postServer(server, route, body, ms = 1500) {
 }
 /** Rex, when the session runs inside it: its blocks are terminals only, so the view is a follow window, not a dock. */
 const inRex = () => Boolean(process.env.REX_SESSION);
+/** Claude Code's desktop app, which runs its sessions under its own entrypoint: a mod pane there draws only the mod
+ * elements, never the dock's page, so the view is the follow window (decision desktop-app/desktop-view). */
+const inDesktop = () => process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop';
 /** The user config says follow_window: false. Read as text: the hook has no YAML parser. */
 function followWindowOff() {
   try {
@@ -462,9 +465,10 @@ async function followPrompted(sid) {
   const server = readServeAddress();
   if (server) await postServer(server, '/follow', { session: sid }, 800);
 }
-/** At a session's start in Rex: the follow window opened, unless one is open, detached so the start does not wait. */
+/** At a session's start in Rex or the desktop app: the follow window opened, unless one is open, detached so the start
+ * does not wait. */
 function startFollowWindow(sid, cwd) {
-  if (!inRex() || followWindowOff()) return;
+  if (!(inRex() || inDesktop()) || followWindowOff()) return;
   try {
     const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'FollowWindow'], {
       cwd,
@@ -1020,7 +1024,7 @@ async function promiseObject(obj) {
 
 // --- main ---------------------------------------------------------------------------------------
 async function main() {
-  // the detached half of a session start in Rex (startFollowWindow): no stdin, the session in the environment
+  // the detached half of a session start in Rex or the desktop app (startFollowWindow): no stdin, the session in the environment
   if (EVENT === 'FollowWindow') {
     const sid = process.env.PJMAN_FOLLOW_SESSION;
     if (sid) await followWindow(sid, process.cwd());

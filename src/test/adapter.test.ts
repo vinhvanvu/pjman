@@ -27,6 +27,7 @@ const env = {
 };
 delete (env as Record<string, unknown>).PJMAN_SESSION;
 delete (env as Record<string, unknown>).PJMAN_STORE;
+delete (env as Record<string, unknown>).CLAUDE_CODE_ENTRYPOINT; // a terminal session, wherever the tests run
 for (const k of Object.keys(env))
   if (k.startsWith('CMUX_') || k.startsWith('REX_')) delete (env as Record<string, unknown>)[k];
 
@@ -982,7 +983,7 @@ esac
   }
 });
 
-test('the follow window: a prompt tells the dashboard the session; the start in Rex opens one window when told to (change:follow-window)', async () => {
+test('the follow window: a prompt tells the dashboard the session; the start in Rex or the desktop app opens one window when told to (change:follow-window, change:desktop-app)', async () => {
   const { createServer } = await import('node:http');
   const { promisify } = await import('node:util');
   const { execFile } = await import('node:child_process');
@@ -1038,6 +1039,35 @@ test('the follow window: a prompt tells the dashboard the session; the start in 
     answer = { open: false, reason: 'open' } as unknown as { open: true };
     await run(process.execPath, [HOOK, 'FollowWindow'], { cwd: project, env: fw, encoding: 'utf8' });
     assert.equal(fs.readFileSync(opened, 'utf8').trim().split('\n').length, 1);
+    // a session's start: in a plain terminal no window is asked for, in the desktop app one is (decision
+    // desktop-app/desktop-view); the start hands the opening to a detached copy of the hook, so it is waited for
+    answer = { open: true };
+    fs.rmSync(opened, { force: true });
+    const start = async (extra: Record<string, string>, sid: string, tries: number) => {
+      posts.length = 0;
+      execFileSync(process.execPath, [HOOK, 'SessionStart'], {
+        input: JSON.stringify({ cwd: project, session_id: sid, source: 'startup' }),
+        encoding: 'utf8',
+        env: { ...env, PJMAN_OPEN_LOG: opened, ...extra },
+      });
+      for (let i = 0; i < tries && !fs.existsSync(opened); i++) await new Promise((r) => setTimeout(r, 100));
+    };
+    await start({ CLAUDE_CODE_ENTRYPOINT: 'cli' }, 'sess-term', 10);
+    assert.equal(fs.existsSync(opened), false);
+    assert.deepEqual(
+      posts.filter((p) => p.route === '/follow/ensure'),
+      [],
+    );
+    await start({ CLAUDE_CODE_ENTRYPOINT: 'claude-desktop' }, 'sess-desk', 100);
+    assert.deepEqual(
+      fs
+        .readFileSync(opened, 'utf8')
+        .trim()
+        .split('\n')
+        .map((l) => (JSON.parse(l) as { url: string }).url),
+      [`${url}/follow`],
+    );
+    assert.ok(posts.some((p) => p.route === '/follow' && p.body.session === 'sess-desk'));
   } finally {
     fs.writeFileSync(cfg, savedCfg);
     if (savedServe === null) fs.rmSync(serve, { force: true });
