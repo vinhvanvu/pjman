@@ -1,3 +1,17 @@
 {
-  "extends": "./.claude-plugin/types/tsconfig.json"
+  // 'claude-code' resolves to types/claude-code.d.ts, the part of the hooks API these modules use, so lint never
+  // depends on the declarations Claude Code writes into .claude-plugin/types/ (not committed) when it loads the folder.
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "paths": { "claude-code": ["./types/claude-code.d.ts"] }
+  },
+  "include": ["hooks/**/*.ts", "types/**/*.d.ts"]
 }
