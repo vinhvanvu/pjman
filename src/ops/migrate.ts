@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import { IDENTITY_KINDS, writeStoreConfig, type Store } from '../store/config.js';
+import { IDENTITY_KINDS, ownsRepository, writeStoreConfig, type Store } from '../store/config.js';
 import { emit } from '../store/events.js';
 import { commitAll, git, gitMv, isTracked, toplevel } from '../store/git.js';
 import { loadLegacy } from '../store/legacy.js';
@@ -74,10 +74,10 @@ export const MIGRATIONS: readonly Migration[] = [
 
 /** The session kinds (decision unbound-sessions/kinds): the four defaults the store lacks are created, one write each. */
 export function migrateSessionKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
-  if (store.mode === 'standalone' && git(store.root, ['status', '--porcelain', '--', '.']))
+  if (ownsRepository(store) && git(store.root, ['status', '--porcelain', '--', '.']))
     throw new CliError('the store has uncommitted changes; commit or discard them first');
   const created = seedSessionKinds(store, opts);
-  const commit = store.mode === 'standalone' ? git(store.root, ['rev-parse', '--short', 'HEAD']) : null;
+  const commit = ownsRepository(store) ? git(store.root, ['rev-parse', '--short', 'HEAD']) : null;
   return { kind: 'session-kinds', since: '0.3.0', products: 0, moved: 0, rewritten: created.length, commit };
 }
 
@@ -135,16 +135,15 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
 /** The stamp: pjman.yaml names the format this pjman writes. One commit, one event. */
 function stamp(store: Store, opts: { session?: string; writer?: string }): MigrateResult {
   const root = store.root;
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+  if (ownsRepository(store) && git(root, ['status', '--porcelain', '--', '.']))
     throw new CliError('the store has uncommitted changes; commit or discard them first');
   const from = storeVersion(store);
   writeStoreConfig(root, { ...store.config, version: FORMAT_VERSION });
   store.config.version = FORMAT_VERSION;
   const env = envelope(opts);
-  const commit =
-    store.mode === 'standalone'
-      ? commitAll(root, `pjman: the store is in format ${FORMAT_VERSION}`, env.session)
-      : null;
+  const commit = ownsRepository(store)
+    ? commitAll(root, `pjman: the store is in format ${FORMAT_VERSION}`, env.session)
+    : null;
   emit(
     store,
     [
@@ -199,7 +198,7 @@ const noteLine = (at: string, text: string): string => `- ${at} — ${text.repla
 export function migrateFoundation(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
   noteReshaping(store);
   const root = store.root;
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+  if (ownsRepository(store) && git(root, ['status', '--porcelain', '--', '.']))
     throw new CliError('the store has uncommitted changes; commit or discard them first');
   const loaded = loadStore(store);
   const date = localDate();
@@ -329,10 +328,9 @@ export function migrateFoundation(store: Store, opts: { session?: string; writer
     );
   }
   const env = envelope(opts);
-  const commit =
-    store.mode === 'standalone'
-      ? commitAll(root, 'pjman: migrate changes and decisions into the foundation', env.session)
-      : null;
+  const commit = ownsRepository(store)
+    ? commitAll(root, 'pjman: migrate changes and decisions into the foundation', env.session)
+    : null;
   emit(
     store,
     [
@@ -379,7 +377,7 @@ export function parentsToPromote(loaded: ReturnType<typeof loadStore>): Rec[] {
  *  commit, one event; the store must validate afterwards or nothing is written. */
 export function migrateKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
   const root = store.root;
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+  if (ownsRepository(store) && git(root, ['status', '--porcelain', '--', '.']))
     throw new CliError('the store has uncommitted changes; commit or discard them first');
   const loaded = loadStore(store);
   const at = nowIso();
@@ -424,10 +422,9 @@ export function migrateKinds(store: Store, opts: { session?: string; writer?: st
     );
   }
   const env = envelope(opts);
-  const commit =
-    store.mode === 'standalone'
-      ? commitAll(root, 'pjman: migrate parent changes into the milestone kind', env.session)
-      : null;
+  const commit = ownsRepository(store)
+    ? commitAll(root, 'pjman: migrate parent changes into the milestone kind', env.session)
+    : null;
   emit(
     store,
     [
@@ -470,7 +467,7 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
   noteReshaping(store);
   const root = store.root;
   if (!isLegacyLayout(root)) throw new CliError('nothing to migrate: every record is already keyed under its product');
-  if (store.mode === 'standalone' && git(root, ['status', '--porcelain', '--', '.']))
+  if (ownsRepository(store) && git(root, ['status', '--porcelain', '--', '.']))
     throw new CliError('the store has uncommitted changes; commit or discard them first');
   const records = loadLegacy(store);
   const byKey = new Map(records.map((r) => [r.key, r]));
@@ -623,8 +620,7 @@ export function migrateLayout(store: Store, opts: { session?: string; writer?: s
     );
   }
   const env = envelope(opts);
-  const commit =
-    store.mode === 'standalone' ? commitAll(root, 'pjman: migrate keys under the product', env.session) : null;
+  const commit = ownsRepository(store) ? commitAll(root, 'pjman: migrate keys under the product', env.session) : null;
   emit(
     store,
     [

@@ -57,7 +57,6 @@ export type Tab = (typeof TABS)[number];
 /** The store, as /store answers. */
 export interface StoreInfo {
   root: string;
-  mode: string;
   name: string;
   project: string | null;
   actor: string | null;

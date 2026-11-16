@@ -15,7 +15,6 @@ export const FLAG_TYPES = {
   writer: { type: 'string' },
   session: { type: 'string' },
   created: { type: 'string' },
-  'in-project': { type: 'boolean' },
   'no-start': { type: 'boolean' },
   'no-adapter': { type: 'boolean' },
   brief: { type: 'string' },
@@ -614,11 +613,11 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'the whole onboarding, in one command; again, the health check',
     about:
-      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record). Run again, it is the health check',
+      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report. Run again, it is the health check',
     usage: [
-      'pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>] [--in-project]',
+      'pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>]',
     ],
-    flags: ['name', 'product', 'map', 'no-map', 'brief', 'no-adapter', 'no-start', 'port', 'in-project'],
+    flags: ['name', 'product', 'map', 'no-map', 'brief', 'no-adapter', 'no-start', 'port'],
     args: 0,
   },
   {

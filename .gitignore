@@ -1,6 +1,5 @@
 node_modules
 /dist/
-.pjman/index.db
 ui/node_modules
 .claude/worktrees/
 .DS_Store

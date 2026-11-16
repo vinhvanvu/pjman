@@ -1143,7 +1143,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
   let text =
     (read.brief ?? '') +
-    `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
+    `\n---\npjman store: ${store.root}; project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
   if (isMain && (source === 'startup' || source === 'clear')) text += refreshPlugin();
   // the dock is said once, the first time it can open, with the line that turns it off (decision pjman-24/dock-off-switch)
   if (isMain && dockOn() && store.project && !fs.existsSync(path.join(dockDir(), '.told'))) {

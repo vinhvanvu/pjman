@@ -72,7 +72,7 @@ before(() => {
   fs.mkdirSync(path.join(env.PJMAN_HOME, 'claude-code', 'state'), { recursive: true });
   fs.writeFileSync(path.join(env.PJMAN_HOME, 'claude-code', 'state', 'sess-both.json'), '{"bound":"change:fresh"}');
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ cwd: project, inProject: true });
+  init({ cwd: project });
   store = findStore(project)!;
   change(store, 'eight-week-test', { title: 'The test', summary: 's', writer: 'person:tester' });
 });
@@ -85,11 +85,8 @@ test('SessionStart creates the session record and injects the board', () => {
   assert.equal(rec.data.agent, 'agent:claude-code');
   assert.equal(rec.data.on_behalf_of, undefined);
   assert.equal(rec.data.writer, 'agent:claude-code');
-  // who the person is, checked once at startup: this store holds no record for the actor, so that is said, with the way out
-  assert.match(
-    ctx,
-    /\nIdentity \(pjman whoami\):\n- person:tester has no record: run pjman init.*\nOffer the command to the person\.\n/,
-  );
+  // who the person is, checked once at startup: init made the actor's record, so nothing is said
+  assert.ok(!/Identity \(pjman whoami/.test(ctx), 'a known person says nothing about identity');
   assert.ok(
     !/Identity \(pjman whoami/.test(context(hook('SessionStart', { source: 'resume' }))),
     'resume says nothing about identity',
@@ -479,7 +476,7 @@ test('a subagent is a child session with parent', () => {
   assert.match(child.sections.get('Log')!, /Found three files/);
 });
 
-test('compaction rehydrates the bound change; the store stays valid; a non-pjman directory is silent', () => {
+test('compaction rehydrates the bound change; the store stays valid', () => {
   const ctx = context(hook('SessionStart', { source: 'compact' }));
   assert.match(
     ctx,
@@ -490,7 +487,6 @@ test('compaction rehydrates the bound change; the store stays valid; a non-pjman
     validate(loadStore(store)).filter((p) => p.level === 'error'),
     [],
   );
-  assert.equal(hook('SessionStart', { cwd: os.tmpdir(), session_id: 'zzz', source: 'startup' }), '');
 });
 
 test('a ticket a change only links binds nothing and is to be synced; the sync binds the one change it creates (change:pjman-21)', () => {

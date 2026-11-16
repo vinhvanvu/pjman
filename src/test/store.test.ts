@@ -21,7 +21,7 @@ import {
   ls,
   storeContext,
 } from '../model/view.js';
-import { findStore, readUserConfig, writeStoreConfig, type Store } from '../store/config.js';
+import { findStore, ownsRepository, readUserConfig, writeStoreConfig, type Store } from '../store/config.js';
 import {
   fieldRef,
   findReferences,
@@ -71,7 +71,7 @@ test('init creates the global store, its own repository, and registers the repos
   const found = findStore(project);
   assert.ok(found);
   store = found;
-  assert.equal(store.mode, 'standalone');
+  assert.ok(ownsRepository(store));
   assert.equal(store.root, path.join(home, 'store'));
   assert.equal(store.config.name, 'global');
   assert.equal(store.project, 'project:project');
@@ -304,19 +304,6 @@ test('a second repository joins the same global store as its own project; the bo
   assert.deepEqual(loadStore(store).byKey.get('change:project/x2')![0].data.aliases, ['other/x2']);
   assert.equal(storeContext(s3, { project: 'project:other' }).changes.length, 0);
   assert.throws(() => storeContext(store, { project: 'project:nope' }), /resolves to no project/);
-});
-
-test('init --in-project never commits; the store resolves by walking up', () => {
-  const p2 = path.join(tmp, 'p2');
-  fs.mkdirSync(path.join(p2, 'src'), { recursive: true });
-  git(p2, 'init', '-q');
-  init({ cwd: p2, inProject: true });
-  const s = findStore(path.join(p2, 'src'));
-  assert.ok(s);
-  assert.equal(s.mode, 'in-project');
-  const r = change(s, 'x', { title: 'X', summary: 's' });
-  assert.equal(r.commit, null);
-  assert.match(git(p2, 'status', '--short'), /\.pjman/);
 });
 
 test('the store resolves from inside its own directory, unscoped', () => {

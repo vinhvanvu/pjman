@@ -74,7 +74,6 @@ test('no actor and no record are said with the way out', () => {
   const { project } = machine('[user]\n\tname = Carol\n');
   const store = {
     root: path.join(project, 'nowhere'),
-    mode: 'standalone',
     config: { name: 'x', layers: [], vocabulary: {}, source_kinds: ['github-user', 'email'], tree_levels: [] },
   } as Store;
   let id = identity(store);

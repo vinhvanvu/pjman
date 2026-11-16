@@ -6,11 +6,9 @@ The tool in full: the store, `pjman init`, every command, the product tree, trac
 
 One global store per person: `~/.pjman/store`, its own git repository. `pjman init` in a repository creates the store the first time, registers the repository as a project (`project:<folder-name>`, or `--name`), and maps the repository's path to that project in `~/.pjman/config.yaml`. The tool commits every write it makes there. A change belongs to the project of the directory it was created from; `pjman context` is that project's board, `--all` every project's.
 
-Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root or a `.pjman/` walking up; else the user map, which also names the current project; else, outside any git repository, the global store with no project.
+Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root walking up; else the user map, which also names the current project; else, outside any git repository, the global store with no project.
 
 A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): the source kind of its tickets. A ticket id or ticket URL then resolves through the getter to the change that binds it, and the adapter binds a session to that change, creating it when none binds the ticket.
-
-`pjman init --in-project` makes a store at `<repo>/.pjman/` instead, tracked with the project and never committed by the tool. It is set aside: kept for a repository that must carry its own record.
 
 ```
 pjman.yaml                                             name, layers, vocabulary, source_kinds, version (the format the store is in)
@@ -399,8 +397,8 @@ pjman stop
 pjman serve [--port <n>] [--host <addr>] [--static <dir>] [--register|--no-register]
     the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs. PORT from the environment when --port is absent; with neither, a registered server comes back on the port it last had (~/.pjman/port) when that is free, so docks already open keep working, and takes a new one when it is taken; a checkout registers only with --register
 
-pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>] [--in-project]
-    the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record). Run again, it is the health check
+pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>]
+    the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report. Run again, it is the health check
 
 pjman where [--json]
     print the store this directory resolves to and its mode; --json adds the project, its product, its tracker and the actor

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { readUserConfig, type Store } from '../store/config.js';
+import { ownsRepository, readUserConfig, type Store } from '../store/config.js';
 import { stringifyRecord } from '../store/frontmatter.js';
 import { emit, type EventInput } from '../store/events.js';
 import { commitAll } from '../store/git.js';
@@ -102,13 +102,13 @@ export function endBatch(): EventInput[] {
   return held;
 }
 
-/** In standalone mode the tool commits after every write it makes; in-project, the project's workflow does. */
-export function commitIfStandalone(store: Store, message: string, session?: string): string | null {
-  if (store.mode !== 'standalone') return null;
+/** The tool commits after every write it makes, in a store that is its own repository (ownsRepository). */
+export function commitStore(store: Store, message: string, session?: string): string | null {
+  if (!ownsRepository(store)) return null;
   return commitAll(store.root, message, session);
 }
 
-/** The end of every write: commit (standalone), then one event per record written, carrying the commit, then the status
+/** The end of every write: commit, then one event per record written, carrying the commit, then the status
  *  lift those events call for. */
 export function finishWrite(
   store: Store,
@@ -125,7 +125,7 @@ export function finishWrite(
     liftAfter(store, events, session);
     return null;
   }
-  const commit = commitIfStandalone(store, message, session);
+  const commit = commitStore(store, message, session);
   emit(
     store,
     events.map((e) => ({ ...e, session: e.session ?? session })),
