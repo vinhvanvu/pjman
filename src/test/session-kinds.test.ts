@@ -37,7 +37,7 @@ before(() => {
   const dir = path.join(tmp, 'web');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'web' });
+  init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
   change(store, 'cart', { title: 'The cart', summary: 's', project: 'project:web' });
   newRecord(store, 'source', 'github-pr:acme/web#7', { title: 'Round the tax up' });

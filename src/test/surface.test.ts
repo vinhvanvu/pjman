@@ -55,7 +55,7 @@ before(() => {
   git(project, 'init', '-q');
   git(project, 'config', 'user.name', 'Tester');
   git(project, 'config', 'user.email', 't@example.com');
-  init({ checkers: [], cwd: project, name: 'app' });
+  init({ cwd: project, name: 'app' });
   store = findStore(project)!;
   newRecord(store, 'actor', 'person:vinh', { name: 'Vinh' });
   newRecord(store, 'feature', 'checkout', {

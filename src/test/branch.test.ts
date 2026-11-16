@@ -26,7 +26,7 @@ let store: Store;
 before(() => {
   fs.mkdirSync(project, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ checkers: [], cwd: project, name: 'app' });
+  init({ cwd: project, name: 'app' });
   store = findStore(project)!;
   change(store, 'card-export', { title: 'Card export', summary: 'Export.' });
   newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code' });

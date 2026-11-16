@@ -144,7 +144,7 @@ esac
   process.env.PATH = `${fakes}:${savedPath ?? ''}`;
   fs.mkdirSync(project, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ checkers: [], cwd: project, name: 'app' });
+  init({ cwd: project, name: 'app' });
   store = findStore(project)!;
   change(store, 'login', { title: 'Login', summary: 'Sign in.' });
   // a session that ran in Rex, bound to the change, quiet for an hour by the record: stopped by the record alone

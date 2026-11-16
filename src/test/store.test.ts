@@ -66,7 +66,7 @@ before(() => {
 });
 
 test('init creates the global store, its own repository, and registers the repository as a project', () => {
-  const lines = init({ checkers: [], cwd: project });
+  const lines = init({ cwd: project });
   assert.ok(lines.some((l) => /created the global store/.test(l)));
   const found = findStore(project);
   assert.ok(found);
@@ -83,7 +83,7 @@ test('init creates the global store, its own repository, and registers the repos
     /pjman: new project:project\npjman: new product:project\npjman: new person:tester\npjman: new session-kind:other\npjman: new session-kind:chat\npjman: new session-kind:backlog\npjman: new session-kind:review\npjman: init store global$/,
   );
   assert.ok(fs.existsSync(path.join(store.root, '.gitignore')));
-  assert.deepEqual(init({ checkers: [], cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
+  assert.deepEqual(init({ cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
 });
 
 test('new change, decision, source, actor, session validate and commit', () => {
@@ -277,7 +277,7 @@ test('a second repository joins the same global store as its own project; the bo
   fs.mkdirSync(path.join(p3, 'src'), { recursive: true });
   git(p3, 'init', '-q');
   git(p3, 'remote', 'add', 'origin', 'git@github.com:acme/other.git');
-  init({ checkers: [], cwd: p3, name: 'Other' });
+  init({ cwd: p3, name: 'Other' });
   const s3 = findStore(path.join(p3, 'src'))!;
   assert.equal(s3.root, store.root);
   assert.equal(s3.project, 'project:other');
@@ -310,7 +310,7 @@ test('init --in-project never commits; the store resolves by walking up', () => 
   const p2 = path.join(tmp, 'p2');
   fs.mkdirSync(path.join(p2, 'src'), { recursive: true });
   git(p2, 'init', '-q');
-  init({ checkers: [], cwd: p2, inProject: true });
+  init({ cwd: p2, inProject: true });
   const s = findStore(path.join(p2, 'src'));
   assert.ok(s);
   assert.equal(s.mode, 'in-project');
@@ -732,7 +732,7 @@ test('the brief is short and installs once, between markers, in the harness file
   assert.equal((text.match(/<!-- pjman:brief -->/g) ?? []).length, 1);
   assert.match(text, /^# mine\n\nkeep this\n/);
   assert.match(text, /pjman get <anything>/);
-  const lines = init({ checkers: [], cwd: project, brief: 'claude-md' });
+  const lines = init({ cwd: project, brief: 'claude-md' });
   assert.ok(lines.some((l) => /kept the brief/.test(l)));
   delete process.env.CLAUDE_CONFIG_DIR;
 });
@@ -745,7 +745,7 @@ test('start brings the dashboard up detached and is idempotent; stop takes it do
   assert.ok(!again.started);
   assert.equal(again.address.url, first.address.url);
   assert.equal(readServeAddress()?.pid, first.address.pid);
-  const lines = init({ checkers: [], cwd: project, start: true });
+  const lines = init({ cwd: project, start: true });
   assert.ok(
     lines.some(
       (l) =>
@@ -1140,7 +1140,7 @@ test('init asks about the map once and records the answer; the context says when
   const other = path.join(tmp, 'other');
   fs.mkdirSync(other, { recursive: true });
   git(other, 'init', '-q');
-  const lines = init({ checkers: [], cwd: other, adapter: false, start: false, map: false });
+  const lines = init({ cwd: other, adapter: false, start: false, map: false });
   assert.ok(lines.some((l) => /no product map will be proposed \(project:other map=skip\)/.test(l)));
   // init inventories the repository and records what it holds (decision cold-start-gaps/init-inventories-the-repository)
   assert.ok(
@@ -1152,7 +1152,7 @@ test('init asks about the map once and records the answer; the context says when
   // no line while the project declined
   assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
   // yes on a later init flips it; a bare repository is said to grow its map from the work, never to get a proposal
-  const again = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
+  const again = init({ cwd: other, adapter: false, start: false, map: true });
   assert.ok(
     again.some((l) =>
       /^no map is proposed yet \(project:other map=propose; .*\): there is nothing to survey, so the map grows from the work/.test(
@@ -1186,7 +1186,7 @@ test('init asks about the map once and records the answer; the context says when
   const live = storeContext(own, { project: 'project:other' }).mapPrompt ?? '';
   assert.match(live, /the repository holds docs and code \(README\.md; src\/\)\. the map is proposed from both/);
   assert.match(live, /file it with no feature, then ask the person two or three short questions about the product/);
-  const third = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
+  const third = init({ cwd: other, adapter: false, start: false, map: true });
   assert.ok(
     third.some((l) =>
       l.startsWith('the first change through intake proposes a product map (project:other map=propose'),

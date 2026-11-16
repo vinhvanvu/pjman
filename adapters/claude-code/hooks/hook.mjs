@@ -5,8 +5,8 @@
 //   SessionStart      register the repository if it is not a project yet (auto_register); a start outside any repository (a parent
 //                     directory, the home folder) is a session of the global store with no project, resolved to the project of the
 //                     repository it first works in (PostToolUse); dock the view first; run the reads side by
-//                     side (the brief, `pjman context`, who the person is at startup and /clear (`pjman whoami --verify`, cached a day
-//                     by the tool; injected only when something is off, the rename or claim offered and never run), the receipt's
+//                     side (the brief, `pjman context`, who the person is at startup and /clear (`pjman whoami`; injected
+//                     only when something is off), the receipt's
 //                     watermark, the done changes for the stale-worktree scan, the open PR off main); then the one write, `pjman
 //                     session start`: the session record unless it exists, the start line, the change the branch names bound and
 //                     observed, the brief (the bound change's context in full on resume/compact/clear); the stale worktrees named
@@ -1090,7 +1090,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     receipt: st.seq === undefined ? pjmanAsync(['events', '--receipt', '--json'], { cwd, json: true }) : null,
     who:
       isMain && (source === 'startup' || source === 'clear')
-        ? pjmanAsync(['whoami', '--verify', '--json'], { cwd, json: true })
+        ? pjmanAsync(['whoami', '--json'], { cwd, json: true })
         : null,
     done: isMain ? pjmanAsync(['ls', 'change', '--status', 'done', '--json'], { cwd, json: true }) : null,
     pr:
@@ -1160,10 +1160,9 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   text += read.context ?? '';
   const b = briefText(st, start.brief);
   if (b) text += `\n---\n${start.bound ? 'Bound from the branch.\n' : ''}${b}`;
-  // who the person is, checked against the apps once a day (the tool caches): only what is off is said, with the
-  // command that resolves it; a rename is the person's act, offered and never run unasked
+  // who the person is: only what is off is said, with the command that resolves it
   if (read.who?.notices?.length)
-    text += `\n---\nIdentity (pjman whoami --verify):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person and never run a rename or a claim unasked.\n`;
+    text += `\n---\nIdentity (pjman whoami):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person.\n`;
   emitContext(EVENT, text);
   if (isMain) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));

@@ -13,14 +13,12 @@ import {
   userDir,
   writeStoreConfig,
   writeUserConfig,
-  type Store,
   type StoreConfig,
   type UserStore,
 } from '../store/config.js';
 import { git, gitUserEmail, gitUserName, hasGit, toplevel } from '../store/git.js';
 import { slugify } from '../store/keys.js';
 import { loadStore } from '../store/records.js';
-import { personOf } from '../model/refs.js';
 import { CliError, notFound } from '../store/util.js';
 import { newActor, newProduct, newProject } from '../ops/new.js';
 import { seedSessionKinds } from '../ops/session-kinds.js';
@@ -29,7 +27,7 @@ import { installBrief, type BriefTarget } from './brief.js';
 import { FORMAT_VERSION } from '../ops/migrate.js';
 import { stableRoot, start } from './start.js';
 import { installedTool } from '../server/server.js';
-import { HANDLE_KINDS, checkersFor, formatIdentity, identity, machineName, type Checker } from '../model/identity.js';
+import { formatIdentity, identity } from '../model/identity.js';
 import { describeInventory, inventory, mapGuidance } from '../model/inventory.js';
 import { execFileSync } from 'node:child_process';
 
@@ -50,8 +48,6 @@ export interface InitOpts {
   map?: boolean;
   /** The product the repository belongs to, when it already exists; else one is created with the project's name. */
   product?: string;
-  /** The account checkers (tests pass fakes); the default is GitHub through gh. */
-  checkers?: Checker[];
 }
 
 /** Install the Claude Code plugin from this install at user scope, when `claude` is on PATH, registering the marketplace
@@ -181,62 +177,34 @@ function scaffold(root: string, cfg: StoreConfig): void {
   }
 }
 
-/** The person's login at the forge, when signed in: the first suggestion for a handle. */
-function forgeLogin(checkers: Checker[]): { kind: string; login: string } | null {
-  for (const c of checkers) {
-    if (!HANDLE_KINDS.includes(c.kind)) continue;
-    const login = c.self();
-    if (login) return { kind: c.kind, login };
+/** The machine's account name, the last fallback for a handle. */
+function machineName(): string | null {
+  try {
+    return os.userInfo().username || null;
+  } catch {
+    return null;
   }
-  return null;
 }
 
-/** Make sure the user config names an actor: there is always one. The handle is the person's own, suggested in a fixed
- *  order, the forge login, else the committer name, else this machine's account name, which always exists; the accounts
- *  the fallback knew (the forge login, the committer email) are what the person record links. A handle from the
- *  committer name or the machine claims no account of a handle kind, so it reads as provisional until the person claims
- *  one or renames it (decision handle-from-the-forge/say-it-while-unclaimed). */
-function ensureActor(checkers: Checker[]): {
-  actor?: string;
-  login?: { kind: string; login: string } | null;
-  email?: string | null;
-  name?: string | null;
-} {
+/** Make sure the user config names an actor: there is always one. An actor already named is kept; else the handle is
+ *  the committer name, else this machine's account name, which always exists. The committer email is what the person
+ *  record links. */
+function ensureActor(): { actor?: string; email?: string | null; name?: string | null } {
   const user = readUserConfig();
   const email = gitUserEmail();
   const name = gitUserName();
-  // an actor already named (the config, or the environment of a run) is kept; the forge is asked only to suggest a new handle
+  // an actor already named (the config, or the environment of a run) is kept
   if (user.actor) return { actor: user.actor, email, name };
   if (process.env.PJMAN_WRITER?.startsWith('person:')) {
     user.actor = process.env.PJMAN_WRITER;
     writeUserConfig(user);
     return { actor: user.actor, email, name };
   }
-  const login = forgeLogin(checkers);
-  const handle = [login?.login, name, machineName()].map((s) => (s ? slugify(s) : '')).find(Boolean) ?? '';
-  if (!handle) return { login, email, name };
+  const handle = [name, machineName()].map((s) => (s ? slugify(s) : '')).find(Boolean) ?? '';
+  if (!handle) return { email, name };
   user.actor = `person:${handle}`;
   writeUserConfig(user);
-  return { actor: user.actor, login, email, name };
-}
-
-/** The health of the person record on a re-run: a record that claims no account of a handle kind is given the forge
- *  login when the login is the handle itself (unambiguous, and what the first run would have done); when they differ
- *  nothing is claimed, so a provisional handle never turns chosen by accident, and the read below says what to do. */
-function claimLogin(store: Store, actor: string, checkers: Checker[]): string | null {
-  const loaded = loadStore(store);
-  const rec = loaded.byKey.get(actor)?.[0];
-  if (!rec) return null;
-  const links = Array.isArray(rec.data.links)
-    ? (rec.data.links as unknown[]).filter((l): l is string => typeof l === 'string')
-    : [];
-  if (links.some((l) => HANDLE_KINDS.includes(l.slice(0, l.indexOf(':'))))) return null;
-  const login = forgeLogin(checkers);
-  if (!login || slugify(login.login) !== actor.slice('person:'.length)) return null;
-  const key = `${login.kind}:${login.login}`;
-  if (!store.config.source_kinds.includes(login.kind) || personOf(loaded, key)) return null;
-  set(store, actor, [`links=${[...links, key].join(',')}`], {});
-  return key;
+  return { actor: user.actor, email, name };
 }
 
 /** `owner/name` from the repository's origin remote, when it has one. */
@@ -261,9 +229,7 @@ export function init(opts: InitOpts): string[] {
     tree_levels: [...DEFAULT_TREE_LEVELS],
     version: FORMAT_VERSION,
   });
-  // init is the person's own act, so the apps are asked afresh; the day's cache is refilled for the sessions that follow
-  const checkers = checkersFor({ checkers: opts.checkers, fresh: true });
-  const who = ensureActor(checkers);
+  const who = ensureActor();
   const actor = who.actor;
 
   if (opts.inProject) {
@@ -327,19 +293,12 @@ export function init(opts: InitOpts): string[] {
     let loaded = loadStore(store);
     // the person: a record keyed by their handle, holding the accounts the sources will be matched through
     if (actor && !loaded.byKey.has(actor)) {
-      const links = [
-        who.login ? `${who.login.kind}:${who.login.login}` : null,
-        who.email ? `email:${who.email.toLowerCase()}` : null,
-      ].filter((k): k is string => !!k && store.config.source_kinds.includes(k.slice(0, k.indexOf(':'))));
+      const links = [who.email ? `email:${who.email.toLowerCase()}` : null].filter(
+        (k): k is string => !!k && store.config.source_kinds.includes(k.slice(0, k.indexOf(':'))),
+      );
       newActor(store, actor, { name: who.name ?? undefined, links, writer: actor });
       out.push(`created ${actor}${links.length ? ` (${links.join(', ')})` : ''}`);
       loaded = loadStore(store);
-    } else if (actor) {
-      const claimed = claimLogin(store, actor, checkers);
-      if (claimed) {
-        out.push(`claimed ${claimed} for ${actor}: it is your handle`);
-        loaded = loadStore(store);
-      }
     }
     const known = loaded.byKey.get(key)?.[0];
     // what the repository holds, read now and recorded on the project: the brief's line and intake's offer read by it
@@ -394,14 +353,14 @@ export function init(opts: InitOpts): string[] {
     out.push(`${project} → ${key} in ${userConfigPath()}`);
     out.push('the tool commits every write it makes here');
   }
-  // who you are, as the store and the apps see it: the same read as pjman whoami --verify
+  // who you are: the same read as pjman whoami
   if (opts.inProject)
     out.push(
       actor
         ? `you are ${actor} (user config 'actor')`
         : `no actor known: set 'actor: person:<handle>' in ${path.join(userDir(), 'config.yaml')} or pass --writer`,
     );
-  else out.push(...formatIdentity(identity(openStore(globalStorePath()), { verify: true, checkers })));
+  else out.push(...formatIdentity(identity(openStore(globalStorePath()))));
   if (opts.adapter) out.push(installClaudeAdapter());
   if (opts.brief) {
     const b = installBrief(opts.brief);

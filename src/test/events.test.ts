@@ -30,7 +30,7 @@ before(() => {
   fs.writeFileSync(path.join(process.env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'web' });
+  init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
   change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web' });
   change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });

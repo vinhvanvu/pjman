@@ -199,7 +199,7 @@ pjman activity <ref> [--days 14]         the events beneath a node and what they
 pjman set <ref>... field=value | list+=item | list-=item   authored fields: name, gist, status, links, binds; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; several records in one commit
 pjman rm <ref>... [--detach]             remove records created by mistake; refused while anything refers to one
 pjman mv <kind>:<old> <kind>:<new>       rename a change, a feature, an aspect, a decision… (the old slug stays an alias); every reference follows
-pjman whoami [--verify]                  who the person is: handle, record, accounts (the first of a handle kind is primary); --verify asks the apps. A rename (pjman mv person:<old> person:<new>) or a claim of an account is the person's act: offer it, never run it unasked
+pjman whoami                             who the person is: the configured actor and their record
 pjman apply - --for <key>                many writes as one commit, the commands one per line on stdin; pjman undo reverts it
 pjman note <change|session:<id>> <text>  a note to whoever works a change, or to one session; it arrives in full in the next brief
 pjman validate                           run before committing a store that lives in the project

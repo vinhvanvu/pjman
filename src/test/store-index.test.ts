@@ -54,7 +54,7 @@ before(() => {
   project = path.join(tmp, 'web');
   fs.mkdirSync(project, { recursive: true });
   git(project, 'init', '-q');
-  init({ checkers: [], cwd: project, name: 'web' });
+  init({ cwd: project, name: 'web' });
   store = findStore(project)!;
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:web' });
   change(store, 'card-form', { title: 'Card form', project: 'project:web', features: ['feature:web/checkout'] });

@@ -55,7 +55,7 @@ before(async () => {
   const project = path.join(tmp, 'app');
   fs.mkdirSync(project, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ checkers: [], cwd: project, name: 'app' });
+  init({ cwd: project, name: 'app' });
   store = findStore(project)!;
   sessionStart(store, 'one', { agent: 'agent:claude-code', log: 'session started' });
   sessionStart(store, 'two', { agent: 'agent:claude-code', log: 'session started' });

@@ -18,8 +18,6 @@ export const FLAG_TYPES = {
   'in-project': { type: 'boolean' },
   'no-start': { type: 'boolean' },
   'no-adapter': { type: 'boolean' },
-  verify: { type: 'boolean' },
-  fresh: { type: 'boolean' },
   brief: { type: 'string' },
   open: { type: 'boolean' },
   all: { type: 'boolean' },
@@ -618,7 +616,7 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'the whole onboarding, in one command; again, the health check',
     about:
-      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, holding their forge login and git email as accounts), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record). Run again, it is the health check',
+      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record). Run again, it is the health check',
     usage: [
       'pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>] [--in-project]',
     ],
@@ -638,11 +636,11 @@ export const COMMANDS: Command[] = [
   {
     name: 'whoami',
     group: 'setup',
-    line: 'who you are: the person, their record, their accounts',
+    line: 'who you are: the configured person and their record',
     about:
-      "who you are: the configured person, their record and their accounts in order, the first of a handle kind as the primary one; from the store alone, no app asked. --verify asks each account kind's checker (GitHub through gh; a kind with no checker reports unchecked) and gives each account a verdict, verified, unknown or unchecked, with the answers cached for a day (--fresh asks again). What is off is said with the command that resolves it. Writes nothing",
-    usage: ['pjman whoami [--verify] [--fresh] [--json]'],
-    flags: ['verify', 'fresh'],
+      'who you are: the actor the user config names (actor: in ~/.pjman/config.yaml) and their record in the store. What is off is said with the command that resolves it. Writes nothing',
+    usage: ['pjman whoami [--json]'],
+    flags: [],
     args: 0,
   },
   {
@@ -875,7 +873,7 @@ export const ENTITIES: Entity[] = [
         'create',
         'pjman new actor person:<handle> | agent:<handle> [--links github-user:<login>]...   (pjman init makes yours)',
       ],
-      ['read', 'pjman whoami [--verify] · pjman show person:<handle>'],
+      ['read', 'pjman whoami · pjman show person:<handle>'],
       ['list', 'pjman ls actor'],
       ['update', 'pjman set person:<handle> name=… links+=email:<address>'],
       ['rename', 'pjman mv person:<old> person:<new>   (the old handle stays an alias)'],

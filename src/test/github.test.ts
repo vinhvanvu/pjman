@@ -68,7 +68,7 @@ before(() => {
   execFileSync('git', ['remote', 'add', 'origin', 'git@github.com:acme/app.git'], { cwd: project });
   fs.mkdirSync(process.env.PJMAN_HOME!, { recursive: true });
   fs.writeFileSync(path.join(process.env.PJMAN_HOME!, 'config.yaml'), 'actor: person:tester\nstores: []\n');
-  init({ checkers: [], cwd: project, name: 'app' });
+  init({ cwd: project, name: 'app' });
   store = findStore(project)!;
 });
 

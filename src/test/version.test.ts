@@ -39,7 +39,7 @@ before(() => {
   const web = path.join(tmp, 'web');
   fs.mkdirSync(web, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: web });
-  init({ checkers: [], cwd: web, name: 'web' });
+  init({ cwd: web, name: 'web' });
   store = findStore(web)!;
 });
 

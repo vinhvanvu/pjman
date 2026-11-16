@@ -1282,7 +1282,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'whoami': {
       const store = globalStore() ?? requireStore(cwd, v.store);
-      const id = identity(store, { verify: v.verify, fresh: v.fresh });
+      const id = identity(store);
       if (v.json) json(id);
       else for (const line of formatIdentity(id)) out(line);
       return 0;

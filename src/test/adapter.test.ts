@@ -72,7 +72,7 @@ before(() => {
   fs.mkdirSync(path.join(env.PJMAN_HOME, 'claude-code', 'state'), { recursive: true });
   fs.writeFileSync(path.join(env.PJMAN_HOME, 'claude-code', 'state', 'sess-both.json'), '{"bound":"change:fresh"}');
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ checkers: [], cwd: project, inProject: true });
+  init({ cwd: project, inProject: true });
   store = findStore(project)!;
   change(store, 'eight-week-test', { title: 'The test', summary: 's', writer: 'person:tester' });
 });
@@ -88,7 +88,7 @@ test('SessionStart creates the session record and injects the board', () => {
   // who the person is, checked once at startup: this store holds no record for the actor, so that is said, with the way out
   assert.match(
     ctx,
-    /\nIdentity \(pjman whoami --verify\):\n- person:tester has no record: run pjman init.*\nOffer the command to the person and never run a rename or a claim unasked\.\n/,
+    /\nIdentity \(pjman whoami\):\n- person:tester has no record: run pjman init.*\nOffer the command to the person\.\n/,
   );
   assert.ok(
     !/Identity \(pjman whoami/.test(context(hook('SessionStart', { source: 'resume' }))),
@@ -497,7 +497,7 @@ test('a ticket a change only links binds nothing and is to be synced; the sync b
   const work = path.join(tmp, 'follow-up');
   fs.mkdirSync(work, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: work });
-  init({ checkers: [], cwd: work, name: 'follow-up' });
+  init({ cwd: work, name: 'follow-up' });
   const g = findStore(work)!;
   set(g, 'project:follow-up', ['tracker=linear', 'ext.linear.team=ABC'], {});
   // change:abc-1 is done, and links ABC-2, the follow-up ticket it filed; no change binds ABC-2
@@ -552,7 +552,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   const work = path.join(tmp, 'work');
   fs.mkdirSync(work, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: work });
-  init({ checkers: [], cwd: work, name: 'work' });
+  init({ cwd: work, name: 'work' });
   const g = findStore(work)!;
   const at = (prompt: string) => hook('UserPromptSubmit', { cwd: work, session_id: 'sess-t', prompt });
   hook('SessionStart', { cwd: work, session_id: 'sess-t', source: 'startup' });
@@ -776,7 +776,7 @@ test('SessionStart names the worktrees whose change is done and whose branch is 
     execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@e.com', ...args], { cwd, encoding: 'utf8' }).trim();
   git(['init', '-q', '-b', 'main']);
   git(['commit', '-q', '--allow-empty', '-m', 'root']);
-  init({ checkers: [], cwd: trees, name: 'trees' });
+  init({ cwd: trees, name: 'trees' });
   const g = findStore(trees)!;
   // three worktrees named by the harness for three changes: one done and merged (stale), one done but ahead of main, one still open
   for (const slug of ['old-thing', 'ahead-thing', 'live-thing']) {
