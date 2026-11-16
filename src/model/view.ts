@@ -217,6 +217,9 @@ export interface LsOpts {
   parent?: string;
   /** The changes naming this node or a node beneath it, and the nodes beneath it. */
   feature?: string;
+  /** The product a listing reads inside (the project's): records under another product are left out, records under none
+   *  (sessions, sources, actors) kept. Ignored when --project, --product, --parent or --feature names where to look. */
+  here?: string | null;
 }
 
 export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)): Row[] {
@@ -275,6 +278,14 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
   if (opts.product) {
     const p = node('--product', opts.product.includes(':') ? opts.product : `product:${opts.product}`);
     recs = recs.filter((r) => r.type !== 'product' && rootProductOf(loaded, r)?.key === p.key);
+  }
+  if (opts.here && !opts.project && !opts.product && !opts.parent && !opts.feature) {
+    const here = live(loaded, opts.here)?.key;
+    if (here)
+      recs = recs.filter((r) => {
+        const root = rootProductOf(loaded, r);
+        return !root || root.key === here;
+      });
   }
   if (opts.parent) {
     const p = node('--parent', opts.parent);

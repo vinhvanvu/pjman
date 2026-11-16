@@ -2,6 +2,7 @@ import '../store/quiet.js';
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
 import { findStore, globalStore, globalStorePath, readUserConfig, requireStore } from '../store/config.js';
+import type { Store } from '../store/config.js';
 import { BRIEF } from './brief.js';
 import { start, stop } from './start.js';
 import { openPage, openUrl } from './open.js';
@@ -137,6 +138,11 @@ const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '
 // a key as it prints inside the project (the one formatter, decision pjman-22/key-form), carried in JSON as `printed`
 // beside the full key where a program relays it to a person or an agent (decision pjman-22/hook-printed-keys)
 const printed = (key: string): string => shortKey(key, scopeProduct);
+/** The product of the project a command runs in, as a key: what tree, ls and intake read unless --all. */
+const hereProduct = (store: Store): string | null => {
+  const slug = storeScope(store);
+  return slug ? `product:${slug}` : null;
+};
 
 /** An existing decision named by its slug alone: refused when none or several have it (a new decision is keyed
  *  <change>/<slug>, which says where it lives). */
@@ -643,6 +649,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         product: at(v.product, ['product']),
         parent: at(v.parent, ['change', 'feature', 'product']),
         feature: at(v.feature, ['feature']),
+        here: v.all ? null : hereProduct(store),
       });
       v.json ? json(rows.map((r) => ({ ...r, printed: printed(r.key) }))) : out(formatLs(rows));
       return 0;
@@ -650,7 +657,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'tree': {
       const store = scoped(requireStore(cwd, v.store));
       const loaded = loadStore(store);
-      const root = pos[1] ? resolveArg(loaded, pos[1], { kinds: ['product', 'feature'] }) : undefined;
+      const root = pos[1]
+        ? resolveArg(loaded, pos[1], { kinds: ['product', 'feature'] })
+        : v.all
+          ? undefined
+          : (hereProduct(store) ?? undefined);
       const nodes = tree(loaded, root);
       if (root && !nodes.length) throw notFound(pos[1], { as: 'product or feature' });
       if (v.json) json(nodes);
@@ -712,6 +723,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         cwd,
         projectDir: store.projectDir,
         project: store.project,
+        product: v.all ? null : hereProduct(store),
       });
       v.json ? json(i) : out(formatIntake(i));
       return 0;

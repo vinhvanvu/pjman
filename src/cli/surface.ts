@@ -236,12 +236,12 @@ export const COMMANDS: Command[] = [
     group: 'records',
     line: 'list records of an entity, filtered',
     about:
-      "list records, by entity, status, kind and where they sit: --project for a change's project, --product for anything under a product, --parent for a milestone's children or a feature's nodes, --feature for the changes naming a node or anything beneath it. A status or kind outside the vocabulary is refused. Bugs come worst first, then oldest",
+      "list records, by entity, status, kind and where they sit: --project for a change's project, --product for anything under a product, --parent for a milestone's children or a feature's nodes, --feature for the changes naming a node or anything beneath it. Inside a project, what belongs to another product is left out unless one of those names where to look or --all. A status or kind outside the vocabulary is refused. Bugs come worst first, then oldest",
     usage: [
-      'pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|session-kind|actor] [--status <s>] [--kind work|bug|milestone] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--json]',
+      'pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|session-kind|actor] [--status <s>] [--kind work|bug|milestone] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--all] [--json]',
       'pjman ls session --kind <session kind>   (the sessions with no change given that kind)',
     ],
-    flags: ['status', 'kind', 'project', 'product', 'parent', 'feature'],
+    flags: ['status', 'kind', 'project', 'product', 'parent', 'feature', 'all'],
     args: 1,
   },
   {
@@ -406,9 +406,9 @@ export const COMMANDS: Command[] = [
     group: 'reading',
     line: 'the product by its features, with derived status, owners and backlog',
     about:
-      'the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature',
-    usage: ['pjman tree [<product>|<feature>] [--json]'],
-    flags: [],
+      "the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)",
+    usage: ['pjman tree [<product>|<feature>] [--all] [--json]'],
+    flags: ['all'],
     args: 1,
   },
   {
@@ -426,9 +426,9 @@ export const COMMANDS: Command[] = [
     group: 'reading',
     line: 'what already exists for a request, before it is filed',
     about:
-      "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Never writes; the intake skill answers its four questions from this",
-    usage: ['pjman intake <text> [--json]', 'pjman intake - [--json]   (text on stdin)'],
-    flags: [],
+      "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this",
+    usage: ['pjman intake <text> [--all] [--json]', 'pjman intake - [--all] [--json]   (text on stdin)'],
+    flags: ['all'],
   },
   {
     name: 'refs',
