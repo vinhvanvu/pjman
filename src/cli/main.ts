@@ -44,7 +44,7 @@ import { rm } from '../ops/rm.js';
 import { apply, applyLines, undo } from '../ops/apply.js';
 import { liftsOfStore } from '../ops/lift.js';
 import { formatRest, restOf } from '../model/rest.js';
-import { formatTree, tree } from '../model/tree.js';
+import { formatTree, live, tree } from '../model/tree.js';
 import { formatReceipt, receipt } from '../model/receipt.js';
 import { activity, formatActivity } from '../model/activity.js';
 import { set } from '../ops/set.js';
@@ -62,6 +62,8 @@ import {
   row,
   show,
   storeContext,
+  mapState,
+  type MapState,
 } from '../model/view.js';
 import { describeMigration, formatMismatch, migrate, pendingMigration } from '../ops/migrate.js';
 import { doctor, formatFindings } from './doctor.js';
@@ -138,6 +140,15 @@ const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '
 // a key as it prints inside the project (the one formatter, decision pjman-22/key-form), carried in JSON as `printed`
 // beside the full key where a program relays it to a person or an agent (decision pjman-22/hook-printed-keys)
 const printed = (key: string): string => shortKey(key, scopeProduct);
+/** The map a change just filed brings: its project's product has none, the project did not say skip, and the
+ *  repository has something to survey. */
+const mapDueFor = (store: Store, key: string): MapState | undefined => {
+  const loaded = loadStore(store);
+  const project = live(loaded, loaded.byKey.get(key)?.[0]?.data.project);
+  if (!project) return undefined;
+  const m = mapState(loaded, project, store.project === project.key ? store.projectDir : undefined);
+  return m?.due ? m : undefined;
+};
 /** The product of the project a command runs in, as a key: what tree, ls and intake read unless --all. */
 const hereProduct = (store: Store): string | null => {
   const slug = storeScope(store);
@@ -366,13 +377,17 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           // no such session record: nothing to bind
         }
       }
-      if (v.json) json(r);
+      // a change filed on a product with no map and something to survey brings the map: said where it is filed, the line
+      // the hook arms its stop on (decision pjman-27/trigger)
+      const map = r.type === 'change' ? mapDueFor(store, r.key) : undefined;
+      if (v.json) json(map ? { ...r, map: map.prompt } : r);
       else {
         out(`created ${r.key} at ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
         if (r.type === 'change')
           out(
             `branch: ${branchNameFor(r.key, readUserConfig().branch_prefix)} (recommended; worktree ${worktreeNameFor(r.key)})`,
           );
+        if (map) out(`no product map: ${map.prompt}`);
         for (const n of r.notes) out(`note: ${n}`);
       }
       return 0;

@@ -54,15 +54,16 @@ The tool's output opens with **No map yet** while the product has no feature (un
 and says what the repository holds. The map comes with this change, in the same breath; the change is filed either
 way, since the person came to work it.
 
-- **Docs, code, or both:** file the change with no feature, then follow the `map` skill at once: survey, and open the
-  whole tree as one proposed decision whose text names this change as the first it houses and the node it would name.
-  The apply batch sets the change's features (`set change:<slug> "features=…"` as its last line). Say in the reply
-  that the map waits in the inbox. Docs give the sentences and their status; code gives the split; both give the
-  better proposal.
+- **Docs, code, or both:** file the change with no feature (`pjman new change` repeats the no-map line), then follow
+  the `map` skill at once: ask the person two or three short questions about the product and end the turn; once they
+  answer, survey and open the whole tree as one proposed decision whose text names this change as the first it houses
+  and the node it would name. The apply batch sets the change's features (`set change:<slug> "features=…"` as its last
+  line). "Skip" is an answer: `pjman set project:<slug> map=skip`. Until a decision is opened or the project says
+  skip, every stop is sent back once.
 - **Bare (nothing to survey):** no tree can be proposed, so the map grows from the work. Create the capability this
   change needs under the feature it best correlates to, creating that feature when none exists, so every node has a
-  parent from the first change; name both in the reply. The sizes a proposed map keeps (four to seven layers, no layer
-  of one) apply at proposal and regroup time, not to a growing map; the context offers a regrouping once the shape has
+  parent from the first change; name both in the reply. The sizes a proposed map keeps (three to seven at the top, no node with
+  one child) apply at proposal and regroup time, not to a growing map; the context offers a regrouping once the shape has
   outgrown its first guesses.
 
 ### 2. One deliverable or several?
