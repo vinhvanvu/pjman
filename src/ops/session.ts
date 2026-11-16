@@ -18,7 +18,7 @@ import type { SessionHost } from '../hosts/host.js';
 function load(store: Store, id: string) {
   const loaded = loadStore(store);
   const rec = findSession(loaded, id.startsWith('session:') ? id.slice(8) : id);
-  if (!rec) throw notFound(`session:${id}`, { hint: `pjman session start ${id} --agent … --on-behalf-of … makes it` });
+  if (!rec) throw notFound(`session:${id}`, { hint: `pjman session start ${id} --agent … makes it` });
   if (!rec.valid) throw new CliError(`${rec.path} is invalid; fix it before appending`);
   return { loaded, rec };
 }
@@ -62,7 +62,6 @@ const withLogLine = (rec: Pick<Rec, 'body' | 'sections'>, text: string): string 
 
 export interface StartFlags {
   agent?: string;
-  onBehalfOf?: string;
   parent?: string;
   project?: string;
   /** The start line for the log, in the adapter's words (session started, resumed, after /clear …). */
@@ -112,14 +111,12 @@ export function sessionStart(store: Store, ident: string, flags: StartFlags): St
     body = existing.body;
   } else {
     if (!flags.agent) throw new CliError('--agent is required (an agent key)');
-    if (!flags.onBehalfOf) throw new CliError('--on-behalf-of is required (a person key)');
     const started = new Date().toISOString();
     const date = localDate(new Date(started));
     rel = path.join('sessions', `${date}-${id}.md`);
     if (fs.existsSync(path.join(store.root, rel))) throw new CliError(`refused: ${rel} already exists`);
     data = {
       agent: flags.agent,
-      on_behalf_of: flags.onBehalfOf,
       started,
       parent: flags.parent,
       project: flags.project ?? store.project,

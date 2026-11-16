@@ -289,19 +289,7 @@ test('a session started inside Rex records its host, version and validation; a s
   const start = (id: string, env: NodeJS.ProcessEnv, ...more: string[]) =>
     execFileSync(
       process.execPath,
-      [
-        BIN,
-        'session',
-        'start',
-        id,
-        '--agent',
-        'agent:claude-code',
-        '--on-behalf-of',
-        'person:tester',
-        '--log',
-        'session started',
-        ...more,
-      ],
+      [BIN, 'session', 'start', id, '--agent', 'agent:claude-code', '--log', 'session started', ...more],
       { cwd: store.projectDir, encoding: 'utf8', env: { ...env, PJMAN_HOME: process.env.PJMAN_HOME } },
     );
   start('in-rex', withRex);
@@ -346,11 +334,11 @@ test('a host whose version the adapter has not validated is recorded as such, an
     `#!/bin/sh\ncase "$1 $2" in "version --json") echo '{"version":"1.4.0"}';; *) exit 1;; esac\n`,
     { mode: 0o755 },
   );
-  execFileSync(
-    process.execPath,
-    [BIN, 'session', 'start', 'on-new-rex', '--agent', 'agent:claude-code', '--on-behalf-of', 'person:tester'],
-    { cwd: store.projectDir, encoding: 'utf8', env: { ...env, PJMAN_HOME: process.env.PJMAN_HOME } },
-  );
+  execFileSync(process.execPath, [BIN, 'session', 'start', 'on-new-rex', '--agent', 'agent:claude-code'], {
+    cwd: store.projectDir,
+    encoding: 'utf8',
+    env: { ...env, PJMAN_HOME: process.env.PJMAN_HOME },
+  });
   const rec = findSession(loadStore(store), 'on-new-rex')!;
   assert.deepEqual(rec.data.host, {
     name: 'rex',

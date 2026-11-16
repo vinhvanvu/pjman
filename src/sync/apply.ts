@@ -85,7 +85,7 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     // on that session's receipt
     const within = process.env.PJMAN_SESSION;
     const parent = within && loadStore(store).byKey.has(within) ? within : undefined;
-    newSession(store, id, { agent: writer, onBehalfOf: actor, writer, parent });
+    newSession(store, id, { agent: writer, writer, parent });
     session = `session:${id}`;
   }
   const stamp = { writer, session, created: localDate() };

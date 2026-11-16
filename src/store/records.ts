@@ -114,6 +114,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
   session: [
     'agent',
+    // on_behalf_of: no longer written (pjman is one person's); kept so older sessions that carry it read clean
     'on_behalf_of',
     'started',
     'parent',

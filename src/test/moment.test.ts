@@ -48,7 +48,7 @@ before(() => {
   set(store, 'change:login', ['gist=Login with magic links'], {});
   secondTitle = lastSeqNow();
   tick();
-  newRecord(store, 'session', 's-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's-1', { agent: 'agent:claude-code' });
   sessionBind(store, 's-1', 'change:shop/login');
   tick();
   sessionLog(store, 's-1', 'First stop.');

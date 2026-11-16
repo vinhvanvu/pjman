@@ -34,7 +34,7 @@ before(() => {
   store = findStore(dir)!;
   change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web' });
   change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
-  newRecord(store, 'session', 'me', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'me', { agent: 'agent:claude-code' });
 });
 
 test('a set that moves a status carries the new value; one that moves another field carries none', () => {

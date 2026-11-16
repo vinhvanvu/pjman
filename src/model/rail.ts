@@ -95,7 +95,6 @@ export interface Rail {
 export interface RailSession {
   key: string;
   agent?: string;
-  onBehalfOf?: string;
   started?: string;
   /** Its first and last event on the change, and how many. */
   first: string;
@@ -344,7 +343,6 @@ function sessionsOn(loaded: Loaded, events: StoreEvent[]): RailSession[] {
     by.set(e.session, {
       key: rec?.key ?? e.session,
       agent: str(rec?.data.agent),
-      onBehalfOf: str(rec?.data.on_behalf_of),
       started: str(rec?.data.started),
       first: e.at,
       last: e.at,

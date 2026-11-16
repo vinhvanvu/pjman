@@ -147,7 +147,7 @@ const KEY_FIELDS: Record<RecordType, string[]> = {
   decision: ['supersedes', 'decided_by'],
   release: ['ships'],
   source: [],
-  session: ['changes', 'parent', 'project', 'agent', 'on_behalf_of', 'kind'],
+  session: ['changes', 'parent', 'project', 'agent', 'kind'],
   'session-kind': [],
   actor: [],
 };

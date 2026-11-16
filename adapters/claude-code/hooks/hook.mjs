@@ -941,7 +941,7 @@ function exportToShell(env) {
 
 /** The session's record, created unless it exists: one write, whose refusal says when the record is already there. */
 function sessionArgs(store, sid, parent) {
-  const args = ['new', 'session', sid, '--agent', AGENT, '--on-behalf-of', store.actor, '--writer', AGENT];
+  const args = ['new', 'session', sid, '--agent', AGENT, '--writer', AGENT];
   if (parent) args.push('--parent', `session:${parent}`);
   return args;
 }
@@ -1121,8 +1121,6 @@ async function sessionStart(input, store, sid, env, st, cwd) {
       sid,
       '--agent',
       AGENT,
-      '--on-behalf-of',
-      store.actor,
       '--writer',
       AGENT,
       '--log',

@@ -173,11 +173,11 @@ A person or an agent, with their accounts.
 
 ### session
 
-A run of an agent on behalf of a person: append-only.
+A run of an agent: append-only.
 
 | operation | command |
 |---|---|
-| create | `pjman session start <id> --agent <agent> --on-behalf-of <person>   (the adapter does it)` |
+| create | `pjman session start <id> --agent <agent>   (the adapter does it)` |
 | read | `pjman show session:<id> · pjman brief --session <id> · pjman open --session <id>` |
 | list | `pjman ls session` |
 | update | `pjman session log\|bind\|unbind\|observe\|focus\|project <id> … · pjman session name <id> ["…"] [--kind <kind>]   (a session with no change: its name and kind, inferred from its record when not given) · pjman note session:<id> <text>` |
@@ -273,7 +273,7 @@ pjman new change <slug> --name <one to four words> --gist <one line> --origin <t
 pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]
 pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]... [--body <text>]
 pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...
-pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)
+pjman new session <id> --agent <agent> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)
 pjman new session-kind <slug> [--name <one to four words>] [--gist <one line>] [--links <key>]...   (review, backlog, chat and other come with the store; pjman session name creates one it is handed)
     create a record; refused if it would not validate. Keys are paths under the product (feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug>); inside a project the slug alone names a record. A decision is created with pjman decision, a session with pjman session start
 
@@ -355,7 +355,7 @@ pjman events rebuild
 pjman follow [--since <seq>] [--json]
     print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to
 
-pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]
+pjman session start <id> --agent <agent> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]
 pjman session log <id> <text>
 pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)
 pjman session unbind <id> <change>

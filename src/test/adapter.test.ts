@@ -83,7 +83,7 @@ test('SessionStart creates the session record and injects the board', () => {
   assert.match(ctx, /change:eight-week-test/);
   const rec = loadStore(store).byKey.get('session:sess-a')![0];
   assert.equal(rec.data.agent, 'agent:claude-code');
-  assert.equal(rec.data.on_behalf_of, 'person:tester');
+  assert.equal(rec.data.on_behalf_of, undefined);
   assert.equal(rec.data.writer, 'agent:claude-code');
   // who the person is, checked once at startup: this store holds no record for the actor, so that is said, with the way out
   assert.match(
@@ -626,7 +626,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   hook('SubagentStart', { cwd: work, session_id: 'sess-t', agent_id: 'sess-t-child', agent_type: 'Explore' });
   assert.equal(loadStore(g).byKey.get('session:sess-t-child')![0].data.parent, 'session:sess-t');
   set(g, 'change:work/abc-1234', ['notes=from the child'], { session: 'session:sess-t-child' });
-  newRecord(g, 'session', 'sess-elsewhere', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(g, 'session', 'sess-elsewhere', { agent: 'agent:claude-code' });
   change(g, 'elsewhere', {
     title: 'Elsewhere',
     summary: 's',

@@ -151,7 +151,6 @@ A run. Written by one adapter; append-only; never hand-edited (a store's bootstr
 | Field | A/M | Notes |
 |---|---|---|
 | `agent` | M | Actor key |
-| `on_behalf_of` | M | Actor key: the person the run worked for |
 | `started` | M | Timestamp |
 | `parent` | M | Session key, optional: the run that spawned this one |
 | `changes` | M | Change keys bound during the run, in order |
@@ -176,7 +175,7 @@ SQLite, in `index.db` at the store root, git-ignored, rebuilt from the records b
 
 ### Provenance
 
-`writer` and `session` on records that adapters write; `parent`, `agent`, `on_behalf_of` on sessions; git for the rest. An adapter that commits records adds a `Pjman-Session: <id>` trailer. Provenance is a property of the Phase 1 backend (files in git), not a claim about every backend.
+`writer` and `session` on records that adapters write; `parent` and `agent` on sessions (an older session may carry `on_behalf_of`, no longer written and ignored); git for the rest. An adapter that commits records adds a `Pjman-Session: <id>` trailer. Provenance is a property of the Phase 1 backend (files in git), not a claim about every backend.
 
 ### Location and configuration
 

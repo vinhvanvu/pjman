@@ -43,7 +43,7 @@ before(async () => {
   store = findStore(project)!;
   change(store, 'login', { title: 'Login', summary: 'Sign in.', binds: ['linear:APP-1'], links: ['file:README.md'] });
   decisionRec(store, 'login/magic-links', { title: 'Magic links', decision: 'Links.', why: 'No passwords.' });
-  newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code' });
   const ui = path.join(tmp, 'ui');
   fs.mkdirSync(ui);
   fs.writeFileSync(path.join(ui, 'index.html'), '<!doctype html><title>pjman</title>');

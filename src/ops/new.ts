@@ -69,7 +69,6 @@ export interface NewFlags {
   supersedes?: string;
   url?: string;
   agent?: string;
-  onBehalfOf?: string;
   parent?: string;
   product?: string;
   owners?: string[];
@@ -627,7 +626,6 @@ export function newSession(store: Store, ident: string, flags: NewFlags): NewRes
   const id = ident.startsWith('session:') ? ident.slice(8) : ident;
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new CliError(`'${id}' is not a usable session id`);
   if (!flags.agent) throw new CliError('--agent is required (an agent key)');
-  if (!flags.onBehalfOf) throw new CliError('--on-behalf-of is required (a person key)');
   const started = flags.started ?? new Date().toISOString();
   if (Number.isNaN(Date.parse(started))) throw new CliError('--started must be a timestamp');
   const date = localDate(new Date(started));
@@ -639,7 +637,6 @@ export function newSession(store: Store, ident: string, flags: NewFlags): NewRes
   const env = envelope(flags);
   const data: Record<string, unknown> = {
     agent: flags.agent,
-    on_behalf_of: flags.onBehalfOf,
     started,
     parent: flags.parent,
     // the project the session runs in, so a view of it knows its product before it binds a change

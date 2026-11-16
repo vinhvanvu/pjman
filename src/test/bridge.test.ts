@@ -83,22 +83,22 @@ before(() => {
   decisionRec(store, 'card-form/later', { title: 'Later', decision: 'd2', why: 'w' });
   decisionRec(store, 'card-form/why', { title: 'Why', decision: 'd', why: 'w' });
   // waiting: bound, then stopped with a line, and a decision proposed on its change
-  newRecord(store, 'session', 's-wait', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's-wait', { agent: 'agent:claude-code' });
   sessionBind(store, 's-wait', 'change:shop/card-form');
   tick();
   sessionLog(store, 's-wait', 'Opened a decision; it is yours.');
   // working: its last act came after its last line
-  newRecord(store, 'session', 's-work', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's-work', { agent: 'agent:claude-code' });
   sessionLog(store, 's-work', 'session started');
   tick();
   sessionBind(store, 's-work', 'change:shop/chore');
   // stopped: a line last, nothing proposed on its change
-  newRecord(store, 'session', 's-stop', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's-stop', { agent: 'agent:claude-code' });
   sessionBind(store, 's-stop', 'change:shop/chore');
   tick();
   sessionLog(store, 's-stop', 'Done for now.');
   // ended on a change in review
-  newRecord(store, 'session', 's-end', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's-end', { agent: 'agent:claude-code' });
   sessionBind(store, 's-end', 'change:shop/chore');
   tick();
   sessionLog(store, 's-end', 'Shipped it; left for review.');
@@ -107,14 +107,13 @@ before(() => {
   // a subagent of s-work: carried under it, never a row
   newRecord(store, 'session', 's-kid', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     parent: 'session:s-work',
   });
   sessionLog(store, 's-kid', 'spawned by session:s-work (fork)');
   tick();
   sessionLog(store, 's-kid', 'Built the thing.');
   // no change yet: only its project names its product
-  newRecord(store, 'session', 's-fresh', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's-fresh', { agent: 'agent:claude-code' });
   sessionLog(store, 's-fresh', 'session started');
   // in motion without a session: blocked, touched by a write; finished, touched but never listed
   change(store, 'stuck', {

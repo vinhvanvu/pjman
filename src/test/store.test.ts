@@ -100,7 +100,7 @@ test('new change, decision, source, actor, session validate and commit', () => {
   assert.equal(d.path, 'products/project/changes/schema/decisions/2026-10-10-keys.md');
   newRecord(store, 'source', 'file:SCHEMA.md', { title: 'The schema' });
   assert.ok(loadStore(store).byKey.has('person:tester')); // init made the person record
-  newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code' });
   assert.deepEqual(errors(store), []);
   const text = fs.readFileSync(path.join(store.root, 'products/project/changes/schema/change.md'), 'utf8');
   assert.match(text, /^gist: "Schema: v3"$/m);
@@ -158,7 +158,6 @@ test('a session started just before local midnight is named by that day and vali
   const local = new Date(2026, 9, 25, 23, 30);
   const r = newRecord(store, 'session', 'late-night', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     started: local.toISOString(),
   });
   assert.equal(r.path, 'sessions/2026-10-25-late-night.md');
@@ -471,7 +470,7 @@ test('refs and get name how each change in reach of a source relates to it: bind
   change(store, 'rel-bind', { title: 'Binds', summary: 's', binds: ['linear:REL-1'], links: ['linear:REL-1'] });
   change(store, 'rel-link', { title: 'Links', summary: 's', links: ['linear:REL-1'] });
   change(store, 'rel-seen', { title: 'Seen', summary: 's' });
-  newRecord(store, 'session', 'sess-rel', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'sess-rel', { agent: 'agent:claude-code' });
   sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'linear:REL-1');
   sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'github-pr:acme/app#90');
   sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-link', 'linear:REL-1');
@@ -642,7 +641,7 @@ test('the view renders a reference; the session page reads what a session is on'
   const bySource = renderView(store, { ref: 'file:SCHEMA.md' });
   assert.match(bySource.markdown, /^# file:SCHEMA.md\n## The schema/);
   assert.match(bySource.markdown, /_reached through links_\n\n# change:project\/contract/);
-  newRecord(store, 'session', 'sess-v', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'sess-v', { agent: 'agent:claude-code' });
   const board = viewData(store, { session: 'sess-v', project: 'project:project' });
   assert.equal(board.showing.board, 'project:project');
   assert.equal(board.session?.key, 'session:sess-v');
@@ -764,7 +763,7 @@ test('rm removes a record; refused while referenced; --detach drops droppable re
   change(store, 'doomed', { title: 'Doomed', summary: 'd', binds: ['linear:DOOM-1'], kind: 'milestone' });
   decisionRec(store, 'doomed/why', { title: 'Why', decision: 'd', why: 'w' });
   change(store, 'orphan', { title: 'Orphan', summary: 'o', parent: 'change:project/doomed' });
-  newRecord(store, 'session', 'sess-rm', { agent: 'agent:claude-code', onBehalfOf: 'person:vinh' });
+  newRecord(store, 'session', 'sess-rm', { agent: 'agent:claude-code' });
   sessionBind(store, 'sess-rm', 'change:project/doomed');
   sessionObserve(store, 'sess-rm', 'links', 'change:project/doomed', 'file:src/x.ts');
   assert.throws(() => rm(store, 'change:project/nope'), /resolves to nothing/);
@@ -899,7 +898,7 @@ test('the receipt: what the store received since a point, one line per record, d
 test("a session's receipt: its writes and its spawned sessions', nothing from another session, no line for a spawn", () => {
   change(store, 'receipt-c', { title: 'Receipt C', summary: 's', project: 'project:renamed' });
   const since = readEvents(store).at(-1)!.seq;
-  const who = { agent: 'agent:claude-code', onBehalfOf: 'person:tester' };
+  const who = { agent: 'agent:claude-code' };
   newRecord(store, 'session', 'rc-parent', who);
   newRecord(store, 'session', 'rc-child', { ...who, parent: 'session:rc-parent', session: 'session:rc-child' });
   newRecord(store, 'session', 'rc-grandchild', {

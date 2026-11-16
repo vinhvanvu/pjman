@@ -150,12 +150,11 @@ esac
   // a session that ran in Rex, bound to the change, quiet for an hour by the record: stopped by the record alone
   sessionStart(store, 'in-rex', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     log: 'session started',
     host: { name: 'rex', session: 'session:s1', block: 'block:b1', version: '0.3.1', validated: true },
   });
   // one outside any host, for contrast
-  newRecord(store, 'session', 'plain', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'plain', { agent: 'agent:claude-code' });
   const ui = path.join(tmp, 'ui');
   fs.mkdirSync(ui);
   fs.writeFileSync(path.join(ui, 'index.html'), '<html></html>');
@@ -217,7 +216,6 @@ test('a host frame reaches an open stream when the host speaks', async () => {
     });
   sessionStart(store, 'in-rex-2', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     log: 'session started',
     host: { name: 'rex', session: 'session:s1', block: 'block:b1' },
   });
@@ -282,7 +280,6 @@ test('an acceptance is delivered through the host to the sessions on the change 
   // a Codex session in Rex on the change, beside the Claude Code one already there (in-rex, bound to nothing yet)
   sessionStart(store, 'codex-in-rex', {
     agent: 'agent:codex',
-    onBehalfOf: 'person:tester',
     log: 'session started',
     host: { name: 'rex', session: 'session:s2', block: 'block:b2' },
   });

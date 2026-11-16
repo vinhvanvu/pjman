@@ -31,7 +31,6 @@ test('a start on a branch named for a change is one write: the record, the start
   const before = readEvents(store).length;
   const r = sessionStart(store, 's1', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     log: 'session started',
     branch: 'worktree-login',
     writer: 'agent:claude-code',
@@ -84,7 +83,6 @@ test('a start of a session that exists appends the line and binds nothing twice;
   assert.equal(full.brief?.mode, 'full');
   const loose = sessionStart(store, 's2', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     log: 'session started',
     branch: 'main',
     writer: 'agent:claude-code',
@@ -99,7 +97,6 @@ test('a start of a session that exists appends the line and binds nothing twice;
 test('a session started outside any project is resolved to the project of the repository it works in, once, and logged', () => {
   const loose = sessionStart({ ...store, project: undefined, projectDir: undefined }, 's-loose', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     log: 'session started',
     writer: 'agent:claude-code',
   });

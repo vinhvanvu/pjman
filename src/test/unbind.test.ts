@@ -27,7 +27,7 @@ before(() => {
   store = findStore(dir)!;
   change(store, 'right', { title: 'Right', summary: 's', project: 'project:web' });
   change(store, 'wrong', { title: 'Wrong', summary: 's', project: 'project:web' });
-  newRecord(store, 'session', 's1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's1', { agent: 'agent:claude-code' });
   sessionBind(store, 's1', 'change:right');
   sessionObserve(store, 's1', 'links', 'change:right', 'branch:right');
   sessionBind(store, 's1', 'change:wrong');

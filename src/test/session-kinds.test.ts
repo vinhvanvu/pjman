@@ -58,7 +58,7 @@ test('the four kinds come with the store, each a record with a name and a gist, 
 });
 
 test("a PR observed on the session itself names it review by inference, after the source's title; the getter finds the session from the PR", () => {
-  newRecord(store, 'session', 's1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's1', { agent: 'agent:claude-code' });
   sessionObserve(store, 's1', 'links', 'session:s1', 'github-pr:acme/web#7');
   assert.deepEqual(
     ownSources(session('s1')).map((s) => s.to),
@@ -91,14 +91,14 @@ test("a PR observed on the session itself names it review by inference, after th
 });
 
 test('a ticket with no change bound reads backlog by its key; a session with only log lines reads chat and needs a name; a bare record infers nothing', () => {
-  newRecord(store, 'session', 's2', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's2', { agent: 'agent:claude-code' });
   sessionObserve(store, 's2', 'links', 'session:s2', 'github-issue:acme/web#12');
   assert.deepEqual(inferSessionKind(loadStore(store), session('s2')), {
     kind: 'backlog',
     name: 'acme/web#12',
     from: 'github-issue:acme/web#12',
   });
-  newRecord(store, 'session', 's3', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's3', { agent: 'agent:claude-code' });
   assert.equal(inferSessionKind(loadStore(store), session('s3')), null);
   assert.throws(() => sessionName(store, 's3', {}), /nothing on session:s3 says what it is doing/);
   sessionLog(store, 's3', 'session started');
@@ -111,7 +111,7 @@ test('a ticket with no change bound reads backlog by its key; a session with onl
 });
 
 test('a kind handed to the naming command that the store lacks is created on the spot; one that is a slug of nothing is refused; the name is one to four words', () => {
-  newRecord(store, 'session', 's4', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's4', { agent: 'agent:claude-code' });
   const r = sessionName(store, 's4', { name: 'Sorting the week', kind: 'triage' });
   assert.equal(r.createdKind, true);
   assert.equal(r.kind, 'session-kind:triage');

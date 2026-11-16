@@ -76,7 +76,6 @@ export const FLAG_TYPES = {
   supersedes: { type: 'string' },
   url: { type: 'string' },
   agent: { type: 'string' },
-  'on-behalf-of': { type: 'string' },
   parent: { type: 'string' },
   started: { type: 'string' },
   body: { type: 'string' },
@@ -192,7 +191,7 @@ export const COMMANDS: Command[] = [
       'pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]... [--body <text>]',
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...',
-      'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)',
+      'pjman new session <id> --agent <agent> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)',
       'pjman new session-kind <slug> [--name <one to four words>] [--gist <one line>] [--links <key>]...   (review, backlog, chat and other come with the store; pjman session name creates one it is handed)',
     ],
     flags: {
@@ -206,7 +205,7 @@ export const COMMANDS: Command[] = [
       release: ['at', 'tag', 'level', 'commit', 'url', 'ships', 'links', 'body'],
       source: ['title', 'url', 'links', 'body'],
       actor: ['name', 'url', 'links', 'body'],
-      session: ['agent', 'on-behalf-of', 'parent', 'started', 'project', 'body'],
+      session: ['agent', 'parent', 'started', 'project', 'body'],
       'session-kind': ['name', 'gist', 'links', 'body'],
     },
     retired: {
@@ -492,7 +491,7 @@ export const COMMANDS: Command[] = [
     about:
       'a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
     usage: [
-      'pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]',
+      'pjman session start <id> --agent <agent> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]',
       'pjman session log <id> <text>',
       'pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)',
       'pjman session unbind <id> <change>',
@@ -502,7 +501,7 @@ export const COMMANDS: Command[] = [
       'pjman session name <id> ["<one to four words>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)',
     ],
     flags: {
-      start: ['agent', 'on-behalf-of', 'parent', 'log', 'branch', 'full', 'no-host'],
+      start: ['agent', 'parent', 'log', 'branch', 'full', 'no-host'],
       log: [],
       bind: ['reason', 'via'],
       unbind: [],
@@ -885,9 +884,9 @@ export const ENTITIES: Entity[] = [
   },
   {
     name: 'session',
-    what: 'a run of an agent on behalf of a person: append-only',
+    what: 'a run of an agent: append-only',
     ops: [
-      ['create', 'pjman session start <id> --agent <agent> --on-behalf-of <person>   (the adapter does it)'],
+      ['create', 'pjman session start <id> --agent <agent>   (the adapter does it)'],
       ['read', 'pjman show session:<id> · pjman brief --session <id> · pjman open --session <id>'],
       ['list', 'pjman ls session'],
       [

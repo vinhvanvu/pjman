@@ -168,7 +168,6 @@ export interface ScopeNode {
 export interface LiveSession {
   key: string;
   agent?: string;
-  onBehalfOf?: string;
   started?: string;
   /** The last instant it reached the stream. */
   last: string;
@@ -943,7 +942,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       return {
         key: s.key,
         agent: str(s.data.agent),
-        onBehalfOf: str(s.data.on_behalf_of),
         started: str(s.data.started),
         last: ix.liveSessions.get(s.key)!,
         on,

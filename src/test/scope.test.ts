@@ -113,11 +113,11 @@ before(() => {
     decidedOn: '2026-01-02',
   });
   // working: its last act is a bind, no stop line after it
-  newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code' });
   sessionBind(store, 'live-1', 'change:shop/card-form');
   // stopped: bound, then its stop line last; nothing proposed on its change
   tick();
-  newRecord(store, 'session', 'stopped-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'stopped-1', { agent: 'agent:claude-code' });
   sessionBind(store, 'stopped-1', 'change:shop/chore');
   tick();
   sessionLog(store, 'stopped-1', 'Done for now.');

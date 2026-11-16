@@ -763,7 +763,7 @@ export function formatChangeContext(c: ChangeContext): string {
     out.push('\n## Sessions');
     for (const s of c.sessions.slice(-5)) {
       out.push(
-        `- ${String(s.data.started).slice(0, 10)} ${s.key} ${String(s.data.agent)} for ${String(s.data.on_behalf_of)}${s.last ? ` — ${s.last}` : ''}`,
+        `- ${String(s.data.started).slice(0, 10)} ${s.key} ${String(s.data.agent)}${s.last ? ` — ${s.last}` : ''}`,
       );
     }
   }

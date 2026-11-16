@@ -53,7 +53,7 @@ before(() => {
   change(store, 'sso', { title: 'SSO', summary: 's', project: 'project:web', features: ['feature:login'] });
   change(store, 'invoices', { title: 'Invoices', summary: 's', project: 'project:web', features: ['feature:billing'] });
   for (const id of ['me', 'peer', 'near', 'far', 'gone'])
-    newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+    newRecord(store, 'session', id, { agent: 'agent:claude-code' });
 });
 
 test('an unbound session has no brief; binding gives the change in full once, and the watermark is recorded', () => {

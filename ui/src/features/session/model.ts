@@ -71,20 +71,14 @@ export function blockedWords(kind: string | undefined): string {
         : 'blocked, needs you';
 }
 
-/** The session bar's parts, in order: who for whom, and where it runs; working for how long, or quiet or ended since
+/** The session bar's parts, in order: who, and where it runs; working for how long, or quiet or ended since
  *  when; when it last acted; what waits. The last part is the one that reads in the waits colour when something does. */
 export function sessionBar(
-  session: Pick<SessionFacts, 'agent' | 'onBehalfOf' | 'started' | 'last' | 'state' | 'host'>,
+  session: Pick<SessionFacts, 'agent' | 'started' | 'last' | 'state' | 'host'>,
   waits: number,
   now = Date.now(),
 ): { parts: string[]; waits: string; alarm: boolean } {
-  const who = [
-    session.agent ? short(session.agent) : 'session',
-    session.onBehalfOf ? `for ${short(session.onBehalfOf)}` : '',
-    hostWords(session.host),
-  ]
-    .filter(Boolean)
-    .join(' ');
+  const who = [session.agent ? short(session.agent) : 'session', hostWords(session.host)].filter(Boolean).join(' ');
   const parts = [who];
   const status = session.host?.status;
   if (session.state !== 'ended' && status?.state === 'blocked') parts.push(blockedWords(status.kind));
@@ -96,12 +90,11 @@ export function sessionBar(
   return { parts, waits: waitsLine(waits), alarm: waits > 0 };
 }
 
-/** The session as the crumb names it: the agent, the day it started, who it works for. */
-export function sessionTitle(session: Pick<SessionFacts, 'key' | 'agent' | 'started' | 'onBehalfOf'>): string {
+/** The session as the crumb names it: the agent, and the day it started. */
+export function sessionTitle(session: Pick<SessionFacts, 'key' | 'agent' | 'started'>): string {
   const agent = session.agent ? short(session.agent) : short(session.key).slice(0, 8);
   const day = session.started?.slice(0, 10);
-  const who = session.onBehalfOf ? `, for ${short(session.onBehalfOf)}` : '';
-  return `${agent}${day ? ` · ${day}` : ''}${who}`;
+  return `${agent}${day ? ` · ${day}` : ''}`;
 }
 
 // the change tree's derivations live with the change tree (change:change-detail); the session page reads them there

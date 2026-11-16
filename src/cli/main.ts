@@ -315,7 +315,6 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         name: v.name,
         url: v.url,
         agent: v.agent,
-        onBehalfOf: v['on-behalf-of'],
         parent: v.parent,
         started: v.started,
         product: v.product,
@@ -501,12 +500,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (sub === 'start') {
         if (!id)
           throw usageError(
-            'usage: pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]',
+            'usage: pjman session start <id> --agent <agent> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]',
           );
         // the host is read from this process's own environment: the hook runs inside the terminal the session runs in
         const r = sessionStart(store, id, {
           agent: v.agent,
-          onBehalfOf: v['on-behalf-of'],
           parent: v.parent,
           log: v.log,
           branch: v.branch,

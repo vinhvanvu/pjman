@@ -57,8 +57,8 @@ before(async () => {
   execFileSync('git', ['init', '-q'], { cwd: project });
   init({ checkers: [], cwd: project, name: 'app' });
   store = findStore(project)!;
-  sessionStart(store, 'one', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', log: 'session started' });
-  sessionStart(store, 'two', { agent: 'agent:claude-code', onBehalfOf: 'person:tester', log: 'session started' });
+  sessionStart(store, 'one', { agent: 'agent:claude-code', log: 'session started' });
+  sessionStart(store, 'two', { agent: 'agent:claude-code', log: 'session started' });
   const ui = path.join(tmp, 'ui');
   fs.mkdirSync(ui);
   fs.writeFileSync(path.join(ui, 'index.html'), '<html></html>');

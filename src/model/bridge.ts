@@ -38,7 +38,6 @@ export interface BridgeChange {
 export interface BridgeSession {
   key: string;
   agent?: string;
-  onBehalfOf?: string;
   started?: string;
   /** The last instant the session itself acted: a line it wrote or a write stamped with it. */
   last?: string;
@@ -263,7 +262,6 @@ export function bridge(store: Store, loaded: Loaded, opts: BridgeOpts = {}): Bri
     rows.push({
       key: rec.key,
       agent: str(rec.data.agent),
-      onBehalfOf: str(rec.data.on_behalf_of),
       started: str(rec.data.started),
       last,
       state,

@@ -45,7 +45,7 @@ const REQUIRED: Record<RecordType, string[]> = {
   decision: ['status'],
   release: ['version', 'tag', 'at'],
   source: ['kind', 'key'],
-  session: ['agent', 'on_behalf_of', 'started'],
+  session: ['agent', 'started'],
   'session-kind': ['name'],
   actor: ['kind'],
 };
@@ -683,7 +683,6 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
       }
       case 'session': {
         if (typeof d.agent === 'string') checkRef(r, 'agent', d.agent, ['actor']);
-        if (typeof d.on_behalf_of === 'string') checkRef(r, 'on_behalf_of', d.on_behalf_of, ['actor']);
         if (d.started !== undefined && !isTimestamp(d.started)) err(r, `'started' must be a timestamp`);
         else if (typeof d.started === 'string' && r.fileDate) {
           // the file is named by the local day the session started (the day the person worked); a file named by the

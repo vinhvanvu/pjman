@@ -176,7 +176,7 @@ export function ChangeView({
   );
 }
 
-type Touched = { key: string; agent?: string; onBehalfOf?: string; started?: string; first?: string };
+type Touched = { key: string; agent?: string; started?: string; first?: string };
 
 /** The sessions that touched the change: every one that wrote on it, from its rail, and any bound to it that has not
  *  written yet, each named as the crumb names a session. */
@@ -187,7 +187,6 @@ function touchedBy(ctx: ChangeContext, wrote: readonly RailSession[]): Touched[]
       out.push({
         key: s.key,
         agent: str(s.data.agent),
-        onBehalfOf: str(s.data.on_behalf_of),
         started: str(s.data.started),
         first: str(s.data.started),
       });

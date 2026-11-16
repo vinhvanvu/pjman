@@ -123,7 +123,6 @@ export const workingOn = (sessions: readonly { on?: string; state: string }[], k
 interface LiveOne {
   key: string;
   agent?: string;
-  onBehalfOf?: string;
 }
 
 /** The change bar's parts, in order (decision mirror-the-session-page): who is on it now; how many sessions touched it
@@ -137,7 +136,7 @@ export function changeBar(
   const [one] = o.live;
   if (o.live.length === 1 && one) {
     const who = one.agent ? short(one.agent) : 'a session';
-    parts.push(`${who} on it now${one.onBehalfOf ? `, for ${short(one.onBehalfOf)}` : ''}`);
+    parts.push(`${who} on it now`);
   } else if (o.live.length > 1) parts.push(`${o.live.length} sessions on it now`);
   const n = o.sessions.length;
   const first = o.sessions

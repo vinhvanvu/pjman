@@ -462,9 +462,7 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
   if (rec?.type === 'session')
     result.members = loaded.records.filter((r) => r.type === 'session' && r.data.parent === key).map(row);
   if (rec?.type === 'actor')
-    result.members = loaded.records
-      .filter((r) => r.type === 'session' && (r.data.on_behalf_of === key || r.data.agent === key))
-      .map(row);
+    result.members = loaded.records.filter((r) => r.type === 'session' && r.data.agent === key).map(row);
   return result;
 }
 

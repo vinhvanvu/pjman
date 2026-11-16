@@ -46,8 +46,7 @@ before(() => {
   change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
   decisionRec(store, 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w' });
   decisionRec(store, 'billing/cards', { title: 'Cards', decision: 'd', why: 'w' });
-  for (const id of ['me', 'idle', 'peer'])
-    newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  for (const id of ['me', 'idle', 'peer']) newRecord(store, 'session', id, { agent: 'agent:claude-code' });
   sessionBind(store, 'me', 'change:auth', 'prompt');
   brief(store, 'me');
 });
