@@ -3,3 +3,4 @@ node_modules
 ui/node_modules
 .claude/worktrees/
 .DS_Store
+adapters/claude-code/.claude-plugin/types/
