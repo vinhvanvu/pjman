@@ -6,7 +6,7 @@ import { findReferences, type GetOpts } from './graph.js';
 import type { Loaded, Rec } from '../store/records.js';
 import { ahead, productOf } from './order.js';
 import { mapState, progressOf, type MapState } from './view.js';
-import { derivedStatus, effectsOf, levelOf, live, structuralParent } from './tree.js';
+import { derivedStatus, effectsOf, levelOf, live, rootProductOf, structuralParent } from './tree.js';
 import { lineOf } from './foundation.js';
 
 export interface Candidate {
@@ -105,11 +105,19 @@ function overlap(ask: string[], haystack: string): { score: number; words: strin
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
-export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts = {}): Intake {
+export interface IntakeOpts extends GetOpts {
+  /** The product the request is filed on (the project's, inside one): duplicates, done changes, nodes and milestones are
+   *  its own. Absent, the whole store; a change named in the request is a duplicate wherever it lives. */
+  product?: string | null;
+}
+
+export function intake(store: Store, loaded: Loaded, text: string, opts: IntakeOpts = {}): Intake {
   const ask = words(text);
   const refs = findReferences(loaded, text, opts);
   const referenced = new Set(refs.map((r) => r.change).filter((k): k is string => !!k));
-  const changes = loaded.records.filter((r) => r.type === 'change' && r.valid);
+  const here = opts.product ? live(loaded, opts.product)?.key : undefined;
+  const ours = (r: Rec): boolean => !here || referenced.has(r.key) || rootProductOf(loaded, r)?.key === here;
+  const changes = loaded.records.filter((r) => r.type === 'change' && r.valid && ours(r));
   const isOpen = (c: Rec) => c.data.status !== 'done' && c.data.status !== 'dropped';
 
   const candidate = (c: Rec): ChangeCandidate => {
@@ -140,7 +148,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
     .toSorted(rank)
     .slice(0, 5);
 
-  const features = loaded.records.filter((r) => r.type === 'feature' && r.valid);
+  const features = loaded.records.filter((r) => r.type === 'feature' && r.valid && ours(r));
   const pathOf = (f: Rec): string[] => {
     const out: string[] = [];
     const seen = new Set<string>();
@@ -190,7 +198,10 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: GetOpts
   const products = loaded.records.filter((r) => r.type === 'product' && r.valid);
   const projectRec = store.project ? live(loaded, store.project) : undefined;
   const mine = changes.find((c) => projectRec && live(loaded, c.data.project)?.key === projectRec.key);
-  const product = (mine && productOf(loaded, mine)) ?? (products.length === 1 ? products[0] : undefined);
+  const product =
+    (here ? live(loaded, here) : undefined) ??
+    (mine && productOf(loaded, mine)) ??
+    (products.length === 1 ? products[0] : undefined);
   const sequence = product ? ahead(loaded, product) : [];
   const sequenced = new Set(sequence);
   const onSequence = (c: Rec): boolean => {

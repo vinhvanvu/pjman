@@ -280,9 +280,9 @@ pjman new session-kind <slug> [--name <one to four words>] [--gist <one line>] [
 pjman show <ref> [--json]
     print one record by its key or slug, as it is stored (an aspect with every place it reaches; a place read through its aspect)
 
-pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|session-kind|actor] [--status <s>] [--kind work|bug|milestone] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--json]
+pjman ls [product|feature|aspect|place|project|change|decision|release|source|session|session-kind|actor] [--status <s>] [--kind work|bug|milestone] [--project <key>] [--product <key>] [--parent <key>] [--feature <key>] [--all] [--json]
 pjman ls session --kind <session kind>   (the sessions with no change given that kind)
-    list records, by entity, status, kind and where they sit: --project for a change's project, --product for anything under a product, --parent for a milestone's children or a feature's nodes, --feature for the changes naming a node or anything beneath it. A status or kind outside the vocabulary is refused. Bugs come worst first, then oldest
+    list records, by entity, status, kind and where they sit: --project for a change's project, --product for anything under a product, --parent for a milestone's children or a feature's nodes, --feature for the changes naming a node or anything beneath it. Inside a project, what belongs to another product is left out unless one of those names where to look or --all. A status or kind outside the vocabulary is refused. Bugs come worst first, then oldest
 
 pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...
 pjman set <ref> <field>=- < file   (one value from stdin)
@@ -327,15 +327,15 @@ pjman context [<change> | project:<slug> | product:<slug> | feature:<slug>] [--a
 pjman get <ref> [--json]
     the getter: a key (full, short or former), a source key, a URL, a ticket id, <change>/<slug>, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out. Every command's argument resolves the same way. A bare ticket id (ABC-12) resolves only where exactly one tracker of the project claims its prefix (ext.linear.team, or a change of the project binding a ticket of that prefix); elsewhere write the prefixed key (linear:ABC-12) or the URL
 
-pjman tree [<product>|<feature>] [--json]
-    the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature
+pjman tree [<product>|<feature>] [--all] [--json]
+    the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)
 
 pjman activity <ref> [--days 14] [--since <iso>] [--json]
     the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person. A batch (pjman apply, a bulk set or rm, several steps added) is one entry
 
-pjman intake <text> [--json]
-pjman intake - [--json]   (text on stdin)
-    what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Never writes; the intake skill answers its four questions from this
+pjman intake <text> [--all] [--json]
+pjman intake - [--all] [--json]   (text on stdin)
+    what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this
 
 pjman refs <text> [--json]
 pjman refs - [--json]   (text on stdin)

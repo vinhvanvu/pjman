@@ -194,7 +194,7 @@ test('a key prints in one form on every view: the slug alone inside its product,
   );
   const rest = JSON.parse(pj(['rest', 'near', '--json']).out) as { key: string; printed: string };
   assert.deepEqual([rest.key, rest.printed], ['change:app/near', 'change:near']);
-  const rows = JSON.parse(pj(['ls', 'change', '--json']).out) as { key: string; printed: string }[];
+  const rows = JSON.parse(pj(['ls', 'change', '--all', '--json']).out) as { key: string; printed: string }[];
   assert.equal(rows.find((x) => x.key === 'change:app/near')?.printed, 'change:near');
   assert.equal(rows.find((x) => x.key === 'change:far/remote')?.printed, 'change:far/remote');
   // the receipt's lines are read by the person: printed the same way
@@ -334,6 +334,39 @@ test('ls filters by parent, feature and product; order with no move prints the o
   const o = JSON.parse(pj(['order', '--json']).out) as { product: string; sequence: string[] };
   assert.equal(o.product, 'product:app');
   assert.deepEqual(o.sequence, ['change:app/signup']);
+});
+
+test('inside a project, tree, ls and intake read its product; --all the whole store; a change named in the request wherever it lives (change:pjman-26)', () => {
+  // product:far and change:far/remote come from the key-form test above
+  const keys = (args: string[]) => (JSON.parse(pj([...args, '--json']).out) as { key: string }[]).map((r) => r.key);
+  assert.ok(!keys(['ls', 'change']).includes('change:far/remote'));
+  assert.ok(keys(['ls', 'change', '--all']).includes('change:far/remote'));
+  assert.ok(
+    keys(['ls', 'change', '--product', 'far']).includes('change:far/remote'),
+    'a flag naming where to look wins',
+  );
+  assert.ok(!keys(['ls', 'product']).includes('product:far'));
+  assert.ok(keys(['ls', 'product', '--all']).includes('product:far'));
+  assert.ok(keys(['ls', 'actor']).includes('person:vinh'), 'records under no product are kept');
+  assert.deepEqual(keys(['tree']), ['product:app']);
+  assert.deepEqual(keys(['tree', '--all']).toSorted(), ['product:app', 'product:far']);
+  const dup = (args: string[]) =>
+    (JSON.parse(pj(['intake', ...args, '--json']).out) as { duplicates: { key: string }[] }).duplicates.map(
+      (d) => d.key,
+    );
+  assert.ok(!dup(['the remote change']).includes('change:far/remote'));
+  assert.ok(dup(['the remote change', '--all']).includes('change:far/remote'));
+  assert.ok(dup(['about change:far/remote']).includes('change:far/remote'));
+  // outside any project, the whole store as before
+  const outside = spawnSync(process.execPath, [bin, 'tree', '--json'], {
+    cwd: tmp,
+    env: process.env,
+    encoding: 'utf8',
+  });
+  assert.deepEqual((JSON.parse(outside.stdout) as { key: string }[]).map((r) => r.key).toSorted(), [
+    'product:app',
+    'product:far',
+  ]);
 });
 
 test('the help reads by entity, every command has a group and its usage, and docs/reference.md carries the same text', () => {
