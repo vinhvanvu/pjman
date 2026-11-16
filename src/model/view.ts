@@ -819,6 +819,9 @@ export interface MapState {
   inventory: Inventory | null;
   /** The line the context opens with. */
   prompt: string;
+  /** A map is to be proposed now (something to survey): the first change filed brings it, asked about first (decision
+   *  pjman-27/trigger). False for a bare repository, whose map grows from the work. */
+  due: boolean;
 }
 
 /** The project has no product, or its product has no feature: how the map comes, by what the repository holds, unless
@@ -843,16 +846,17 @@ export function mapState(
   const how = inv
     ? inv.holds === 'bare'
       ? 'Nothing to survey: the map grows from the work. When a change is filed, name the capability it needs under the feature it best correlates to, creating both when none exists (the intake skill); a bug that breaks a behaviour no node has creates the live node. Never a proposal of a tree that has nothing to read.'
-      : `${mapGuidance(inv.holds)}. The first change filed goes through intake, which says the map is missing: file it with no feature and propose the map in the same breath, the whole tree in a proposed decision that names the change as the first it houses; apply only on the go, as one batch (pjman apply).`
-    : "Survey the repository (what the person said, the documentation, the code's split, the store) and propose a product map, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure.";
+      : `${mapGuidance(inv.holds)}. The first change filed goes through intake, which says the map is missing: file it with no feature, then ask the person two or three short questions about the product (who it is for, what it does for them, what is next; "skip" is an answer, and sets map=skip) and end the turn; draft the map from the answers, with the docs and code as backup, in a proposed decision that names the change as the first it houses; apply only on the go, as one batch (pjman apply). The map skill carries the procedure.`
+    : "Ask the person two or three short questions about the product (who it is for, what it does for them, what is next), then survey the repository (the documentation, the code's split, the store) and propose a product map drafted from the answers, the whole tree in a proposed decision; apply it only on the go, as one batch (pjman apply). The map skill carries the procedure.";
   return {
     product: product ?? null,
     inventory: inv,
+    due: !inv || inv.holds !== 'bare',
     prompt: `${what}${holds}. ${how} \`pjman set ${project.key} map=skip\` stops this line.`,
   };
 }
 
-/** The map skill's shape for a proposed tree is four to seven layers at the top; a map grown one change at a time
+/** The map skill's shape for a proposed tree is three to seven nodes at the top; a map grown one change at a time
  *  (a bare repository, or capabilities filed before a proposal) can pass it. Then a regrouping is offered in the
  *  context: the person asks for it, the skill never runs it unasked. `map=skip` ends this line as it ends the other. */
 export function regroupPrompt(loaded: Loaded, project: Pick<Row, 'key' | 'data'>): string | undefined {
@@ -861,7 +865,7 @@ export function regroupPrompt(loaded: Loaded, project: Pick<Row, 'key' | 'data'>
   if (!product) return undefined;
   const top = topFeatures(loaded, product);
   if (top.length <= 7) return undefined;
-  return `${product} has ${top.length} top-level features, more than a proposed map would have (four to seven layers): if the person asks, the map skill regroups them into layers as one proposed decision; say what you see, never regroup unasked.`;
+  return `${product} has ${top.length} top-level features, more than a proposed map would have (three to seven): if the person asks, the map skill regroups them as one proposed decision; say what you see, never regroup unasked.`;
 }
 
 export function formatStoreContext(c: StoreContext): string {

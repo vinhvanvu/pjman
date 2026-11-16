@@ -140,8 +140,38 @@ test('intake on a product with no map says so, by what the repository holds, and
   assert.equal(coded.map?.inventory?.holds, 'code');
   assert.match(
     coded.map?.prompt ?? '',
-    /proposed from the code's split.*file it with no feature and propose the map in the same breath/,
+    /proposed from the code's split.*file it with no feature, then ask the person two or three short questions about the product/,
   );
+  assert.equal(coded.map?.due, true);
+  assert.equal(i.map?.due, false, 'a bare repository grows its map from the work');
+  // filing the change says it too, where the hook arms its stop (decision pjman-27/trigger); a bare one says nothing
+  const pj = (cwd: string, slug: string) =>
+    execFileSync(
+      process.execPath,
+      [
+        path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'bin', 'pjman.js'),
+        'new',
+        'change',
+        slug,
+        '--name',
+        slug,
+        '--gist',
+        'g',
+        '--origin',
+        'o',
+        '--intent',
+        'i',
+        '--done-when',
+        'd',
+      ],
+      { cwd, encoding: 'utf8', env: { ...process.env, PJMAN_SESSION: '' } },
+    );
+  assert.match(pj(bare, 'dome'), /^no product map: product:bare has no map yet; the repository holds code/m);
+  const empty = path.join(tmp, 'empty');
+  fs.mkdirSync(empty, { recursive: true });
+  execFileSync('git', ['init', '-q'], { cwd: empty });
+  init({ checkers: [], cwd: empty, name: 'empty', adapter: false, start: false, map: true });
+  assert.doesNotMatch(pj(empty, 'first'), /no product map/);
   // the shop has a map: nothing about it, and an unmatched request is told to look for the feature it correlates to first
   const mapped = intake(store, loadStore(store), 'export the invoices as a spreadsheet');
   assert.equal(mapped.map, undefined);

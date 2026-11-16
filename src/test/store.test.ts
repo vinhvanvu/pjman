@@ -1186,7 +1186,7 @@ test('init asks about the map once and records the answer; the context says when
   assert.equal(own.project, 'project:other');
   const live = storeContext(own, { project: 'project:other' }).mapPrompt ?? '';
   assert.match(live, /the repository holds docs and code \(README\.md; src\/\)\. the map is proposed from both/);
-  assert.match(live, /file it with no feature and propose the map in the same breath/);
+  assert.match(live, /file it with no feature, then ask the person two or three short questions about the product/);
   const third = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
   assert.ok(
     third.some((l) =>

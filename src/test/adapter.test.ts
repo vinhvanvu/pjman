@@ -299,6 +299,58 @@ test('run to the end: a turn that wrote code may stop only where the change rest
   passes(hook('SubagentStop', { agent_id: 'sub-run', last_assistant_message: 'Wrote some.' }), 'a subagent');
 });
 
+test('a change filed on a product with no map holds every stop once per turn until a decision is opened or map=skip (decision pjman-27/trigger)', () => {
+  const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-map', ...input });
+  const passes = (out: string, what: string) => assert.ok(!/"decision":"block"/.test(out), `${what}: ${out}`);
+  const refused = (out: string, what: string) => {
+    assert.match(out, /"decision":"block"/, what);
+    return (JSON.parse(out) as { reason: string }).reason;
+  };
+  at('SessionStart', { source: 'startup' });
+  at('UserPromptSubmit', { prompt: 'file the first thing for change:eight-week-test' });
+  const filed = (stdout: string, command = 'pjman new change first --name First --gist g') =>
+    at('PostToolUse', { tool_name: 'Bash', tool_input: { command }, tool_response: { stdout, stderr: '' } });
+  // a change filed where the map exists, or the line printed by a read, arms nothing
+  filed('created change:first at products/x/changes/first/change.md\n');
+  filed('no product map: product:x has no map yet', 'pjman context');
+  passes(at('Stop', { last_assistant_message: 'Filed.' }), 'no map line from new change');
+  at('UserPromptSubmit', { prompt: 'file it' });
+  filed('created change:first at products/x/changes/first/change.md\nno product map: product:x has no map yet; …\n');
+  const reason = refused(at('Stop', { last_assistant_message: 'Filed.' }), 'filed on a product with no map');
+  assert.match(reason, /^pjman: a change was filed on product:x, which has no map/);
+  assert.match(reason, /ask the person two or three short questions/);
+  assert.match(reason, /map=skip/);
+  passes(at('Stop', { last_assistant_message: 'Who is it for?', stop_hook_active: true }), 'the marked retry');
+  // the next turn, still nothing proposed: held once again
+  at('UserPromptSubmit', { prompt: 'cooks at home' });
+  refused(at('Stop', { last_assistant_message: 'Noted.' }), 'a later turn with no decision');
+  at('Stop', { last_assistant_message: 'Noted.', stop_hook_active: true });
+  // a decision opened clears it for good
+  at('UserPromptSubmit', { prompt: 'go' });
+  at('PostToolUse', {
+    tool_name: 'Bash',
+    tool_input: {
+      command: 'pjman decision map/tree --name "Tree" --gist g --question q --option a="a" --recommend a="w"',
+    },
+    tool_response: { stdout: 'created decision:map/tree', stderr: '' },
+  });
+  passes(at('Stop', { last_assistant_message: 'The map waits in the inbox.' }), 'a decision opened');
+  at('UserPromptSubmit', { prompt: 'more' });
+  passes(at('Stop', { last_assistant_message: 'Done.' }), 'and the turns after it');
+  // map=skip clears it too
+  at('UserPromptSubmit', { prompt: 'file another' });
+  filed(
+    'created change:second\nno product map: product:x has no map yet\n',
+    'pjman new change second --name S --gist g',
+  );
+  at('PostToolUse', {
+    tool_name: 'Bash',
+    tool_input: { command: 'pjman set project:x map=skip' },
+    tool_response: { stdout: 'set map on project:x', stderr: '' },
+  });
+  passes(at('Stop', { last_assistant_message: 'Skipped the map.' }), 'map=skip');
+});
+
 test('questions become decisions: a reply that asks the person to choose is sent back once unless a decision was written', () => {
   change(store, 'ask-it', { title: 'Ask it', summary: 's', writer: 'person:tester' });
   const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-ask', ...input });

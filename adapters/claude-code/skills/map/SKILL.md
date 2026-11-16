@@ -3,10 +3,10 @@ name: map
 description: >-
   Giving a product its map: when `pjman intake` or `pjman context` says the product has no map and the repository holds
   docs or code (the first change filed brings the map with it, in the same breath), and when the person asks for the
-  map to be regrouped because it has outgrown its shape. Surveys the person's words, the
-  documentation, the code's split and the store; drafts the top level as the layers of the stack, each titled as a
-  sentence a person would recognise; proposes the whole tree in a proposed decision; applies it only on the go, as one
-  batch; verifies. Prescribes the map, never the work.
+  map to be regrouped because it has outgrown its shape. Asks the person about the product first, then surveys the
+  documentation, the code's split and the store; drafts the top level as what the product does for its users, from the
+  person's answers (the stack's layers only when its users would name them); proposes the whole tree in a proposed
+  decision; applies it only on the go, as one batch; verifies. Prescribes the map, never the work.
 ---
 
 ## When
@@ -15,9 +15,10 @@ Twice in a product's life, and only then:
 
 - **No map, and something to read.** `pjman context` opens with `no product map: … has no map yet; the repository
   holds docs / code / docs and code`, and `pjman intake` opens with **No map yet** the first time a change is filed.
-  That filing is the trigger: file the change with no feature, then survey and propose in the same breath, the change
-  named in the decision as the first it houses, so the person who came to work a ticket leaves with the ticket filed
-  and the map waiting in the inbox. Never create the tree without the go.
+  That filing is the trigger: file the change with no feature, then ask (step 0) and, once answered, survey and
+  propose, the change named in the decision as the first it houses, so the person who came to work a ticket leaves
+  with the ticket filed and the map waiting in the inbox. Until a decision is opened or the project says
+  `map=skip`, every stop is sent back once. Never create the tree without the go.
 - **A regrouping, asked for.** The person says the map should be reorganised, or `pjman context` says `map outgrown`
   (more than seven top-level features: a map grown one change at a time has passed the shape a proposal keeps). You
   may say what you see (many flat top-level features; one node holding most of the work; open changes that name no
@@ -35,11 +36,26 @@ A node is a feature when it can be titled as what the product does for a person,
 A package, a module or a directory that cannot be titled that way is not a node: `utils` never appears; `the record of
 the work lives as files a person can read` is a store. The layer is the grouping; the sentence is the title.
 
+## 0. Ask, for a first map
+
+A first map starts from the person's words, not from the code. Before reading anything, ask two or three short
+questions, in plain words, and end the turn:
+
+- Who is the product for?
+- What does it do for them (the three or four things they would say it does)?
+- What is next for it?
+
+These are facts only the person knows, not choices: ask them as they are, never as a decision. "Skip" is an
+answer: set `pjman set project:<slug> map=skip` and say the map can be asked for later. When the person's words are
+already in the conversation (they described the product in this session), say what you took from them and go on to
+the survey. A regrouping asks nothing: the map it reshapes is the person's already.
+
 ## 1. Survey, in this order
 
 The context's line says what the repository holds, so you know before reading which of these exist:
 
-1. **What the person said** about the product: at init, in the prompt, in `project:<slug>`'s title and the product's.
+1. **What the person said** about the product: the answers to step 0 first, then at init, in the prompt, in
+   `project:<slug>`'s title and the product's.
 2. **The documentation**: README, docs, specs, decision records, a changelog. This is where the product is already
    described in a person's sentences, which is what a title must be. Documentation alone is enough for a repository
    with no code yet; each page says what shipped and what is drafted, which gives the status.
@@ -51,17 +67,22 @@ The context's line says what the repository holds, so you know before reading wh
 
 Read; write nothing yet.
 
-## 2. Draft the top level: the layers
+## 2. Draft the top level: what it does for its users
 
-The top-level features are the layers of the stack, each titled as a sentence. Surfaces apart from the store and the
-model; the app apart from both. The usual shape is four, and the repository's own split decides:
+The top-level features are what the product does for its users, in their words: the three or four things the person
+said it does, each titled as a sentence. A small app reads as `people find a recipe by what is in the fridge`, not as
+`store / model / io / app`. The code's split decides what nests beneath them (step 3), never the top.
+
+The stack's layers are the top level only when the product's users are the ones who would name them: a developer
+tool, a library, a platform whose users build on its store and its API. Then surfaces sit apart from the store and
+the model, the app apart from both, and the usual shape is four:
 
 - **store** — what is written: records, keys, validation, provenance
 - **model** — what is read from it: the derivations every surface shares
 - **io** — how it is reached, in and out: the command line, the HTTP API, syncs, adapters, onboarding
 - **app** — what a person sees: shell, lenses, views, the record pane
 
-A library has two or three; a service may have a pipeline where an app would be. Four to seven at the top; never a
+A library has two or three; a service may have a pipeline where an app would be. Three to seven at the top; never a
 layer with one child, never one holding most of the work. These sizes are for a tree proposed or regrouped whole; a
 map growing one change at a time through intake is not held to them until it is regrouped.
 

@@ -26,7 +26,9 @@
 //                     blocker recorded, a status a person set, the plan run to its end); elsewhere the stop is refused once, with the open
 //                     steps and the ways out, and the turn goes on (change:run-to-the-end). A reply on a bound change that asks the person
 //                     to choose (questions laid out with options, or the harness's question prompt used this turn) while no decision was opened or
-//                     added this turn is sent back once to record them as decisions (change:questions-become-decisions). Then a turn that acted appends one log line,
+//                     added this turn is sent back once to record them as decisions (change:questions-become-decisions). A change filed
+//                     on a product with no map (the tool prints `no product map:`) holds every stop to one refusal per turn until a
+//                     decision is opened or map=skip is set (decision pjman-27/trigger). Then a turn that acted appends one log line,
 //                     from the harness's last message; the size of each brief given this turn and the receipt of what the store received
 //                     since the last turn are shown to the person
 //   SubagentStart     a child session with `parent`
@@ -886,6 +888,16 @@ function questionsRefusal(key, questions, asked) {
   return parts.join('\n');
 }
 
+/** Why the stop is refused when the turn filed a change on a product with no map and nothing was proposed (decision
+ *  pjman-27/trigger): ask about the product, then propose, or skip. */
+function mapRefusal(product) {
+  const which = typeof product === 'string' ? product : 'this product';
+  return [
+    `pjman: a change was filed on ${which}, which has no map, and no map decision was opened and map=skip was not set.`,
+    `The first change brings the map (the map skill): ask the person two or three short questions about the product (who it is for, what it does for them, what is next) and end the turn; once they answer, draft the map from their words, the docs and code as backup, and open it as one proposed decision. "Skip" is an answer: pjman set project:<slug> map=skip. If this reply already asks them, end the turn again.`,
+  ].join('\n');
+}
+
 /** Why the stop is refused when the session works on no change and has no name: the command that names it. */
 function unnamedRefusal(sid) {
   return [
@@ -1280,6 +1292,16 @@ async function main() {
       if (input.tool_name === 'Bash' && decisionWrite.test(String(input.tool_input?.command ?? '')))
         st.decided = (st.decided ?? 0) + 1;
       if (input.tool_name === 'AskUserQuestion') st.asked = (st.asked ?? 0) + 1;
+      // a change filed on a product with no map arms the map's stop until a decision is opened or the project says skip
+      // (decision pjman-27/trigger); the tool says so in the line it prints when it files the change
+      if (input.tool_name === 'Bash') {
+        const command = String(input.tool_input?.command ?? '');
+        const response = input.tool_response;
+        const printed = typeof response === 'string' ? response : String(response?.stdout ?? '');
+        if (/^no product map: /m.test(printed) && /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*new\s+change\b/.test(command))
+          st.mapDue = printed.match(/^no product map: (\S+)/m)?.[1] ?? true;
+        if (decisionWrite.test(command) || /\bmap=skip\b/.test(command)) st.mapDue = null;
+      }
       // the agent's own bind (filing or syncing a change binds the run to it, or `pjman session bind`) gives the session its subject as a
       // prompt's does: the sidebar names it and a parked pane follows (change:bind-moves-the-dock)
       const bindingWrite = /\bpjman\s+(?:--\S+(?:\s+\S+)?\s+)*(?:new|session|apply|sync)\b/;
@@ -1351,14 +1373,15 @@ async function main() {
       // or wrote nothing for the change, passes untouched; so does a subagent.
       // Questions become decisions (change:questions-become-decisions): a reply that asks the person to choose, or a turn that put a
       // question through the harness's prompt, while no decision was opened or added this turn, is sent back once to record them.
-      if (EVENT === 'Stop' && !input.agent_id && st.bound && !input.stop_hook_active) {
+      if (EVENT === 'Stop' && !input.agent_id && (st.bound || st.mapDue) && !input.stop_hook_active) {
         const reasons = [];
         let r = null;
-        if ((st.edited ?? 0) > 0) {
+        if (st.mapDue) reasons.push(mapRefusal(st.mapDue));
+        if (st.bound && (st.edited ?? 0) > 0) {
           r = restVerdict(st.bound, cwd);
           if (r && !r.rests) reasons.push(restRefusal(r));
         }
-        if (!(st.decided ?? 0)) {
+        if (st.bound && !(st.decided ?? 0)) {
           const questions = choiceQuestions(input.last_assistant_message);
           // the change as the tool prints it, from its verdict (read here when the turn wrote no code)
           if (questions.length || st.asked)
