@@ -6,7 +6,9 @@ export {
   followState,
   livenessWords,
   newestLines,
+  onPrompted,
   sessionId,
   type FollowState,
   type Standing,
 } from './model';
+export { useFollowWindow } from './useFollowWindow';

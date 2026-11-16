@@ -35,7 +35,7 @@ export interface ViewOpts extends GetOpts {
   session?: string;
   /** What each hosted session's program reports, by session key, as the server follows it (host-watch.ts). */
   hostStates?: ReadonlyMap<string, HostStatus>;
-  /** When the person last prompted each session, by session key, as the server heard it (POST /prompted); held in
+  /** When the person last prompted each session, by session key, as the server heard it (POST /follow); held in
    *  memory, never in the store (decision pjman-24/name-the-shown-session). */
   prompted?: ReadonlyMap<string, string>;
 }

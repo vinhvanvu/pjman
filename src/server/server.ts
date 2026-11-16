@@ -26,6 +26,7 @@ import { HostWatch } from '../hosts/host-watch.js';
 import { hostHere, hostLaunch, hostOpen } from '../ops/host.js';
 import { hostOfRecord, type HostAdapter, type HostId, type HostStatus } from '../hosts/host.js';
 import { sessionLogOf } from '../model/session-state.js';
+import { FollowState } from '../hosts/follow.js';
 
 /** The kinds a `kinds=` filter may name; anything else is ignored. */
 const ROW_KINDS: ReadonlySet<RowKind> = new Set<RowKind>(['write', 'decision', 'line', 'file', 'switch', 'bind']);
@@ -131,7 +132,7 @@ class HttpError extends Error {
 
 /** The server: the library over HTTP. Every endpoint is a library call serialised; nothing is computed here. */
 /** The routes that write; everything else reads. */
-const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch', '/prompted', '/now'];
+const WRITES = ['/order', '/decide', '/reopen', '/open', '/launch', '/follow', '/follow/ensure', '/now'];
 
 /** How long a session's action stands without a newer one: past it the dock says Working again. */
 const NOW_MS = 10 * 60_000;
@@ -209,6 +210,12 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
     about: 'the event stream; live as server-sent events with Accept: text/event-stream',
   },
   {
+    method: 'GET',
+    path: '/follow',
+    about:
+      "the session the follow window shows (the one the person last prompted) and how many follow windows are open; as server-sent events (Accept: text/event-stream or stream=1) the follow window's own stream, counted while open, a `follow` frame each time the session moves",
+  },
+  {
     method: 'POST',
     path: '/order',
     body: '{change, before|after|first|last|later}',
@@ -235,10 +242,9 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
   },
   {
     method: 'POST',
-    path: '/prompted',
+    path: '/follow',
     body: '{session}',
-    about:
-      'the person prompted this session: held in memory, never written to the store, a `prompted` frame on the event stream',
+    about: 'the person is on this session: the follow windows move to it (held in memory, not written to the store)',
   },
   {
     method: 'POST',
@@ -246,6 +252,11 @@ export const ROUTES: { method: 'GET' | 'POST'; path: string; query?: string[]; b
     body: '{session, text?, tool?}',
     about:
       "what a session's agent is doing now, the latest action only (decision dock-redesign/agent-signal): held in memory, never written to the store, a `now` frame on the event stream; no text clears it",
+  },
+  {
+    method: 'POST',
+    path: '/follow/ensure',
+    about: 'whether the caller opens a follow window: yes to one caller while none is open or being opened',
   },
 ];
 
@@ -335,6 +346,15 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   const stopSweeping = follow(store, lastSeq(store), () => sweepSoon());
   sweepSoon();
   const hostStates = (): ReadonlyMap<string, HostStatus> => watch.states();
+  // the follow window (change:follow-window): the session the person is on, sent to every stream as `event: follow`
+  const followFrame = (f: { session: string; at: string; by: string }) =>
+    `event: follow\ndata: ${JSON.stringify({ op: 'follow', type: 'session', key: f.session, at: f.at, by: f.by })}\n\n`;
+  // a follow window holds a stream of its own, apart from the store's: the store's is shared by every page of a
+  // browser (one per browser, through a worker), so it cannot say whether a follow window is open
+  const followStreams = new Set<http.ServerResponse>();
+  const following = new FollowState((f) => {
+    for (const res of followStreams) res.write(followFrame(f));
+  });
   // what each session's agent is doing now (decision dock-redesign/agent-signal): the plugin's mod posts every tool
   // call, the latest is held here and nowhere else, sent to every open stream as a `now` frame and to a stream that
   // opens, so a dock that loads mid-turn reads it at once. Nothing is written to the store; a restart forgets it.
@@ -342,7 +362,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     string,
     { op: 'now'; type: 'session'; key: string; at: string; text?: string; tool?: string }
   >();
-  // when the person last prompted each session (decision pjman-24/name-the-shown-session): posted by the prompt hook,
+  // when the person last prompted each session (decision pjman-24/name-the-shown-session): heard with the follow signal,
   // held here and nowhere else, handed to the session's page beside its record and told to open streams as a
   // `prompted` frame so the page reads it again. A restart forgets it.
   const promptedOf = new Map<string, string>();
@@ -414,8 +434,8 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       try {
         const body = (text ? JSON.parse(text) : {}) as Record<string, unknown>;
         const s = (v: unknown) => (typeof v === 'string' ? v : undefined);
-        if (route === '/prompted') {
-          // not a write to the store: the person prompted this session
+        if (route === '/follow') {
+          // not a write to the store: the person is on this session (decision follow-window/the-signal)
           const given = s(body.session);
           if (!given) throw new HttpError(400, 'bad-request', 'session is required');
           const key = given.startsWith('session:') ? given : `session:${given}`;
@@ -426,7 +446,7 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           promptedOf.set(r.rec.key, at);
           const frame = JSON.stringify({ op: 'prompted', type: 'session', key: r.rec.key, at });
           for (const out of streams) out.write(`event: prompted\ndata: ${frame}\n\n`);
-          return sendJson(res, 200, { data: { session: r.rec.key, at } });
+          return sendJson(res, 200, { data: { ...following.set(r.rec.key), windows: following.windows } });
         }
         if (route === '/now') {
           // not a write to the store: the agent's latest action, held in memory (decision dock-redesign/agent-signal)
@@ -435,6 +455,14 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           const key = given.startsWith('session:') ? given : `session:${given}`;
           const action = s(body.text)?.trim().slice(0, 200) || undefined;
           return sendJson(res, 200, { data: setNow(key, action, s(body.tool)) });
+        }
+        if (route === '/follow/ensure') {
+          // a server just started gives a window that was open its reconnect before answering, so none opens twice
+          const wait = following.waitFor();
+          const answer = () => sendJson(res, 200, { data: following.ensure() });
+          if (wait > 0) setTimeout(answer, wait);
+          else answer();
+          return;
         }
         const writer = readUserConfig().actor;
         if (!writer) throw new HttpError(403, 'no-actor', 'no person is signed in: set actor in ~/.pjman/config.yaml');
@@ -508,6 +536,28 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     const getOpts = { cwd: store.projectDir ?? process.cwd(), projectDir: store.projectDir, project: store.project };
     let m: RegExpExecArray | null;
 
+    if (route === '/follow') {
+      if ((req.headers.accept ?? '').includes('text/event-stream') || url.searchParams.get('stream') === '1') {
+        res.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-store',
+          connection: 'keep-alive',
+        });
+        res.write(`retry: 2000\n\n`);
+        const f = following.get();
+        if (f) res.write(followFrame(f));
+        const beat = setInterval(() => res.write(': keep-alive\n\n'), 15000);
+        followStreams.add(res);
+        following.connected();
+        req.on('close', () => {
+          clearInterval(beat);
+          followStreams.delete(res);
+          following.disconnected();
+        });
+        return;
+      }
+      return send(res, 200, { data: { followed: following.get(), windows: following.windows } });
+    }
     if (route === '/store') {
       const cfg = store.config;
       return send(res, 200, {

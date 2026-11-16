@@ -46,8 +46,11 @@
 //   turns the dock off (decision pjman-24/dock-off-switch). Elsewhere, and whenever the pane was closed, `pjman open
 //   --session` brings the page back; the session's id is exported to the agent's shell as PJMAN_SESSION.
 //
-//   Every prompt in a main session tells a running dashboard that the person prompted it (POST /prompted), so the dock
-//   names when each session was last prompted.
+//   The follow window (change:follow-window). Every prompt in a main session tells a running dashboard that the person is on
+//   this session, and the follow window goes there. In Claude Code's desktop app, where there is no dock, a session's start
+//   opens that window when none is open (decision desktop-app/desktop-view): a detached copy of this hook (FollowWindow) starts the dashboard if none runs, tells it the session, asks
+//   it whether to open one (yes to one caller only, so sessions started together never open two) and runs
+//   `pjman open --follow`. `follow_window: false` in ~/.pjman/config.yaml turns the opening off.
 
 import { execFile, execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -449,11 +452,55 @@ async function postServer(server, route, body, ms = 1500) {
     return null;
   }
 }
-/** The person prompted this session: a running dashboard holds when, for the dock. */
-async function notePrompted(sid) {
-  const server = readServeAddress();
-  if (server) await postServer(server, '/prompted', { session: sid }, 800);
+/** Claude Code's desktop app, which runs its sessions under its own entrypoint: a mod pane there draws only the mod
+ * elements, never the dock's page, so the view is the follow window (decision desktop-app/desktop-view). */
+const inDesktop = () => process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop';
+/** The user config says follow_window: false. Read as text: the hook has no YAML parser. */
+function followWindowOff() {
+  try {
+    const file = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml');
+    return /^follow_window:\s*false\s*$/m.test(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return false;
+  }
 }
+/** The person is on this session (they prompted it): a running dashboard moves the follow window to it. */
+async function followPrompted(sid) {
+  const server = readServeAddress();
+  if (server) await postServer(server, '/follow', { session: sid }, 800);
+}
+/** At a session's start in the desktop app: the follow window opened, unless one is open, detached so the start
+ * does not wait. */
+function startFollowWindow(sid, cwd) {
+  if (!inDesktop() || followWindowOff()) return;
+  try {
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'FollowWindow'], {
+      cwd,
+      detached: true,
+      stdio: 'ignore',
+      env: { ...process.env, PJMAN_FOLLOW_SESSION: sid },
+    });
+    child.unref();
+  } catch (e) {
+    note(`follow window: ${e.message}`);
+  }
+}
+/** The detached half: the dashboard up, told the session, asked whether to open the window, and the window opened. */
+async function followWindow(sid, cwd) {
+  const server = await ensureServer(cwd);
+  if (!server) return;
+  await postServer(server, '/follow', { session: sid });
+  // a dashboard just started waits a moment for a window that was open to reconnect before it answers
+  const r = await postServer(server, '/follow/ensure', {}, 8000);
+  if (!r?.open)
+    return note(
+      `follow window: ${r ? (r.reason === 'open' ? 'one is open' : 'another session is opening one') : 'the dashboard did not answer'}`,
+    );
+  const [cmd, ...pre] = PJMAN;
+  const out = await runAsync(cmd, [...pre, 'open', '--follow'], { cwd });
+  note(out.ok ? `follow window: ${out.out.trim()}` : `follow window: pjman open --follow failed: ${out.err}`);
+}
+
 /** cmux, when the session runs inside it: its socket CLI docks the view and names the change in the sidebar. */
 const inCmux = () => Boolean(process.env.CMUX_PANEL_ID || process.env.CMUX_BUNDLE_ID);
 function cmux(args) {
@@ -697,7 +744,7 @@ async function undockView(sid, reason, store) {
 }
 /** Whether a pane's url is the page at `base`, with or without a query, a hash or a deeper path beneath it. */
 const onPage = (at, base) => at === base || ['?', '#', '/'].some((c) => at.startsWith(base + c));
-/** The session's workspace labelled with the change and where the work stands, by the tool through the host's adapter
+/** The session's block labelled with the change and where the work stands, by the tool through the host's adapter
  *  (change:rex-adapter): at a bind, at the end of a turn that wrote the store, and cleared at the session's end. Only
  *  inside a host the tool knows; elsewhere nothing is asked. */
 const inHost = () => Boolean(process.env.CMUX_WORKSPACE_ID);
@@ -1087,6 +1134,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     return;
   }
   if (isMain) exportToShell(env);
+  if (isMain) startFollowWindow(sid, cwd);
   if (st.seq === undefined) st.seq = read.receipt?.seq ?? 0; // receipts start from here
   if (start.bound) st.bound = start.bound;
   if (st.bound) taken(st, st.bound);
@@ -1131,6 +1179,12 @@ async function promiseObject(obj) {
 
 // --- main ---------------------------------------------------------------------------------------
 async function main() {
+  // the detached half of a session start in the desktop app (startFollowWindow): no stdin, the session in the environment
+  if (EVENT === 'FollowWindow') {
+    const sid = process.env.PJMAN_FOLLOW_SESSION;
+    if (sid) await followWindow(sid, process.cwd());
+    return;
+  }
   const input = readStdin();
   const mainSid = input.session_id;
   if (!mainSid) return;
@@ -1217,7 +1271,7 @@ async function main() {
       emitContext(EVENT, parts.join('\n---\n'));
       saveState(sid, st);
       if (!input.agent_id) await promptedView(sid, cwd, st); // the person is on this session: the workspace's pane goes there
-      if (!input.agent_id) await notePrompted(sid); // and the dashboard told when
+      if (!input.agent_id) await followPrompted(sid); // and the follow window
       return;
     }
     case 'PostToolUse': {

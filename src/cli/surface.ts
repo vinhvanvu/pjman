@@ -582,9 +582,9 @@ export const COMMANDS: Command[] = [
     group: 'dashboard',
     line: "open the dashboard, at a session's page when one is named",
     about:
-      "the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere",
-    usage: ['pjman open [--session <id>]'],
-    flags: [],
+      "the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere. --follow opens the follow window instead: a window of its own that shows the session the person last prompted (an app window on a Chromium browser, a new window in Safari and Firefox; follow_browser in ~/.pjman/config.yaml names another browser)",
+    usage: ['pjman open [--session <id>]', 'pjman open --follow'],
+    flags: ['follow'],
     args: 0,
   },
   {

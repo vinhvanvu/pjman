@@ -82,6 +82,18 @@ and where to read on. The agents with a waking adapter are listed in `src/ops/ho
 harness adapter that gains a wake module adds its agent there. The decision's result lists each delivery and whether
 the host took it.
 
+## The follow window
+
+Where there is no browser pane to dock the session's page in (Claude Code's desktop app, whose mod panes draw only the
+mod elements; decision desktop-app/desktop-view), the session gets the follow window instead (change:follow-window): one
+browser window, its own and never a tab (an app window on a Chromium browser, a new window in Safari and Firefox), at the
+dashboard's `/follow`, that shows the session the person last prompted. The harness adapter tells the dashboard at each
+prompt (`POST /follow`); the window holds `GET /follow` as a stream, which the dashboard counts as an open window, and
+goes to each session it names, or, while the person looks around, holds and offers it. A desktop session's start asks
+`POST /follow/ensure` and opens the window (`pjman open --follow`) only when told to: never while one is open, and to
+one caller only. `follow_window: false` in `~/.pjman/config.yaml` turns the opening off; `follow_browser` names the
+browser. The cmux dock stays as it is.
+
 ## Adding a host
 
 One object in `src/hosts/host.ts` implementing `HostAdapter`, with its manifest, added to `HOSTS`; a fake command in
