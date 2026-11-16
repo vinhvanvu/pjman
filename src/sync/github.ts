@@ -137,7 +137,6 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
       status: mapGhStatus(store, i),
       parent: i.parent !== undefined ? `${repo}#${i.parent}` : undefined,
       kind: i.labels.some((l) => l.toLowerCase() === 'bug') ? 'bug' : undefined,
-      assignees: i.assignees.map((a) => `github-user:${a}`),
       observed: {
         state: i.state,
         state_reason: i.stateReason,

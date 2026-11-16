@@ -50,7 +50,6 @@ export interface View {
 export interface SessionFacts {
   key: string;
   agent?: string;
-  onBehalfOf?: string;
   started?: string;
   /** The log as written, oldest first: the instant and the line. */
   log: { at: string; text: string }[];
@@ -150,7 +149,6 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
   return {
     key: rec.key,
     agent: str(rec.data.agent),
-    onBehalfOf: str(rec.data.on_behalf_of),
     started: str(rec.data.started),
     log,
     on: on?.key,
@@ -228,7 +226,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
       const rec = loaded.byKey.get(s.key)?.[0];
       const log = (rec?.sections.get('Log') ?? '').split('\n').filter((l) => l.trim()).length;
       out.push(
-        `- ${String(s.data.started).slice(0, 10)} \`${s.key.slice(0, 16)}\` ${String(s.data.agent)} for ${String(s.data.on_behalf_of)} · ${log} log line${log === 1 ? '' : 's'}${s.last ? `\n  - ${esc(s.last)}` : ''}`,
+        `- ${String(s.data.started).slice(0, 10)} \`${s.key.slice(0, 16)}\` ${String(s.data.agent)} · ${log} log line${log === 1 ? '' : 's'}${s.last ? `\n  - ${esc(s.last)}` : ''}`,
       );
     }
   }

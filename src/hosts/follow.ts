@@ -8,7 +8,7 @@
 export interface Followed {
   session: string;
   at: string;
-  /** prompt: the person typed into it; focus: the host says its block has the focus (Rex, once validated). */
+  /** prompt: the person typed into it; focus: a host says its block has the focus (none does yet). */
   by: 'prompt' | 'focus';
 }
 

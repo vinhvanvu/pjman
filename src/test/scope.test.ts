@@ -43,10 +43,10 @@ before(() => {
     const dir = path.join(tmp, name);
     fs.mkdirSync(dir, { recursive: true });
     execFileSync('git', ['init', '-q'], { cwd: dir });
-    init({ checkers: [], cwd: dir, name });
+    init({ cwd: dir, name });
   }
   store = findStore(path.join(tmp, 'web'))!;
-  newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
+  newRecord(store, 'product', 'shop', { title: 'Shop', summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
   set(store, 'project:api', ['product=product:shop'], {});
   rm(store, 'product:web');
@@ -113,11 +113,11 @@ before(() => {
     decidedOn: '2026-01-02',
   });
   // working: its last act is a bind, no stop line after it
-  newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'live-1', { agent: 'agent:claude-code' });
   sessionBind(store, 'live-1', 'change:shop/card-form');
   // stopped: bound, then its stop line last; nothing proposed on its change
   tick();
-  newRecord(store, 'session', 'stopped-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'stopped-1', { agent: 'agent:claude-code' });
   sessionBind(store, 'stopped-1', 'change:shop/chore');
   tick();
   sessionLog(store, 'stopped-1', 'Done for now.');
@@ -135,8 +135,6 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.equal(checkout.open, 3); // card-form, card-endpoint, card-tests (through its parent)
   assert.equal(checkout.inFlight, 1);
   assert.deepEqual(checkout.projects, ['project:api', 'project:web']);
-  assert.deepEqual(checkout.owners, ['person:tester']);
-  assert.equal(checkout.ownersFrom, 'product:shop');
   const saved = checkout.children[0];
   assert.equal(saved.name, 'Saved cards'); // the short name the tree shows; the title stays the sentence
   assert.deepEqual(keys(saved.children), ['change:shop/card-form', 'change:shop/card-endpoint']);

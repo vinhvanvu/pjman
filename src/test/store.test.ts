@@ -21,7 +21,7 @@ import {
   ls,
   storeContext,
 } from '../model/view.js';
-import { findStore, readUserConfig, writeStoreConfig, type Store } from '../store/config.js';
+import { findStore, ownsRepository, readUserConfig, writeStoreConfig, type Store } from '../store/config.js';
 import {
   fieldRef,
   findReferences,
@@ -66,12 +66,12 @@ before(() => {
 });
 
 test('init creates the global store, its own repository, and registers the repository as a project', () => {
-  const lines = init({ checkers: [], cwd: project });
+  const lines = init({ cwd: project });
   assert.ok(lines.some((l) => /created the global store/.test(l)));
   const found = findStore(project);
   assert.ok(found);
   store = found;
-  assert.equal(store.mode, 'standalone');
+  assert.ok(ownsRepository(store));
   assert.equal(store.root, path.join(home, 'store'));
   assert.equal(store.config.name, 'global');
   assert.equal(store.project, 'project:project');
@@ -83,7 +83,7 @@ test('init creates the global store, its own repository, and registers the repos
     /pjman: new project:project\npjman: new product:project\npjman: new person:tester\npjman: new session-kind:other\npjman: new session-kind:chat\npjman: new session-kind:backlog\npjman: new session-kind:review\npjman: init store global$/,
   );
   assert.ok(fs.existsSync(path.join(store.root, '.gitignore')));
-  assert.deepEqual(init({ checkers: [], cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
+  assert.deepEqual(init({ cwd: project }).filter((l) => /already registered/.test(l)).length, 1);
 });
 
 test('new change, decision, source, actor, session validate and commit', () => {
@@ -100,7 +100,7 @@ test('new change, decision, source, actor, session validate and commit', () => {
   assert.equal(d.path, 'products/project/changes/schema/decisions/2026-10-10-keys.md');
   newRecord(store, 'source', 'file:SCHEMA.md', { title: 'The schema' });
   assert.ok(loadStore(store).byKey.has('person:tester')); // init made the person record
-  newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'sess-1', { agent: 'agent:claude-code' });
   assert.deepEqual(errors(store), []);
   const text = fs.readFileSync(path.join(store.root, 'products/project/changes/schema/change.md'), 'utf8');
   assert.match(text, /^gist: "Schema: v3"$/m);
@@ -158,7 +158,6 @@ test('a session started just before local midnight is named by that day and vali
   const local = new Date(2026, 9, 25, 23, 30);
   const r = newRecord(store, 'session', 'late-night', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     started: local.toISOString(),
   });
   assert.equal(r.path, 'sessions/2026-10-25-late-night.md');
@@ -278,7 +277,7 @@ test('a second repository joins the same global store as its own project; the bo
   fs.mkdirSync(path.join(p3, 'src'), { recursive: true });
   git(p3, 'init', '-q');
   git(p3, 'remote', 'add', 'origin', 'git@github.com:acme/other.git');
-  init({ checkers: [], cwd: p3, name: 'Other' });
+  init({ cwd: p3, name: 'Other' });
   const s3 = findStore(path.join(p3, 'src'))!;
   assert.equal(s3.root, store.root);
   assert.equal(s3.project, 'project:other');
@@ -305,19 +304,6 @@ test('a second repository joins the same global store as its own project; the bo
   assert.deepEqual(loadStore(store).byKey.get('change:project/x2')![0].data.aliases, ['other/x2']);
   assert.equal(storeContext(s3, { project: 'project:other' }).changes.length, 0);
   assert.throws(() => storeContext(store, { project: 'project:nope' }), /resolves to no project/);
-});
-
-test('init --in-project never commits; the store resolves by walking up', () => {
-  const p2 = path.join(tmp, 'p2');
-  fs.mkdirSync(path.join(p2, 'src'), { recursive: true });
-  git(p2, 'init', '-q');
-  init({ checkers: [], cwd: p2, inProject: true });
-  const s = findStore(path.join(p2, 'src'));
-  assert.ok(s);
-  assert.equal(s.mode, 'in-project');
-  const r = change(s, 'x', { title: 'X', summary: 's' });
-  assert.equal(r.commit, null);
-  assert.match(git(p2, 'status', '--short'), /\.pjman/);
 });
 
 test('the store resolves from inside its own directory, unscoped', () => {
@@ -471,7 +457,7 @@ test('refs and get name how each change in reach of a source relates to it: bind
   change(store, 'rel-bind', { title: 'Binds', summary: 's', binds: ['linear:REL-1'], links: ['linear:REL-1'] });
   change(store, 'rel-link', { title: 'Links', summary: 's', links: ['linear:REL-1'] });
   change(store, 'rel-seen', { title: 'Seen', summary: 's' });
-  newRecord(store, 'session', 'sess-rel', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'sess-rel', { agent: 'agent:claude-code' });
   sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'linear:REL-1');
   sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-seen', 'github-pr:acme/app#90');
   sessionObserve(store, 'sess-rel', 'links', 'change:project/rel-link', 'linear:REL-1');
@@ -642,7 +628,7 @@ test('the view renders a reference; the session page reads what a session is on'
   const bySource = renderView(store, { ref: 'file:SCHEMA.md' });
   assert.match(bySource.markdown, /^# file:SCHEMA.md\n## The schema/);
   assert.match(bySource.markdown, /_reached through links_\n\n# change:project\/contract/);
-  newRecord(store, 'session', 'sess-v', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'sess-v', { agent: 'agent:claude-code' });
   const board = viewData(store, { session: 'sess-v', project: 'project:project' });
   assert.equal(board.showing.board, 'project:project');
   assert.equal(board.session?.key, 'session:sess-v');
@@ -733,7 +719,7 @@ test('the brief is short and installs once, between markers, in the harness file
   assert.equal((text.match(/<!-- pjman:brief -->/g) ?? []).length, 1);
   assert.match(text, /^# mine\n\nkeep this\n/);
   assert.match(text, /pjman get <anything>/);
-  const lines = init({ checkers: [], cwd: project, brief: 'claude-md' });
+  const lines = init({ cwd: project, brief: 'claude-md' });
   assert.ok(lines.some((l) => /kept the brief/.test(l)));
   delete process.env.CLAUDE_CONFIG_DIR;
 });
@@ -746,7 +732,7 @@ test('start brings the dashboard up detached and is idempotent; stop takes it do
   assert.ok(!again.started);
   assert.equal(again.address.url, first.address.url);
   assert.equal(readServeAddress()?.pid, first.address.pid);
-  const lines = init({ checkers: [], cwd: project, start: true });
+  const lines = init({ cwd: project, start: true });
   assert.ok(
     lines.some(
       (l) =>
@@ -764,7 +750,7 @@ test('rm removes a record; refused while referenced; --detach drops droppable re
   change(store, 'doomed', { title: 'Doomed', summary: 'd', binds: ['linear:DOOM-1'], kind: 'milestone' });
   decisionRec(store, 'doomed/why', { title: 'Why', decision: 'd', why: 'w' });
   change(store, 'orphan', { title: 'Orphan', summary: 'o', parent: 'change:project/doomed' });
-  newRecord(store, 'session', 'sess-rm', { agent: 'agent:claude-code', onBehalfOf: 'person:vinh' });
+  newRecord(store, 'session', 'sess-rm', { agent: 'agent:claude-code' });
   sessionBind(store, 'sess-rm', 'change:project/doomed');
   sessionObserve(store, 'sess-rm', 'links', 'change:project/doomed', 'file:src/x.ts');
   assert.throws(() => rm(store, 'change:project/nope'), /resolves to nothing/);
@@ -899,7 +885,7 @@ test('the receipt: what the store received since a point, one line per record, d
 test("a session's receipt: its writes and its spawned sessions', nothing from another session, no line for a spawn", () => {
   change(store, 'receipt-c', { title: 'Receipt C', summary: 's', project: 'project:renamed' });
   const since = readEvents(store).at(-1)!.seq;
-  const who = { agent: 'agent:claude-code', onBehalfOf: 'person:tester' };
+  const who = { agent: 'agent:claude-code' };
   newRecord(store, 'session', 'rc-parent', who);
   newRecord(store, 'session', 'rc-child', { ...who, parent: 'session:rc-parent', session: 'session:rc-child' });
   newRecord(store, 'session', 'rc-grandchild', {
@@ -1141,7 +1127,7 @@ test('init asks about the map once and records the answer; the context says when
   const other = path.join(tmp, 'other');
   fs.mkdirSync(other, { recursive: true });
   git(other, 'init', '-q');
-  const lines = init({ checkers: [], cwd: other, adapter: false, start: false, map: false });
+  const lines = init({ cwd: other, adapter: false, start: false, map: false });
   assert.ok(lines.some((l) => /no product map will be proposed \(project:other map=skip\)/.test(l)));
   // init inventories the repository and records what it holds (decision cold-start-gaps/init-inventories-the-repository)
   assert.ok(
@@ -1153,7 +1139,7 @@ test('init asks about the map once and records the answer; the context says when
   // no line while the project declined
   assert.equal(storeContext(store, { project: 'project:other' }).mapPrompt, undefined);
   // yes on a later init flips it; a bare repository is said to grow its map from the work, never to get a proposal
-  const again = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
+  const again = init({ cwd: other, adapter: false, start: false, map: true });
   assert.ok(
     again.some((l) =>
       /^no map is proposed yet \(project:other map=propose; .*\): there is nothing to survey, so the map grows from the work/.test(
@@ -1187,7 +1173,7 @@ test('init asks about the map once and records the answer; the context says when
   const live = storeContext(own, { project: 'project:other' }).mapPrompt ?? '';
   assert.match(live, /the repository holds docs and code \(README\.md; src\/\)\. the map is proposed from both/);
   assert.match(live, /file it with no feature, then ask the person two or three short questions about the product/);
-  const third = init({ checkers: [], cwd: other, adapter: false, start: false, map: true });
+  const third = init({ cwd: other, adapter: false, start: false, map: true });
   assert.ok(
     third.some((l) =>
       l.startsWith('the first change through intake proposes a product map (project:other map=propose'),

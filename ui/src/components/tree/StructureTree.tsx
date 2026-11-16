@@ -66,7 +66,6 @@ export function StructureTree({
     () => ({
       key: ROOT,
       type: 'unassigned',
-      owners: [],
       open: 0,
       inFlight: 0,
       projects: [],

@@ -6,11 +6,9 @@ The tool in full: the store, `pjman init`, every command, the product tree, trac
 
 One global store per person: `~/.pjman/store`, its own git repository. `pjman init` in a repository creates the store the first time, registers the repository as a project (`project:<folder-name>`, or `--name`), and maps the repository's path to that project in `~/.pjman/config.yaml`. The tool commits every write it makes there. A change belongs to the project of the directory it was created from; `pjman context` is that project's board, `--all` every project's.
 
-Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root or a `.pjman/` walking up; else the user map, which also names the current project; else, outside any git repository, the global store with no project.
+Resolution from any directory: `--store <path>` / `PJMAN_STORE`; else a store root walking up; else the user map, which also names the current project; else, outside any git repository, the global store with no project.
 
 A project may name its `tracker` (`pjman set project:<slug> tracker=linear`): the source kind of its tickets. A ticket id or ticket URL then resolves through the getter to the change that binds it, and the adapter binds a session to that change, creating it when none binds the ticket.
-
-`pjman init --in-project` makes a store at `<repo>/.pjman/` instead, tracked with the project and never committed by the tool. It is set aside: kept for a repository that must carry its own record.
 
 ```
 pjman.yaml                                             name, layers, vocabulary, source_kinds, version (the format the store is in)
@@ -26,7 +24,7 @@ decisions/<date>-<slug>.md                             decision:/<slug>         
 projects/<slug>.md                                     project:<slug>              a repository, naming its product
 sources/<kind>/<key-slug>.md                 <kind>:<key>                (optional; a source may exist as a key only)
 sessions/<date>-<id>.md                      session:<id>
-actors/<handle>.md                                     person:<handle> · agent:<handle>  (a person's accounts are links, the first of a handle kind the primary one: github-user:<login>, email:<address>)
+actors/<handle>.md                                     person:<handle> · agent:<handle>  (a person's accounts are links: github-user:<login>, email:<address>)
 index.db                                     derived, git-ignored, rebuilt by `pjman index`
 ```
 
@@ -40,7 +38,7 @@ The store names the format it is in (`version:` in `pjman.yaml`, the pjman versi
 
 ## `pjman init` in full
 
-`pjman init` creates the global store if missing, registers the repository as a project, sets you as the actor (a handle of your own, suggested from your forge login, else your committer name, else this machine's account name, so there is always one; the accounts it knew, the login and the email, are linked on your person record), installs the Claude Code plugin from the installed package when `claude` is on PATH (hooks, skills, brief, Linear's MCP server), runs `pjman start` (the dashboard, detached) and prints what exists and what is left, which is at most signing in to the tracker from inside a session with `/mcp`. It asks one question, whether a product map should be proposed from the repository (yes by default; `--map` or `--no-map` answers without asking), and records the answer on the project. It also inventories the repository, docs (a README that says more than a title, a docs folder, a spec), code (a manifest, a directory of source), both or nothing yet, records that as the project's `holds`, and says how the map will come: while the answer is yes and the product has no feature, `pjman context` opens with one line saying the product has no map and what the repository holds, and `pjman intake` opens with the same the first time a change is filed, so the map comes with that change, in the same breath. With docs or code the change is filed with no feature and the map skill proposes the whole tree in a proposed decision naming it; a bare repository grows its map through intake instead, a capability under the feature it correlates to per change, until the context says the map has outgrown its shape (more than seven top-level features) and a regrouping is offered, which only the person asks for. A session started outside any registered repository (a parent directory, the home folder) is recorded in the global store with no project and resolved to the project of the repository it first works in. Running it again is the health check; it repairs what is missing and never undoes anything, and it ends with who you are as the store and the apps see it, the same read as `pjman whoami --verify`: your handle, each account with a verdict (verified, unknown, unchecked), and what is off with the command that resolves it. A handle whose record claims no account of a handle kind (a forge login) is provisional, as one from the committer name or the machine is: init and the session start say so and offer the rename (`pjman mv person:<old> person:<new>`, the old handle an alias, the config and every reference following) or the claim (`pjman set person:<handle> links=…`); a re-run of init claims the forge login itself only when it equals the handle. Once an account of a handle kind is claimed the handle counts as chosen, whether or not it matches a login, and nothing says it again; a sign-in claimed by another person is always said; an account the app does not know is said and never dropped. The apps' answers are cached for a day. `pjman stop` stops the dashboard; `pjman init --brief claude-md` also writes the brief into `~/.claude/CLAUDE.md` for sessions that run without hooks.
+`pjman init` creates the global store if missing, registers the repository as a project, sets you as the actor (a handle of your own, from your committer name, else this machine's account name, so there is always one; your git email is linked on your person record), installs the Claude Code plugin from the installed package when `claude` is on PATH (hooks, skills, brief, Linear's MCP server), runs `pjman start` (the dashboard, detached) and prints what exists and what is left, which is at most signing in to the tracker from inside a session with `/mcp`. It asks one question, whether a product map should be proposed from the repository (yes by default; `--map` or `--no-map` answers without asking), and records the answer on the project. It also inventories the repository, docs (a README that says more than a title, a docs folder, a spec), code (a manifest, a directory of source), both or nothing yet, records that as the project's `holds`, and says how the map will come: while the answer is yes and the product has no feature, `pjman context` opens with one line saying the product has no map and what the repository holds, and `pjman intake` opens with the same the first time a change is filed, so the map comes with that change, in the same breath. With docs or code the change is filed with no feature and the map skill proposes the whole tree in a proposed decision naming it; a bare repository grows its map through intake instead, a capability under the feature it correlates to per change, until the context says the map has outgrown its shape (more than seven top-level features) and a regrouping is offered, which only the person asks for. A session started outside any registered repository (a parent directory, the home folder) is recorded in the global store with no project and resolved to the project of the repository it first works in. Running it again is the health check; it repairs what is missing and never undoes anything, and it ends with who you are, the same read as `pjman whoami`. `pjman stop` stops the dashboard; `pjman init --brief claude-md` also writes the brief into `~/.claude/CLAUDE.md` for sessions that run without hooks.
 
 After that nothing is asked of you: a session in any git repository registers it as a project (`auto_register: false` in `~/.pjman/config.yaml` turns that off), starts with the brief and the board in front of the model, binds to the change or ticket a prompt names, observes the files, branch and pull request it works on, and docks the dashboard beside itself.
 
@@ -165,7 +163,7 @@ A person or an agent, with their accounts.
 | operation | command |
 |---|---|
 | create | `pjman new actor person:<handle> \| agent:<handle> [--links github-user:<login>]...   (pjman init makes yours)` |
-| read | `pjman whoami [--verify] · pjman show person:<handle>` |
+| read | `pjman whoami · pjman show person:<handle>` |
 | list | `pjman ls actor` |
 | update | `pjman set person:<handle> name=… links+=email:<address>` |
 | rename | `pjman mv person:<old> person:<new>   (the old handle stays an alias)` |
@@ -173,11 +171,11 @@ A person or an agent, with their accounts.
 
 ### session
 
-A run of an agent on behalf of a person: append-only.
+A run of an agent: append-only.
 
 | operation | command |
 |---|---|
-| create | `pjman session start <id> --agent <agent> --on-behalf-of <person>   (the adapter does it)` |
+| create | `pjman session start <id> --agent <agent>   (the adapter does it)` |
 | read | `pjman show session:<id> · pjman brief --session <id> · pjman open --session <id>` |
 | list | `pjman ls session` |
 | update | `pjman session log\|bind\|unbind\|observe\|focus\|project <id> … · pjman session name <id> ["…"] [--kind <kind>]   (a session with no change: its name and kind, inferred from its record when not given) · pjman note session:<id> <text>` |
@@ -214,7 +212,7 @@ A version the product shipped.
 
 - `pjman context`: what an agent reads first: the board, or one change in full
 - `pjman get`: anything in (key, slug, ticket, URL, file): the record, its edges, the changes in reach
-- `pjman tree`: the product by its features, with derived status, owners and backlog
+- `pjman tree`: the product by its features, with derived status and backlog
 - `pjman activity`: the events beneath any node and what they say about health
 - `pjman intake`: what already exists for a request, before it is filed
 - `pjman refs`: every reference in a text and the change it leads to
@@ -246,7 +244,7 @@ A version the product shipped.
 
 - `pjman init`: the whole onboarding, in one command; again, the health check
 - `pjman where`: the store this directory resolves to, its project and product
-- `pjman whoami`: who you are: the person, their record, their accounts
+- `pjman whoami`: who you are: the configured person and their record
 - `pjman doctor`: what is wrong with this install, and the command that fixes each thing (writes nothing)
 
 ### Maintenance
@@ -261,19 +259,19 @@ A version the product shipped.
 ### Every command in full
 
 ```
-pjman new product <slug> --title <sentence> [--name <one to three words>] [--owners <actor>]... [--levels <label>]... [--sequence <change>]... [--summary <s>] [--links <key>]...
-pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>] [--links <key>]...
-pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...
-pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--owners <actor>]... [--body <base>|-] [--links <key>]...
+pjman new product <slug> --title <sentence> [--name <one to three words>] [--levels <label>]... [--sequence <change>]... [--summary <s>] [--links <key>]...
+pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--summary <s>] [--links <key>]...
+pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--links <key>]...
+pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--body <base>|-] [--links <key>]...
 pjman new place <aspect>/<place> --feature <feature> [--body <fork>|-] [--links <key>]...
 pjman new change <slug> --name <one to four words> --gist <one line> --origin <the request in the person's words, or the key it came from> --intent <the need, for whom> --done-when <the outcome that closes it>
         [--scope …] [--open-questions …] [--blocked-on …] [--notes …] [--status open] [--project <key>] [--parent <change>] [--step <text>]...
-        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...
+        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--binds <key>]... [--links <key>]...
         [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--kind milestone] [--target <date>]
 pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]
 pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]... [--body <text>]
 pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...
-pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)
+pjman new session <id> --agent <agent> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)
 pjman new session-kind <slug> [--name <one to four words>] [--gist <one line>] [--links <key>]...   (review, backlog, chat and other come with the store; pjman session name creates one it is handed)
     create a record; refused if it would not validate. Keys are paths under the product (feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug>); inside a project the slug alone names a record. A decision is created with pjman decision, a session with pjman session start
 
@@ -286,7 +284,7 @@ pjman ls session --kind <session kind>   (the sessions with no change given that
 
 pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...
 pjman set <ref> <field>=- < file   (one value from stdin)
-    change authored fields on one or several records, one commit (pjman undo reverts it). field=value replaces (an empty value removes the field); on a list field (links, owners, binds, features, aspects, depends_on, levels, sequence) field+=item adds one item when absent and field-=item removes one; field=- reads one value from stdin. A change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole. A decision's supersedes only adds, and marks each named decision superseded. A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten
+    change authored fields on one or several records, one commit (pjman undo reverts it). field=value replaces (an empty value removes the field); on a list field (links, binds, features, aspects, depends_on, levels, sequence) field+=item adds one item when absent and field-=item removes one; field=- reads one value from stdin. A change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole. A decision's supersedes only adds, and marks each named decision superseded. A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten
 
 pjman rm <ref>... [--detach] [--json]
     remove one or several records, one commit (a change takes its decisions with it). Refused while anything refers to one, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped
@@ -328,7 +326,7 @@ pjman get <ref> [--json]
     the getter: a key (full, short or former), a source key, a URL, a ticket id, <change>/<slug>, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out. Every command's argument resolves the same way. A bare ticket id (ABC-12) resolves only where exactly one tracker of the project claims its prefix (ext.linear.team, or a change of the project binding a ticket of that prefix); elsewhere write the prefixed key (linear:ABC-12) or the URL
 
 pjman tree [<product>|<feature>] [--all] [--json]
-    the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)
+    the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)
 
 pjman activity <ref> [--days 14] [--since <iso>] [--json]
     the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person. A batch (pjman apply, a bulk set or rm, several steps added) is one entry
@@ -355,7 +353,7 @@ pjman events rebuild
 pjman follow [--since <seq>] [--json]
     print events as they are appended, after --since (default: only new ones), until interrupted; what a view subscribes to
 
-pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]
+pjman session start <id> --agent <agent> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]
 pjman session log <id> <text>
 pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)
 pjman session unbind <id> <change>
@@ -375,7 +373,7 @@ pjman host send [<session-id>] <text>
 pjman host open [<session-id>]
 pjman host status [<session-id>] [--json]
 pjman host launch <change> [--json]
-    where a session runs (a terminal multiplexer: Rex, cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version
+    where a session runs (a terminal multiplexer: cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version
 
 pjman wakes --session <id> [--since <seq>] [--follow] [--json]
     the events that wake a session: a decision on its bound change set decided, a note on that change or on the session, by anyone but the session; --follow keeps printing them as they land, from the stream's tail (or --since), until the session's process ends
@@ -399,14 +397,14 @@ pjman stop
 pjman serve [--port <n>] [--host <addr>] [--static <dir>] [--register|--no-register]
     the store over HTTP: the library's results as JSON under /api/v1 (records by key, the getter as /resolve, a session's view, a project's board, the event stream as server-sent events) and the bundled app; writes its address to ~/.pjman/serve.json while it runs. PORT from the environment when --port is absent; with neither, a registered server comes back on the port it last had (~/.pjman/port) when that is free, so docks already open keep working, and takes a new one when it is taken; a checkout registers only with --register
 
-pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>] [--in-project]
-    the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, holding their forge login and git email as accounts), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record). Run again, it is the health check
+pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>]
+    the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report. Run again, it is the health check
 
 pjman where [--json]
     print the store this directory resolves to and its mode; --json adds the project, its product, its tracker and the actor
 
-pjman whoami [--verify] [--fresh] [--json]
-    who you are: the configured person, their record and their accounts in order, the first of a handle kind as the primary one; from the store alone, no app asked. --verify asks each account kind's checker (GitHub through gh; a kind with no checker reports unchecked) and gives each account a verdict, verified, unknown or unchecked, with the answers cached for a day (--fresh asks again). What is off is said with the command that resolves it. Writes nothing
+pjman whoami [--json]
+    who you are: the actor the user config names (actor: in ~/.pjman/config.yaml) and their record in the store. What is off is said with the command that resolves it. Writes nothing
 
 pjman doctor [--all] [--json]
     check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, and the registered project folders. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports
@@ -455,7 +453,7 @@ Aspects are also noticed as the work goes. A decision whose thread reads as hold
 
 ## Trackers: Linear and GitHub
 
-pjman never signs in to a tracker. The harness holds the connection (the Claude Code plugin declares Linear's MCP server; the person signs in there once) and reads tickets with the tracker's own tools; pjman is the translation layer. A project names its tracker and its team (`pjman set project:<slug> tracker=linear ext.linear.team=ABC`). `pjman sync linear --from <file|->` (or `pjman sync github --from -` for a project whose tracker is `github-issue`: the reader is the `gh api graphql` command that `pjman sync github` prints when run without `--from`, since `gh issue list --json` has no sub-issue parent; open maps to open or to the vocabulary's word for a label, closed to done, closed as not planned to dropped, a sub-issue's parent to the change's parent) takes the issues as JSON, in whatever shape the tracker's tools answered (one issue, a list, a page, or the tool result pasted whole), and applies them: each becomes a source record `linear:ABC-1234` with its observed state under `ext.linear`, and the change that binds it is created when none does, with the ticket linked in its Origin and a draft gist from its title; afterwards a sync writes the source, the binding and the owners, never the change's name, status or parent. Status on ingestion maps through the store's vocabulary by state name, then by state type, then the built-in map (triage and backlog → open, unstarted → planning, started → active, completed → done, canceled → dropped). Issues from another team are skipped and named; nothing is written back. Each run is a session by `agent:linear-sync`, one commit, one event per record. The translation does not depend on who held the connection: another harness, or a pushed feed, hands pjman the same JSON.
+pjman never signs in to a tracker. The harness holds the connection (the Claude Code plugin declares Linear's MCP server; the person signs in there once) and reads tickets with the tracker's own tools; pjman is the translation layer. A project names its tracker and its team (`pjman set project:<slug> tracker=linear ext.linear.team=ABC`). `pjman sync linear --from <file|->` (or `pjman sync github --from -` for a project whose tracker is `github-issue`: the reader is the `gh api graphql` command that `pjman sync github` prints when run without `--from`, since `gh issue list --json` has no sub-issue parent; open maps to open or to the vocabulary's word for a label, closed to done, closed as not planned to dropped, a sub-issue's parent to the change's parent) takes the issues as JSON, in whatever shape the tracker's tools answered (one issue, a list, a page, or the tool result pasted whole), and applies them: each becomes a source record `linear:ABC-1234` with its observed state under `ext.linear`, and the change that binds it is created when none does, with the ticket linked in its Origin and a draft gist from its title; afterwards a sync writes the source and the binding, never the change's name, status or parent. Status on ingestion maps through the store's vocabulary by state name, then by state type, then the built-in map (triage and backlog → open, unstarted → planning, started → active, completed → done, canceled → dropped). Issues from another team are skipped and named; nothing is written back. Each run is a session by `agent:linear-sync`, one commit, one event per record. The translation does not depend on who held the connection: another harness, or a pushed feed, hands pjman the same JSON.
 
 ## The dashboard and the API
 

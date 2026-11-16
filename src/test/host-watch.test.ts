@@ -124,18 +124,16 @@ before(async () => {
   delete process.env.PJMAN_SESSION;
   delete process.env.PJMAN_STORE;
   fs.mkdirSync(fakes, { recursive: true });
-  // a rex whose program is blocked on a question, and whose stream says so once then stays open a while
+  // a cmux that answers its version and records what it is asked to do
   fs.writeFileSync(
-    path.join(fakes, 'rex'),
+    path.join(fakes, 'cmux'),
     `#!/bin/sh
-case "$1 $2" in
-  "version --json") echo '{"version":"0.3.1"}';;
-  "block call") echo '[{"state":"blocked","kind":"question","app":"claude-code"}]';;
-  "focus -s") echo "focused $*" >> '${tmp}/rex-focus';;
-  "send -s") printf '%s\n' "sent $*" >> '${tmp}/rex-send';;
-  "new login") echo "launched $*" >> '${tmp}/rex-new'; echo '{"session_id":"session:new9"}';;
-  "block ls") echo '[{"block_id":"block:b9"}]';;
-  "events -s") echo '{"type":"session_event","payload":{"session_id":"session:s1","event":{"type":"block_event","payload":{"block_id":"block:b1","creator_name":"com.superlogical.terminal","name":"program_status_changed","payload":{"record":{"state":"blocked","kind":"question"}}}}}}'; sleep 5;;
+case "$1" in
+  --version) echo "cmux 0.62.2 (77) [6c203b514]";;
+  select-workspace) echo "focused $*" >> '${tmp}/cmux-focus'; echo OK;;
+  send) printf '%s\\n' "sent $*" >> '${tmp}/cmux-send'; echo OK;;
+  new-workspace) echo "launched $*" >> '${tmp}/cmux-new'; echo "OK workspace:9";;
+  rename-workspace|set-status|clear-status) echo OK;;
   *) exit 1;;
 esac
 `,
@@ -144,18 +142,17 @@ esac
   process.env.PATH = `${fakes}:${savedPath ?? ''}`;
   fs.mkdirSync(project, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ checkers: [], cwd: project, name: 'app' });
+  init({ cwd: project, name: 'app' });
   store = findStore(project)!;
   change(store, 'login', { title: 'Login', summary: 'Sign in.' });
-  // a session that ran in Rex, bound to the change, quiet for an hour by the record: stopped by the record alone
-  sessionStart(store, 'in-rex', {
+  // a session that runs in cmux
+  sessionStart(store, 'in-host', {
     agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
     log: 'session started',
-    host: { name: 'rex', session: 'session:s1', block: 'block:b1', version: '0.3.1', validated: true },
+    host: { name: 'cmux', session: 'workspace:1', block: 'surface:1', version: '0.62.2', validated: true },
   });
   // one outside any host, for contrast
-  newRecord(store, 'session', 'plain', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'plain', { agent: 'agent:claude-code' });
   const ui = path.join(tmp, 'ui');
   fs.mkdirSync(ui);
   fs.writeFileSync(path.join(ui, 'index.html'), '<html></html>');
@@ -169,62 +166,6 @@ after(() => {
   process.env.PATH = savedPath;
 });
 
-test('the server hands what the host says to the bridge: a session blocked on a question waits, and the stream carries a host frame', async () => {
-  await new Promise((r) => setTimeout(r, 900)); // the sweep after the first event, then the stream's first line
-  const res = await fetch(`${base}/products/app/bridge?days=1`);
-  const body = (await res.json()) as {
-    data: {
-      sessions: { key: string; state: string; host?: { name: string; status?: { state: string; kind?: string } } }[];
-    };
-  };
-  const row = body.data.sessions.find((s) => s.key === 'session:in-rex');
-  assert.ok(row, 'the hosted session is on the bridge');
-  assert.equal(row.state, 'waiting');
-  assert.equal(row.host?.name, 'rex');
-  assert.equal(row.host?.status?.state, 'blocked');
-  assert.equal(row.host?.status?.kind, 'question');
-  const plain = body.data.sessions.find((s) => s.key === 'session:plain');
-  assert.equal(plain?.host, undefined);
-  // the session page carries it too
-  const view = (await (await fetch(`${base}/sessions/in-rex/view`)).json()) as {
-    data: { session: { host?: { status?: { kind?: string } }; working: boolean } };
-  };
-  assert.equal(view.data.session.host?.status?.kind, 'question');
-  assert.equal(view.data.session.working, false);
-});
-
-test('a host frame reaches an open stream when the host speaks', async () => {
-  // a fresh watch starts on a new session: its first status is a change, which the stream carries as `event: host`
-  const ctl = new AbortController();
-  const res = await fetch(`${base}/events?stream=1`, { signal: ctl.signal });
-  const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let seen = '';
-  const until = (pred: () => boolean) =>
-    new Promise<void>((resolve, reject) => {
-      const deadline = setTimeout(() => reject(new Error(`no host frame; saw:\n${seen}`)), 6000);
-      const pump = (): void => {
-        void reader.read().then(({ value, done }) => {
-          if (done) return;
-          seen += decoder.decode(value);
-          if (pred()) {
-            clearTimeout(deadline);
-            resolve();
-          } else pump();
-        }, reject);
-      };
-      pump();
-    });
-  sessionStart(store, 'in-rex-2', {
-    agent: 'agent:claude-code',
-    onBehalfOf: 'person:tester',
-    log: 'session started',
-    host: { name: 'rex', session: 'session:s1', block: 'block:b1' },
-  });
-  await until(() => /event: host\ndata: \{[^\n]*"key":"session:in-rex-2"[^\n]*"state":"blocked"/.test(seen));
-  ctl.abort();
-});
-
 test("POST /open asks the host to bring the session's block to the front; a session in no host is refused", async () => {
   const post = (body: unknown) =>
     fetch(`${base}/open`, {
@@ -232,13 +173,16 @@ test("POST /open asks the host to bring the session's block to the front; a sess
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
     });
-  const ok = await post({ session: 'session:in-rex' });
+  const ok = await post({ session: 'session:in-host' });
   assert.equal(ok.status, 200);
   const r = (await ok.json()) as { data: { did: string; ok: boolean; host: { name: string } } };
   assert.equal(r.data.did, 'open');
   assert.equal(r.data.ok, true);
-  assert.equal(r.data.host.name, 'rex');
-  assert.match(fs.readFileSync(path.join(tmp, 'rex-focus'), 'utf8'), /focused focus -s session:s1 block:b1/);
+  assert.equal(r.data.host.name, 'cmux');
+  assert.match(
+    fs.readFileSync(path.join(tmp, 'cmux-focus'), 'utf8'),
+    /focused select-workspace --workspace workspace:1/,
+  );
   const no = await post({ session: 'session:plain' });
   assert.equal(no.status, 400);
   assert.match(((await no.json()) as { error: { message: string } }).error.message, /runs in no host/);
@@ -249,7 +193,13 @@ test('POST /launch opens a session for a change on the host this machine runs; t
   const info = (await (await fetch(`${base}/store`)).json()) as {
     data: { host: { name: string; version: string | null; validated: boolean | null } | null };
   };
-  assert.deepEqual(info.data.host, { name: 'rex', version: '0.3.1', validated: true, interface: 1, range: '>=0.1 <1' });
+  assert.deepEqual(info.data.host, {
+    name: 'cmux',
+    version: '0.62.2',
+    validated: true,
+    interface: 1,
+    range: '>=0.62 <1',
+  });
   const res = await fetch(`${base}/launch`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -259,12 +209,12 @@ test('POST /launch opens a session for a change on the host this machine runs; t
   const r = (await res.json()) as {
     data: { host: string; id: { session: string; block?: string }; command: string[] };
   };
-  assert.equal(r.data.host, 'rex');
-  assert.deepEqual(r.data.id, { session: 'session:new9', block: 'block:b9' });
+  assert.equal(r.data.host, 'cmux');
+  assert.deepEqual(r.data.id, { session: 'workspace:9' });
   assert.deepEqual(r.data.command, ['claude', '--worktree', 'login']);
   assert.match(
-    fs.readFileSync(path.join(tmp, 'rex-new'), 'utf8'),
-    new RegExp(`launched new login -c ${store.projectDir} --json -- claude --worktree login`),
+    fs.readFileSync(path.join(tmp, 'cmux-new'), 'utf8'),
+    new RegExp(`launched new-workspace --cwd ${store.projectDir} --command claude --worktree login`),
   );
   assert.equal(
     (
@@ -279,15 +229,14 @@ test('POST /launch opens a session for a change on the host this machine runs; t
 });
 
 test('an acceptance is delivered through the host to the sessions on the change whose agent has no waking adapter; a Claude Code session hears it from its wake module instead', async () => {
-  // a Codex session in Rex on the change, beside the Claude Code one already there (in-rex, bound to nothing yet)
-  sessionStart(store, 'codex-in-rex', {
+  // a Codex session in cmux on the change, beside the Claude Code one already there (in-host, bound to nothing yet)
+  sessionStart(store, 'codex-in-host', {
     agent: 'agent:codex',
-    onBehalfOf: 'person:tester',
     log: 'session started',
-    host: { name: 'rex', session: 'session:s2', block: 'block:b2' },
+    host: { name: 'cmux', session: 'workspace:2', block: 'surface:2' },
   });
-  sessionBind(store, 'codex-in-rex', 'change:login', 'by hand');
-  sessionBind(store, 'in-rex', 'change:login', 'by hand');
+  sessionBind(store, 'codex-in-host', 'change:login', 'by hand');
+  sessionBind(store, 'in-host', 'change:login', 'by hand');
   decisionRec(store, 'login/passwordless', { title: 'Passwordless or not', name: 'Passwordless' });
   const res = await fetch(`${base}/decide`, {
     method: 'POST',
@@ -299,11 +248,11 @@ test('an acceptance is delivered through the host to the sessions on the change 
     data: { status: string; delivered?: { session: string; host: string; ok: boolean }[] };
   };
   assert.equal(r.data.status, 'decided');
-  assert.deepEqual(r.data.delivered, [{ session: 'session:codex-in-rex', host: 'rex', ok: true }]);
-  const sent = fs.readFileSync(path.join(tmp, 'rex-send'), 'utf8');
+  assert.deepEqual(r.data.delivered, [{ session: 'session:codex-in-host', host: 'cmux', ok: true }]);
+  const sent = fs.readFileSync(path.join(tmp, 'cmux-send'), 'utf8');
   assert.match(
     sent,
-    /^sent send -s session:s2 -b block:b2 pjman: decision:[^ ]*login\/passwordless decided by person:\S+: it — yes, links\. Read pjman context change:[^ ]*login and act on it as the record now says\.\r$/m,
+    /^sent send --workspace workspace:2 --surface surface:2 -- pjman: decision:[^ ]*login\/passwordless decided by person:\S+: it — yes, links\. Read pjman context change:[^ ]*login and act on it as the record now says\.$/m,
   );
-  assert.ok(!/session:s1/.test(sent), 'the Claude Code session is left to its wake module');
+  assert.ok(!/workspace:1/.test(sent), 'the Claude Code session is left to its wake module');
 });

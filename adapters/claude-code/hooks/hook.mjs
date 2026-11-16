@@ -5,8 +5,8 @@
 //   SessionStart      register the repository if it is not a project yet (auto_register); a start outside any repository (a parent
 //                     directory, the home folder) is a session of the global store with no project, resolved to the project of the
 //                     repository it first works in (PostToolUse); dock the view first; run the reads side by
-//                     side (the brief, `pjman context`, who the person is at startup and /clear (`pjman whoami --verify`, cached a day
-//                     by the tool; injected only when something is off, the rename or claim offered and never run), the receipt's
+//                     side (the brief, `pjman context`, who the person is at startup and /clear (`pjman whoami`; injected
+//                     only when something is off), the receipt's
 //                     watermark, the done changes for the stale-worktree scan, the open PR off main); then the one write, `pjman
 //                     session start`: the session record unless it exists, the start line, the change the branch names bound and
 //                     observed, the brief (the bound change's context in full on resume/compact/clear); the stale worktrees named
@@ -47,7 +47,7 @@
 //   --session` brings the page back; the session's id is exported to the agent's shell as PJMAN_SESSION.
 //
 //   The follow window (change:follow-window). Every prompt in a main session tells a running dashboard that the person is on
-//   this session, and the follow window goes there. Where there is no dock (Rex, Claude Code's desktop app), a session's start
+//   this session, and the follow window goes there. In Claude Code's desktop app, where there is no dock, a session's start
 //   opens that window when none is open (decision desktop-app/desktop-view): a detached copy of this hook (FollowWindow) starts the dashboard if none runs, tells it the session, asks
 //   it whether to open one (yes to one caller only, so sessions started together never open two) and runs
 //   `pjman open --follow`. `follow_window: false` in ~/.pjman/config.yaml turns the opening off.
@@ -452,8 +452,6 @@ async function postServer(server, route, body, ms = 1500) {
     return null;
   }
 }
-/** Rex, when the session runs inside it: its blocks are terminals only, so the view is a follow window, not a dock. */
-const inRex = () => Boolean(process.env.REX_SESSION);
 /** Claude Code's desktop app, which runs its sessions under its own entrypoint: a mod pane there draws only the mod
  * elements, never the dock's page, so the view is the follow window (decision desktop-app/desktop-view). */
 const inDesktop = () => process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop';
@@ -471,10 +469,10 @@ async function followPrompted(sid) {
   const server = readServeAddress();
   if (server) await postServer(server, '/follow', { session: sid }, 800);
 }
-/** At a session's start in Rex or the desktop app: the follow window opened, unless one is open, detached so the start
+/** At a session's start in the desktop app: the follow window opened, unless one is open, detached so the start
  * does not wait. */
 function startFollowWindow(sid, cwd) {
-  if (!(inRex() || inDesktop()) || followWindowOff()) return;
+  if (!inDesktop() || followWindowOff()) return;
   try {
     const child = spawn(process.execPath, [fileURLToPath(import.meta.url), 'FollowWindow'], {
       cwd,
@@ -749,7 +747,7 @@ const onPage = (at, base) => at === base || ['?', '#', '/'].some((c) => at.start
 /** The session's block labelled with the change and where the work stands, by the tool through the host's adapter
  *  (change:rex-adapter): at a bind, at the end of a turn that wrote the store, and cleared at the session's end. Only
  *  inside a host the tool knows; elsewhere nothing is asked. */
-const inHost = () => Boolean(process.env.REX_SESSION || process.env.CMUX_WORKSPACE_ID);
+const inHost = () => Boolean(process.env.CMUX_WORKSPACE_ID);
 function hostLabel(sid, cwd, env, { clear = false } = {}) {
   if (!inHost()) return;
   tryPjman(['host', 'label', sid, ...(clear ? ['--clear'] : [])], { cwd, env });
@@ -941,7 +939,7 @@ function exportToShell(env) {
 
 /** The session's record, created unless it exists: one write, whose refusal says when the record is already there. */
 function sessionArgs(store, sid, parent) {
-  const args = ['new', 'session', sid, '--agent', AGENT, '--on-behalf-of', store.actor, '--writer', AGENT];
+  const args = ['new', 'session', sid, '--agent', AGENT, '--writer', AGENT];
   if (parent) args.push('--parent', `session:${parent}`);
   return args;
 }
@@ -1090,7 +1088,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     receipt: st.seq === undefined ? pjmanAsync(['events', '--receipt', '--json'], { cwd, json: true }) : null,
     who:
       isMain && (source === 'startup' || source === 'clear')
-        ? pjmanAsync(['whoami', '--verify', '--json'], { cwd, json: true })
+        ? pjmanAsync(['whoami', '--json'], { cwd, json: true })
         : null,
     done: isMain ? pjmanAsync(['ls', 'change', '--status', 'done', '--json'], { cwd, json: true }) : null,
     pr:
@@ -1121,8 +1119,6 @@ async function sessionStart(input, store, sid, env, st, cwd) {
       sid,
       '--agent',
       AGENT,
-      '--on-behalf-of',
-      store.actor,
       '--writer',
       AGENT,
       '--log',
@@ -1145,7 +1141,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
   let text =
     (read.brief ?? '') +
-    `\n---\npjman store: ${store.root} (${store.mode}); project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
+    `\n---\npjman store: ${store.root}; project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;
   if (isMain && (source === 'startup' || source === 'clear')) text += refreshPlugin();
   // the dock is said once, the first time it can open, with the line that turns it off (decision pjman-24/dock-off-switch)
   if (isMain && dockOn() && store.project && !fs.existsSync(path.join(dockDir(), '.told'))) {
@@ -1162,10 +1158,9 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   text += read.context ?? '';
   const b = briefText(st, start.brief);
   if (b) text += `\n---\n${start.bound ? 'Bound from the branch.\n' : ''}${b}`;
-  // who the person is, checked against the apps once a day (the tool caches): only what is off is said, with the
-  // command that resolves it; a rename is the person's act, offered and never run unasked
+  // who the person is: only what is off is said, with the command that resolves it
   if (read.who?.notices?.length)
-    text += `\n---\nIdentity (pjman whoami --verify):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person and never run a rename or a claim unasked.\n`;
+    text += `\n---\nIdentity (pjman whoami):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person.\n`;
   emitContext(EVENT, text);
   if (isMain) {
     observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
@@ -1184,7 +1179,7 @@ async function promiseObject(obj) {
 
 // --- main ---------------------------------------------------------------------------------------
 async function main() {
-  // the detached half of a session start in Rex or the desktop app (startFollowWindow): no stdin, the session in the environment
+  // the detached half of a session start in the desktop app (startFollowWindow): no stdin, the session in the environment
   if (EVENT === 'FollowWindow') {
     const sid = process.env.PJMAN_FOLLOW_SESSION;
     if (sid) await followWindow(sid, process.cwd());

@@ -85,7 +85,6 @@ export function ProductMap({
     () => ({
       key: MAP_ROOT,
       type: 'product',
-      owners: [],
       open: 0,
       inFlight: 0,
       projects: [],

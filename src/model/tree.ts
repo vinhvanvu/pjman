@@ -211,20 +211,6 @@ export function descendantsOf(loaded: Loaded, key: string): Set<string> {
   return new Set(below.get(key));
 }
 
-/** The owners a node answers to: its own, else the nearest ancestor's. */
-export function effectiveOwners(loaded: Loaded, key: string): { owners: string[]; from?: string } {
-  const rec = live(loaded, key);
-  if (!rec) return { owners: [] };
-  const own = list(rec.data.owners);
-  if (own.length) return { owners: own, from: rec.key };
-  for (const a of ancestorsOf(loaded, key)) {
-    const r = live(loaded, a);
-    const o = r ? list(r.data.owners) : [];
-    if (o.length) return { owners: o, from: a };
-  }
-  return { owners: [] };
-}
-
 /** The level labels below the root: the product's own, else the store's template. */
 export function levelsOf(store: Store, product?: Rec): string[] {
   const own = product ? list(product.data.levels) : [];
@@ -315,8 +301,6 @@ export interface TreeNode {
   /** Authored status, when the person wrote one. */
   status?: string;
   derived?: DerivedStatus;
-  owners: string[];
-  ownersFrom?: string;
   children: TreeNode[];
   /** Changes in the subtree (direct effects on this node and its descendants), by status. */
   backlog: Record<string, number>;
@@ -344,7 +328,6 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
     const backlog: Record<string, number> = {};
     for (const c of inSubtree) backlog[String(c.data.status ?? '?')] = (backlog[String(c.data.status ?? '?')] ?? 0) + 1;
     const projects = [...new Set(inSubtree.map((c) => str(c.data.project)).filter((p): p is string => !!p))].toSorted();
-    const eo = effectiveOwners(loaded, rec.key);
     const n: TreeNode = {
       key: rec.key,
       type: rec.type as 'product' | 'feature',
@@ -352,8 +335,6 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
       level: levelOf(loaded, rec),
       status: str(rec.data.status),
       derived: rec.type === 'feature' ? derivedStatus(loaded, rec.key) : undefined,
-      owners: eo.owners,
-      ownersFrom: eo.from,
       children,
       backlog,
       projects,
@@ -389,11 +370,8 @@ export function formatTree(nodes: TreeNode[], depth = 0): string {
       n.type === 'feature'
         ? ` [${n.status ?? n.derived?.status}${n.status && n.derived && n.status !== n.derived.status ? `; derived ${n.derived.status}` : ''}]`
         : '';
-    const owners = n.owners.length
-      ? ` · ${n.owners.join(', ')}${n.ownersFrom && n.ownersFrom !== n.key ? ' (inherited)' : ''}`
-      : '';
     out.push(
-      `${pad}- ${n.key} (${n.level})${state} — ${n.title ?? ''}${owners}${backlog ? `\n${pad}  changes: ${backlog}${n.projects.length ? ` in ${n.projects.join(', ')}` : ''}` : ''}${n.unassigned ? `\n${pad}  ${n.unassigned} open change${n.unassigned === 1 ? '' : 's'} under its projects name no feature` : ''}`,
+      `${pad}- ${n.key} (${n.level})${state} — ${n.title ?? ''}${backlog ? `\n${pad}  changes: ${backlog}${n.projects.length ? ` in ${n.projects.join(', ')}` : ''}` : ''}${n.unassigned ? `\n${pad}  ${n.unassigned} open change${n.unassigned === 1 ? '' : 's'} under its projects name no feature` : ''}`,
     );
     if (n.children.length) out.push(formatTree(n.children, depth + 1).trimEnd());
   }

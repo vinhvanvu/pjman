@@ -1,7 +1,14 @@
 import '../store/quiet.js';
 import fs from 'node:fs';
 import { parseArgs } from 'node:util';
-import { findStore, globalStore, globalStorePath, readUserConfig, requireStore } from '../store/config.js';
+import {
+  findStore,
+  globalStore,
+  globalStorePath,
+  ownsRepository,
+  readUserConfig,
+  requireStore,
+} from '../store/config.js';
 import type { Store } from '../store/config.js';
 import { BRIEF } from './brief.js';
 import { start, stop } from './start.js';
@@ -172,7 +179,7 @@ function batch(
   lines: string[][],
   run: (argv: string[]) => void,
 ): { commit: string | null } {
-  if (store.mode !== 'standalone') {
+  if (!ownsRepository(store)) {
     for (const l of lines) run(l);
     return { commit: null };
   }
@@ -275,7 +282,6 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (v.brief && v.brief !== 'claude-md') throw new CliError('--brief takes claude-md');
       for (const line of init({
         cwd,
-        inProject: v['in-project'],
         name: v.name,
         adapter: !v['no-adapter'],
         start: !v['no-start'],
@@ -315,11 +321,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         name: v.name,
         url: v.url,
         agent: v.agent,
-        onBehalfOf: v['on-behalf-of'],
         parent: v.parent,
         started: v.started,
         product: v.product,
-        owners: v.owners,
         features: v.features,
         level: v.level,
         levels: v.levels,
@@ -501,12 +505,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (sub === 'start') {
         if (!id)
           throw usageError(
-            'usage: pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]',
+            'usage: pjman session start <id> --agent <agent> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--json]',
           );
         // the host is read from this process's own environment: the hook runs inside the terminal the session runs in
         const r = sessionStart(store, id, {
           agent: v.agent,
-          onBehalfOf: v['on-behalf-of'],
           parent: v.parent,
           log: v.log,
           branch: v.branch,
@@ -629,7 +632,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const loaded = loadStore(store);
       const problems = validate(loaded);
       const s = summarise(problems);
-      if (v.json) json({ store: store.root, mode: store.mode, records: loaded.records.length, ...s, problems });
+      if (v.json) json({ store: store.root, records: loaded.records.length, ...s, problems });
       else {
         if (problems.length) out(formatProblems(problems));
         out(
@@ -1264,7 +1267,6 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       v.json
         ? json({
             root: store.root,
-            mode: store.mode,
             name: store.config.name,
             project: store.project ?? null,
             product: scopeProduct ? `product:${scopeProduct}` : null,
@@ -1273,7 +1275,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             actor: readUserConfig().actor ?? null,
             source_kinds: store.config.source_kinds,
           })
-        : out(`${store.root} (${store.mode})${store.project ? ` ${store.project}` : ''}`);
+        : out(`${store.root}${store.project ? ` ${store.project}` : ''}`);
       return 0;
     }
     case 'doctor': {
@@ -1284,7 +1286,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'whoami': {
       const store = globalStore() ?? requireStore(cwd, v.store);
-      const id = identity(store, { verify: v.verify, fresh: v.fresh });
+      const id = identity(store);
       if (v.json) json(id);
       else for (const line of formatIdentity(id)) out(line);
       return 0;

@@ -32,7 +32,7 @@ before(() => {
   fs.writeFileSync(path.join(process.env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'web' });
+  init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
   newRecord(store, 'feature', 'login', { title: 'Signing in', product: 'product:web' });
   newRecord(store, 'feature', 'billing', { title: 'Paying', product: 'product:web' });
@@ -53,7 +53,7 @@ before(() => {
   change(store, 'sso', { title: 'SSO', summary: 's', project: 'project:web', features: ['feature:login'] });
   change(store, 'invoices', { title: 'Invoices', summary: 's', project: 'project:web', features: ['feature:billing'] });
   for (const id of ['me', 'peer', 'near', 'far', 'gone'])
-    newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+    newRecord(store, 'session', id, { agent: 'agent:claude-code' });
 });
 
 test('an unbound session has no brief; binding gives the change in full once, and the watermark is recorded', () => {

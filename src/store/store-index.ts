@@ -11,8 +11,7 @@
 // event lands (a write's own validation, a batch) names the file as pending, and pending files are compared on every
 // load.
 //
-// The library reads through IndexBackend, so the store for an organization is another backend behind the same calls;
-// the one here is SQLite in the store's folder, in plain SQL a server database runs unchanged.
+// The index is SQLite, one file per store in the person's pjman folder.
 import './quiet.js';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -55,15 +54,6 @@ export interface Cursor {
   head: string | null;
 }
 
-/** What the index is kept in. The library calls only these. */
-export interface IndexBackend {
-  cursor(): Cursor | null;
-  entries(): Entry[];
-  /** Replace these entries and remove those paths, and move the cursor, as one write. */
-  apply(put: Entry[], drop: string[], cursor: Cursor, replaceAll?: boolean): void;
-  close(): void;
-}
-
 /** The tables' shape; tables of another are dropped and filled again. */
 const TABLES = 3;
 const FORMAT = `${TABLES}:${TOOL_VERSION}`;
@@ -91,8 +81,8 @@ export function resetIndex(store: Store): void {
 type Sqlite = typeof NodeSqlite;
 let sqlite: Sqlite | undefined;
 
-/** The index in SQLite, in the store's folder. */
-export class SqliteIndex implements IndexBackend {
+/** The index in SQLite. */
+export class SqliteIndex {
   private db: NodeSqlite.DatabaseSync;
 
   constructor(file: string) {
@@ -137,6 +127,7 @@ export class SqliteIndex implements IndexBackend {
     }));
   }
 
+  /** Replace these entries and remove those paths, and move the cursor, as one write. */
   apply(put: Entry[], drop: string[], cursor: Cursor, replaceAll = false): void {
     const ins = this.db.prepare(
       'INSERT OR REPLACE INTO entries (path, dir, size, mtime, parsed, head) VALUES (?, ?, ?, ?, ?, ?)',

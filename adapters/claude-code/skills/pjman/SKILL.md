@@ -146,8 +146,7 @@ signs in anywhere. When a ticket is named, or the project's board should reflect
    change: its Origin links the ticket, its gist is a draft from the ticket's title, and it says what it needs. pjman
    is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): the ticket is one more source,
    often inaccurate or unfounded, so read it as input and write the change's name, intent and done-when from your own
-   analysis before working it; status and parent are pjman's, and later syncs touch only the source, the binding and
-   the owners.
+   analysis before working it; status and parent are pjman's, and later syncs touch only the source and the binding.
 2. Then `pjman get ABC-1234` or `pjman context change:abc-1234` and work as usual. A ticket named in the prompt binds
    its change when the store has one (for a GitHub issue the hook reads it with gh and syncs it itself); otherwise the
    hook tells you to read and sync it, and the sync creates the change. A pattern match alone never creates a record.
@@ -160,12 +159,11 @@ capability, or `--level`), projects attached to the product (`pjman set project:
 
 The levels are defined by the question each answers and who asks it, never by size. **Product**: the thing with a name
 and users; asked about by everyone. **Feature**: what the product does for a person, nameable in a sentence a user
-would recognise; asked about by owners and users; the top level of the map. **Capability**: a distinct behaviour a
+would recognise; asked about by users; the top level of the map. **Capability**: a distinct behaviour a
 change can add, change or remove; asked about by builders and agents; the most specific node a change names. A
 capability may hold capabilities (anything deeper keeps the last label); a product that outgrows one map may set its
 own levels (`--levels area feature capability`). File by these definitions: a new behaviour inside a feature is a
-capability beneath it, not a new feature; a thing a user would name on its own is a feature. Owners
-(`owners`, a list of actors) sit on any node and are inherited downward. A change names the features it adds, changes
+capability beneath it, not a new feature; a thing a user would name on its own is a feature. A change names the features it adds, changes
 or removes: `--features "adds feature:<slug>"`, `"feature:<slug>"` (changes), `"removes feature:<slug>"`. Name the most
 specific node, the capability rather than the feature above it; state rolls up. A feature's state is derived from those
 changes (live once an adding change is done, retired once a removing one is), so prefer the verb to writing a status.
@@ -194,12 +192,12 @@ pjman decision <change>/<slug> …         a decision at any size, one commit: c
 pjman step <change> add|start|done|drop|reopen|note|edit|move …   the plan, steps as data; several texts or numbers in one commit
 pjman order [<product>]                  the roadmap's order; with <change> --before|--after|--first|--last|--later, a move in it
 pjman new product|feature …              the product tree: a root, then nested features
-pjman tree [<product>|<feature>]         the product by features: levels, derived status, owners, backlog by project
+pjman tree [<product>|<feature>]         the product by features: levels, derived status, backlog by project
 pjman activity <ref> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
 pjman set <ref>... field=value | list+=item | list-=item   authored fields: name, gist, status, links, binds; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; several records in one commit
 pjman rm <ref>... [--detach]             remove records created by mistake; refused while anything refers to one
 pjman mv <kind>:<old> <kind>:<new>       rename a change, a feature, an aspect, a decision… (the old slug stays an alias); every reference follows
-pjman whoami [--verify]                  who the person is: handle, record, accounts (the first of a handle kind is primary); --verify asks the apps. A rename (pjman mv person:<old> person:<new>) or a claim of an account is the person's act: offer it, never run it unasked
+pjman whoami                             who the person is: the configured actor and their record
 pjman apply - --for <key>                many writes as one commit, the commands one per line on stdin; pjman undo reverts it
 pjman note <change|session:<id>> <text>  a note to whoever works a change, or to one session; it arrives in full in the next brief
 pjman validate                           run before committing a store that lives in the project

@@ -38,9 +38,9 @@ before(() => {
   const dir = path.join(tmp, 'web');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'web' });
+  init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
-  newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
+  newRecord(store, 'product', 'shop', { title: 'Shop', summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
   change(store, 'login', { title: 'Login', summary: 's', project: 'project:web', status: 'open', next: 'n' });
   firstTitle = lastSeqNow();
@@ -48,7 +48,7 @@ before(() => {
   set(store, 'change:login', ['gist=Login with magic links'], {});
   secondTitle = lastSeqNow();
   tick();
-  newRecord(store, 'session', 's-1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's-1', { agent: 'agent:claude-code' });
   sessionBind(store, 's-1', 'change:shop/login');
   tick();
   sessionLog(store, 's-1', 'First stop.');

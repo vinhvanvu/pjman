@@ -1,5 +1,5 @@
 // pjman host (change:rex-adapter): what the host of a session is asked for from the command line. `label` writes the
-// change and where the work stands onto the session's block; `send` types text into it; `open` brings it to the
+// change and where the work stands onto the session's workspace; `send` types text into it; `open` brings it to the
 // front; with no verb, the host this machine runs, its version and whether the adapter validated it.
 import type { Store } from '../store/config.js';
 import { nextStep, stepsOf } from '../model/foundation.js';
@@ -30,8 +30,8 @@ function changeOf(loaded: Loaded, rec: Rec): Rec | undefined {
 }
 
 /** The label a session's block carries: the change's name and where the work stands. A decision proposed on the
- *  change comes first, since it waits on the person: `Rex adapter · waits: Adapter versioning`; else the step the
- *  work stands on over the steps counted: `Rex adapter · 4/7`; a plan with no step, the name alone; no change, the
+ *  change comes first, since it waits on the person: `Host adapter · waits: Adapter versioning`; else the step the
+ *  work stands on over the steps counted: `Host adapter · 4/7`; a plan with no step, the name alone; no change, the
  *  tool's name. */
 export function labelText(loaded: Loaded, rec: Rec): string {
   const c = changeOf(loaded, rec);

@@ -30,7 +30,7 @@
     "unicorn/no-useless-spread": "off",
     // a closure is kept beside its only caller; hoisting it is a micro-optimisation
     "unicorn/consistent-function-scoping": "off",
-    // the awaits in loops are sequential on purpose: one write, one hook, one bench run at a time
+    // the awaits in loops are sequential on purpose: one write, one hook at a time
     "eslint/no-await-in-loop": "off",
     // records are copied, never mutated, when a map changes a field
     "oxc/no-map-spread": "off",

@@ -15,11 +15,8 @@ export const FLAG_TYPES = {
   writer: { type: 'string' },
   session: { type: 'string' },
   created: { type: 'string' },
-  'in-project': { type: 'boolean' },
   'no-start': { type: 'boolean' },
   'no-adapter': { type: 'boolean' },
-  verify: { type: 'boolean' },
-  fresh: { type: 'boolean' },
   brief: { type: 'string' },
   open: { type: 'boolean' },
   all: { type: 'boolean' },
@@ -54,7 +51,6 @@ export const FLAG_TYPES = {
   by: { type: 'string' },
   binds: { type: 'string', multiple: true },
   links: { type: 'string', multiple: true },
-  owners: { type: 'string', multiple: true },
   features: { type: 'string', multiple: true },
   aspects: { type: 'string', multiple: true },
   feature: { type: 'string' },
@@ -76,7 +72,6 @@ export const FLAG_TYPES = {
   supersedes: { type: 'string' },
   url: { type: 'string' },
   agent: { type: 'string' },
-  'on-behalf-of': { type: 'string' },
   parent: { type: 'string' },
   started: { type: 'string' },
   body: { type: 'string' },
@@ -161,7 +156,6 @@ const CHANGE_NEW = [
   'features',
   'aspects',
   'depends-on',
-  'owners',
   'binds',
   'links',
   'kind',
@@ -180,33 +174,33 @@ export const COMMANDS: Command[] = [
     about:
       'create a record; refused if it would not validate. Keys are paths under the product (feature:<product>/<slug>, change:<product>/<slug>, decision:<product>/<change>/<slug>); inside a project the slug alone names a record. A decision is created with pjman decision, a session with pjman session start',
     usage: [
-      'pjman new product <slug> --title <sentence> [--name <one to three words>] [--owners <actor>]... [--levels <label>]... [--sequence <change>]... [--summary <s>] [--links <key>]...',
-      'pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>] [--links <key>]...',
-      'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...',
-      'pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--owners <actor>]... [--body <base>|-] [--links <key>]...',
+      'pjman new product <slug> --title <sentence> [--name <one to three words>] [--levels <label>]... [--sequence <change>]... [--summary <s>] [--links <key>]...',
+      'pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--summary <s>] [--links <key>]...',
+      'pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--links <key>]...',
+      'pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--body <base>|-] [--links <key>]...',
       'pjman new place <aspect>/<place> --feature <feature> [--body <fork>|-] [--links <key>]...',
       "pjman new change <slug> --name <one to four words> --gist <one line> --origin <the request in the person's words, or the key it came from> --intent <the need, for whom> --done-when <the outcome that closes it>",
       '        [--scope …] [--open-questions …] [--blocked-on …] [--notes …] [--status open] [--project <key>] [--parent <change>] [--step <text>]...',
-      '        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...',
+      '        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--binds <key>]... [--links <key>]...',
       '        [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--kind milestone] [--target <date>]',
       'pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]',
       'pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]... [--body <text>]',
       'pjman new actor person:<handle> | agent:<handle> [--name <n>] [--url <u>] [--links github-user:<login>]... [--links email:<address>]...',
-      'pjman new session <id> --agent <agent> --on-behalf-of <person> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)',
+      'pjman new session <id> --agent <agent> [--parent <session>] [--started <ts>] [--project <key>]   (the bare record; pjman session start is the start)',
       'pjman new session-kind <slug> [--name <one to four words>] [--gist <one line>] [--links <key>]...   (review, backlog, chat and other come with the store; pjman session name creates one it is handed)',
     ],
     flags: {
-      product: ['title', 'name', 'owners', 'levels', 'sequence', 'summary', 'links', 'body'],
-      feature: ['title', 'name', 'product', 'parent', 'status', 'level', 'owners', 'summary', 'links', 'body'],
-      project: ['title', 'product', 'parent', 'tracker', 'owners', 'links', 'body'],
-      aspect: ['title', 'name', 'parent', 'owners', 'links', 'body'],
+      product: ['title', 'name', 'levels', 'sequence', 'summary', 'links', 'body'],
+      feature: ['title', 'name', 'product', 'parent', 'status', 'level', 'summary', 'links', 'body'],
+      project: ['title', 'product', 'parent', 'tracker', 'links', 'body'],
+      aspect: ['title', 'name', 'parent', 'links', 'body'],
       place: ['feature', 'links', 'body'],
       change: CHANGE_NEW,
       decision: [],
       release: ['at', 'tag', 'level', 'commit', 'url', 'ships', 'links', 'body'],
       source: ['title', 'url', 'links', 'body'],
       actor: ['name', 'url', 'links', 'body'],
-      session: ['agent', 'on-behalf-of', 'parent', 'started', 'project', 'body'],
+      session: ['agent', 'parent', 'started', 'project', 'body'],
       'session-kind': ['name', 'gist', 'links', 'body'],
     },
     retired: {
@@ -249,7 +243,7 @@ export const COMMANDS: Command[] = [
     group: 'records',
     line: 'change authored fields on one record or several',
     about:
-      "change authored fields on one or several records, one commit (pjman undo reverts it). field=value replaces (an empty value removes the field); on a list field (links, owners, binds, features, aspects, depends_on, levels, sequence) field+=item adds one item when absent and field-=item removes one; field=- reads one value from stdin. A change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole. A decision's supersedes only adds, and marks each named decision superseded. A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten",
+      "change authored fields on one or several records, one commit (pjman undo reverts it). field=value replaces (an empty value removes the field); on a list field (links, binds, features, aspects, depends_on, levels, sequence) field+=item adds one item when absent and field-=item removes one; field=- reads one value from stdin. A change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole. A decision's supersedes only adds, and marks each named decision superseded. A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten",
     usage: [
       'pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...',
       'pjman set <ref> <field>=- < file   (one value from stdin)',
@@ -404,9 +398,9 @@ export const COMMANDS: Command[] = [
   {
     name: 'tree',
     group: 'reading',
-    line: 'the product by its features, with derived status, owners and backlog',
+    line: 'the product by its features, with derived status and backlog',
     about:
-      "the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)",
+      "the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)",
     usage: ['pjman tree [<product>|<feature>] [--all] [--json]'],
     flags: ['all'],
     args: 1,
@@ -492,7 +486,7 @@ export const COMMANDS: Command[] = [
     about:
       'a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did',
     usage: [
-      'pjman session start <id> --agent <agent> --on-behalf-of <person> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]',
+      'pjman session start <id> --agent <agent> [--parent session:<id>] [--log <line>] [--branch <name>] [--full] [--no-host] [--json]',
       'pjman session log <id> <text>',
       'pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)',
       'pjman session unbind <id> <change>',
@@ -502,7 +496,7 @@ export const COMMANDS: Command[] = [
       'pjman session name <id> ["<one to four words>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)',
     ],
     flags: {
-      start: ['agent', 'on-behalf-of', 'parent', 'log', 'branch', 'full', 'no-host'],
+      start: ['agent', 'parent', 'log', 'branch', 'full', 'no-host'],
       log: [],
       bind: ['reason', 'via'],
       unbind: [],
@@ -528,7 +522,7 @@ export const COMMANDS: Command[] = [
     group: 'session',
     line: "the host a session runs in, asked for something: a label, text typed in, its block to the front, its program's status",
     about:
-      "where a session runs (a terminal multiplexer: Rex, cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version",
+      "where a session runs (a terminal multiplexer: cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version",
     usage: [
       'pjman host [--json]',
       'pjman host label [<session-id>] [--clear]',
@@ -619,11 +613,11 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'the whole onboarding, in one command; again, the health check',
     about:
-      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, holding their forge login and git email as accounts), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report; --in-project makes a store inside the repository instead (set aside; kept for a repository that must carry its own record). Run again, it is the health check',
+      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report. Run again, it is the health check',
     usage: [
-      'pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>] [--in-project]',
+      'pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>]',
     ],
-    flags: ['name', 'product', 'map', 'no-map', 'brief', 'no-adapter', 'no-start', 'port', 'in-project'],
+    flags: ['name', 'product', 'map', 'no-map', 'brief', 'no-adapter', 'no-start', 'port'],
     args: 0,
   },
   {
@@ -639,11 +633,11 @@ export const COMMANDS: Command[] = [
   {
     name: 'whoami',
     group: 'setup',
-    line: 'who you are: the person, their record, their accounts',
+    line: 'who you are: the configured person and their record',
     about:
-      "who you are: the configured person, their record and their accounts in order, the first of a handle kind as the primary one; from the store alone, no app asked. --verify asks each account kind's checker (GitHub through gh; a kind with no checker reports unchecked) and gives each account a verdict, verified, unknown or unchecked, with the answers cached for a day (--fresh asks again). What is off is said with the command that resolves it. Writes nothing",
-    usage: ['pjman whoami [--verify] [--fresh] [--json]'],
-    flags: ['verify', 'fresh'],
+      'who you are: the actor the user config names (actor: in ~/.pjman/config.yaml) and their record in the store. What is off is said with the command that resolves it. Writes nothing',
+    usage: ['pjman whoami [--json]'],
+    flags: [],
     args: 0,
   },
   {
@@ -876,7 +870,7 @@ export const ENTITIES: Entity[] = [
         'create',
         'pjman new actor person:<handle> | agent:<handle> [--links github-user:<login>]...   (pjman init makes yours)',
       ],
-      ['read', 'pjman whoami [--verify] · pjman show person:<handle>'],
+      ['read', 'pjman whoami · pjman show person:<handle>'],
       ['list', 'pjman ls actor'],
       ['update', 'pjman set person:<handle> name=… links+=email:<address>'],
       ['rename', 'pjman mv person:<old> person:<new>   (the old handle stays an alias)'],
@@ -885,9 +879,9 @@ export const ENTITIES: Entity[] = [
   },
   {
     name: 'session',
-    what: 'a run of an agent on behalf of a person: append-only',
+    what: 'a run of an agent: append-only',
     ops: [
-      ['create', 'pjman session start <id> --agent <agent> --on-behalf-of <person>   (the adapter does it)'],
+      ['create', 'pjman session start <id> --agent <agent>   (the adapter does it)'],
       ['read', 'pjman show session:<id> · pjman brief --session <id> · pjman open --session <id>'],
       ['list', 'pjman ls session'],
       [

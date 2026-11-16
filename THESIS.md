@@ -58,7 +58,7 @@ One object at three distances: the local graph, the shared graph, the alignment 
 - **Change** — a unit of work. A Linear ticket, a GitHub issue, a milestone, a brainstorm are all changes.
 - **Decision** — what an actor with authority wrote: what, who, why, when. Opened `proposed` before the work it governs.
 - **Source** — a thing outside the store: a ticket, a PR, a doc, a thread, a file. May exist only as a key.
-- **Session** — a run: an agent, on behalf of a person, possibly spawned by another run; what it bound and what it observed.
+- **Session** — a run: an agent, possibly spawned by another run; what it bound and what it observed.
 - **Actor** — a person or an agent. An actor is a definition; a session is a run; a spawn is a session, never an actor.
 
 ### The layers

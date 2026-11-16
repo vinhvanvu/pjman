@@ -20,11 +20,11 @@ import { envelope, finishWrite, fullKeys, render, validateOrUndo } from './write
 
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
-  product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'summary'],
-  feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'owners', 'links', 'summary'],
-  aspect: ['title', 'name', 'parent', 'owners', 'links', 'body'],
+  product: ['title', 'name', 'levels', 'sequence', 'links', 'summary'],
+  feature: ['title', 'name', 'status', 'level', 'product', 'parent', 'links', 'summary'],
+  aspect: ['title', 'name', 'parent', 'links', 'body'],
   place: ['feature', 'links', 'body'],
-  project: ['title', 'product', 'parent', 'tracker', 'map', 'holds', 'owners', 'links'],
+  project: ['title', 'product', 'parent', 'tracker', 'map', 'holds', 'links'],
   // a change's rungs, its fields and its sections; the plan is written with pjman step
   change: [
     'name',
@@ -37,7 +37,6 @@ const SETTABLE: Record<RecordType, string[]> = {
     'depends_on',
     'features',
     'aspects',
-    'owners',
     'target',
     'binds',
     'links',
@@ -52,7 +51,7 @@ const SETTABLE: Record<RecordType, string[]> = {
   session: [],
   'session-kind': ['name', 'gist', 'links'],
 };
-const LISTS = new Set(['binds', 'links', 'owners', 'features', 'aspects', 'levels', 'depends_on', 'sequence']);
+const LISTS = new Set(['binds', 'links', 'features', 'aspects', 'levels', 'depends_on', 'sequence']);
 const SECTIONS: Record<string, string> = { summary: 'Summary', ...SECTION_FIELDS };
 /** What was a field once, and where its job went. */
 const RETIRED: Record<string, string> = {

@@ -42,10 +42,10 @@ describe('the shown change', () => {
 
 describe('the session bar', () => {
   const now = Date.parse('2026-11-06T15:12:00Z');
-  const base = { agent: 'agent:claude-code', onBehalfOf: 'person:vinhvanvu', started: '2026-11-06T12:00:00Z' };
+  const base = { agent: 'agent:claude-code', started: '2026-11-06T12:00:00Z' };
   it('reads who, working for how long, the last act, and what waits', () => {
     const bar = sessionBar({ ...base, state: 'live', last: '2026-11-06T15:10:00Z' }, 2, now);
-    expect(bar.parts).toEqual(['claude-code for vinhvanvu', 'working 3h 12m', 'last acted 2 min ago']);
+    expect(bar.parts).toEqual(['claude-code', 'working 3h 12m', 'last acted 2 min ago']);
     expect(bar.waits).toBe('2 wait on you');
     expect(bar.alarm).toBe(true);
   });
@@ -54,7 +54,7 @@ describe('the session bar', () => {
       'quiet since 1 h ago',
     );
     const ended = sessionBar({ ...base, state: 'ended', last: '2026-11-06T14:00:00Z' }, 0, now);
-    expect(ended.parts).toEqual(['claude-code for vinhvanvu', 'ended 1 h ago']);
+    expect(ended.parts).toEqual(['claude-code', 'ended 1 h ago']);
     expect(ended.waits).toBe('nothing waits on you');
     expect(waitsLine(1)).toBe('1 waits on you');
   });
@@ -64,28 +64,26 @@ describe('the session bar', () => {
         ...base,
         state: 'live',
         last: '2026-11-06T15:10:00Z',
-        host: { name: 'rex', version: '0.3.1', validated: true },
+        host: { name: 'cmux', version: '0.3.1', validated: true },
       },
       0,
       now,
     );
-    expect(inRex.parts[0]).toBe('claude-code for vinhvanvu in rex 0.3.1');
+    expect(inRex.parts[0]).toBe('claude-code in cmux 0.3.1');
     expect(
-      sessionBar({ ...base, state: 'live', host: { name: 'rex', version: '1.4.0', validated: false } }, 0, now)
+      sessionBar({ ...base, state: 'live', host: { name: 'cmux', version: '1.4.0', validated: false } }, 0, now)
         .parts[0],
-    ).toBe('claude-code for vinhvanvu in rex 1.4.0 (unvalidated)');
-    expect(sessionBar({ ...base, state: 'live', host: { name: 'cmux' } }, 0, now).parts[0]).toBe(
-      'claude-code for vinhvanvu in cmux',
-    );
+    ).toBe('claude-code in cmux 1.4.0 (unvalidated)');
+    expect(sessionBar({ ...base, state: 'live', host: { name: 'cmux' } }, 0, now).parts[0]).toBe('claude-code in cmux');
   });
   it('says what the program is blocked on when the host says so, in place of working', () => {
     const host = (kind?: 'question' | 'permission' | 'auth') => ({
-      name: 'rex',
+      name: 'cmux',
       status: { state: 'blocked' as const, kind, at: '2026-11-06T15:11:00Z' },
     });
     expect(
       sessionBar({ ...base, state: 'live', last: '2026-11-06T15:10:00Z', host: host('question') }, 0, now).parts,
-    ).toEqual(['claude-code for vinhvanvu in rex', 'asks you a question', 'last acted 2 min ago']);
+    ).toEqual(['claude-code in cmux', 'asks you a question', 'last acted 2 min ago']);
     expect(sessionBar({ ...base, state: 'live', host: host('permission') }, 0, now).parts[1]).toBe(
       'asks your permission',
     );
@@ -94,14 +92,14 @@ describe('the session bar', () => {
     // a working program reads as before
     expect(
       sessionBar(
-        { ...base, state: 'live', host: { name: 'rex', status: { state: 'working', at: '2026-11-06T15:11:00Z' } } },
+        { ...base, state: 'live', host: { name: 'cmux', status: { state: 'working', at: '2026-11-06T15:11:00Z' } } },
         0,
         now,
       ).parts[1],
     ).toBe('working 3h 12m');
   });
   it('names the session for the crumb', () => {
-    expect(sessionTitle({ key: 'session:abc', ...base })).toBe('claude-code · 2026-11-06, for vinhvanvu');
+    expect(sessionTitle({ key: 'session:abc', ...base })).toBe('claude-code · 2026-11-06');
     expect(sessionTitle({ key: 'session:abcdefghijk' })).toBe('abcdefgh');
   });
 });

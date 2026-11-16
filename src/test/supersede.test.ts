@@ -35,7 +35,7 @@ before(() => {
   git(project, 'init', '-q');
   git(project, 'config', 'user.name', 'Tester');
   git(project, 'config', 'user.email', 't@example.com');
-  init({ checkers: [], cwd: project });
+  init({ cwd: project });
   store = findStore(project)!;
   change(store, 'sup', { title: 'Supersession' });
   decisionRec(store, 'sup/old-one', { title: 'Old one', decision: 'a', why: 'b' });

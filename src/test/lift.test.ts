@@ -31,7 +31,7 @@ before(() => {
   const dir = path.join(tmp, 'web');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'web' });
+  init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
 });
 
@@ -71,7 +71,7 @@ test('nothing automatic moves a status backwards', () => {
 
 test('a session bound to a change makes it active when it writes a file, not when it only binds or lands on a branch', () => {
   change(store, 'worked', { project: 'project:web' });
-  newRecord(store, 'session', 's1', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 's1', { agent: 'agent:claude-code' });
   sessionBind(store, 's1', 'change:worked');
   sessionObserve(store, 's1', 'links', 'change:worked', 'branch:worked');
   assert.equal(statusOf('worked') ?? 'open', 'open');

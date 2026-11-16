@@ -72,13 +72,13 @@ describe('the change bar', () => {
     const v = changeBar(
       {
         sessions: [session('session:a', '2026-11-05T12:00:00Z'), session('session:b', '2026-11-08T10:00:00Z')],
-        live: [{ key: 'session:b', agent: 'agent:claude-code', onBehalfOf: 'person:vinh' }],
+        live: [{ key: 'session:b', agent: 'agent:claude-code' }],
         last: '2026-11-08T11:48:00Z',
         waits: 1,
       },
       now,
     );
-    expect(v.parts).toEqual(['claude-code on it now, for vinh', '2 sessions over 2d 23h', 'last touched 12 min ago']);
+    expect(v.parts).toEqual(['claude-code on it now', '2 sessions over 2d 23h', 'last touched 12 min ago']);
     expect(v.waits).toBe('1 waits on you');
     expect(v.alarm).toBe(true);
     expect(v.live).toBe(true);

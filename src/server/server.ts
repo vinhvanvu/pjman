@@ -563,7 +563,6 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       return send(res, 200, {
         data: {
           root: store.root,
-          mode: store.mode,
           name: cfg.name,
           project: store.project ?? null,
           actor: readUserConfig().actor ?? null,

@@ -51,15 +51,12 @@ export interface StoreConfig {
   version?: string;
 }
 
-export type StoreMode = 'in-project' | 'standalone';
-
 export interface Store {
   root: string;
-  mode: StoreMode;
   config: StoreConfig;
   /** The project the working directory maps to, when the store was found through the user map. */
   project?: string;
-  /** The directory `file:` keys are relative to: the mapped repository, or the repository holding an in-project store. */
+  /** The directory `file:` keys are relative to: the mapped repository. */
   projectDir?: string;
 }
 
@@ -81,7 +78,7 @@ export interface UserConfig {
   auto_register?: boolean;
   /** The person's branch prefix (`vinh`): the recommended branch for a change is `<prefix>/<slug>`. */
   branch_prefix?: string;
-  /** A session started in a host with no dock (Rex) opens the follow window when none is open (default true). */
+  /** A session started in Claude Code's desktop app, which has no dock, opens the follow window when none is open (default true). */
   follow_window?: boolean;
   /** Inside cmux, the dashboard docked in a pane beside the workspace's sessions (default true). */
   dock?: boolean;
@@ -160,15 +157,17 @@ export function writeStoreConfig(root: string, cfg: StoreConfig): void {
   fs.writeFileSync(path.join(root, 'pjman.yaml'), stringify(cfg, { lineWidth: 0 }));
 }
 
-/** Standalone when the store's folder is the top of its own repository: its .git is there (a folder, or a worktree's
- *  file). Read from the folder, so naming a store spawns nothing. */
-export function modeOf(root: string): StoreMode {
-  return fs.existsSync(path.join(root, '.git')) ? 'standalone' : 'in-project';
+/** Whether the store's folder is the top of its own repository: its .git is there (a folder, or a worktree's file).
+ *  The tool commits every write to such a store; a store that is not (a copy opened with --store) is written but never
+ *  committed, so the tool never commits into a repository it does not own. Read from the folder, so naming a store
+ *  spawns nothing. */
+export function ownsRepository(store: { root: string }): boolean {
+  return fs.existsSync(path.join(store.root, '.git'));
 }
 
 export function openStore(root: string): Store {
   const abs = path.resolve(root);
-  return { root: abs, mode: modeOf(abs), config: loadStoreConfig(abs) };
+  return { root: abs, config: loadStoreConfig(abs) };
 }
 
 function real(p: string): string {
@@ -184,7 +183,7 @@ function isWithin(parent: string, child: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
-/** Resolution: `--store` or PJMAN_STORE; else a `.pjman/` walking up; else the user map; else, outside any git
+/** Resolution: `--store` or PJMAN_STORE; else the store the directory sits in; else the user map; else, outside any git
  *  repository, the global store with no project; else null. */
 export function findStore(cwd: string, override?: string): Store | null {
   const explicit = override || process.env.PJMAN_STORE;
@@ -197,22 +196,6 @@ export function findStore(cwd: string, override?: string): Store | null {
       (fs.existsSync(path.join(dir, 'products')) || fs.existsSync(path.join(dir, 'changes')))
     )
       return openStore(dir);
-    const candidate = path.join(dir, '.pjman');
-    if (fs.existsSync(path.join(candidate, 'pjman.yaml'))) {
-      // an in-project store holds its own project record: the one it has is the current project
-      const projects = (() => {
-        try {
-          return fs.readdirSync(path.join(candidate, 'projects')).filter((f) => f.endsWith('.md'));
-        } catch {
-          return [];
-        }
-      })();
-      return {
-        ...openStore(candidate),
-        projectDir: dir,
-        project: projects.length === 1 ? `project:${projects[0].slice(0, -3)}` : undefined,
-      };
-    }
     const parent = path.dirname(dir);
     if (parent === dir) break;
     dir = parent;

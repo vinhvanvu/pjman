@@ -30,7 +30,7 @@ before(() => {
   fs.writeFileSync(path.join(process.env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'web' });
+  init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
   change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web' });
   change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
@@ -38,7 +38,7 @@ before(() => {
   change(store, 'child-a', { title: 'Child A', summary: 's', project: 'project:web', parent: 'change:platform' });
   change(store, 'child-b', { title: 'Child B', summary: 's', project: 'project:web', parent: 'change:platform' });
   for (const n of [1, 2, 3]) change(store, `extra-${n}`, { title: `Extra ${n}`, summary: 's', project: 'project:web' });
-  newRecord(store, 'session', 'me', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(store, 'session', 'me', { agent: 'agent:claude-code' });
   sessionBind(store, 'me', 'change:auth', 'prompt');
   set(store, 'change:auth', ['status=active'], { session: 'session:me' });
   decisionRec(store, 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w', session: 'session:me' });
@@ -74,7 +74,6 @@ test('a change names every session that touched it over its life, with its agent
   const me = r.sessions?.find((s) => s.key === 'session:me');
   assert.ok(me, 'the session that wrote on the change is named');
   assert.equal(me.agent, 'agent:claude-code');
-  assert.equal(me.onBehalfOf, 'person:tester');
   assert.ok(me.count > 1 && me.first <= me.last);
   assert.equal(rail(store, loadStore(store), 'session:me').sessions, undefined);
 });

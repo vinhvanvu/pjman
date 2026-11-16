@@ -61,7 +61,6 @@ The fixed root of the product tree and the namespace of everything beneath it: i
 |---|---|---|
 | `title` | A | Required: the product in a sentence. |
 | `name` | A | Optional short name, one to three words: what the rail, the switcher, the crumbs and the chips show (the title stays the sentence). Absent, the key's slug. |
-| `owners` | A | Optional list of actor keys; inherited by every node beneath that names none. |
 | `levels` | A | Optional list of level labels for the features beneath, by depth (default: the store's `tree_levels`, `feature` then `capability`; anything deeper takes the last label). |
 | `sequence` | A | Optional ordered list of change keys: the roadmap's order, the deliverables as the person arranged them. A milestone on it is a column holding its children; a loose change is a column of one; a change not on it comes after, as later. No repeats; `pjman order` moves an entry. |
 | `links` | A | Optional source keys. |
@@ -79,7 +78,6 @@ One nestable kind for everything the product is and does, at any depth: a featur
 | `level` | A | Optional label; default from the product's `levels` or the store's `tree_levels` at this node's depth. |
 | `product` | A | The product, for a top-level feature. A feature names `product` or `parent`. |
 | `parent` | A | The feature above. Unbounded depth; a cycle is refused. |
-| `owners` | A | Optional list of actor keys; inherited downward. |
 | `links` | A | Optional source keys. |
 | `aliases` | A | Former slugs, appended by `pjman mv`; a reference to one resolves and is reported as "resolves via alias". |
 | body | A | `## Summary`, optional. |
@@ -95,7 +93,6 @@ What applies across the product rather than at one place on the tree: how text r
 | `title` | A | Required. |
 | `name` | A | Optional label, one to three words. |
 | `parent` | A | Optional. The aspect above (text, then markdown beneath it); cycles refused; same product. |
-| `owners` | A | Optional list of actor keys: who answers for the base. |
 | `links` | A | Optional source keys. |
 | body | A | The base: the one source of truth for what the aspect says, in markdown. The store imposes no shape on it; the aspect skill shapes it by the kind of aspect. |
 
@@ -122,7 +119,6 @@ A repository, registered in the store by `pjman init`. The unit a change belongs
 | `title` | A | The repository's folder name unless named |
 | `product` | A | Optional. The product this project belongs to. |
 | `parent` | A | Optional. The project above (a platform over web and api); unbounded depth, cycles refused. |
-| `owners` | A | Optional list of actor keys; inherited downward. |
 | `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). An adapter creates a change for a ticket only in a project that names one. The tracker's own binding sits under `ext.<tracker>` (`ext.linear.team: ABC` names the Linear team the sync pulls); it is also the prefix the tracker claims: a bare ticket id (`ABC-12`) resolves only where exactly one tracker of the project claims its prefix, by that binding or by a change of the project binding a ticket of that prefix (decision pjman-22/bare-ticket-ids) |
 | `map` | A | Optional. `propose` (the default `pjman init` records after asking): while the project's product has no feature, `pjman context` opens with one line saying the product has no map and how it comes with the first change filed, and `pjman intake` opens with the same. `skip` ends the line. |
 | `holds` | A | Optional. What the repository held when `pjman init` inventoried it: `bare`, `docs`, `code` or `docs+code` (a README that says more than a title, a docs folder or a spec; a manifest or a directory of source). The context and intake read the repository live when it is at hand and fall back to this; a re-run of init refreshes it. Docs give the map its sentences, code its split, both the better proposal; bare grows its map from the work. |
@@ -142,7 +138,7 @@ A record for an actor exists only when there is something to say about one. Refe
 | `links` | A | A person's accounts, each a source of an identity kind keyed as the outside world keys it: `github-user:<login>`, `linear-user:<id>`, `email:<address>`, `git-author:<name <email>>`. An account is one person's; two people claiming one is an error on both. A commit, a pull request, a ticket assignee or a review resolves to its person through the account; an account no person claims resolves to nothing and is never matched by name |
 | `aliases` | A | Former handles, appended by `pjman mv person:<old> person:<new>`; the user config's actor follows |
 
-A person's key is a handle of their own, unique in the store, suggested by `pjman init` in a fixed order, the forge login, else the committer name, else the machine's account name (so there is always an actor), and confirmed by the person; it belongs to no account, so two people with the same name have different handles and a person who leaves a forge keeps their key. The first link of a handle kind (a kind whose id is a login: `github-user`) is the person's primary account; a record with none is **provisional**: the handle came from the committer name, the machine or a hand edit and the person has not yet claimed an account, which `pjman whoami` and the session start say until they rename it or claim one. Verification (`pjman whoami --verify`, and `pjman init` on every run) asks one checker per account kind and gives each account a verdict, `verified`, `unknown` or `unchecked`; an unknown account is said and never dropped by the tool.
+A person's key is a handle of their own, unique in the store, suggested by `pjman init` from the committer name, else the machine's account name (so there is always an actor); `actor:` in `~/.pjman/config.yaml` names it, and `pjman whoami` reads it back with its record. The accounts a person holds are links on the record (`github-user:<login>`, `email:<address>`).
 
 ### Session — `sessions/<yyyy-mm-dd>-<harness-session-id>.md`
 
@@ -151,7 +147,6 @@ A run. Written by one adapter; append-only; never hand-edited (a store's bootstr
 | Field | A/M | Notes |
 |---|---|---|
 | `agent` | M | Actor key |
-| `on_behalf_of` | M | Actor key: the person the run worked for |
 | `started` | M | Timestamp |
 | `parent` | M | Session key, optional: the run that spawned this one |
 | `changes` | M | Change keys bound during the run, in order |
@@ -176,19 +171,17 @@ SQLite, in `index.db` at the store root, git-ignored, rebuilt from the records b
 
 ### Provenance
 
-`writer` and `session` on records that adapters write; `parent`, `agent`, `on_behalf_of` on sessions; git for the rest. An adapter that commits records adds a `Pjman-Session: <id>` trailer. Provenance is a property of the Phase 1 backend (files in git), not a claim about every backend.
+`writer` and `session` on records that adapters write; `parent` and `agent` on sessions; git for the rest. Older records may carry `owners` (on a node or a change) or `on_behalf_of` (on a session): no longer written, read or checked, and accepted as they are. An adapter that commits records adds a `Pjman-Session: <id>` trailer. Provenance is a property of the Phase 1 backend (files in git), not a claim about every backend.
 
 ### Location and configuration
 
 A **store** is a git repository holding `pjman.yaml`, `projects/`, `changes/`, `decisions/`, `sources/`, `sessions/`, `actors/`, and `index.db` (ignored). There is one per person, the **global store** at `~/.pjman/store`, its own repository; every repository the person works in is a **project** in it. `pjman init` in a repository creates the store the first time, registers the repository as `project:<slug>`, and maps the repository's path to that project in `~/.pjman/config.yaml`. The record never sits in the project's repository, and sessions never appear in product PRs.
 
-Resolution: `--store` or `PJMAN_STORE`; else walk up from the working directory for a store root (`pjman.yaml` beside `changes/`, so the global store resolves from inside itself) or a `.pjman/`; else the user map, which also names the current project. A change created from inside a mapped directory belongs to that project; from inside the store itself the board is unscoped.
+Resolution: `--store` or `PJMAN_STORE`; else walk up from the working directory for a store root (`pjman.yaml` beside `products/`, so the global store resolves from inside itself); else the user map, which also names the current project. A change created from inside a mapped directory belongs to that project; from inside the store itself the board is unscoped.
 
 Dates (`created`, `decided_on`, the date in a decision's or session's file name) are the local calendar day of the write. Timestamps (`started`, log lines) are UTC instants.
 
-Set aside: `pjman init --in-project` makes a store at `<repo>/.pjman/`, tracked with the project and never committed by the tool, for a repository that must carry its own record. The record shape is identical.
-
-**Git policy.** The tool shells out to git for four things and wraps nothing else: `init` (initialise the store; ignore `index.db`), `mv` (stage the rename so history follows), reading history for views and provenance, and committing — the tool commits after every write it makes to the global store, with a `Pjman-Session:` trailer when a session is known; an in-project store it never commits, the project's own workflow does. Branches, remotes, push and merge are the user's. Git on `PATH` is the only dependency.
+**Git policy.** The tool shells out to git for four things and wraps nothing else: `init` (initialise the store; ignore `index.db`), `mv` (stage the rename so history follows), reading history for views and provenance, and committing — the tool commits after every write it makes to the global store, with a `Pjman-Session:` trailer when a session is known; a store opened by path that is not its own repository it never commits. Branches, remotes, push and merge are the user's. Git on `PATH` is the only dependency.
 
 `pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`, `version:` (the format the store is in: the pjman version that introduced its latest move, stamped by `pjman init` and by `pjman migrate`, never by an ordinary write; absent on a store from before the field, which reads as 0.1.0; a store stamped newer than the tool is refused for writing, naming the version to install, and one stamped older is told to migrate; decision releases-homebrew/store-names-its-version). `~/.pjman/config.yaml`: `actor`, and `stores[].projects[]` as `{path, project}`. Configuration is never in a record.
 
@@ -228,7 +221,6 @@ A change reads as a ladder (decision record-foundation/the-ladder): its `name`, 
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
 | `aspects` | A | Optional. The aspects or places this change adds, changes or removes, in the same form as `features`: `adds aspect:<slug>`, `aspect:<aspect>/<place>` (changes). Its context then carries the aspect whole (the base and every place). |
-| `owners` | A | Optional list of actor keys; a change without owners answers to its feature's or project's. |
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
 | `kind` | A | Optional. `bug`: a change against something live, reported rather than planned. `milestone`: a change whose plan is its children (decision milestone-kind/kind-not-children): named so at filing (`--kind milestone`), it takes no steps of its own, and a change another change names as `parent` must be one, both refused otherwise. Absent means work. A sync sets `bug` from the tracker's own issue type or label and `milestone` on the change a sub-issue's parent ticket binds; it never sets the feature or the severity |
@@ -291,7 +283,7 @@ Body: the release notes as published, one line per change in the words the chang
 | `done` | Accepted |
 | `dropped` | Closed without acceptance |
 
-The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. pjman is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the change's Origin. Ingesting it creates the change when none binds it, with a draft gist from the ticket's title and the status as the ticket stood then; afterwards a sync writes the source record, the binding and the owners, never the change's name, status or parent. Approval and in-effect states are Phase 3's.
+The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. pjman is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the change's Origin. Ingesting it creates the change when none binds it, with a draft gist from the ticket's title and the status as the ticket stood then; afterwards a sync writes the source record and the binding, never the change's name, status or parent. Approval and in-effect states are Phase 3's.
 
 ---
 
@@ -305,7 +297,6 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `sequence` | product → change | product | the roadmap's order; every key must exist; no repeats |
 | `binds` | change → source | change | a source binds at most one change |
 | `product` | feature, project → product | the child | the fixed root of the product tree |
-| `owners` | product, feature, aspect, project, change → actor | the node | inherited downward when a node names none |
 | `adds`, `changes`, `removes` | change → feature | change | what the change does to the feature; derived state replays the done ones |
 | `adds`, `changes`, `removes` | change → aspect, place | change (`aspects`) | what the change does to the aspect; its context carries it whole |
 | `parent` | aspect → aspect | aspect | same product; no cycles |

@@ -23,9 +23,6 @@ export interface NodeHeaderProps {
   title: string;
   /** The one-line sentence beneath the name, when it says more than the name. */
   sentence?: string;
-  owners: string[];
-  /** Where the owners are inherited from, when not set here. */
-  ownersFrom?: string;
   word: HealthWord;
   health: Health;
   /** Open changes beneath and how many of those are in flight. */
@@ -54,8 +51,6 @@ export function NodeHeader({
   state,
   title,
   sentence,
-  owners,
-  ownersFrom,
   word,
   health: h,
   open,
@@ -81,37 +76,29 @@ export function NodeHeader({
         </div>
         <h1 className="text-heading font-semibold tracking-tight">{title}</h1>
         {sentence && <p className="text-[13.5px] text-ink-muted">{sentence}</p>}
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
-          <span>
-            <span className="text-ink-faint">Owner </span>
-            {owners.length ? owners.join(', ') : <span className="text-ink-faint">nobody yet</span>}
-            {ownersFrom && <span className="text-ink-faint"> · from {ownersFrom}</span>}
-          </span>
-          {bugs && bugs.count > 0 && (
-            <>
-              {sep}
-              <Link
-                to="/$lens/$"
-                params={{ lens: 'feature', _splat: bugs.node ?? '' }}
-                search={{ bugs: true }}
-                className={cn(
-                  'hover:underline',
-                  bugs.worst === 'product' || bugs.worst === 'feature'
-                    ? cn('font-medium', TONE.alarm.text)
-                    : bugs.worst === 'capability'
-                      ? TONE.waits.text
-                      : '',
-                )}
-              >
-                {plural(bugs.count, 'bug')}
-                {bugs.worst &&
-                  (bugs.worst === 'nuisance' || bugs.worst === 'cosmetic'
-                    ? `, worst ${bugs.worst}`
-                    : `, ${bugs.worst} out`)}
-              </Link>
-            </>
-          )}
-        </p>
+        {bugs && bugs.count > 0 && (
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-muted">
+            <Link
+              to="/$lens/$"
+              params={{ lens: 'feature', _splat: bugs.node ?? '' }}
+              search={{ bugs: true }}
+              className={cn(
+                'hover:underline',
+                bugs.worst === 'product' || bugs.worst === 'feature'
+                  ? cn('font-medium', TONE.alarm.text)
+                  : bugs.worst === 'capability'
+                    ? TONE.waits.text
+                    : '',
+              )}
+            >
+              {plural(bugs.count, 'bug')}
+              {bugs.worst &&
+                (bugs.worst === 'nuisance' || bugs.worst === 'cosmetic'
+                  ? `, worst ${bugs.worst}`
+                  : `, ${bugs.worst} out`)}
+            </Link>
+          </p>
+        )}
       </div>
       <Figures
         dense

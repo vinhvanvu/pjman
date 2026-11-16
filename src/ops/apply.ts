@@ -3,7 +3,7 @@
 // commit, closed by one `applied` event naming what the batch was for. A line that fails refuses the whole batch:
 // the store is put back as it was. pjman undo reverts a batch as one commit, refused while a later write touched a
 // record the batch changed.
-import type { Store } from '../store/config.js';
+import { ownsRepository, type Store } from '../store/config.js';
 import { emit, keyOfPath, typeOfPath, type EventInput } from '../store/events.js';
 import { commitAll, git } from '../store/git.js';
 import { loadStore, resolve, type RecordType } from '../store/records.js';
@@ -85,11 +85,9 @@ export function parseBatch(text: string): { line: number; argv: string[] }[] {
   return out;
 }
 
-function requireStandalone(store: Store, what: string): void {
-  if (store.mode !== 'standalone')
-    throw new CliError(
-      `${what} needs a store the tool commits (the global store); an in-project store takes the commands one by one`,
-    );
+function requireRepository(store: Store, what: string): void {
+  if (!ownsRepository(store))
+    throw new CliError(`${what} needs a store the tool commits: one that is its own git repository (the global store)`);
 }
 
 function requireClean(store: Store): void {
@@ -122,7 +120,7 @@ export function applyLines(
   opts: { for?: string; session?: string; writer?: string } = {},
 ): ApplyResult {
   noteReshaping(store);
-  requireStandalone(store, 'apply');
+  requireRepository(store, 'apply');
   requireClean(store);
   if (!lines.length) throw new CliError('the batch is empty');
   const target = forOf(store, opts.for);
@@ -160,7 +158,7 @@ export function applyLines(
 /** Revert one batch (the last, or the commit named) as one commit; refused while a later commit touched its records. */
 export function undo(store: Store, opts: { commit?: string; session?: string; writer?: string } = {}): UndoResult {
   noteReshaping(store);
-  requireStandalone(store, 'undo');
+  requireRepository(store, 'undo');
   requireClean(store);
   const root = store.root;
   let sha: string;

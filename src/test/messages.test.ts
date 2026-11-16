@@ -40,14 +40,13 @@ before(() => {
   fs.writeFileSync(path.join(process.env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'web' });
+  init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
   change(store, 'auth', { title: 'Auth', summary: 's', project: 'project:web' });
   change(store, 'billing', { title: 'Billing', summary: 's', project: 'project:web' });
   decisionRec(store, 'auth/tokens', { title: 'Tokens', decision: 'd', why: 'w' });
   decisionRec(store, 'billing/cards', { title: 'Cards', decision: 'd', why: 'w' });
-  for (const id of ['me', 'idle', 'peer'])
-    newRecord(store, 'session', id, { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  for (const id of ['me', 'idle', 'peer']) newRecord(store, 'session', id, { agent: 'agent:claude-code' });
   sessionBind(store, 'me', 'change:auth', 'prompt');
   brief(store, 'me');
 });

@@ -6,7 +6,7 @@ The record of a software product, kept in git by the agents that build it.
 
 A change, a decision, a feature, a session and a release are records in one git store, under one schema. Coding agents read the record at the start of every session and write back through one command. You read it on a dashboard and make the decisions.
 
-> Works best in [cmux](https://cmux.com) and [Rex](https://www.superlogical.com): the dashboard docks beside the session and follows it. Any terminal works.
+> Works best in [cmux](https://cmux.com): the dashboard docks beside the session and follows it. Any terminal works.
 
 ## Getting started
 
@@ -41,9 +41,9 @@ When it worked you have four things: a store of your own at `~/.pjman/store`, th
 
 **4. Say what you want done.** The agent files it as a change with a plan, and with the first one proposes the product map as a decision for you to accept. `pjman open` brings the dashboard to the session's page; in cmux it is already docked beside you.
 
-## Works best in cmux and Rex
+## Works best in cmux
 
-pjman runs in any terminal. In [cmux](https://cmux.com) and [Rex](https://www.superlogical.com), the session and the dashboard become one workspace.
+pjman runs in any terminal. In [cmux](https://cmux.com), the session and the dashboard become one workspace.
 
 ![A real day in cmux: eight sessions in the sidebar, each labelled with its change and its step; the session in the middle; the dock on the right following it on the session's page, with the change it is on, its plan, its sources and its timeline](assets/docked.png)
 
@@ -55,9 +55,8 @@ In cmux a pane opens beside the terminal when the session starts, on the bridge.
 
 ### Several sessions at once
 
-- **Each one labelled.** The session's sidebar pill (cmux) or block (Rex) says which change it is on and where the work stands, so a row of terminals reads as a row of changes.
+- **Each one labelled.** The session's sidebar pill in cmux says which change it is on and where the work stands, so a row of terminals reads as a row of changes.
 - **One place to see them all.** The bridge groups every live session's change by what it needs from you: working now, waiting on you, stopped with its next step set, in review, blocked.
-- **Live state** (Rex). Working, waiting on you or stopped is read from the terminal itself, as it happens.
 - **Open and launch from the dashboard.** A session's row brings its terminal to the front; a change can start a session in a worktree named for it.
 - **Sessions know of each other.** Each is told of the other live sessions on the same change or the same part of the map. A decision you accept on the dashboard wakes the session that waits on it.
 
@@ -150,7 +149,7 @@ One command reads what main shipped since the last tag, resolves each merge to i
 - The store is `~/.pjman/store`: Markdown files with YAML frontmatter, one per record, in a git repository of its own.
 - The `pjman` command is the schema. Every write goes through it and is validated.
 - A skill tells the agent what to record and when. Hooks do the rest: the brief, the binding, the log line, the receipt after every turn.
-- The terminal a session runs in is a host (cmux, Rex), reached through one interface, so another terminal is another adapter, not another design (`adapters/hosts.md`).
+- The terminal a session runs in is a host (cmux), reached through one interface, so another terminal is another adapter, not another design (`adapters/hosts.md`).
 - Nothing is dropped and nothing is written by hand.
 
 ## Docs

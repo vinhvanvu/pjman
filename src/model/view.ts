@@ -436,7 +436,7 @@ export interface ChangeContext {
 }
 
 export interface StoreContext {
-  store: { name: string; mode: string; root: string };
+  store: { name: string; root: string };
   /** The project the board is scoped to, or null for the whole store. */
   project: Row | null;
   projects: Row[];
@@ -763,7 +763,7 @@ export function formatChangeContext(c: ChangeContext): string {
     out.push('\n## Sessions');
     for (const s of c.sessions.slice(-5)) {
       out.push(
-        `- ${String(s.data.started).slice(0, 10)} ${s.key} ${String(s.data.agent)} for ${String(s.data.on_behalf_of)}${s.last ? ` — ${s.last}` : ''}`,
+        `- ${String(s.data.started).slice(0, 10)} ${s.key} ${String(s.data.agent)}${s.last ? ` — ${s.last}` : ''}`,
       );
     }
   }
@@ -797,7 +797,7 @@ export function storeContext(
     ? mapState(loaded, project, store.project === project.key ? store.projectDir : undefined)
     : undefined;
   return {
-    store: { name: store.config.name, mode: store.mode, root: store.root },
+    store: { name: store.config.name, root: store.root },
     project,
     projects,
     changes,
@@ -871,7 +871,7 @@ export function regroupPrompt(loaded: Loaded, project: Pick<Row, 'key' | 'data'>
 export function formatStoreContext(c: StoreContext): string {
   const head = c.project
     ? `# ${c.project.key} — ${c.project.title ?? ''} (${c.store.name} store)`
-    : `# ${c.store.name} (${c.store.mode} store)${c.projects.length ? `\nprojects: ${c.projects.map((p) => p.key).join(', ')}` : ''}`;
+    : `# ${c.store.name} store${c.projects.length ? `\nprojects: ${c.projects.map((p) => p.key).join(', ')}` : ''}`;
   const out: string[] = [head];
   if (c.mapPrompt) out.push(`no product map: ${c.mapPrompt}`);
   if (c.regroupPrompt) out.push(`map outgrown: ${c.regroupPrompt}`);

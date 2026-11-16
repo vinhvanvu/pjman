@@ -29,8 +29,7 @@ const env = {
 delete (env as Record<string, unknown>).PJMAN_SESSION;
 delete (env as Record<string, unknown>).PJMAN_STORE;
 delete (env as Record<string, unknown>).CLAUDE_CODE_ENTRYPOINT; // a terminal session, wherever the tests run
-for (const k of Object.keys(env))
-  if (k.startsWith('CMUX_') || k.startsWith('REX_')) delete (env as Record<string, unknown>)[k];
+for (const k of Object.keys(env)) if (k.startsWith('CMUX_')) delete (env as Record<string, unknown>)[k];
 
 function hook(event: string, input: Record<string, unknown>): string {
   return execFileSync(process.execPath, [HOOK, event], {
@@ -60,7 +59,7 @@ before(() => {
   process.env.PJMAN_HOME = env.PJMAN_HOME;
   fs.mkdirSync(path.join(project, 'src'), { recursive: true });
   fs.mkdirSync(env.PJMAN_HOME, { recursive: true });
-  // no follow window opened by a session started in Rex, unless a test turns it on (it would start a real dashboard)
+  // no follow window opened by a session started in the desktop app, unless a test turns it on (it would start a real dashboard)
   fs.writeFileSync(
     path.join(env.PJMAN_HOME, 'config.yaml'),
     'actor: person:tester\nfollow_window: false\nstores: []\n',
@@ -72,7 +71,7 @@ before(() => {
   fs.mkdirSync(path.join(env.PJMAN_HOME, 'claude-code', 'state'), { recursive: true });
   fs.writeFileSync(path.join(env.PJMAN_HOME, 'claude-code', 'state', 'sess-both.json'), '{"bound":"change:fresh"}');
   execFileSync('git', ['init', '-q'], { cwd: project });
-  init({ checkers: [], cwd: project, inProject: true });
+  init({ cwd: project });
   store = findStore(project)!;
   change(store, 'eight-week-test', { title: 'The test', summary: 's', writer: 'person:tester' });
 });
@@ -83,13 +82,10 @@ test('SessionStart creates the session record and injects the board', () => {
   assert.match(ctx, /change:eight-week-test/);
   const rec = loadStore(store).byKey.get('session:sess-a')![0];
   assert.equal(rec.data.agent, 'agent:claude-code');
-  assert.equal(rec.data.on_behalf_of, 'person:tester');
+  assert.equal(rec.data.on_behalf_of, undefined);
   assert.equal(rec.data.writer, 'agent:claude-code');
-  // who the person is, checked once at startup: this store holds no record for the actor, so that is said, with the way out
-  assert.match(
-    ctx,
-    /\nIdentity \(pjman whoami --verify\):\n- person:tester has no record: run pjman init.*\nOffer the command to the person and never run a rename or a claim unasked\.\n/,
-  );
+  // who the person is, checked once at startup: init made the actor's record, so nothing is said
+  assert.ok(!/Identity \(pjman whoami/.test(ctx), 'a known person says nothing about identity');
   assert.ok(
     !/Identity \(pjman whoami/.test(context(hook('SessionStart', { source: 'resume' }))),
     'resume says nothing about identity',
@@ -479,7 +475,7 @@ test('a subagent is a child session with parent', () => {
   assert.match(child.sections.get('Log')!, /Found three files/);
 });
 
-test('compaction rehydrates the bound change; the store stays valid; a non-pjman directory is silent', () => {
+test('compaction rehydrates the bound change; the store stays valid', () => {
   const ctx = context(hook('SessionStart', { source: 'compact' }));
   assert.match(
     ctx,
@@ -490,14 +486,13 @@ test('compaction rehydrates the bound change; the store stays valid; a non-pjman
     validate(loadStore(store)).filter((p) => p.level === 'error'),
     [],
   );
-  assert.equal(hook('SessionStart', { cwd: os.tmpdir(), session_id: 'zzz', source: 'startup' }), '');
 });
 
 test('a ticket a change only links binds nothing and is to be synced; the sync binds the one change it creates (change:pjman-21)', () => {
   const work = path.join(tmp, 'follow-up');
   fs.mkdirSync(work, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: work });
-  init({ checkers: [], cwd: work, name: 'follow-up' });
+  init({ cwd: work, name: 'follow-up' });
   const g = findStore(work)!;
   set(g, 'project:follow-up', ['tracker=linear', 'ext.linear.team=ABC'], {});
   // change:abc-1 is done, and links ABC-2, the follow-up ticket it filed; no change binds ABC-2
@@ -552,7 +547,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   const work = path.join(tmp, 'work');
   fs.mkdirSync(work, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: work });
-  init({ checkers: [], cwd: work, name: 'work' });
+  init({ cwd: work, name: 'work' });
   const g = findStore(work)!;
   const at = (prompt: string) => hook('UserPromptSubmit', { cwd: work, session_id: 'sess-t', prompt });
   hook('SessionStart', { cwd: work, session_id: 'sess-t', source: 'startup' });
@@ -626,7 +621,7 @@ test('a ticket id or URL in the prompt binds the change that binds it; in a proj
   hook('SubagentStart', { cwd: work, session_id: 'sess-t', agent_id: 'sess-t-child', agent_type: 'Explore' });
   assert.equal(loadStore(g).byKey.get('session:sess-t-child')![0].data.parent, 'session:sess-t');
   set(g, 'change:work/abc-1234', ['notes=from the child'], { session: 'session:sess-t-child' });
-  newRecord(g, 'session', 'sess-elsewhere', { agent: 'agent:claude-code', onBehalfOf: 'person:tester' });
+  newRecord(g, 'session', 'sess-elsewhere', { agent: 'agent:claude-code' });
   change(g, 'elsewhere', {
     title: 'Elsewhere',
     summary: 's',
@@ -776,7 +771,7 @@ test('SessionStart names the worktrees whose change is done and whose branch is 
     execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@e.com', ...args], { cwd, encoding: 'utf8' }).trim();
   git(['init', '-q', '-b', 'main']);
   git(['commit', '-q', '--allow-empty', '-m', 'root']);
-  init({ checkers: [], cwd: trees, name: 'trees' });
+  init({ cwd: trees, name: 'trees' });
   const g = findStore(trees)!;
   // three worktrees named by the harness for three changes: one done and merged (stale), one done but ahead of main, one still open
   for (const slug of ['old-thing', 'ahead-thing', 'live-thing']) {
@@ -861,65 +856,51 @@ test("SessionStart exports the session and the agent as writer to the agent's sh
   assert.equal(fs.readFileSync(file, 'utf8'), text, "a subagent shares its parent's");
 });
 
-test('a start inside Rex records the host on the session, through the environment the hook hands the tool (change:rex-adapter)', () => {
-  // a rex that answers its version; the hook needs nothing else of it at a start
-  const rbin = path.join(tmp, 'rex-bin');
-  fs.mkdirSync(rbin, { recursive: true });
+test('a start inside cmux records the host on the session, through the environment the hook hands the tool (change:rex-adapter)', () => {
+  // a cmux that answers its version and takes a sidebar status; no pane is docked without CMUX_PANEL_ID or CMUX_BUNDLE_ID
+  const hbin = path.join(tmp, 'host-bin');
+  const hcalls = path.join(tmp, 'host-calls');
+  fs.mkdirSync(hbin, { recursive: true });
+  fs.writeFileSync(hcalls, '');
   fs.writeFileSync(
-    path.join(rbin, 'rex'),
-    `#!/bin/sh\ncase "$1 $2" in "version --json") echo '{"version":"0.3.1"}';; *) exit 1;; esac\n`,
+    path.join(hbin, 'cmux'),
+    `#!/bin/sh\necho "$*" >> '${hcalls}'\ncase "$1" in --version) echo "cmux 0.62.2";; set-status|clear-status) echo OK;; *) exit 1;; esac\n`,
     { mode: 0o755 },
   );
-  execFileSync(process.execPath, [HOOK, 'SessionStart'], {
-    input: JSON.stringify({ cwd: project, session_id: 'sess-rex', source: 'startup' }),
-    encoding: 'utf8',
-    env: {
-      ...env,
-      PATH: `${rbin}:${(env as Record<string, string>).PATH}`,
-      REX_SESSION: 'session:r1',
-      REX_BLOCK: 'block:r1',
-    },
-  });
-  const rec = loadStore(store).byKey.get('session:sess-rex')![0];
-  assert.deepEqual(rec.data.host, {
-    name: 'rex',
-    session: 'session:r1',
-    block: 'block:r1',
-    version: '0.3.1',
-    validated: true,
-  });
-  assert.match(rec.body, /runs in rex 0\.3\.1/);
-  // the bridge and the session page carry it
-  const row = bridge(store, loadStore(store), { days: 1 }).sessions.find((s) => s.key === 'session:sess-rex');
-  assert.deepEqual(row?.host, { name: 'rex', version: '0.3.1', validated: true });
-  // a prompt that binds labels the block with the change; the session's end clears it (the tool's name stands in on Rex)
-  const rcalls = path.join(tmp, 'rex-calls');
-  fs.writeFileSync(rcalls, '');
-  fs.writeFileSync(
-    path.join(rbin, 'rex'),
-    `#!/bin/sh\necho "$*" >> '${rcalls}'\ncase "$1 $2" in "version --json") echo '{"version":"0.3.1"}';; "block rename") echo ok;; *) exit 1;; esac\n`,
-    { mode: 0o755 },
-  );
-  const inRex = (event: string, input: Record<string, unknown>) =>
+  const inHost = (event: string, input: Record<string, unknown>) =>
     execFileSync(process.execPath, [HOOK, event], {
-      input: JSON.stringify({ cwd: project, session_id: 'sess-rex', ...input }),
+      input: JSON.stringify({ cwd: project, session_id: 'sess-host', ...input }),
       encoding: 'utf8',
       env: {
         ...env,
-        PATH: `${rbin}:${(env as Record<string, string>).PATH}`,
-        REX_SESSION: 'session:r1',
-        REX_BLOCK: 'block:r1',
+        PATH: `${hbin}:${(env as Record<string, string>).PATH}`,
+        CMUX_WORKSPACE_ID: 'workspace:r1',
+        CMUX_SURFACE_ID: 'surface:r1',
       },
     });
-  inRex('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
-  inRex('SessionEnd', { reason: 'other' });
+  inHost('SessionStart', { source: 'startup' });
+  const rec = loadStore(store).byKey.get('session:sess-host')![0];
+  assert.deepEqual(rec.data.host, {
+    name: 'cmux',
+    session: 'workspace:r1',
+    block: 'surface:r1',
+    version: '0.62.2',
+    validated: true,
+  });
+  assert.match(rec.body, /runs in cmux 0\.62\.2/);
+  // the bridge and the session page carry it
+  const row = bridge(store, loadStore(store), { days: 1 }).sessions.find((s) => s.key === 'session:sess-host');
+  assert.deepEqual(row?.host, { name: 'cmux', version: '0.62.2', validated: true });
+  // a prompt that binds labels the workspace with the change; the session's end clears it
+  inHost('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
+  inHost('SessionEnd', { reason: 'other' });
   const labels = fs
-    .readFileSync(rcalls, 'utf8')
+    .readFileSync(hcalls, 'utf8')
     .split('\n')
-    .filter((l) => l.startsWith('block rename'));
+    .filter((l) => /^(set|clear)-status/.test(l));
   assert.equal(labels.length, 2);
-  assert.match(labels[0], /^block rename -s session:r1 block:r1 The test( · waits: .+)?$/); // an earlier test may have left a decision proposed on it
-  assert.equal(labels[1], 'block rename -s session:r1 block:r1 pjman');
+  assert.match(labels[0], /^set-status pjman The test( · waits: .+)? --icon \S+ --workspace workspace:r1$/); // an earlier test may have left a decision proposed on it
+  assert.equal(labels[1], 'clear-status pjman --workspace workspace:r1');
 });
 
 test('in cmux the pane belongs to the workspace (to the terminal when cmux names no workspace): a start opens it on the bridge and the session takes it once it binds a change; a clear parks it again; sessions that share a workspace share one pane', async () => {
@@ -1242,7 +1223,7 @@ esac
   }
 });
 
-test('the follow window: a prompt tells the dashboard the session; the start in Rex or the desktop app opens one window when told to (change:follow-window, change:desktop-app)', async () => {
+test('the follow window: a prompt tells the dashboard the session; the start in the desktop app opens one window when told to (change:follow-window, change:desktop-app)', async () => {
   const { createServer } = await import('node:http');
   const { promisify } = await import('node:util');
   const { execFile } = await import('node:child_process');
@@ -1277,9 +1258,14 @@ test('the follow window: a prompt tells the dashboard the session; the start in 
       posts.filter((p) => p.route === '/follow').map((p) => p.body.session),
       ['sess-a'],
     );
-    // the detached half of a start in Rex: told to open, it opens the window at /follow
+    // the detached half of a desktop start: told to open, it opens the window at /follow
     posts.length = 0;
-    const fw = { ...env, PJMAN_FOLLOW_SESSION: 'sess-a', PJMAN_OPEN_LOG: opened, REX_SESSION: 'session:r1' };
+    const fw = {
+      ...env,
+      PJMAN_FOLLOW_SESSION: 'sess-a',
+      PJMAN_OPEN_LOG: opened,
+      CLAUDE_CODE_ENTRYPOINT: 'claude-desktop',
+    };
     await run(process.execPath, [HOOK, 'FollowWindow'], { cwd: project, env: fw, encoding: 'utf8' });
     assert.deepEqual(
       posts.map((p) => p.route),

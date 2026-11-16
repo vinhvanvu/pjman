@@ -22,7 +22,7 @@ before(() => {
   const dir = path.join(tmp, 'shop');
   fs.mkdirSync(dir, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: dir });
-  init({ checkers: [], cwd: dir, name: 'shop' });
+  init({ cwd: dir, name: 'shop' });
   store = findStore(dir)!;
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', {
@@ -120,7 +120,7 @@ test('intake on a product with no map says so, by what the repository holds, and
   const bare = path.join(tmp, 'bare');
   fs.mkdirSync(bare, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: bare });
-  init({ checkers: [], cwd: bare, name: 'bare', adapter: false, start: false, map: true });
+  init({ cwd: bare, name: 'bare', adapter: false, start: false, map: true });
   const own = findStore(bare)!;
   const i = intake(own, loadStore(own), 'the dome does not close at dawn');
   assert.equal(i.map?.product, 'product:bare');
@@ -170,7 +170,7 @@ test('intake on a product with no map says so, by what the repository holds, and
   const empty = path.join(tmp, 'empty');
   fs.mkdirSync(empty, { recursive: true });
   execFileSync('git', ['init', '-q'], { cwd: empty });
-  init({ checkers: [], cwd: empty, name: 'empty', adapter: false, start: false, map: true });
+  init({ cwd: empty, name: 'empty', adapter: false, start: false, map: true });
   assert.doesNotMatch(pj(empty, 'first'), /no product map/);
   // the shop has a map: nothing about it, and an unmatched request is told to look for the feature it correlates to first
   const mapped = intake(store, loadStore(store), 'export the invoices as a spreadsheet');
