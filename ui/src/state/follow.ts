@@ -7,14 +7,8 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 export interface Follow {
   /** The session this tab follows. */
   home?: string;
-  /** This tab is the follow window (change:follow-window): it moves to the session the person prompts. */
-  window?: boolean;
-  /** A session prompted while the person was looking around: the pill offers it, the window holds where it is. */
-  next?: string;
   adopt: (session: string) => void;
   forget: () => void;
-  becomeWindow: () => void;
-  offer: (session: string | undefined) => void;
 }
 
 /** Per-tab storage; a private window or blocked site data can refuse it, and following then lives in memory. */
@@ -42,15 +36,13 @@ export const useFollow = create<Follow>()(
   persist(
     (set) => ({
       home: undefined,
-      adopt: (home) => set((s) => ({ home, next: s.next === home ? undefined : s.next })),
-      forget: () => set({ home: undefined, next: undefined }),
-      becomeWindow: () => set({ window: true }),
-      offer: (next) => set({ next }),
+      adopt: (home) => set({ home }),
+      forget: () => set({ home: undefined }),
     }),
     {
       name: 'pjman.follow',
       storage: createJSONStorage(tabStorage),
-      partialize: (s) => ({ home: s.home, window: s.window }),
+      partialize: (s) => ({ home: s.home }),
     },
   ),
 );

@@ -373,7 +373,7 @@ pjman host send [<session-id>] <text>
 pjman host open [<session-id>]
 pjman host status [<session-id>] [--json]
 pjman host launch <change> [--json]
-    where a session runs (a terminal multiplexer: Rex, cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version
+    where a session runs (a terminal multiplexer: cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version
 
 pjman wakes --session <id> [--since <seq>] [--follow] [--json]
     the events that wake a session: a decision on its bound change set decided, a note on that change or on the session, by anyone but the session; --follow keeps printing them as they land, from the stream's tail (or --since), until the session's process ends
@@ -388,8 +388,7 @@ pjman start [--port <n>] [--open]
     the dashboard: install and build the app if the checkout has none, start the server detached if none is running, print its URL
 
 pjman open [--session <id>]
-pjman open --follow
-    the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere. --follow opens the follow window instead: a window of its own that shows the session the person last prompted (an app window on a Chromium browser, a new window in Safari and Firefox; follow_browser in ~/.pjman/config.yaml names another browser)
+    the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere
 
 pjman stop
     stop the dashboard server

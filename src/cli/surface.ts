@@ -522,7 +522,7 @@ export const COMMANDS: Command[] = [
     group: 'session',
     line: "the host a session runs in, asked for something: a label, text typed in, its block to the front, its program's status",
     about:
-      "where a session runs (a terminal multiplexer: Rex, cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version",
+      "where a session runs (a terminal multiplexer: cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version",
     usage: [
       'pjman host [--json]',
       'pjman host label [<session-id>] [--clear]',
@@ -582,9 +582,9 @@ export const COMMANDS: Command[] = [
     group: 'dashboard',
     line: "open the dashboard, at a session's page when one is named",
     about:
-      "the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere. --follow opens the follow window instead: a window of its own that shows the session the person last prompted (an app window on a Chromium browser, a new window in Safari and Firefox; follow_browser in ~/.pjman/config.yaml names another browser)",
-    usage: ['pjman open [--session <id>]', 'pjman open --follow'],
-    flags: ['follow'],
+      "the dashboard brought back: started if none is running, opened at a session's page when one is named (--session, else PJMAN_SESSION), its front page otherwise; docked beside the terminal where the terminal can (cmux), in the default browser elsewhere",
+    usage: ['pjman open [--session <id>]'],
+    flags: [],
     args: 0,
   },
   {

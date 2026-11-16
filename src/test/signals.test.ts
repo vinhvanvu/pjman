@@ -1,4 +1,5 @@
-// The follow window (change:follow-window): the session followed, the windows counted, one opener at a time.
+// The live signals the dock reads beside the record: what a session's agent is doing now, and when the person last
+// prompted it. Both are held in the server's memory and never written to the store.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -9,41 +10,9 @@ import { after, before, test } from 'node:test';
 import { init } from '../cli/init.js';
 import { sessionStart } from '../ops/session.js';
 import { findStore, type Store } from '../store/config.js';
-import { CLAIM_MS, FollowState, RECONNECT_MS, type Followed } from '../hosts/follow.js';
 import { startServer } from '../server/server.js';
 
-test('one caller opens a window: the next waits on its claim, a connected window answers all, a closed one lets the next open', () => {
-  const t0 = 1_000_000;
-  const f = new FollowState(() => {}, t0);
-  assert.equal(f.waitFor(t0), RECONNECT_MS);
-  assert.equal(f.waitFor(t0 + RECONNECT_MS + 1), 0);
-  const now = t0 + RECONNECT_MS;
-  assert.deepEqual(f.ensure(now), { open: true, windows: 0 });
-  assert.deepEqual(f.ensure(now + 10), { open: false, reason: 'opening', windows: 0 });
-  // the page loads and connects
-  f.connected();
-  assert.deepEqual(f.ensure(now + 20), { open: false, reason: 'open', windows: 1 });
-  f.disconnected();
-  assert.deepEqual(f.ensure(now + 30), { open: true, windows: 0 });
-  // a claim whose page never connected lapses
-  assert.deepEqual(f.ensure(now + 30 + CLAIM_MS + 1), { open: true, windows: 0 });
-});
-
-test('the followed session moves on a prompt into another session; the same session again sends nothing', () => {
-  const seen: Followed[] = [];
-  const f = new FollowState((x) => seen.push(x));
-  assert.equal(f.get(), null);
-  f.set('session:a', 'prompt', Date.UTC(2026, 10, 11));
-  f.set('session:a', 'prompt', Date.UTC(2026, 10, 11, 0, 1));
-  f.set('session:b');
-  assert.deepEqual(
-    seen.map((x) => x.session),
-    ['session:a', 'session:b'],
-  );
-  assert.equal(f.get()?.session, 'session:b');
-});
-
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-follow-'));
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-signals-'));
 let store: Store;
 let server: http.Server | undefined;
 let base = '';
@@ -107,38 +76,6 @@ async function stream(route: string) {
   return { until, close: () => ctl.abort() };
 }
 
-test('a prompt moves the follow windows to the session; a window is counted, and told at once on connecting', async () => {
-  const page = await stream('/follow');
-  assert.equal((await post('/follow', { session: 'one' })).status, 200);
-  await page.until((s) => /event: follow\ndata: \{[^\n]*"key":"session:one"/.test(s));
-  assert.equal((await post('/follow', { session: 'nobody' })).status, 404);
-  assert.equal((await post('/follow', {})).status, 400);
-  page.close();
-  await new Promise((r) => setTimeout(r, 100));
-  const win = await stream('/follow');
-  await win.until((s) => /event: follow\ndata: \{[^\n]*"key":"session:one"/.test(s));
-  const got = (await (await fetch(`${base}/follow`)).json()) as { data: { followed: Followed; windows: number } };
-  assert.equal(got.data.followed.session, 'session:one');
-  assert.equal(got.data.windows, 1);
-  await post('/follow', { session: 'session:two' });
-  await win.until((s) => s.includes('"key":"session:two"'));
-  win.close();
-});
-
-test('ensure: while a window is open nobody opens one; once it closes one caller is told to, the next is not', async () => {
-  const win = await stream('/follow');
-  await new Promise((r) => setTimeout(r, 100));
-  const ensure = async () =>
-    ((await (await post('/follow/ensure')).json()) as { data: { open: boolean; reason?: string } }).data;
-  // a server just started answers after a window that was open has had its reconnect
-  assert.deepEqual(await ensure(), { open: false, reason: 'open', windows: 1 });
-  win.close();
-  await new Promise((r) => setTimeout(r, 100));
-  const [a, b] = await Promise.all([ensure(), ensure()]);
-  assert.deepEqual([a.open, b.open].toSorted(), [false, true]);
-  assert.equal((a.open ? b : a).reason, 'opening');
-});
-
 test("now: a session's latest action is held in memory, sent on the stream and to a stream that opens; no text clears it (decision dock-redesign/agent-signal)", async () => {
   const events = path.join(store.root, 'events.jsonl');
   const written = fs.existsSync(events) ? fs.readFileSync(events, 'utf8') : '';
@@ -165,7 +102,9 @@ test("prompted: a prompt is held in memory as the session's last prompt, told to
       .session?.prompted;
   const page = await stream('/events');
   const before = Date.now();
-  assert.equal((await post('/follow', { session: 'two' })).status, 200);
+  assert.equal((await post('/prompted', { session: 'two' })).status, 200);
+  assert.equal((await post('/prompted', { session: 'nobody' })).status, 404);
+  assert.equal((await post('/prompted', {})).status, 400);
   await page.until((s) => /event: prompted\ndata: \{[^\n]*"key":"session:two"/.test(s));
   page.close();
   const prompted = await view();

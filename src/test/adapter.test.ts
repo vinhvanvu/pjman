@@ -29,8 +29,7 @@ const env = {
 delete (env as Record<string, unknown>).PJMAN_SESSION;
 delete (env as Record<string, unknown>).PJMAN_STORE;
 delete (env as Record<string, unknown>).CLAUDE_CODE_ENTRYPOINT; // a terminal session, wherever the tests run
-for (const k of Object.keys(env))
-  if (k.startsWith('CMUX_') || k.startsWith('REX_')) delete (env as Record<string, unknown>)[k];
+for (const k of Object.keys(env)) if (k.startsWith('CMUX_')) delete (env as Record<string, unknown>)[k];
 
 function hook(event: string, input: Record<string, unknown>): string {
   return execFileSync(process.execPath, [HOOK, event], {
@@ -60,11 +59,7 @@ before(() => {
   process.env.PJMAN_HOME = env.PJMAN_HOME;
   fs.mkdirSync(path.join(project, 'src'), { recursive: true });
   fs.mkdirSync(env.PJMAN_HOME, { recursive: true });
-  // no follow window opened by a session started in Rex, unless a test turns it on (it would start a real dashboard)
-  fs.writeFileSync(
-    path.join(env.PJMAN_HOME, 'config.yaml'),
-    'actor: person:tester\nfollow_window: false\nstores: []\n',
-  );
+  fs.writeFileSync(path.join(env.PJMAN_HOME, 'config.yaml'), 'actor: person:tester\nstores: []\n');
   // what an earlier version kept in the plugin's data folder: one session only there, one also already carried
   fs.mkdirSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state'), { recursive: true });
   fs.writeFileSync(path.join(env.CLAUDE_PLUGIN_DATA, 'state', 'sess-old.json'), '{"bound":"change:old"}');
@@ -857,65 +852,51 @@ test("SessionStart exports the session and the agent as writer to the agent's sh
   assert.equal(fs.readFileSync(file, 'utf8'), text, "a subagent shares its parent's");
 });
 
-test('a start inside Rex records the host on the session, through the environment the hook hands the tool (change:rex-adapter)', () => {
-  // a rex that answers its version; the hook needs nothing else of it at a start
-  const rbin = path.join(tmp, 'rex-bin');
-  fs.mkdirSync(rbin, { recursive: true });
+test('a start inside cmux records the host on the session, through the environment the hook hands the tool (change:rex-adapter)', () => {
+  // a cmux that answers its version and takes a sidebar status; no pane is docked without CMUX_PANEL_ID or CMUX_BUNDLE_ID
+  const hbin = path.join(tmp, 'host-bin');
+  const hcalls = path.join(tmp, 'host-calls');
+  fs.mkdirSync(hbin, { recursive: true });
+  fs.writeFileSync(hcalls, '');
   fs.writeFileSync(
-    path.join(rbin, 'rex'),
-    `#!/bin/sh\ncase "$1 $2" in "version --json") echo '{"version":"0.3.1"}';; *) exit 1;; esac\n`,
+    path.join(hbin, 'cmux'),
+    `#!/bin/sh\necho "$*" >> '${hcalls}'\ncase "$1" in --version) echo "cmux 0.62.2";; set-status|clear-status) echo OK;; *) exit 1;; esac\n`,
     { mode: 0o755 },
   );
-  execFileSync(process.execPath, [HOOK, 'SessionStart'], {
-    input: JSON.stringify({ cwd: project, session_id: 'sess-rex', source: 'startup' }),
-    encoding: 'utf8',
-    env: {
-      ...env,
-      PATH: `${rbin}:${(env as Record<string, string>).PATH}`,
-      REX_SESSION: 'session:r1',
-      REX_BLOCK: 'block:r1',
-    },
-  });
-  const rec = loadStore(store).byKey.get('session:sess-rex')![0];
-  assert.deepEqual(rec.data.host, {
-    name: 'rex',
-    session: 'session:r1',
-    block: 'block:r1',
-    version: '0.3.1',
-    validated: true,
-  });
-  assert.match(rec.body, /runs in rex 0\.3\.1/);
-  // the bridge and the session page carry it
-  const row = bridge(store, loadStore(store), { days: 1 }).sessions.find((s) => s.key === 'session:sess-rex');
-  assert.deepEqual(row?.host, { name: 'rex', version: '0.3.1', validated: true });
-  // a prompt that binds labels the block with the change; the session's end clears it (the tool's name stands in on Rex)
-  const rcalls = path.join(tmp, 'rex-calls');
-  fs.writeFileSync(rcalls, '');
-  fs.writeFileSync(
-    path.join(rbin, 'rex'),
-    `#!/bin/sh\necho "$*" >> '${rcalls}'\ncase "$1 $2" in "version --json") echo '{"version":"0.3.1"}';; "block rename") echo ok;; *) exit 1;; esac\n`,
-    { mode: 0o755 },
-  );
-  const inRex = (event: string, input: Record<string, unknown>) =>
+  const inHost = (event: string, input: Record<string, unknown>) =>
     execFileSync(process.execPath, [HOOK, event], {
-      input: JSON.stringify({ cwd: project, session_id: 'sess-rex', ...input }),
+      input: JSON.stringify({ cwd: project, session_id: 'sess-host', ...input }),
       encoding: 'utf8',
       env: {
         ...env,
-        PATH: `${rbin}:${(env as Record<string, string>).PATH}`,
-        REX_SESSION: 'session:r1',
-        REX_BLOCK: 'block:r1',
+        PATH: `${hbin}:${(env as Record<string, string>).PATH}`,
+        CMUX_WORKSPACE_ID: 'workspace:r1',
+        CMUX_SURFACE_ID: 'surface:r1',
       },
     });
-  inRex('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
-  inRex('SessionEnd', { reason: 'other' });
+  inHost('SessionStart', { source: 'startup' });
+  const rec = loadStore(store).byKey.get('session:sess-host')![0];
+  assert.deepEqual(rec.data.host, {
+    name: 'cmux',
+    session: 'workspace:r1',
+    block: 'surface:r1',
+    version: '0.62.2',
+    validated: true,
+  });
+  assert.match(rec.body, /runs in cmux 0\.62\.2/);
+  // the bridge and the session page carry it
+  const row = bridge(store, loadStore(store), { days: 1 }).sessions.find((s) => s.key === 'session:sess-host');
+  assert.deepEqual(row?.host, { name: 'cmux', version: '0.62.2', validated: true });
+  // a prompt that binds labels the workspace with the change; the session's end clears it
+  inHost('UserPromptSubmit', { prompt: 'work on change:eight-week-test' });
+  inHost('SessionEnd', { reason: 'other' });
   const labels = fs
-    .readFileSync(rcalls, 'utf8')
+    .readFileSync(hcalls, 'utf8')
     .split('\n')
-    .filter((l) => l.startsWith('block rename'));
+    .filter((l) => /^(set|clear)-status/.test(l));
   assert.equal(labels.length, 2);
-  assert.match(labels[0], /^block rename -s session:r1 block:r1 The test( · waits: .+)?$/); // an earlier test may have left a decision proposed on it
-  assert.equal(labels[1], 'block rename -s session:r1 block:r1 pjman');
+  assert.match(labels[0], /^set-status pjman The test( · waits: .+)? --icon \S+ --workspace workspace:r1$/); // an earlier test may have left a decision proposed on it
+  assert.equal(labels[1], 'clear-status pjman --workspace workspace:r1');
 });
 
 test('in cmux the pane belongs to the workspace (to the terminal when cmux names no workspace): a start opens it on the bridge and the session takes it once it binds a change; a clear parks it again; sessions that share a workspace share one pane', async () => {
@@ -1238,13 +1219,10 @@ esac
   }
 });
 
-test('the follow window: a prompt tells the dashboard the session; the start in Rex or the desktop app opens one window when told to (change:follow-window, change:desktop-app)', async () => {
+test('a prompt tells a running dashboard that the person prompted the session', async () => {
   const { createServer } = await import('node:http');
-  const { promisify } = await import('node:util');
   const { execFile } = await import('node:child_process');
-  const run = promisify(execFile);
   const posts: { route: string; body: Record<string, unknown> }[] = [];
-  let answer = { open: true };
   const dash = createServer((req, res) => {
     let text = '';
     req.on('data', (c: Buffer) => (text += c.toString()));
@@ -1252,79 +1230,23 @@ test('the follow window: a prompt tells the dashboard the session; the start in 
       const route = (req.url ?? '').replace('/api/v1', '');
       posts.push({ route, body: text ? (JSON.parse(text) as Record<string, unknown>) : {} });
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ data: route === '/follow/ensure' ? answer : {} }));
+      res.end(JSON.stringify({ data: {} }));
     });
   });
   await new Promise<void>((r) => dash.listen(0, '127.0.0.1', () => r()));
   const url = `http://127.0.0.1:${(dash.address() as { port: number }).port}`;
-  const cfg = path.join(env.PJMAN_HOME, 'config.yaml');
-  const savedCfg = fs.readFileSync(cfg, 'utf8');
   const serve = path.join(env.PJMAN_HOME, 'serve.json');
   const savedServe = fs.existsSync(serve) ? fs.readFileSync(serve, 'utf8') : null;
-  const opened = path.join(tmp, 'opened.jsonl');
   try {
-    fs.writeFileSync(cfg, savedCfg.replace('follow_window: false\n', ''));
     fs.writeFileSync(serve, JSON.stringify({ pid: process.pid, url }));
-    // a prompt in a main session: the person is on it
     const prompt = execFile(process.execPath, [HOOK, 'UserPromptSubmit'], { env, encoding: 'utf8' });
     prompt.stdin?.end(JSON.stringify({ cwd: project, session_id: 'sess-a', prompt: 'hello' }));
     await new Promise((r) => prompt.on('exit', r));
     assert.deepEqual(
-      posts.filter((p) => p.route === '/follow').map((p) => p.body.session),
+      posts.filter((p) => p.route === '/prompted').map((p) => p.body.session),
       ['sess-a'],
     );
-    // the detached half of a start in Rex: told to open, it opens the window at /follow
-    posts.length = 0;
-    const fw = { ...env, PJMAN_FOLLOW_SESSION: 'sess-a', PJMAN_OPEN_LOG: opened, REX_SESSION: 'session:r1' };
-    await run(process.execPath, [HOOK, 'FollowWindow'], { cwd: project, env: fw, encoding: 'utf8' });
-    assert.deepEqual(
-      posts.map((p) => p.route),
-      ['/follow', '/follow/ensure'],
-    );
-    const lines = fs
-      .readFileSync(opened, 'utf8')
-      .trim()
-      .split('\n')
-      .map((l) => JSON.parse(l) as { url: string });
-    assert.deepEqual(
-      lines.map((l) => l.url),
-      [`${url}/follow`],
-    );
-    // one is open already: nothing more is opened
-    answer = { open: false, reason: 'open' } as unknown as { open: true };
-    await run(process.execPath, [HOOK, 'FollowWindow'], { cwd: project, env: fw, encoding: 'utf8' });
-    assert.equal(fs.readFileSync(opened, 'utf8').trim().split('\n').length, 1);
-    // a session's start: in a plain terminal no window is asked for, in the desktop app one is (decision
-    // desktop-app/desktop-view); the start hands the opening to a detached copy of the hook, so it is waited for
-    answer = { open: true };
-    fs.rmSync(opened, { force: true });
-    const start = async (extra: Record<string, string>, sid: string, tries: number) => {
-      posts.length = 0;
-      execFileSync(process.execPath, [HOOK, 'SessionStart'], {
-        input: JSON.stringify({ cwd: project, session_id: sid, source: 'startup' }),
-        encoding: 'utf8',
-        env: { ...env, PJMAN_OPEN_LOG: opened, ...extra },
-      });
-      for (let i = 0; i < tries && !fs.existsSync(opened); i++) await new Promise((r) => setTimeout(r, 100));
-    };
-    await start({ CLAUDE_CODE_ENTRYPOINT: 'cli' }, 'sess-term', 10);
-    assert.equal(fs.existsSync(opened), false);
-    assert.deepEqual(
-      posts.filter((p) => p.route === '/follow/ensure'),
-      [],
-    );
-    await start({ CLAUDE_CODE_ENTRYPOINT: 'claude-desktop' }, 'sess-desk', 100);
-    assert.deepEqual(
-      fs
-        .readFileSync(opened, 'utf8')
-        .trim()
-        .split('\n')
-        .map((l) => (JSON.parse(l) as { url: string }).url),
-      [`${url}/follow`],
-    );
-    assert.ok(posts.some((p) => p.route === '/follow' && p.body.session === 'sess-desk'));
   } finally {
-    fs.writeFileSync(cfg, savedCfg);
     if (savedServe === null) fs.rmSync(serve, { force: true });
     else fs.writeFileSync(serve, savedServe);
     dash.close();

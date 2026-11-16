@@ -1,4 +1,4 @@
-// The host: where a session runs (change:rex-adapter). A terminal multiplexer, today; a cloud session later. pjman
+// The host: where a session runs (change:rex-adapter). A terminal multiplexer (cmux), today; a cloud session later. pjman
 // asks six things of a host, and each host is one implementation of the same interface, so pjman stays host-agnostic:
 //   identify  the host's own ids for the session, read from the environment the hook runs in; never configured
 //   version   the host's version, by its own command, so the session record says what it ran on
@@ -12,7 +12,7 @@
 // interface version it implements and the environment version range it was validated against. The registry below is
 // the only place that knows where adapters come from. With no host in the environment, every caller gets null and
 // nothing changes.
-import { execFile, execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { compareVersions } from '../store/version.js';
 
 /** The version of this interface an adapter implements. */
@@ -38,7 +38,7 @@ export interface HostId {
 export type ProgramState = 'idle' | 'working' | 'done' | 'blocked' | 'error';
 export type BlockedKind = 'permission' | 'question' | 'auth';
 
-/** What the program in the session reports (Rex's program status protocol; cmux's agent lifecycle). */
+/** What the program in the session reports (cmux's agent lifecycle, in the versions that carry it). */
 export interface HostStatus {
   state: ProgramState;
   /** Why it is blocked, when it is. */
@@ -108,16 +108,6 @@ export function run(
   }
 }
 
-function runJson(command: string, args: string[], env?: NodeJS.ProcessEnv): unknown {
-  const out = run(command, args, env);
-  if (out === null) return null;
-  try {
-    return JSON.parse(out);
-  } catch {
-    return null;
-  }
-}
-
 const VERSION_RE = /\d+\.\d+\.\d+(?:[-+][\w.-]+)?/;
 
 /** The first semver in a text. */
@@ -147,122 +137,6 @@ export function inRange(version: string, range: string): boolean {
       return false;
   }
   return true;
-}
-
-const now = () => new Date().toISOString();
-
-const PROGRAM_STATES: ReadonlySet<string> = new Set(['idle', 'working', 'done', 'blocked', 'error']);
-const BLOCKED_KINDS: ReadonlySet<string> = new Set(['permission', 'question', 'auth']);
-
-/** A status record as a host reports it, read defensively: the state is what counts, the rest is kept when it is there. */
-export function statusOf(record: unknown, at = now()): HostStatus | null {
-  if (!record || typeof record !== 'object') return null;
-  const r = record as Record<string, unknown>;
-  const state = typeof r.state === 'string' ? r.state : undefined;
-  if (!state || !PROGRAM_STATES.has(state)) return null;
-  const kind = typeof r.kind === 'string' && BLOCKED_KINDS.has(r.kind) ? (r.kind as BlockedKind) : undefined;
-  const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
-  return {
-    state: state as ProgramState,
-    kind: state === 'blocked' ? kind : undefined,
-    title: text(r.title),
-    msg: text(r.msg),
-    at,
-  };
-}
-
-/** The record that stands for the program among several (a program may report children, `build/test`): the root
- *  record, the one with no id, else the one reported last. */
-export function rootStatus(records: unknown): HostStatus | null {
-  const list: unknown[] = Array.isArray(records)
-    ? records
-    : records && typeof records === 'object'
-      ? ((Object.values(records as Record<string, unknown>).find(Array.isArray) as unknown[] | undefined) ?? [records])
-      : [];
-  const root = list.find((r) => r && typeof r === 'object' && !(r as Record<string, unknown>).id) ?? list.at(-1);
-  return statusOf(root);
-}
-
-// --- Rex (Superlogical) -----------------------------------------------------------------------------------------------
-
-/** Rex: `rex new`, REX_SESSION and REX_BLOCK in every terminal, the program status protocol (OSC 7501) read by a
- *  block method and streamed by `rex events`, `rex send`, `rex block rename`, `rex focus`. */
-export const rex: HostAdapter = {
-  manifest: { environment: 'rex', interface: HOST_INTERFACE, validated: '>=0.1 <1', command: 'rex' },
-  identify: (env) => (env.REX_SESSION ? { session: env.REX_SESSION, block: env.REX_BLOCK || undefined } : null),
-  version: (env) => {
-    const j = runJson('rex', ['version', '--json'], env) as Record<string, unknown> | null;
-    const fromJson = j
-      ? versionIn([j.version, j.rex_version, j.client, j.server].find((v) => typeof v === 'string'))
-      : null;
-    return fromJson ?? versionIn(run('rex', ['version'], env));
-  },
-  status: (id, env) => {
-    if (!id.block) return null;
-    return rootStatus(runJson('rex', ['block', 'call', '-s', id.session, '-b', id.block, 'program_status'], env));
-  },
-  // an empty label clears nothing on Rex: a block keeps a label, so the tool's name stands in
-  label: (id, text, env) =>
-    id.block ? run('rex', ['block', 'rename', '-s', id.session, id.block, text || 'pjman'], env) !== null : false,
-  // text as typed, then the carriage return a terminal reads as Enter
-  send: (id, text, env) =>
-    run('rex', ['send', '-s', id.session, ...(id.block ? ['-b', id.block] : []), `${text}\r`], env) !== null,
-  open: (id, env) => run('rex', ['focus', '-s', id.session, ...(id.block ? [id.block] : [])], env) !== null,
-  launch: (opts, env) => {
-    const j = runJson('rex', ['new', opts.name, '-c', opts.cwd, '--json', '--', ...opts.command], env) as Record<
-      string,
-      unknown
-    > | null;
-    const session =
-      typeof j?.session_id === 'string'
-        ? j.session_id
-        : typeof (j?.session as Record<string, unknown> | undefined)?.session_id === 'string'
-          ? ((j!.session as Record<string, unknown>).session_id as string)
-          : null;
-    if (!session) return null;
-    const blocks = runJson('rex', ['block', 'ls', '-s', session, '--json'], env);
-    const first = Array.isArray(blocks) ? (blocks[0] as Record<string, unknown> | undefined) : undefined;
-    return {
-      session,
-      block:
-        typeof first?.block_id === 'string' ? first.block_id : typeof first?.id === 'string' ? first.id : undefined,
-    };
-  },
-  follow: (id, fn, env) =>
-    followLines('rex', ['events', '-s', id.session, '--json'], env, (line) => {
-      let e: unknown;
-      try {
-        e = JSON.parse(line);
-      } catch {
-        return;
-      }
-      const ev = rexEvent(e, id);
-      if (ev) fn(ev);
-    }),
-};
-
-/** A line of `rex events --json` read as a host event for one block: a program status it reported, or its exit.
- *  The wire wraps a block's event twice: session_event {session_id, event: block_event {block_id, name, payload}}. */
-export function rexEvent(e: unknown, id: HostId): HostEvent | null {
-  if (!e || typeof e !== 'object') return null;
-  let o = e as Record<string, unknown>;
-  if (o.type === 'session_event') {
-    const p = o.payload as Record<string, unknown> | undefined;
-    if (!p || (typeof p.session_id === 'string' && p.session_id !== id.session)) return null;
-    o = (p.event as Record<string, unknown>) ?? {};
-  }
-  if (o.type !== 'block_event') return null;
-  const p = o.payload as Record<string, unknown> | undefined;
-  if (!p || (id.block && p.block_id !== id.block)) return null;
-  const body = p.payload as Record<string, unknown> | undefined;
-  if (p.name === 'child_exited')
-    return { kind: 'exited', code: typeof body?.exit_code === 'number' ? body.exit_code : undefined };
-  if (p.name === 'program_status_changed') {
-    const status = statusOf(body?.record ?? body);
-    return status ? { kind: 'status', status } : null;
-  }
-  if (p.name === 'program_status_removed') return { kind: 'status', status: { state: 'idle', at: now() } };
-  return null;
 }
 
 // --- cmux -----------------------------------------------------------------------------------------------------------
@@ -314,7 +188,7 @@ const shellWord = (w: string): string => (/^[\w./:@=+-]+$/.test(w) ? w : `'${w.r
 // --- the registry ---------------------------------------------------------------------------------------------------
 
 /** Every host adapter, in the order they are tried. The only place that knows where adapters come from. */
-export const HOSTS: readonly HostAdapter[] = [rex, cmux];
+export const HOSTS: readonly HostAdapter[] = [cmux];
 
 export function hostNamed(name: string | undefined): HostAdapter | undefined {
   return HOSTS.find((h) => h.manifest.environment === name);
@@ -371,63 +245,11 @@ export function hostOfRecord(
   };
 }
 
-// --- following a command's lines --------------------------------------------------------------------------------------
-
-/** A command spawned for its lines, one call per line; the stop kills it. A command that is missing or exits stops
- *  quietly: the caller reads `status` instead. */
-export function followLines(
-  command: string,
-  args: string[],
-  env: NodeJS.ProcessEnv | undefined,
-  fn: (line: string) => void,
-): () => void {
-  let child: ChildProcess | null;
-  try {
-    child = spawn(command, args, { env, stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return () => {};
-  }
-  let buf = '';
-  child.stdout?.setEncoding('utf8');
-  child.stdout?.on('data', (chunk: string) => {
-    buf += chunk;
-    let i;
-    while ((i = buf.indexOf('\n')) >= 0) {
-      const line = buf.slice(0, i).trim();
-      buf = buf.slice(i + 1);
-      if (line) fn(line);
-    }
-  });
-  child.on('error', () => {});
-  return () => {
-    if (child && child.exitCode === null && !child.killed) child.kill();
-    child = null;
-  };
-}
-
 /** `status` by the host, without blocking: for the server, which reads many sessions at once. */
 export function statusAsync(
   adapter: HostAdapter,
   id: HostId,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<HostStatus | null> {
-  if (adapter === rex) {
-    if (!id.block) return Promise.resolve(null);
-    return new Promise((resolve) => {
-      execFile(
-        'rex',
-        ['block', 'call', '-s', id.session, '-b', id.block!, 'program_status'],
-        { encoding: 'utf8', timeout: TIMEOUT_MS, env },
-        (err, out) => {
-          if (err) return resolve(null);
-          try {
-            resolve(rootStatus(JSON.parse(out)));
-          } catch {
-            resolve(null);
-          }
-        },
-      );
-    });
-  }
   return Promise.resolve(adapter.status(id, env));
 }
