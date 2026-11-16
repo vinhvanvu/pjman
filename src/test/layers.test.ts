@@ -29,7 +29,7 @@ test('every layer imports only from layers below it', () => {
   assert.deepEqual(upward, []);
 });
 
-test('the source holds only the layers, the bench and the tests', () => {
+test('the source holds only the layers and the tests', () => {
   const entries = fs.readdirSync(SRC).toSorted();
-  assert.deepEqual(entries, [...LAYERS, 'bench', 'test'].toSorted());
+  assert.deepEqual(entries, [...LAYERS, 'test'].toSorted());
 });
