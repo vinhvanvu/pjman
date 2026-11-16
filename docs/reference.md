@@ -214,7 +214,7 @@ A version the product shipped.
 
 - `pjman context`: what an agent reads first: the board, or one change in full
 - `pjman get`: anything in (key, slug, ticket, URL, file): the record, its edges, the changes in reach
-- `pjman tree`: the product by its features, with derived status, owners and backlog
+- `pjman tree`: the product by its features, with derived status and backlog
 - `pjman activity`: the events beneath any node and what they say about health
 - `pjman intake`: what already exists for a request, before it is filed
 - `pjman refs`: every reference in a text and the change it leads to
@@ -261,14 +261,14 @@ A version the product shipped.
 ### Every command in full
 
 ```
-pjman new product <slug> --title <sentence> [--name <one to three words>] [--owners <actor>]... [--levels <label>]... [--sequence <change>]... [--summary <s>] [--links <key>]...
-pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--owners <actor>]... [--summary <s>] [--links <key>]...
-pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--owners <actor>]... [--links <key>]...
-pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--owners <actor>]... [--body <base>|-] [--links <key>]...
+pjman new product <slug> --title <sentence> [--name <one to three words>] [--levels <label>]... [--sequence <change>]... [--summary <s>] [--links <key>]...
+pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature> [--status planned|building|live|retired] [--level <label>] [--summary <s>] [--links <key>]...
+pjman new project <slug> --title <t> [--product <product>] [--parent <project>] [--tracker <source-kind>] [--links <key>]...
+pjman new aspect <slug> --title <t> [--name <one to three words>] [--parent <aspect>] [--body <base>|-] [--links <key>]...
 pjman new place <aspect>/<place> --feature <feature> [--body <fork>|-] [--links <key>]...
 pjman new change <slug> --name <one to four words> --gist <one line> --origin <the request in the person's words, or the key it came from> --intent <the need, for whom> --done-when <the outcome that closes it>
         [--scope …] [--open-questions …] [--blocked-on …] [--notes …] [--status open] [--project <key>] [--parent <change>] [--step <text>]...
-        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--owners <actor>]... [--binds <key>]... [--links <key>]...
+        [--features "adds feature:<slug>"]... [--aspects "changes aspect:<slug>"]... [--depends-on <change>]... [--binds <key>]... [--links <key>]...
         [--kind bug --severity product|feature|capability|nuisance|cosmetic] [--kind milestone] [--target <date>]
 pjman new release <version> --at <timestamp> [--tag v<version>] [--level patch|minor|major] [--commit <sha>] [--url <u>] [--ships <change>]... [--links <key>]... [--body <notes>|-]
 pjman new source <kind>:<key> [--title <t>] [--url <u>] [--links <key>]... [--body <text>]
@@ -286,7 +286,7 @@ pjman ls session --kind <session kind>   (the sessions with no change given that
 
 pjman set <ref>... <field>=<value> | <field>+=<item> | <field>-=<item> ...
 pjman set <ref> <field>=- < file   (one value from stdin)
-    change authored fields on one or several records, one commit (pjman undo reverts it). field=value replaces (an empty value removes the field); on a list field (links, owners, binds, features, aspects, depends_on, levels, sequence) field+=item adds one item when absent and field-=item removes one; field=- reads one value from stdin. A change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole. A decision's supersedes only adds, and marks each named decision superseded. A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten
+    change authored fields on one or several records, one commit (pjman undo reverts it). field=value replaces (an empty value removes the field); on a list field (links, binds, features, aspects, depends_on, levels, sequence) field+=item adds one item when absent and field-=item removes one; field=- reads one value from stdin. A change's sections are set by name: origin, intent, done-when, scope, open-questions, blocked-on, notes; a product's or feature's summary likewise; body sets an aspect's base or a place's fork whole. A decision's supersedes only adds, and marks each named decision superseded. A change's or decision's name and gist are the rungs views show; written from a changed foundation they are said to be stale until rewritten
 
 pjman rm <ref>... [--detach] [--json]
     remove one or several records, one commit (a change takes its decisions with it). Refused while anything refers to one, naming each referrer; --detach drops the references that can be dropped (a key in a list, a parent, a superseded decision, an observed edge) in the same commit. A change's project, a writer or a session can never be dropped
@@ -328,7 +328,7 @@ pjman get <ref> [--json]
     the getter: a key (full, short or former), a source key, a URL, a ticket id, <change>/<slug>, a file path or a slug in; the record, every edge into and out of it, and the full context of every change within two hops out. Every command's argument resolves the same way. A bare ticket id (ABC-12) resolves only where exactly one tracker of the project claims its prefix (ext.linear.team, or a change of the project binding a ticket of that prefix); elsewhere write the prefixed key (linear:ABC-12) or the URL
 
 pjman tree [<product>|<feature>] [--all] [--json]
-    the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status, effective owners and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)
+    the product tree: products, their features at every level (label from the template or the node), each with its authored and derived status and the changes beneath it by status and project; a product also counts the open changes under its projects that name no feature. Inside a project, with no root, the project's product (--all: every product)
 
 pjman activity <ref> [--days 14] [--since <iso>] [--json]
     the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person. A batch (pjman apply, a bulk set or rm, several steps added) is one entry
@@ -455,7 +455,7 @@ Aspects are also noticed as the work goes. A decision whose thread reads as hold
 
 ## Trackers: Linear and GitHub
 
-pjman never signs in to a tracker. The harness holds the connection (the Claude Code plugin declares Linear's MCP server; the person signs in there once) and reads tickets with the tracker's own tools; pjman is the translation layer. A project names its tracker and its team (`pjman set project:<slug> tracker=linear ext.linear.team=ABC`). `pjman sync linear --from <file|->` (or `pjman sync github --from -` for a project whose tracker is `github-issue`: the reader is the `gh api graphql` command that `pjman sync github` prints when run without `--from`, since `gh issue list --json` has no sub-issue parent; open maps to open or to the vocabulary's word for a label, closed to done, closed as not planned to dropped, a sub-issue's parent to the change's parent) takes the issues as JSON, in whatever shape the tracker's tools answered (one issue, a list, a page, or the tool result pasted whole), and applies them: each becomes a source record `linear:ABC-1234` with its observed state under `ext.linear`, and the change that binds it is created when none does, with the ticket linked in its Origin and a draft gist from its title; afterwards a sync writes the source, the binding and the owners, never the change's name, status or parent. Status on ingestion maps through the store's vocabulary by state name, then by state type, then the built-in map (triage and backlog → open, unstarted → planning, started → active, completed → done, canceled → dropped). Issues from another team are skipped and named; nothing is written back. Each run is a session by `agent:linear-sync`, one commit, one event per record. The translation does not depend on who held the connection: another harness, or a pushed feed, hands pjman the same JSON.
+pjman never signs in to a tracker. The harness holds the connection (the Claude Code plugin declares Linear's MCP server; the person signs in there once) and reads tickets with the tracker's own tools; pjman is the translation layer. A project names its tracker and its team (`pjman set project:<slug> tracker=linear ext.linear.team=ABC`). `pjman sync linear --from <file|->` (or `pjman sync github --from -` for a project whose tracker is `github-issue`: the reader is the `gh api graphql` command that `pjman sync github` prints when run without `--from`, since `gh issue list --json` has no sub-issue parent; open maps to open or to the vocabulary's word for a label, closed to done, closed as not planned to dropped, a sub-issue's parent to the change's parent) takes the issues as JSON, in whatever shape the tracker's tools answered (one issue, a list, a page, or the tool result pasted whole), and applies them: each becomes a source record `linear:ABC-1234` with its observed state under `ext.linear`, and the change that binds it is created when none does, with the ticket linked in its Origin and a draft gist from its title; afterwards a sync writes the source and the binding, never the change's name, status or parent. Status on ingestion maps through the store's vocabulary by state name, then by state type, then the built-in map (triage and backlog → open, unstarted → planning, started → active, completed → done, canceled → dropped). Issues from another team are skipped and named; nothing is written back. Each run is a session by `agent:linear-sync`, one commit, one event per record. The translation does not depend on who held the connection: another harness, or a pushed feed, hands pjman the same JSON.
 
 ## The dashboard and the API
 

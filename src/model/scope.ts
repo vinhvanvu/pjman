@@ -1,6 +1,6 @@
 // The scope: what one page of the dashboard shows. A lens (project, feature, milestone, roadmap) decides the structure the
 // same changes group under; a node narrows to a subtree; a view (tree, lanes) is the client's business. The result is
-// one tree of structure nodes with change rows, the flat list of the same changes for lanes, and the health, owners,
+// one tree of structure nodes with change rows, the flat list of the same changes for lanes, and the health,
 // live sessions and activity of the node stood on. Everything here is derived from the records and the event stream.
 import type { Store } from '../store/config.js';
 import { eventsByKey, readEvents, type StoreEvent } from '../store/events.js';
@@ -14,7 +14,6 @@ import {
   descendantsOf,
   treeIndex,
   derivedStatus,
-  effectiveOwners,
   effectsOf,
   levelOf,
   live,
@@ -147,8 +146,6 @@ export interface ScopeNode {
   status?: string;
   /** A feature's derived state. */
   derived?: string;
-  owners: string[];
-  ownersFrom?: string;
   /** Open changes beneath (not done, not dropped) and how many of those are in flight. */
   open: number;
   inFlight: number;
@@ -242,7 +239,6 @@ export interface Scope {
   doneHidden: number;
   retiredHidden: number;
   health: Health;
-  owners: { owners: string[]; from?: string };
   sessions: LiveSession[];
   /** Proposed decisions beneath the node, oldest first: the inbox. */
   waitingOn: WaitingDecision[];
@@ -714,7 +710,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       gist: r.gist,
       name: r.name,
       status: r.status,
-      owners: [],
       open: 0,
       inFlight: 0,
       projects: [],
@@ -731,13 +726,10 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     return top.map((c) => changeNode(c, canNest));
   };
   const openBugs = ix.changes.filter((c) => isOpen(c) && c.data.kind === 'bug');
-  const facts = (
-    rec: Rec,
-  ): Pick<ScopeNode, 'owners' | 'ownersFrom' | 'open' | 'inFlight' | 'projects' | 'health' | 'progress' | 'bugs'> => {
+  const facts = (rec: Rec): Pick<ScopeNode, 'open' | 'inFlight' | 'projects' | 'health' | 'progress' | 'bugs'> => {
     const keys = ix.beneath(rec.key);
     const mine = ix.changesAmong(keys).filter((c) => c.key !== rec.key);
     const open = mine.filter(isOpen);
-    const eo = effectiveOwners(loaded, rec.key);
     const counted = mine.filter((c) => c.data.status !== 'dropped');
     const homed = openBugs.filter((b) => {
       const h = ix.homeOf(b);
@@ -752,8 +744,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
           }
         : undefined;
     return {
-      owners: eo.owners,
-      ownersFrom: eo.from,
       open: open.length,
       inFlight: open.filter((c) => IN_FLIGHT.includes(String(c.data.status))).length,
       projects: [
@@ -906,7 +896,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
       key: 'unassigned',
       type: 'unassigned',
       title: lens === 'milestone' ? 'No milestone' : lens === 'project' ? 'In other projects' : 'No feature named',
-      owners: [],
       open: left.filter(isOpen).length,
       inFlight: left.filter((c) => IN_FLIGHT.includes(String(c.data.status))).length,
       projects: [],
@@ -918,7 +907,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
   // the node's own facts
   const nodeKeys = ix.beneath(node?.key ?? null);
   const health = ix.health(nodeKeys, days);
-  const owners = node ? effectiveOwners(loaded, node.key) : { owners: [] as string[] };
   const sessions: LiveSession[] = ofType(loaded, 'session')
     .filter((s) => s.valid && ix.liveSessions.has(s.key))
     .map((s) => {
@@ -1060,7 +1048,6 @@ export function scope(store: Store, loaded: Loaded, opts: ScopeOpts = {}): Scope
     doneHidden,
     retiredHidden,
     health,
-    owners,
     sessions,
     waitingOn,
     recent,

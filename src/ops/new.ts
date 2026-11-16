@@ -71,7 +71,6 @@ export interface NewFlags {
   agent?: string;
   parent?: string;
   product?: string;
-  owners?: string[];
   features?: string[];
   aspects?: string[];
   /** A place's feature: where the aspect applies. */
@@ -223,7 +222,6 @@ export function newProduct(store: Store, ident: string, flags: NewFlags): NewRes
   const data: Record<string, unknown> = {
     title: flags.title,
     name: flags.name,
-    owners: listOrNone(flags.owners),
     levels: listOrNone(flags.levels),
     sequence: listOrNone(flags.sequence),
     links: listOrNone(flags.links),
@@ -279,7 +277,6 @@ export function newFeature(store: Store, ident: string, flags: NewFlags): NewRes
     level: flags.level,
     product: flags.product ? `product:${product}` : undefined,
     parent: flags.parent,
-    owners: listOrNone(flags.owners),
     links: listOrNone(flags.links),
     ...stamp(flags),
   };
@@ -315,7 +312,6 @@ export function newAspect(store: Store, ident: string, flags: NewFlags): NewResu
     title: flags.title,
     name: flags.name,
     parent: flags.parent,
-    owners: listOrNone(flags.owners),
     links: listOrNone(flags.links),
     ...stamp(flags),
   };
@@ -391,7 +387,6 @@ export function newProject(store: Store, ident: string, flags: NewFlags): NewRes
     tracker: flags.tracker,
     map: flags.map,
     holds: flags.holds,
-    owners: listOrNone(flags.owners),
     links: flags.links?.length ? flags.links : undefined,
     ...stamp(flags),
   };
@@ -491,7 +486,6 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     depends_on: listOrNone(flags.dependsOn),
     features: listOrNone(flags.features),
     aspects: listOrNone(flags.aspects),
-    owners: listOrNone(flags.owners),
     target: flags.target,
     binds: flags.binds?.length ? flags.binds : undefined,
     links: links.length ? links : undefined,

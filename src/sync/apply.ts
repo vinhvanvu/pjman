@@ -2,14 +2,13 @@
 // source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the
 // change's Origin and never copied. Ingesting it creates the change when none binds it yet, with a draft gist from the
 // ticket's title, its status as the ticket stood then, and nothing else; afterwards the sync writes the source record,
-// the binding and the owners, never a name, a status or a parent onto a change that exists.
+// and the binding, never a name, a status or a parent onto a change that exists.
 import path from 'node:path';
 import { readUserConfig, type Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
 import { sourceFileSlug } from '../store/keys.js';
 import { loadStore, type Rec } from '../store/records.js';
 import { productOfProject, newSession, originText } from '../ops/new.js';
-import { personOf } from '../model/refs.js';
 import { localDate, nowIso } from '../store/util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../ops/write.js';
 import { sessionLog } from '../ops/session.js';
@@ -32,8 +31,6 @@ export interface Ticket {
   parent?: string;
   /** `bug` when the tracker's own issue type or label says so; the sync never sets the feature or the severity. */
   kind?: 'bug';
-  /** The accounts assigned on the tracker (`github-user:<login>`): each resolves to the person who claims it, or is left. */
-  assignees?: string[];
 }
 
 export interface ApplyOpts {
@@ -153,12 +150,8 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     const changeKey = existing?.key ?? `change:${product}/${t.slug}`;
     changeOf.set(t.id, changeKey);
     const rel = existing?.path ?? path.join('products', product, 'changes', t.slug, 'change.md');
-    // assignees the store knows become owners; an account no person claims is left alone, never matched by name
-    const owners = (t.assignees ?? []).map((a) => personOf(loaded, a)).filter((p): p is string => !!p);
     if (existing) {
       const binds = Array.isArray(existing.data.binds) ? (existing.data.binds as string[]) : [];
-      const had = Array.isArray(existing.data.owners) ? (existing.data.owners as string[]) : [];
-      const merged = [...had, ...owners.filter((o) => !had.includes(o))];
       write(
         existing,
         'change',
@@ -167,11 +160,10 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
         {
           ...existing.data,
           kind: existing.data.kind ?? t.kind,
-          owners: merged.length ? merged : undefined,
           binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey],
         },
         existing.body,
-        ['kind', 'owners', 'binds'],
+        ['kind', 'binds'],
       );
     } else {
       // the gist is a draft from the ticket's title; the name, intent and done-when are written by whoever first works it
@@ -182,7 +174,6 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
         status: t.status,
         kind: t.kind,
         project: project.key,
-        owners: owners.length ? owners : undefined,
         binds: [sourceKey],
         rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))),
         ...stamp,

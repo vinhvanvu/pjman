@@ -46,7 +46,7 @@ before(() => {
     init({ cwd: dir, name });
   }
   store = findStore(path.join(tmp, 'web'))!;
-  newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
+  newRecord(store, 'product', 'shop', { title: 'Shop', summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
   set(store, 'project:api', ['product=product:shop'], {});
   rm(store, 'product:web');
@@ -135,8 +135,6 @@ test('feature lens: features nest, a change sits under every feature it names, a
   assert.equal(checkout.open, 3); // card-form, card-endpoint, card-tests (through its parent)
   assert.equal(checkout.inFlight, 1);
   assert.deepEqual(checkout.projects, ['project:api', 'project:web']);
-  assert.deepEqual(checkout.owners, ['person:tester']);
-  assert.equal(checkout.ownersFrom, 'product:shop');
   const saved = checkout.children[0];
   assert.equal(saved.name, 'Saved cards'); // the short name the tree shows; the title stays the sentence
   assert.deepEqual(keys(saved.children), ['change:shop/card-form', 'change:shop/card-endpoint']);

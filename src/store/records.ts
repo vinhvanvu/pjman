@@ -33,6 +33,8 @@ export type RecordType =
   | 'session-kind'
   | 'actor';
 
+// owners and a session's on_behalf_of are no longer written; they stay in the order so older records that carry them
+// read clean and keep their place when rewritten
 export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   product: ['title', 'name', 'owners', 'levels', 'sequence', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
   feature: [
@@ -114,7 +116,6 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
   session: [
     'agent',
-    // on_behalf_of: no longer written (pjman is one person's); kept so older sessions that carry it read clean
     'on_behalf_of',
     'started',
     'parent',

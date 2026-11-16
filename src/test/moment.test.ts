@@ -40,7 +40,7 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
-  newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
+  newRecord(store, 'product', 'shop', { title: 'Shop', summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
   change(store, 'login', { title: 'Login', summary: 's', project: 'project:web', status: 'open', next: 'n' });
   firstTitle = lastSeqNow();

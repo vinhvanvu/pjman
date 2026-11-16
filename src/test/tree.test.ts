@@ -13,16 +13,7 @@ import { set } from '../ops/set.js';
 import { findStore, type Store } from '../store/config.js';
 import { get } from '../model/graph.js';
 import { loadStore, resolve } from '../store/records.js';
-import {
-  ancestorsOf,
-  derivedStatus,
-  descendantsOf,
-  effectiveOwners,
-  formatTree,
-  levelOf,
-  parseEffect,
-  tree,
-} from '../model/tree.js';
+import { ancestorsOf, derivedStatus, descendantsOf, formatTree, levelOf, parseEffect, tree } from '../model/tree.js';
 import { validate } from '../model/validate.js';
 import { change, decisionRec } from './shape.js';
 
@@ -44,7 +35,7 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: api });
   init({ cwd: api, name: 'api' });
   // the two repositories build one product: shop; the ones init made with their names are not needed
-  newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
+  newRecord(store, 'product', 'shop', { title: 'Shop', summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
   set(store, 'project:api', ['product=product:shop'], {});
   rm(store, 'product:web');
@@ -59,14 +50,10 @@ test('effects parse: a bare key changes; adds and removes are named; anything el
   assert.equal(parseEffect('adds change:x'), null);
 });
 
-test('the tree: a product root, features at labelled levels, owners inherited, changes as effects, derived status, roll-ups', () => {
+test('the tree: a product root, features at labelled levels, changes as effects, derived status, roll-ups', () => {
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', { title: 'Pay with a saved card', parent: 'feature:shop/checkout' });
-  newRecord(store, 'feature', 'card-scan', {
-    title: 'Scan a card',
-    parent: 'feature:shop/saved-cards',
-    owners: ['person:other'],
-  });
+  newRecord(store, 'feature', 'card-scan', { title: 'Scan a card', parent: 'feature:shop/saved-cards' });
   newRecord(store, 'feature', 'search', { title: 'Search', product: 'product:shop', status: 'live' });
   change(store, 'card-form', {
     title: 'Card form',
@@ -95,20 +82,6 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   loaded = loadStore(store);
   assert.equal(levelOf(loaded, loaded.byKey.get('feature:shop/checkout')![0]), 'area');
   assert.equal(levelOf(loaded, loaded.byKey.get('feature:shop/card-scan')![0]), 'sub-capability');
-
-  // owners: own, else the nearest ancestor's
-  assert.deepEqual(effectiveOwners(loaded, 'feature:shop/saved-cards'), {
-    owners: ['person:tester'],
-    from: 'product:shop',
-  });
-  assert.deepEqual(effectiveOwners(loaded, 'feature:shop/card-scan'), {
-    owners: ['person:other'],
-    from: 'feature:shop/card-scan',
-  });
-  assert.deepEqual(effectiveOwners(loaded, 'change:shop/card-form'), {
-    owners: ['person:tester'],
-    from: 'product:shop',
-  });
 
   // ancestry across chains: a change climbs its project and its features to the product
   assert.deepEqual(ancestorsOf(loaded, 'change:shop/card-form').toSorted(), [
@@ -215,7 +188,7 @@ test('the tree: a product root, features at labelled levels, owners inherited, c
   );
   assert.deepEqual(tree(loaded, 'change:shop/chore'), []);
   const text = formatTree(tree(loaded));
-  assert.match(text, /product:shop \(product\) — Shop · person:tester/);
+  assert.match(text, /product:shop \(product\) — Shop\n/);
   assert.match(text, /feature:shop\/saved-cards \(feature\) \[live\]/);
   assert.match(text, /1 open change under its projects name no feature/);
 
@@ -289,4 +262,20 @@ test('rename and remove reach products and features; a product with members refu
   assert.ok(!loaded.byKey.has('feature:store/card-scan'));
   assert.equal(loaded.byKey.get('change:store/drop-scan')![0].data.features, undefined);
   assert.deepEqual(errors(), []);
+});
+
+test('a record written when nodes had owners still loads, validates clean and draws without them', () => {
+  const product = loadStore(store).records.find((r) => r.type === 'product' && r.valid)!;
+  const file = path.join(store.root, product.path);
+  const before = fs.readFileSync(file, 'utf8');
+  try {
+    fs.writeFileSync(file, before.replace(/^title: /m, 'owners:\n  - person:gone\ntitle: '));
+    const loaded = loadStore(store);
+    assert.deepEqual(loaded.byKey.get(product.key)![0].data.owners, ['person:gone']);
+    const own = validate(loaded).filter((p) => p.level !== 'info' && p.path === product.path);
+    assert.deepEqual(own, []);
+    assert.doesNotMatch(formatTree(tree(loaded, product.key)), /person:gone/);
+  } finally {
+    fs.writeFileSync(file, before);
+  }
 });

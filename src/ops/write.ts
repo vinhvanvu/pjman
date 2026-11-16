@@ -138,12 +138,12 @@ export function finishWrite(
 
 /** The fields of each record type that hold keys of records (sources stay as written). */
 const KEY_FIELDS: Record<RecordType, string[]> = {
-  product: ['sequence', 'owners'],
-  feature: ['product', 'parent', 'owners'],
-  aspect: ['parent', 'owners'],
+  product: ['sequence'],
+  feature: ['product', 'parent'],
+  aspect: ['parent'],
   place: ['feature'],
-  project: ['product', 'parent', 'owners'],
-  change: ['project', 'parent', 'depends_on', 'features', 'aspects', 'owners'],
+  project: ['product', 'parent'],
+  change: ['project', 'parent', 'depends_on', 'features', 'aspects'],
   decision: ['supersedes', 'decided_by'],
   release: ['ships'],
   source: [],

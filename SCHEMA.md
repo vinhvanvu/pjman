@@ -61,7 +61,6 @@ The fixed root of the product tree and the namespace of everything beneath it: i
 |---|---|---|
 | `title` | A | Required: the product in a sentence. |
 | `name` | A | Optional short name, one to three words: what the rail, the switcher, the crumbs and the chips show (the title stays the sentence). Absent, the key's slug. |
-| `owners` | A | Optional list of actor keys; inherited by every node beneath that names none. |
 | `levels` | A | Optional list of level labels for the features beneath, by depth (default: the store's `tree_levels`, `feature` then `capability`; anything deeper takes the last label). |
 | `sequence` | A | Optional ordered list of change keys: the roadmap's order, the deliverables as the person arranged them. A milestone on it is a column holding its children; a loose change is a column of one; a change not on it comes after, as later. No repeats; `pjman order` moves an entry. |
 | `links` | A | Optional source keys. |
@@ -79,7 +78,6 @@ One nestable kind for everything the product is and does, at any depth: a featur
 | `level` | A | Optional label; default from the product's `levels` or the store's `tree_levels` at this node's depth. |
 | `product` | A | The product, for a top-level feature. A feature names `product` or `parent`. |
 | `parent` | A | The feature above. Unbounded depth; a cycle is refused. |
-| `owners` | A | Optional list of actor keys; inherited downward. |
 | `links` | A | Optional source keys. |
 | `aliases` | A | Former slugs, appended by `pjman mv`; a reference to one resolves and is reported as "resolves via alias". |
 | body | A | `## Summary`, optional. |
@@ -95,7 +93,6 @@ What applies across the product rather than at one place on the tree: how text r
 | `title` | A | Required. |
 | `name` | A | Optional label, one to three words. |
 | `parent` | A | Optional. The aspect above (text, then markdown beneath it); cycles refused; same product. |
-| `owners` | A | Optional list of actor keys: who answers for the base. |
 | `links` | A | Optional source keys. |
 | body | A | The base: the one source of truth for what the aspect says, in markdown. The store imposes no shape on it; the aspect skill shapes it by the kind of aspect. |
 
@@ -122,7 +119,6 @@ A repository, registered in the store by `pjman init`. The unit a change belongs
 | `title` | A | The repository's folder name unless named |
 | `product` | A | Optional. The product this project belongs to. |
 | `parent` | A | Optional. The project above (a platform over web and api); unbounded depth, cycles refused. |
-| `owners` | A | Optional list of actor keys; inherited downward. |
 | `tracker` | A | Optional. The source kind of the project's tickets (`linear`, `github-issue`). An adapter creates a change for a ticket only in a project that names one. The tracker's own binding sits under `ext.<tracker>` (`ext.linear.team: ABC` names the Linear team the sync pulls); it is also the prefix the tracker claims: a bare ticket id (`ABC-12`) resolves only where exactly one tracker of the project claims its prefix, by that binding or by a change of the project binding a ticket of that prefix (decision pjman-22/bare-ticket-ids) |
 | `map` | A | Optional. `propose` (the default `pjman init` records after asking): while the project's product has no feature, `pjman context` opens with one line saying the product has no map and how it comes with the first change filed, and `pjman intake` opens with the same. `skip` ends the line. |
 | `holds` | A | Optional. What the repository held when `pjman init` inventoried it: `bare`, `docs`, `code` or `docs+code` (a README that says more than a title, a docs folder or a spec; a manifest or a directory of source). The context and intake read the repository live when it is at hand and fall back to this; a re-run of init refreshes it. Docs give the map its sentences, code its split, both the better proposal; bare grows its map from the work. |
@@ -175,7 +171,7 @@ SQLite, in `index.db` at the store root, git-ignored, rebuilt from the records b
 
 ### Provenance
 
-`writer` and `session` on records that adapters write; `parent` and `agent` on sessions (an older session may carry `on_behalf_of`, no longer written and ignored); git for the rest. An adapter that commits records adds a `Pjman-Session: <id>` trailer. Provenance is a property of the Phase 1 backend (files in git), not a claim about every backend.
+`writer` and `session` on records that adapters write; `parent` and `agent` on sessions; git for the rest. Older records may carry `owners` (on a node or a change) or `on_behalf_of` (on a session): no longer written, read or checked, and accepted as they are. An adapter that commits records adds a `Pjman-Session: <id>` trailer. Provenance is a property of the Phase 1 backend (files in git), not a claim about every backend.
 
 ### Location and configuration
 
@@ -227,7 +223,6 @@ A change reads as a ladder (decision record-foundation/the-ladder): its `name`, 
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
 | `aspects` | A | Optional. The aspects or places this change adds, changes or removes, in the same form as `features`: `adds aspect:<slug>`, `aspect:<aspect>/<place>` (changes). Its context then carries the aspect whole (the base and every place). |
-| `owners` | A | Optional list of actor keys; a change without owners answers to its feature's or project's. |
 | `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
 | `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
 | `kind` | A | Optional. `bug`: a change against something live, reported rather than planned. `milestone`: a change whose plan is its children (decision milestone-kind/kind-not-children): named so at filing (`--kind milestone`), it takes no steps of its own, and a change another change names as `parent` must be one, both refused otherwise. Absent means work. A sync sets `bug` from the tracker's own issue type or label and `milestone` on the change a sub-issue's parent ticket binds; it never sets the feature or the severity |
@@ -290,7 +285,7 @@ Body: the release notes as published, one line per change in the words the chang
 | `done` | Accepted |
 | `dropped` | Closed without acceptance |
 
-The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. pjman is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the change's Origin. Ingesting it creates the change when none binds it, with a draft gist from the ticket's title and the status as the ticket stood then; afterwards a sync writes the source record, the binding and the owners, never the change's name, status or parent. Approval and in-effect states are Phase 3's.
+The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. pjman is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the change's Origin. Ingesting it creates the change when none binds it, with a draft gist from the ticket's title and the status as the ticket stood then; afterwards a sync writes the source record and the binding, never the change's name, status or parent. Approval and in-effect states are Phase 3's.
 
 ---
 
@@ -304,7 +299,6 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `sequence` | product → change | product | the roadmap's order; every key must exist; no repeats |
 | `binds` | change → source | change | a source binds at most one change |
 | `product` | feature, project → product | the child | the fixed root of the product tree |
-| `owners` | product, feature, aspect, project, change → actor | the node | inherited downward when a node names none |
 | `adds`, `changes`, `removes` | change → feature | change | what the change does to the feature; derived state replays the done ones |
 | `adds`, `changes`, `removes` | change → aspect, place | change (`aspects`) | what the change does to the aspect; its context carries it whole |
 | `parent` | aspect → aspect | aspect | same product; no cycles |

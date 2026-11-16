@@ -31,7 +31,6 @@ import {
 const change = (key: string): ScopeNode => ({
   key: `change:${key}`,
   type: 'change',
-  owners: [],
   open: 0,
   inFlight: 0,
   projects: [],
@@ -55,7 +54,6 @@ const feature = (key: string, children: ScopeNode[] = []): ScopeNode => ({
   key: `feature:${key}`,
   type: 'feature',
   name: key,
-  owners: [],
   open: 0,
   inFlight: 0,
   projects: [],
@@ -74,7 +72,6 @@ const tree: ScopeNode[] = [
     key: 'unassigned',
     type: 'unassigned',
     title: 'No feature named',
-    owners: [],
     open: 1,
     inFlight: 0,
     projects: [],

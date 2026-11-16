@@ -63,7 +63,6 @@ function edgesOnce(loaded: Loaded): Edge[] {
     if (!r.valid) continue;
     const d = r.data;
     const s = r.productSlug ?? null;
-    for (const k of list(d.owners)) edge('owners', r.key, k, r);
     switch (r.type) {
       case 'product':
         for (const k of list(d.sequence)) edge('sequence', r.key, live(k, s), r);

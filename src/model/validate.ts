@@ -90,6 +90,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   actor: ['kind', 'name', 'url', 'writer', 'session', 'created'],
 };
 
+// owners: no longer written or read (pjman is one person's); still a list here so older records that carry it validate
 const LIST_FIELDS: Record<RecordType, string[]> = {
   product: ['owners', 'levels', 'sequence', 'links', 'aliases'],
   feature: ['owners', 'links', 'aliases'],
@@ -133,7 +134,6 @@ export const EDGES: Record<string, [string[], string[]]> = {
   changes: [['session'], ['change']],
   project: [['change', 'session'], ['project']],
   product: [['feature', 'project'], ['product']],
-  owners: [['product', 'feature', 'aspect', 'project', 'change'], ['actor']],
   feature: [['aspect'], ['feature']],
   aspects: [['change'], ['aspect']],
   adds: [['change'], ['feature']],
@@ -317,7 +317,6 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
         }
       }
     };
-    for (const k of listOf(d.owners)) checkRef(r, 'owners', k, ['actor']);
 
     switch (r.type) {
       case 'product': {

@@ -34,7 +34,7 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
-  newRecord(store, 'product', 'shop', { title: 'Shop', owners: ['person:tester'], summary: 'A shop.' });
+  newRecord(store, 'product', 'shop', { title: 'Shop', summary: 'A shop.' });
   set(store, 'project:web', ['product=product:shop'], {});
   newRecord(store, 'feature', 'checkout', { title: 'Checkout', product: 'product:shop' });
   newRecord(store, 'feature', 'saved-cards', {
@@ -241,7 +241,7 @@ test('bridge: another product sees none of them; a window that has passed sees n
 });
 
 test("timeline: the product's events in the window, decisions marked, titles as they read now, the store's last event beside them", () => {
-  newRecord(store, 'product', 'other', { title: 'Other', owners: ['person:tester'], summary: 'Another.' });
+  newRecord(store, 'product', 'other', { title: 'Other', summary: 'Another.' });
   const t = timeline(store, loadStore(store), { product: 'product:shop' });
   assert.equal(t.product, 'product:shop');
   const keys = new Set(t.events.map((e) => e.key));

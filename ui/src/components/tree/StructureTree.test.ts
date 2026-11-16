@@ -5,7 +5,6 @@ import { indexNodes, keysExpanded, ROOT } from './StructureTree';
 const node = (key: string, type: ScopeNode['type'], children: ScopeNode[] = []): ScopeNode => ({
   key,
   type,
-  owners: [],
   open: 0,
   inFlight: 0,
   projects: [],

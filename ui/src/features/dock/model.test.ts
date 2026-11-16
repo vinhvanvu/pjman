@@ -23,7 +23,6 @@ const feature = (key: string, name: string, children: ScopeNode[] = []): ScopeNo
   key,
   type: 'feature',
   name,
-  owners: [],
   open: 0,
   inFlight: 0,
   projects: [],

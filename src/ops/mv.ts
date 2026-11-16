@@ -224,7 +224,7 @@ function mvProject(store: Store, loaded: Loaded, fromRaw: string, toRaw: string,
   return finish(store, loaded, from, to, 'project', newRel, rewritten, pathAfter, opts);
 }
 
-/** A person or an agent: the file moves, every writer, owner, decider and session follows, the old handle stays as an
+/** A person or an agent: the file moves, every writer, decider and session follows, the old handle stays as an
  *  alias; the user config's actor follows when it was the old key. */
 function mvActor(store: Store, loaded: Loaded, fromRaw: string, toRaw: string, opts: { session?: string }): MvResult {
   const fromKey = parseKey(fromRaw)!;

@@ -20,7 +20,6 @@ const row = (key: string, extra: Partial<ChangeRow> = {}): ChangeRow => ({
 const changeNode = (r: ChangeRow): ScopeNode => ({
   key: r.key,
   type: 'change',
-  owners: [],
   open: 0,
   inFlight: 0,
   projects: [],
@@ -32,7 +31,6 @@ const feature = (key: string, children: ScopeNode[]): ScopeNode => ({
   key: `feature:${key}`,
   type: 'feature',
   name: key,
-  owners: [],
   open: 99,
   inFlight: 99,
   projects: [],
