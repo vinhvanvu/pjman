@@ -17,6 +17,7 @@ import { git } from '../store/git.js';
 import { sourceFileSlug } from '../store/keys.js';
 import { findSession, loadStore, type Loaded, type Rec } from '../store/records.js';
 import { CliError, localDate, nowIso } from '../store/util.js';
+import { baseBranch, mergedBranch } from './git.js';
 
 export const CHECKPOINT_KIND = 'entire-checkpoint';
 
@@ -52,24 +53,6 @@ const tryGit = (cwd: string, args: string[]): string => {
     return '';
   }
 };
-
-/** The repository's base branch: what origin's HEAD points at, else main, else master, else the current branch. */
-export function baseBranch(dir: string): string {
-  const head = tryGit(dir, ['symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD']);
-  if (head) return head.replace(/^origin\//, '');
-  for (const b of ['main', 'master'])
-    if (tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/heads/${b}`])) return b;
-  return tryGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) || 'main';
-}
-
-/** The branch a merge commit's subject names: git's own (`Merge branch 'x'`) or GitHub's (`Merge pull request #n from
- *  owner/x`). */
-export function mergedBranch(subject: string): string | null {
-  const m =
-    /^Merge (?:remote-tracking )?branch '([^']+)'/.exec(subject) ??
-    /^Merge pull request #\d+ from [^/\s]+\/(\S+)/.exec(subject);
-  return m ? m[1].replace(/^origin\//, '') : null;
-}
 
 /** Every commit of the repository's local branches that carries an `Entire-Checkpoint` trailer, with the branches whose
  *  work it is. Reads git only. */

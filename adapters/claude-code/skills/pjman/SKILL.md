@@ -121,9 +121,13 @@ working it.
    line; `pjman new change` prints it), the harness creates the worktree and its branch (`claude --worktree <slug>`, or
    the enter-worktree tool in a running session). A session on a branch so named is bound to the change at start, with
    no prompt. Two sessions on one change share its worktree. When you stop, leave the worktree clean or committed so the
-   harness can remove it on exit. Once the person has approved the work, merge the branch into main yourself, then remove
-   the worktree and its branch before the change is set done (`git worktree remove <path> && git branch -d <branch>`;
-   the project's own instructions say what an install after a merge takes); the session-start context names any
+   harness can remove it on exit. Once the person has approved the work, land it with `pjman merge <change>`: it merges
+   the branch into the base and sets the change done; in a project that opted in to Entire the merge is the change's
+   Trail's, whose gates decide, and a gate that blocks is said and nothing is merged (never merge around it by hand,
+   and never approve: the approval is the person's, on Entire). A merge made elsewhere (a pull request merged on the
+   forge, squashed or rebased) is followed by itself: `pjman sync git` sets its change done. Then remove the worktree
+   and its branch (`git worktree remove <path> && git branch -D <branch>`; the project's own instructions say what an
+   install after a merge takes); the session-start context names any
    worktree whose change is done and whose branch is merged, so a leftover is seen the next time someone sits down.
    pjman creates and removes no worktree itself.
 

@@ -30,9 +30,10 @@
 //                     on a product with no map (the tool prints `no product map:`) holds every stop to one refusal per turn until a
 //                     decision is opened or map=skip is set (decision pjman-27/trigger). Then a turn that acted appends one log line,
 //                     from the harness's last message; the size of each brief given this turn and the receipt of what the store received
-//                     since the last turn are shown to the person. In a project that opted in to Entire, a turn that ran a git commit,
-//                     merge, rebase, cherry-pick or pull ends with `pjman sync entire`: the checkpoints on the new commits are linked
-//                     to their changes and sessions (change:checkpoint-link)
+//                     since the last turn are shown to the person. A turn that ran a git commit, merge, rebase, cherry-pick or pull
+//                     ends with `pjman sync git` (a change in review whose branch is now on the base is done: change:merge-via-pr) and,
+//                     in a project that opted in to Entire, `pjman sync entire` (the checkpoints on the new commits are linked to
+//                     their changes and sessions: change:checkpoint-link)
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed, or parked on the bridge when the session was cleared, from
@@ -381,9 +382,12 @@ function staleWorktrees(cwd, done) {
     if (!c.branch) continue;
     const w = byBranch.get(c.branch.name) ?? byName.get(c.branch.worktree);
     if (!w || w.branch === trunk || out.some((o) => o.dir === w.dir)) continue;
-    merged ??= new Set(
-      (sh('git', ['branch', '--merged', trunk, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
-    );
+    // the tool reads how each branch reached the base (a merge commit, a squash, a rebase, a fast-forward; local or
+    // fetched: change:merge-via-pr) and sets done what it finds merged; git's own listing is the fallback
+    merged ??= new Set([
+      ...(tryPjman(['sync', 'git', '--json'], { cwd, json: true })?.merged ?? []).map((m) => m.branch),
+      ...(sh('git', ['branch', '--merged', trunk, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
+    ]);
     if (!merged.has(w.branch)) continue;
     out.push({ dir: w.dir, branch: w.branch, change: c.printed ?? c.key });
   }
@@ -1289,10 +1293,10 @@ async function main() {
       if (input.tool_name === 'Bash' && decisionWrite.test(String(input.tool_input?.command ?? '')))
         st.decided = (st.decided ?? 0) + 1;
       if (input.tool_name === 'AskUserQuestion') st.asked = (st.asked ?? 0) + 1;
-      // a commit made in a project that opted in to Entire carries a checkpoint: the turn's end links it to its change and
-      // session (change:checkpoint-link). Nothing is read or run for a project that did not opt in
+      // a turn that committed, merged or pulled ends by following the repository: a change in review whose branch is now on
+      // the base is done (change:merge-via-pr), and, in a project that opted in to Entire, the checkpoints on the new
+      // commits are linked to their changes and sessions (change:checkpoint-link)
       if (
-        store?.entire &&
         input.tool_name === 'Bash' &&
         /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(?:commit|merge|rebase|cherry-pick|pull)\b/.test(
           String(input.tool_input?.command ?? ''),
@@ -1433,7 +1437,8 @@ async function main() {
         if (EVENT === 'Stop' && st.bound) hostLabel(sid, cwd, env);
       }
       if (EVENT === 'Stop' && st.committed) {
-        tryPjman(['sync', 'entire'], { cwd, env });
+        tryPjman(['sync', 'git'], { cwd, env }); // a branch merged or pulled in: its change in review is done
+        if (store?.entire) tryPjman(['sync', 'entire'], { cwd, env });
         st.committed = 0;
       }
       // the receipt: what this session and the sessions it spawned wrote since the last turn, composed by the tool, shown to the person

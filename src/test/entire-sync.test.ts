@@ -14,7 +14,8 @@ import { set } from '../ops/set.js';
 import { findStore, loadStoreConfig, openStore, writeStoreConfig, type Store } from '../store/config.js';
 import { findSession, loadStore } from '../store/records.js';
 import { validate } from '../model/validate.js';
-import { checkpointCommits, mergedBranch, syncEntire } from '../sync/entire.js';
+import { checkpointCommits, syncEntire } from '../sync/entire.js';
+import { mergedBranch } from '../sync/git.js';
 import { change } from './shape.js';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-entire-sync-')));

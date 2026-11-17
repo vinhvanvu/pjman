@@ -66,7 +66,8 @@ const PERSON_ONLY = new Set([
 const personOnly = (args: string[]): boolean => {
   const [a, b] = args;
   if (a === 'auth') return b !== 'status';
-  if (a === 'trail') return b === 'approve';
+  // approving is the person's; so is merging past a gate that blocks
+  if (a === 'trail') return b === 'approve' || (b === 'merge' && args.includes('--force'));
   return PERSON_ONLY.has(a);
 };
 
