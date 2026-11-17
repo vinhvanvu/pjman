@@ -23,7 +23,8 @@ import { ambiguous, CliError, notFound, plural, usageError } from '../store/util
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from '../model/validate.js';
 import { trackerOf } from '../model/refs.js';
-import { entireOn } from '../entire/entire.js';
+import { entireOn, pendingLine } from '../entire/entire.js';
+import { syncEntire } from '../sync/entire.js';
 import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
 import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from '../store/events.js';
@@ -990,6 +991,10 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           out(
             `migrated: ${plural(r.changes ?? 0, 'parent change')} now a milestone by kind (introduced in ${r.since}); steps one carried are in its Notes, since a milestone's plan is its children${reverts}`,
           );
+        else if (r.kind === 'entire-kinds')
+          out(
+            `migrated: ${plural(r.rewritten, 'source kind')} added (introduced in ${r.since}): Entire's checkpoints and Trails, linked only by a project that opted in${reverts}`,
+          );
         else if (r.kind === 'session-kinds')
           out(
             `migrated: ${plural(r.rewritten, 'session kind')} created (introduced in ${r.since}): what a session with no change may be given, each its own record${r.commit ? ` (at ${r.commit})` : ''}`,
@@ -1218,9 +1223,24 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       return 0;
     }
     case 'sync': {
-      if (pos[1] !== 'linear' && pos[1] !== 'github')
-        throw usageError('usage: pjman sync linear|github --from <file|-> [--project <key>]');
+      if (pos[1] !== 'linear' && pos[1] !== 'github' && pos[1] !== 'entire')
+        throw usageError(
+          'usage: pjman sync linear|github --from <file|-> [--project <key>], or pjman sync entire (a project that opted in to Entire)',
+        );
       const store = scoped(requireStore(cwd, v.store));
+      if (pos[1] === 'entire') {
+        const r = syncEntire(store, { session: v.session });
+        if (v.json) json(r);
+        else {
+          out(
+            `entire → ${r.project}: ${plural(r.checkpoints, 'checkpoint')} on the repository's commits; ${r.linked.length} linked${r.unplaced ? `, ${r.unplaced} on commits that name no change` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+          );
+          for (const l of r.linked)
+            out(`  ${l.checkpoint} → ${l.change}${l.sessions.length ? ` (${l.sessions.join(', ')})` : ''}`);
+          for (const reason of r.pending) out(pendingLine({ reason }));
+        }
+        return 0;
+      }
       const r =
         pos[1] === 'linear'
           ? syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session })
