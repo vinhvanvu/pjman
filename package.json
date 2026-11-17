@@ -1,7 +1,7 @@
 {
   "name": "@vinhvanvu/pjman",
   "version": "0.6.0",
-  "description": "A context graph for product development: typed records in git under one schema, and the tool that is the schema.",
+  "description": "An opinionated structure for product development, kept by your agents on top of a store.",
   "keywords": [
     "context-graph",
     "product-development",
