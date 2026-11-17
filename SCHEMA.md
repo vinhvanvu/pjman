@@ -37,7 +37,7 @@ output read inside a project drops the product segment; JSON keeps it.
 | project | `project:<slug>` | `project:pjman` |
 | change | `change:<product>/<slug>` (inside the product: `change:<slug>`) | `change:pjman/schema` |
 | decision | `decision:<product>/<change>/<slug>` (inside the product: `decision:<change>/<slug>`) · `decision:<product>/<slug>` at product level · `decision:/<slug>` at store level | `decision:pjman/schema/layered-minimal` |
-| source | `<kind>:<key>` | `linear:ABC-1234`, `github-pr:acme/app#123`, `file:THESIS.md`, `url:https://…` |
+| source | `<kind>:<key>` | `linear:ABC-1234`, `github-pr:acme/app#123`, `file:README.md`, `url:https://…` |
 | session | `session:<harness-session-id>` | `session:8b4adf71-…` |
 
 A key is resolved by the tool; a reference to a record that does not exist is a validation error — except a **source**, which may exist only as a key (see layer 1).

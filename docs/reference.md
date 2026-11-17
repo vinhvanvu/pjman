@@ -1,6 +1,6 @@
 # pjman reference
 
-The tool in full: the store, `pjman init`, every command, the product tree, trackers, the dashboard and the API, the rules it enforces, the adapter, development and releases. The short version is the [README](../README.md); the record contract is [SCHEMA.md](../SCHEMA.md); the thesis is [THESIS.md](../THESIS.md).
+The tool in full: the store, `pjman init`, every command, the product tree, trackers, the dashboard and the API, the rules it enforces, the adapter, development and releases. The short version is the [README](../README.md); the record contract is [SCHEMA.md](../SCHEMA.md).
 
 ## The store
 
@@ -467,7 +467,7 @@ The app lives in `ui/` (React, Vite) and builds into `dist/ui`, which ships with
 
 ## Rules the tool enforces
 
-- **References are keys** (`person:vinh`, `project:pjman`, `change:schema`, `decision:schema/keys`, `linear:ABC-1`, `file:THESIS.md`). Projects, changes, decisions and sessions must exist; sources and actors need no record.
+- **References are keys** (`person:vinh`, `project:pjman`, `change:schema`, `decision:schema/keys`, `linear:ABC-1`, `file:README.md`). Projects, changes, decisions and sessions must exist; sources and actors need no record.
 - **The YAML rule:** any scalar containing `: ` or `#`, or starting with a special character, is quoted. `validate` reports; `fmt` quotes.
 - **A change and a decision read as a ladder.** A name (one to four words), a gist (one line), then the foundation in full: a change's sections in order of depth (Origin, Intent, Done when, then Scope, the plan as steps, Open questions, Blocked on, Notes), a decision's append-only thread. Status, progress, the next step and what waits are derived. The name and gist record the foundation they were written from (`rungs_from`); written without them, the foundation leaves them stale, and the context says so. A record mapped by `pjman migrate` from the old shape (title, summary, next, Decision and Why) carries `migrated` until it is next written through the tool.
 - **A decision is decided by a person.** An acceptance is an entry in its thread by a `person:`; an agent never accepts. `supersedes` marks its targets `superseded`, at creation or later through `pjman set decision:<k> supersedes=<key>,…` (a decision made later retires the proposals it overtook; the list only grows, a target another decision already supersedes is refused).
