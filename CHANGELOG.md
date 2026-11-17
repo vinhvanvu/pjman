@@ -193,23 +193,10 @@ Everything before the record existed: the thesis, the schema, the tool, the adap
 
 ### Also
 
-- docs: the thesis — alignment is hard, execution is easy (2670f75)
-- docs(thesis): positioning — solo first, pay per signer, growth-path displacement (376aec9)
-- docs(thesis): pricing revised (paid solo tier), views over one graph, the customer's question (81f0990)
-- docs(thesis): the shape — free framework + hosted service; domain-agnostic core, software first; open-core line sharpened (767a10b)
-- docs(thesis): open-source framework, proprietary hosted service, built in parallel (decision 23) (6a8e8a2)
-- docs(thesis): tenets — the free framework is complete on its own; build the tool its builder wants to use (2129990)
-- docs(thesis): two phases — the open-source framework first, the hosted product second (decision 24; 23 revised) (cf865d7)
-- docs(thesis): a feature is not defined, its contract is (decision 25) (dff4ef2)
-- docs(thesis): software factories — pjman as the PLM and quality system around the line (ad1c3c5)
-- docs(thesis): Phase 1 re-pointed — the framework is the work tool (claude-session-board) extracted; the three distances (17084b4)
+- docs: the early thesis and its revisions, since retired
 - docs: the roadmap — five phases, Phase 1 in order, the constraints on decisions made now (81306f6)
 - docs: many parents, one owner (decision 25 revised); the four-noun vocabulary (decision 26); roadmap wording aligned (506379a)
-- docs(thesis): identity — generated UUIDs with a map to external entities (decision 27, provisional); paused (e05e1c2)
 - docs: storage architecture — records are the truth, a graph is the index, the schema is independent of storage (decision 28); identity firmed (27) (ea3c8bf)
-- docs(thesis): how to read this — the context graph as substrate, the alignment thesis as a layer on it (4065527)
-- docs: thesis resynthesised as pitch + roadmap around the context graph; decision log split out; ROADMAP.md folded in (fd3d87d)
-- research: is pjman worth building — landscape, problem evidence, evolvability (go narrowly, with a kill gate) (18d8f59)
 - docs: layers catalog — the most popular technology at each layer, and where pjman rolls its own (22cb32a)
 - docs: humans and agents are the same kind of participant (decision 30); tenet restated; writer field as a Phase 1 constraint (935034d)
 - docs: schema draft v0 — five record types, the edge set, the status vocabulary, identity, location, validation, six open points (08e9608)
@@ -223,7 +210,6 @@ Everything before the record existed: the thesis, the schema, the tool, the adap
 - docs(schema): v3 — Phase 1 only, adversarial round 1 folded in (4e69e2d)
 - docs(schema): v3 — aliases and pjman mv for renames; the store as a git repository in two modes (in-project, standalone) (17b02f3)
 - docs(schema): init defaults to standalone; the git policy (init, mv, read, commit-in-standalone-only) (3142eda)
-- docs: thesis rewritten to the current plan; schema history moved to the decision log (31, 32) (b8b8b22)
 - feat: the pjman tool — init, new, session, validate, fmt, ls, context, show, mv, index, query (24048e0)
 - store: rebuilt through the tool; documents cleaned; DECISIONS.md retired; pjman set (646dd03)
 - docs: example ticket keys are ABC-1234 (1678984)
