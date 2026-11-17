@@ -8,7 +8,7 @@ description: >-
 
 ## What the store is
 
-A pjman store is the project's context graph: changes (units of work), decisions (what was chosen and why),
+A pjman store holds the project's structure: changes (units of work), decisions (what was chosen and why),
 sources (tickets, PRs, docs, files), sessions (runs like this one) and actors. The session-start hook has
 already put `pjman context` in front of you; this run's records carry `session:<id>` automatically.
 
