@@ -343,6 +343,11 @@ pjman refs - [--json]   (text on stdin)
 pjman view [<ref>] [--out <file>] [--watch]
     one reference as a Markdown document, or the project's board without one; --out writes a file, --watch re-renders whenever the store changes. A session's view is the dashboard's: pjman open --session
 
+pjman review <change> [--json]
+pjman review <change> --finding "<text>" [--severity high|medium|low] [--file <path> [--line <n>]]
+pjman review <change> --resolve <n> [--note "…"] | --dismiss <n> --note "…" | --reopen <n>
+    the review of a change, pjman's own: with no flag it prints the brief a reviewer judges by (the change's intent and done-when, each decision accepted on it with the options turned down, the branch's commits and changed files with the command that prints its diff, and the findings so far). --finding files one thing found, with its severity (high, medium, low; medium when not said) and, when it points at code, --file and --line; --resolve <n>, --dismiss <n> (with --note saying why it does not hold) and --reopen <n> settle one by its number. Findings are data on the change, shown in its context. In a project that opted in to Entire each is also filed onto the change's Trail, whose Findings gate holds the merge until it is resolved, and settling one here settles it there; what Entire does not answer is printed as pending and filed by the next review or pjman sync entire. With no Entire the review is local
+
 pjman merge <change> [--json]
     land a change's branch on the base branch and set the change done. In a project that opted in to Entire (ext.entire.enabled=true) the merge is its Trail's: entire trail merge checks the gates (review, findings, checks, up to date) and merges the pull request, then the base is fetched and fast-forwarded; a gate that blocks is printed and nothing is merged, here or locally (pjman never forces a merge past a gate and never approves one). Elsewhere it is a local merge commit on the base naming the change, refused when the checkout is not on the base, has uncommitted changes or the merge conflicts. A branch already merged (by a merge commit, a squash, a rebase or a fast-forward) only sets the change done
 

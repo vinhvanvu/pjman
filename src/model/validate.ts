@@ -1,3 +1,4 @@
+import { FINDING_SEVERITIES, FINDING_STATES } from './findings.js';
 import {
   ACTOR_KINDS,
   CANONICAL_STATUSES,
@@ -567,6 +568,30 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
                 if (!['text', 'state', 'note', 'at'].includes(f)) warn(r, `plan[${i}]: unknown field '${f}'`);
             });
           }
+        }
+        // a review's findings: data, each with its text, a severity and whether it still stands
+        if (d.findings !== undefined) {
+          if (!Array.isArray(d.findings)) err(r, `'findings' must be a list {text, severity, state, file, line}`);
+          else
+            d.findings.forEach((raw, i) => {
+              if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                err(r, `findings[${i}] must be a mapping {text, severity, state, file, line}`);
+                return;
+              }
+              const f = raw as Record<string, unknown>;
+              if (typeof f.text !== 'string' || !f.text.trim()) err(r, `findings[${i}]: a finding needs its text`);
+              if (f.severity !== undefined && !(FINDING_SEVERITIES as readonly string[]).includes(String(f.severity)))
+                err(
+                  r,
+                  `findings[${i}]: severity '${String(f.severity)}' is not one of ${FINDING_SEVERITIES.join(', ')}`,
+                );
+              for (const k of ['state', 'filed'] as const)
+                if (f[k] !== undefined && !(FINDING_STATES as readonly string[]).includes(String(f[k])))
+                  err(r, `findings[${i}]: ${k} '${String(f[k])}' is not one of ${FINDING_STATES.join(', ')}`);
+              if (f.line !== undefined && !(typeof f.line === 'number' && Number.isInteger(f.line) && f.line > 0))
+                err(r, `findings[${i}]: line must be a line number`);
+              if (f.at !== undefined && !isTimestamp(f.at)) err(r, `findings[${i}]: at must be a timestamp`);
+            });
         }
         checkAliases('change');
         if (r.changeSlug && !SLUG_RE.test(r.changeSlug)) err(r, `folder name '${r.changeSlug}' is not a slug`);

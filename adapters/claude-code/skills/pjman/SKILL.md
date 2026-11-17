@@ -137,6 +137,11 @@ working it.
    so the Trail shows it; never run `entire trail approve`, `entire login` or `entire enable`, which are the person's,
    and never merge past a gate. A line `entire: pending (…)` means Entire did not answer: the write stands, and
    `pjman sync entire` takes it up again.
+   A review is pjman's own, with or without Entire: `pjman review <change>` prints what to judge the branch by (the
+   done-when, the decisions accepted and the options turned down, the branch's diff), and each thing found is filed
+   with `pjman review <change> --finding "…" --severity high|medium|low [--file <path> --line <n>]`, then settled
+   with `--resolve <n>` or `--dismiss <n> --note "why"`. Review before asking the person to approve; where the
+   project opted in to Entire the findings go onto the Trail and hold its merge until resolved.
 
 ## Tickets
 

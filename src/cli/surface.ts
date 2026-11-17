@@ -91,6 +91,11 @@ export const FLAG_TYPES = {
   full: { type: 'boolean' },
   follow: { type: 'boolean' },
   wake: { type: 'boolean' },
+  finding: { type: 'string' },
+  file: { type: 'string' },
+  line: { type: 'string' },
+  resolve: { type: 'boolean' },
+  dismiss: { type: 'boolean' },
   receipt: { type: 'boolean' },
   reason: { type: 'string' },
   via: { type: 'string' },
@@ -444,6 +449,20 @@ export const COMMANDS: Command[] = [
     usage: ['pjman view [<ref>] [--out <file>] [--watch]'],
     flags: ['out', 'watch'],
     args: 1,
+  },
+  {
+    name: 'review',
+    group: 'records',
+    line: "a change's branch judged against its done-when and decisions; what is found, filed",
+    about:
+      "the review of a change, pjman's own: with no flag it prints the brief a reviewer judges by (the change's intent and done-when, each decision accepted on it with the options turned down, the branch's commits and changed files with the command that prints its diff, and the findings so far). --finding files one thing found, with its severity (high, medium, low; medium when not said) and, when it points at code, --file and --line; --resolve <n>, --dismiss <n> (with --note saying why it does not hold) and --reopen <n> settle one by its number. Findings are data on the change, shown in its context. In a project that opted in to Entire each is also filed onto the change's Trail, whose Findings gate holds the merge until it is resolved, and settling one here settles it there; what Entire does not answer is printed as pending and filed by the next review or pjman sync entire. With no Entire the review is local",
+    usage: [
+      'pjman review <change> [--json]',
+      'pjman review <change> --finding "<text>" [--severity high|medium|low] [--file <path> [--line <n>]]',
+      'pjman review <change> --resolve <n> [--note "…"] | --dismiss <n> --note "…" | --reopen <n>',
+    ],
+    flags: ['finding', 'severity', 'file', 'line', 'resolve', 'dismiss', 'reopen', 'note'],
+    args: 2,
   },
   {
     name: 'merge',

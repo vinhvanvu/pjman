@@ -28,7 +28,7 @@ import { agoWords } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Wash } from '@/lib/motion';
 import { statusTone, TONE } from '@/lib/tones';
-import { effectsOf, identityLabel, planFold, planView, shippedWords, sourcesView } from './model';
+import { effectsOf, identityLabel, planFold, planView, shippedWords, sourcesView, trailWords } from './model';
 
 /** The body rises in: 4 px and a fade, 180 ms ease-out; reduced motion keeps the fade. */
 export const RISE = {
@@ -525,7 +525,26 @@ export function Sources({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: L
       {v.links.map((s) => (
         <SourceRow key={s.key} label="link">
           <SourceLink s={s} lens={lens} mode={mode} />
-          <span className="text-meta text-ink-faint">· {s.relation === 'binds' ? 'bound' : 'linked'}</span>
+          <span className="text-meta text-ink-faint">
+            ·{' '}
+            {s.key.startsWith('entire-trail:') && ctx.trail
+              ? trailWords(ctx.trail)
+              : s.relation === 'binds'
+                ? 'bound'
+                : 'linked'}
+          </span>
+        </SourceRow>
+      ))}
+      {v.findings.map((f, i) => (
+        <SourceRow key={`finding-${i}`} label="finding">
+          <span className={cn('min-w-0', f.state === 'open' ? 'text-ink' : 'text-ink-faint line-through')}>
+            {f.text}
+          </span>
+          <span className="text-meta text-ink-faint">
+            · {f.severity}
+            {f.file ? ` · ${f.file}${f.line ? `:${f.line}` : ''}` : ''}
+            {f.state === 'open' ? '' : ` · ${f.state}`}
+          </span>
         </SourceRow>
       ))}
       {v.files.length === 0 ? (

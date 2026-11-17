@@ -19,6 +19,7 @@ import { findSession, loadStore, type Loaded, type Rec } from '../store/records.
 import { CliError, localDate, nowIso } from '../store/util.js';
 import { baseBranch, mergedBranch } from './git.js';
 import { note } from '../ops/note.js';
+import { fileFindings } from './review.js';
 import { reconcileTrail, trailCandidates, type TrailReconcile } from './trail.js';
 
 export const CHECKPOINT_KIND = 'entire-checkpoint';
@@ -272,6 +273,10 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     const t = reconcileTrail(store, rec.key, { session: opts.session, writer: opts.writer, entire: opts.entire });
     if (!t) continue;
     result.trails.push(t);
+    // findings not yet on the Trail (filed while Entire did not answer, or before the Trail existed) are filed now
+    for (const p of fileFindings(store, rec.key, { session: opts.session, writer: opts.writer, entire: opts.entire })
+      .pending)
+      if (!t.pending.includes(p)) t.pending.push(p);
     for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
     if (opts.wake && t.moved.length && t.state)
       note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });
