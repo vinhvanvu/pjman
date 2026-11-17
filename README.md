@@ -1,6 +1,8 @@
 # pjman
 
-An opinionated structure for product development, kept by your agents on top of a store.
+**Every change, every decision, and why.**
+
+pjman is an opinionated framework for product development and project management, built on a context graph your agents keep and you steer.
 
 ![The bridge on a busy afternoon: the day's writes on one timeline, and seven changes in motion grouped by what each needs from you: working now, stopped with the next step set, in review](assets/hero.png)
 

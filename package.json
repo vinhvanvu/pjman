@@ -1,7 +1,7 @@
 {
   "name": "@vinhvanvu/pjman",
   "version": "0.6.0",
-  "description": "An opinionated structure for product development, kept by your agents on top of a store.",
+  "description": "Every change, every decision, and why: an opinionated framework for product development and project management, built on a context graph your agents keep and you steer.",
   "keywords": [
     "context-graph",
     "product-development",

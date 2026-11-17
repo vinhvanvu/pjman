@@ -5,7 +5,7 @@ import path from 'node:path';
 
 export const BRIEF = `# pjman — the project's record, kept by agents
 
-pjman is an opinionated structure for product development, kept by agents on top of a store: changes (units of work), decisions (what was chosen and why),
+pjman is an opinionated framework for product development and project management, built on a context graph: changes (units of work), decisions (what was chosen and why),
 sources (tickets, PRs, branches, docs, files), sessions (runs like this one) and actors, as records in one store per
 person. Every write goes through the \`pjman\` command; never edit a store file directly. This session is already a
 record: what it binds, touches and logs is recorded by the harness.
