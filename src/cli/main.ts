@@ -23,6 +23,7 @@ import { ambiguous, CliError, notFound, plural, usageError } from '../store/util
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from '../model/validate.js';
 import { trackerOf } from '../model/refs.js';
+import { entireOn } from '../entire/entire.js';
 import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
 import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from '../store/events.js';
@@ -1272,6 +1273,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             product: scopeProduct ? `product:${scopeProduct}` : null,
             project_dir: store.projectDir ?? null,
             tracker: (store.project && trackerOf(loadStore(store), store.project)) || null,
+            entire: entireOn(loadStore(store), store.project),
             actor: readUserConfig().actor ?? null,
             source_kinds: store.config.source_kinds,
           })

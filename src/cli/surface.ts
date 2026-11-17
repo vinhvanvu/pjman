@@ -625,7 +625,7 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'the store this directory resolves to, its project and product',
     about:
-      'print the store this directory resolves to and its mode; --json adds the project, its product, its tracker and the actor',
+      'print the store this directory resolves to and its mode; --json adds the project, its product, its tracker, whether it opted in to Entire, and the actor',
     usage: ['pjman where [--json]'],
     flags: [],
     args: 0,
@@ -645,7 +645,7 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'what is wrong with this install, and the command that fixes each thing (writes nothing)',
     about:
-      "check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, and the registered project folders. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports",
+      "check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, the registered project folders, and, for a project that opted in to Entire (ext.entire.enabled=true), the entire binary, the repository's enablement, the login and that Entire's hooks run beside pjman's. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports, and what is Entire's to set up (entire enable, entire login) it names for the person and never runs",
     usage: ['pjman doctor [--all] [--json]'],
     flags: ['all'],
     args: 0,

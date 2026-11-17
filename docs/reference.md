@@ -401,13 +401,13 @@ pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--bri
     the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report. Run again, it is the health check
 
 pjman where [--json]
-    print the store this directory resolves to and its mode; --json adds the project, its product, its tracker and the actor
+    print the store this directory resolves to and its mode; --json adds the project, its product, its tracker, whether it opted in to Entire, and the actor
 
 pjman whoami [--json]
     who you are: the actor the user config names (actor: in ~/.pjman/config.yaml) and their record in the store. What is off is said with the command that resolves it. Writes nothing
 
 pjman doctor [--all] [--json]
-    check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, and the registered project folders. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports
+    check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, the registered project folders, and, for a project that opted in to Entire (ext.entire.enabled=true), the entire binary, the repository's enablement, the login and that Entire's hooks run beside pjman's. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports, and what is Entire's to set up (entire enable, entire login) it names for the person and never runs
 
 pjman validate [--json]
     check every record and every reference; errors are reported, never dropped (exit 1 on errors)
