@@ -90,7 +90,8 @@ export function entireBinary(o: EntireOpts = {}): string | null {
 /** Run one entire command and read its JSON. Never throws: anything short of an answer is `pending`, with the reason
  *  in a line a person can read. */
 export function runEntire<T = unknown>(args: string[], o: EntireOpts = {}): EntireResult<T> {
-  const said = `entire ${args.join(' ')}`;
+  // the command as a reason names it: a long or many-lined value (a Trail's body) is cut to its start
+  const said = `entire ${args.map((x) => (x.length > 60 || x.includes('\n') ? `${x.split('\n')[0].slice(0, 40)}…` : x)).join(' ')}`;
   if (personOnly(args)) return pending('person', `${said} is yours to run; pjman never runs it`);
   const bin = entireBinary(o);
   if (!bin) return pending('missing', 'no entire on the PATH');

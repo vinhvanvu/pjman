@@ -4,6 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readUserConfig, userDir, type Store } from '../store/config.js';
+import { execFile } from 'node:child_process';
+import { entireOn } from '../entire/entire.js';
+import { trailCandidates, trailOf } from '../sync/trail.js';
 import { follow, lastSeq, readEvents } from '../store/events.js';
 import { eventsBetween, loadAt, type Moment } from '../model/moment.js';
 import { timeline } from '../model/timeline.js';
@@ -31,6 +34,9 @@ import { FollowState } from '../hosts/follow.js';
 /** The kinds a `kinds=` filter may name; anything else is ignored. */
 const ROW_KINDS: ReadonlySet<RowKind> = new Set<RowKind>(['write', 'decision', 'line', 'file', 'switch', 'bind']);
 
+/** How often the dashboard asks Entire about the Trails that wait on a person (a review, a merge). */
+const ENTIRE_FOLLOW_MS = 60_000;
+
 export interface ServeOpts {
   /** The port to listen on; else PORT from the environment (how a local proxy such as portless hands one down); else a free one. */
   port?: number;
@@ -40,6 +46,11 @@ export interface ServeOpts {
   /** Write the machine's address file (what the hook docks and `pjman start` reuses). Default: only when this is the
    *  installed tool, not a checkout, so a server started from a worktree prints its URL and claims nothing. */
   register?: boolean;
+  /** The pjman script this server runs to follow Entire (change:trail-lifecycle): for each registered project that
+   *  opted in and has a change waiting on its Trail, `pjman sync entire --wake` on a timer, so an approval, a finding
+   *  or a merge on Entire reaches the record and wakes the waiting session. Unset (tests, an embedded server), nothing
+   *  is followed. */
+  followEntire?: string;
 }
 
 /** True when the tool runs from an installed package rather than a checkout: there is no .git beside it. */
@@ -832,7 +843,40 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
       fail(res, e);
     }
   });
+  // the Entire follower: one child at a time, only for projects that opted in and have a change in review on a Trail
+  // still open; a project that did not opt in is never looked at
+  let entireBusy = false;
+  const followEntire = () => {
+    if (entireBusy || !opts.followEntire) return;
+    const loaded = current();
+    const dirs = readUserConfig()
+      .stores.flatMap((st) => st.projects)
+      .filter(
+        (b) =>
+          b.project &&
+          entireOn(loaded, b.project) &&
+          fs.existsSync(b.path) &&
+          trailCandidates(loaded, b.project).some((r) => r.data.status === 'review' && trailOf(loaded, r)),
+      )
+      .map((b) => b.path);
+    if (!dirs.length) return;
+    entireBusy = true;
+    let left = dirs.length;
+    for (const cwd of dirs)
+      execFile(
+        process.execPath,
+        [opts.followEntire, 'sync', 'entire', '--wake', '--json'],
+        { cwd, timeout: 240_000 },
+        () => {
+          if (--left === 0) entireBusy = false;
+        },
+      );
+  };
+  const entireTimer = opts.followEntire ? setInterval(followEntire, ENTIRE_FOLLOW_MS) : undefined;
+  entireTimer?.unref?.();
+
   server.on('close', () => {
+    if (entireTimer) clearInterval(entireTimer);
     stopSweeping();
     if (sweepTimer) clearTimeout(sweepTimer);
     watch.close();

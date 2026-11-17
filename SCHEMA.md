@@ -201,7 +201,7 @@ A thing outside the store: a ticket, a PR, a branch, a repo, a doc, a thread, a 
 | `url` | A | Optional |
 | `links` | A | Optional: source keys this source refers to |
 
-Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. What a sync observed of a ticket sits under `ext.<tracker>` (`ext.linear`, `ext.github`). Two kinds are Entire's, linked only in a project that opted in (`ext.entire.enabled` on the project): `entire-checkpoint:<id>`, the sessions behind one commit, written by `pjman sync entire` from the commit's `Entire-Checkpoint` trailer with the commit and the session ids under `ext.entire` and a `url` that opens it on entire.com; and `entire-trail`, a change's Trail.
+Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. What a sync observed of a ticket sits under `ext.<tracker>` (`ext.linear`, `ext.github`). Two kinds are Entire's, linked only in a project that opted in (`ext.entire.enabled` on the project): `entire-checkpoint:<id>`, the sessions behind one commit, written by `pjman sync entire` from the commit's `Entire-Checkpoint` trailer with the commit and the session ids under `ext.entire` and a `url` that opens it on entire.com; and `entire-trail:<forge>/<owner>/<number>`, a change's Trail (one change, one Trail), bound by the change (`binds`) and written by pjman as the change moves: under `ext.entire` its id, number, status (open, closed), phase, the branch and its state on the Trail (draft, open, merged, closed), the gates with their status, the open findings by severity, and what pjman last sent.
 
 ---
 

@@ -90,6 +90,7 @@ export const FLAG_TYPES = {
   detach: { type: 'boolean' },
   full: { type: 'boolean' },
   follow: { type: 'boolean' },
+  wake: { type: 'boolean' },
   receipt: { type: 'boolean' },
   reason: { type: 'string' },
   via: { type: 'string' },
@@ -364,14 +365,14 @@ export const COMMANDS: Command[] = [
     group: 'records',
     line: "a tracker's tickets applied to the store: sources and the changes they bind",
     about:
-      "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered. sync git follows merges pjman did not make: every change of the project in review whose branch is on the base branch or its fetched remote, by a merge commit (git's or a pull request's), a squash, a rebase or a fast-forward, is set done, one write each. sync entire, for a project that opted in to Entire (ext.entire.enabled=true), reads the repository's own commits: each Entire-Checkpoint trailer becomes a source (entire-checkpoint:<id>, opening on entire.com at its commit) linked to the change the commit names (change:<slug>) or its branch was cut for, and observed by the sessions that contributed to it; what Entire does not answer is printed as pending and read again next time",
+      "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered. sync git follows merges pjman did not make: every change of the project in review whose branch is on the base branch or its fetched remote, by a merge commit (git's or a pull request's), a squash, a rebase or a fast-forward, is set done, one write each. sync entire, for a project that opted in to Entire (ext.entire.enabled=true), reads the repository's own commits: each Entire-Checkpoint trailer becomes a source (entire-checkpoint:<id>, opening on entire.com at its commit) linked to the change the commit names (change:<slug>) or its branch was cut for, and observed by the sessions that contributed to it; what Entire does not answer is printed as pending and read again next time. It also brings each change's Trail to where the change stands (decision entire-opt-in/trail-granularity: one change, one Trail): created with the change's branch, name, intent, done-when and accepted decisions when work has started on it, its body kept to the change, marked ready when the plan has run to its end, closed when the change is done or dropped; and reads back its phase, the branch's state, the gates and the open findings, which the change's context shows. A branch merged on Entire sets its change done. pjman step, pjman set and pjman merge do the same for the one change they wrote. --wake (the dashboard's follower passes it) leaves a note on a change whose Trail moved, which wakes the session waiting on it. pjman never approves a Trail and never merges past a gate",
     usage: [
       'pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]',
       'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]',
       'pjman sync github            (no --from: prints the gh command that reads the issues)',
       "pjman sync entire [--json]   (the checkpoints on the repository's commits, linked to their changes and sessions)",
     ],
-    flags: ['from', 'project', 'team', 'repo'],
+    flags: ['from', 'project', 'team', 'repo', 'wake'],
     args: 1,
   },
 

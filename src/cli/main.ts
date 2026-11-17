@@ -27,6 +27,7 @@ import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
 import { syncGit } from '../sync/git.js';
 import { mergeChange } from '../sync/merge.js';
+import { reconcileTrail, trailLines, type TrailReconcile } from '../sync/trail.js';
 import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
 import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from '../store/events.js';
@@ -151,6 +152,16 @@ const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '
 // a key as it prints inside the project (the one formatter, decision pjman-22/key-form), carried in JSON as `printed`
 // beside the full key where a program relays it to a person or an agent (decision pjman-22/hook-printed-keys)
 const printed = (key: string): string => shortKey(key, scopeProduct);
+
+/** In a project that opted in to Entire, the Trail of a change a command just wrote is brought to where the change
+ *  now stands (change:trail-lifecycle). Never fails the command: what Entire does not answer is printed as pending. */
+function followTrail(store: Store, key: string, session?: string): TrailReconcile | null {
+  try {
+    return reconcileTrail(store, key, { session });
+  } catch (e) {
+    return { change: key, acts: [], moved: [], pending: [(e as Error).message.split('\n')[0]], commit: null };
+  }
+}
 /** The map a change just filed brings: its project's product has none, the project did not say skip, and the
  *  repository has something to survey. */
 const mapDueFor = (store: Store, key: string): MapState | undefined => {
@@ -496,10 +507,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         session: v.session,
         writer: v.writer,
       });
-      if (v.json) json(r);
+      const trail = followTrail(store, r.key, v.session);
+      if (v.json) json(trail ? { ...r, trail } : r);
       else
         out(
-          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}`,
+          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}`,
         );
       return 0;
     }
@@ -830,10 +842,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       );
       if (keys.length === 1) {
         const r = set(store, keys[0], stdinPairs, { session: v.session });
+        // a change's Trail follows what was just written of it: its status, name, gist or sections
+        const trail = r.key.startsWith('change:') && r.changed.length ? followTrail(store, r.key, v.session) : null;
         v.json
-          ? json(r)
+          ? json(trail ? { ...r, trail } : r)
           : out(
-              `${r.changed.length ? `set ${r.changed.join(', ')} on` : 'nothing to change on'} ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}`,
+              `${r.changed.length ? `set ${r.changed.join(', ')} on` : 'nothing to change on'} ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}`,
             );
         return 0;
       }
@@ -948,7 +962,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (!pos[1]) throw usageError('usage: pjman merge <change> [--json]');
       const loaded = loadStore(store);
       const r = mergeChange(store, resolveArg(loaded, pos[1], { kinds: ['change'] }), { session: v.session });
-      if (v.json) json(r);
+      const trail = followTrail(store, r.change, v.session);
+      if (v.json) json(trail ? { ...r, trail } : r);
       else {
         const how =
           r.by === 'entire'
@@ -958,6 +973,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
               : `${r.branch} was already merged into ${r.base}`;
         out(`${how}; ${printed(r.change)} is done${r.commit ? ` (committed ${r.commit})` : ''}`);
         for (const n of r.notes) out(`note: ${n}`);
+        if (trail) for (const line of trailLines(trail, printed)) out(line);
       }
       return 0;
     }
@@ -1230,7 +1246,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       // that session would not wake it, and its receipt would claim the person's act
       delete process.env.PJMAN_SESSION;
       delete process.env.PJMAN_WRITER;
-      startServer(store, { port: v.port ? Number(v.port) : undefined, host: v.host, staticDir: v.static, register })
+      startServer(store, {
+        port: v.port ? Number(v.port) : undefined,
+        host: v.host,
+        staticDir: v.static,
+        register,
+        followEntire: process.argv[1],
+      })
         .then(({ address, registered }) =>
           out(
             `pjman serve: ${address.url} (store ${store.root}; api ${address.url}/api/v1; ctrl-c to stop)${registered ? '' : `\n  not registered: this is a checkout, so the machine's dashboard (${running?.url ?? 'none running'}) is left as it is; --register claims it`}`,
@@ -1261,7 +1283,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         return 0;
       }
       if (pos[1] === 'entire') {
-        const r = syncEntire(store, { session: v.session });
+        const r = syncEntire(store, { session: v.session, wake: v.wake });
         if (v.json) json(r);
         else {
           out(
@@ -1269,6 +1291,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           );
           for (const l of r.linked)
             out(`  ${l.checkpoint} → ${l.change}${l.sessions.length ? ` (${l.sessions.join(', ')})` : ''}`);
+          for (const t of r.trails) for (const line of trailLines({ ...t, pending: [] }, printed)) out(line);
           for (const reason of r.pending) out(pendingLine({ reason }));
         }
         return 0;

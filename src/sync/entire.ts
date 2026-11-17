@@ -18,6 +18,8 @@ import { sourceFileSlug } from '../store/keys.js';
 import { findSession, loadStore, type Loaded, type Rec } from '../store/records.js';
 import { CliError, localDate, nowIso } from '../store/util.js';
 import { baseBranch, mergedBranch } from './git.js';
+import { note } from '../ops/note.js';
+import { reconcileTrail, trailCandidates, type TrailReconcile } from './trail.js';
 
 export const CHECKPOINT_KIND = 'entire-checkpoint';
 
@@ -41,6 +43,8 @@ export interface EntireSyncResult {
   /** What Entire did not answer; the next sync reads it again. */
   pending: string[];
   commit: string | null;
+  /** Each change's Trail, brought to where the change stands and read back (change:trail-lifecycle). */
+  trails: TrailReconcile[];
 }
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
@@ -114,6 +118,9 @@ export interface EntireSyncOpts {
   writer?: string;
   /** How Entire is reached (tests pass a fake binary). */
   entire?: EntireOpts;
+  /** Write a note on a change when its Trail moved (a gate passed or failed, a finding, a merge), which wakes the
+   *  session waiting on it. The dashboard's follower passes it; a session's own sync does not wake itself. */
+  wake?: boolean;
 }
 
 export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncResult {
@@ -129,7 +136,15 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     );
   if (!store.config.source_kinds.includes(CHECKPOINT_KIND))
     throw new CliError(`the store has no ${CHECKPOINT_KIND} source kind yet: run pjman migrate`);
-  const result: EntireSyncResult = { project, checkpoints: 0, linked: [], unplaced: 0, pending: [], commit: null };
+  const result: EntireSyncResult = {
+    project,
+    checkpoints: 0,
+    linked: [],
+    unplaced: 0,
+    pending: [],
+    commit: null,
+    trails: [],
+  };
   const commits = checkpointCommits(dir);
   const repo = repoOf(loaded, project);
   const env = envelope({ session: opts.session, writer: opts.writer });
@@ -251,6 +266,15 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
       env.session,
       events,
     );
+  }
+  // the Trails: each change in motion, or bound to a Trail still open, is reconciled and read back
+  for (const rec of trailCandidates(loadStore(store), project)) {
+    const t = reconcileTrail(store, rec.key, { session: opts.session, writer: opts.writer, entire: opts.entire });
+    if (!t) continue;
+    result.trails.push(t);
+    for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
+    if (opts.wake && t.moved.length && t.state)
+      note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });
   }
   return result;
 }

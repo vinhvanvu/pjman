@@ -130,6 +130,13 @@ working it.
    install after a merge takes); the session-start context names any
    worktree whose change is done and whose branch is merged, so a leftover is seen the next time someone sits down.
    pjman creates and removes no worktree itself.
+   In a project that opted in to Entire (`pjman where --json` says `entire: true`) a change's Trail on Entire follows
+   the change by itself: created with the change's branch when its first step starts, its body kept to the change's
+   intent, done-when and accepted decisions, marked ready when the last step is done, closed when the change is done
+   or dropped. `pjman context` shows it under Trail (phase, gates, open findings). Push the branch as the work lands,
+   so the Trail shows it; never run `entire trail approve`, `entire login` or `entire enable`, which are the person's,
+   and never merge past a gate. A line `entire: pending (…)` means Entire did not answer: the write stands, and
+   `pjman sync entire` takes it up again.
 
 ## Tickets
 
