@@ -1,22 +1,71 @@
 # pjman
 
-The record of a software product, kept in git by the agents that build it.
+An opinionated structure for product development, kept by your agents on top of a store.
 
 ![The bridge on a busy afternoon: the day's writes on one timeline, and seven changes in motion grouped by what each needs from you: working now, stopped with the next step set, in review](assets/hero.png)
 
-A change, a decision, a feature, a session and a release are records in one git store, under one schema. Coding agents read the record at the start of every session and write back through one command. You read it on a dashboard and make the decisions.
+Coding agents are good at doing the work and bad at remembering why. Each session starts from nothing, a choice made last week lives in a chat that is gone, and a plan sits in a reply nobody can find. pjman gives the work a fixed shape: what the product is, each unit of work with where it came from and what done means, every choice with its options and who accepted it, and the sessions that did it. The agents read that shape at the start of every session and write to it through one command. You read it, steer it and make the decisions.
 
-> Works best in [cmux](https://cmux.com): the dashboard docks beside the session and follows it. Any terminal works.
+The structure is the product. The store under it is a git repository of Markdown files on your machine.
 
-## Getting started
+## The opinion
 
-**1. Install.** Node 22.13 or newer and git; Homebrew brings its own Node. Installing with Homebrew, an npm copy that shadows it, and upgrading: [docs/install.md](docs/install.md).
+pjman holds a view of how product work should be recorded. It is enforced by the command where it can be, and taught to the agent where it cannot.
+
+### The product map
+
+What the product is lives in a tree beside the work: a **product** at the root, **features** beneath it (what the product does for a person, in a sentence a user would recognise), and **capabilities** beneath those (a distinct behaviour a change can add, change or remove). The levels are defined by who asks about them, never by size. A change names the node it adds, changes or removes, and a node's state follows from those changes: live once an adding change is done, retired once a removing one is. Nobody writes a feature's status by hand.
+
+### Changes
+
+A **change** is a unit of work, read as a ladder: a name (one to four words), a gist (one line), then its foundation written in full:
+
+- **Origin**: where the work came from, as it was said. The person's words quoted, or the key of the ticket, change or decision it came from.
+- **Intent**: the need, and for whom.
+- **Done when**: the outcome that closes it.
+- **Plan**: steps stored as data (open, active, done, dropped, each with a note), written only through `pjman step`.
+
+Then, as the work reaches them, Scope, Open questions, Blocked on and Notes. Status, progress and the next step are derived from the plan and never written as text. A milestone is a change whose plan is the changes filed under it.
+
+### Decisions
+
+A **decision** is an append-only thread on a change: the question, the criteria, the options each with its case, one recommended with the reason, the person's comments in their own words, any rejections, then the acceptance. Before a choice that forecloses options, the agent opens one as `proposed` and goes on around it. Only a person accepts it: the command refuses an acceptance not attributed to a `person:` actor, and the skill tells the agent never to accept one. A decision accepted on the dashboard wakes the session waiting on it.
+
+### Aspects
+
+Some rules hold across the product rather than at one place on the map: how text reads, how the app moves, a component many views draw. An **aspect** keeps such a rule as a base, with a **place** for each part of the map it applies to, where a fork records only what differs there. A change that touches a place is worked under its aspect.
+
+### Sessions
+
+Every agent run is a **session** record, and it binds to the change it is working: from the branch it starts on, from a change the prompt names, or from a change it files. What it reads, writes and logs lands on that change, so whoever picks the work up next, you or another session, starts from the record and not from a handoff note.
+
+## The method without the tool
+
+The structure works on paper. If you want the opinion without pjman, keep these rules by hand:
+
+1. **Name what the product is before naming the work.** Keep a short tree: the product, what it does for a person, the distinct behaviours under each. Every piece of work points at one node.
+2. **Write the origin as it was said.** Quote the request or link where it came from. Do not paraphrase it into a task.
+3. **Say what done means before starting.** One outcome that closes the work, written down with the intent.
+4. **Keep the plan as steps, and keep them true.** Before stopping, leave the step in progress noted and the next one first. Never write a status or a "next" by hand when the steps already say it.
+5. **Open a decision before a choice that closes doors.** Lay out the options with their costs, recommend one, and let a person accept it in their own words. An agent proposes; it never accepts.
+6. **Never rewrite a decision.** Add to its thread: a new option, a comment, a rejection, a reversal. The history is the point.
+7. **Write a rule that holds everywhere once.** Keep the base in one place and record only how each place differs from it.
+
+## Who it is for
+
+One person working with coding agents on real products, who wants the work to survive between sessions and the choices to stay theirs. It is built for its author's own daily work, both at a job and in building pjman itself, and is used that way every day. It is opened up for anyone who works the same way. It runs locally, with no account and no server beyond the dashboard on your machine.
+
+## Install
+
+Node 22.13 or newer, and git.
 
 ```bash
 npm install -g @vinhvanvu/pjman   # or: brew install vinhvanvu/pjman/pjman
 ```
 
-**2. Run `pjman init` in a repository.** It asks one question, whether a product map should be proposed from the repository, and prints what it did:
+Homebrew brings its own Node. Trusting the tap, an npm copy that shadows the Homebrew one, and upgrading: [docs/install.md](docs/install.md).
+
+Then run `pjman init` in a repository. It asks one question, whether the first session should propose a product map from the repository, and prints what it did:
 
 ```console
 $ cd acme && pjman init
@@ -27,137 +76,90 @@ the repository holds code (package.json)
 created product:acme
 registered project:acme under product:acme
 the first change through intake proposes a product map …
+…
 you are person:ada
 Claude Code: installed the pjman plugin at user scope (hooks, skill, brief, Linear MCP); it loads at the next session or /reload-plugins
 dashboard: http://127.0.0.1:7331
 left to do: nothing here; to read tickets, sign in to the tracker from inside a session (/mcp)
 ```
 
-When it worked you have four things: a store of your own at `~/.pjman/store`, the repository registered as a project under a product, the Claude Code plugin installed (when `claude` is on the PATH), and the dashboard running at the address it printed. Running it again is the health check: it repairs what is missing and undoes nothing.
+You now have a store of your own at `~/.pjman/store`, the repository registered as a project under a product, the Claude Code plugin installed when `claude` is on the PATH, and the dashboard running. Running `pjman init` again is the health check: it repairs what is missing and undoes nothing. `pjman doctor` names what is wrong with an install and the command that fixes each thing.
 
-**3. Start a session.** Run `claude` in the repository. The agent opens with what pjman is, the rules it works by, and what is in flight:
+## With Claude Code
+
+Run `claude` in the repository. The plugin opens every session with what pjman is, the rules the agent works by, and what is in flight:
 
 ![A session's first screen: what pjman is, the rules the agent works by, then the board of what is in flight](assets/session-start.png)
 
-**4. Say what you want done.** The agent files it as a change with a plan, and with the first one proposes the product map as a decision for you to accept. `pjman open` brings the dashboard to the session's page; in cmux it is already docked beside you.
-
-## Works best in cmux
-
-pjman runs in any terminal. In [cmux](https://cmux.com), the session and the dashboard become one workspace.
-
-![A real day in cmux: eight sessions in the sidebar, each labelled with its change and its step; the session in the middle; the dock on the right following it on the session's page, with the change it is on, its plan, its sources and its timeline](assets/docked.png)
-
-Left, every running session labelled with the change it is on and how far the plan has come. Middle, the session. Right, the dock following it: the changes it read and wrote, the one it is on now with its plan and next step, what waits on you, and its timeline.
-
-### The dock follows the session
-
-In cmux a pane opens beside the terminal when the session starts, on the bridge. Once the session takes up a change, the pane moves to the session's page and stays with it, live: what the session is on, the decisions waiting on you, its log lines, the handoff. Browse anywhere in the app from there; the pill in the top bar names the change and brings you back. `/clear` keeps the pane, and it closes when the session ends.
-
-### Several sessions at once
-
-- **Each one labelled.** The session's sidebar pill in cmux says which change it is on and where the work stands, so a row of terminals reads as a row of changes.
-- **One place to see them all.** The bridge groups every live session's change by what it needs from you: working now, waiting on you, stopped with its next step set, in review, blocked.
-- **Open and launch from the dashboard.** A session's row brings its terminal to the front; a change can start a session in a worktree named for it.
-- **Sessions know of each other.** Each is told of the other live sessions on the same change or the same part of the map. A decision you accept on the dashboard wakes the session that waits on it.
-
-Elsewhere the dashboard opens in your browser and reads a session's state from the record. What each terminal gives is in [`adapters/hosts.md`](adapters/hosts.md).
-
-## The dashboard
-
-Four places, one per question.
-
-### The bridge: what needs you now
-
-![The bridge on a busy afternoon, replayed: the timeline of the day's writes with the playhead at 3:40 PM, two changes working now, four stopped with the next step set, one in review](assets/hero.png)
-
-The day's writes on one timeline, every live session, and the changes in motion grouped by what each needs from you. Drag the playhead and the whole board reads as it stood at that moment: the picture is a busy afternoon, replayed.
-
-### The product map: what the product is
-
-![The product map: features, the capabilities beneath them and the open work at the leaves, state as a dot; the product's record beside it](assets/map.png)
-
-A change names the node it adds, changes or removes, and a node's state follows from the changes that built it.
-
-### Milestones: toward what
-
-![Milestones: the ones in flight nearest to done first, each with its progress, its count of changes done and the next one; the done folded beneath](assets/milestones.png)
-
-A milestone is a goal whose plan is the changes filed under it. Its progress is their done count.
-
-### The roadmap: in what order
-
-![The roadmap: done by the day and in flight on the left, what is in order and what comes later on the right](assets/roadmap.png)
-
-Drag a column to reorder; dependencies and dates are checked against the order and never move it.
-
-## Working with it
-
-### Start a change by saying what you want
+Then say what you want done:
 
 ```text
 you    export a saved card as a PDF
 agent  filed change:card-export · changes feature:saved-cards · one change · later · no date
 ```
 
-The agent checks for a duplicate, finds the node on the map the request alters, and files a change: where it came from in your words, what it is for, what done means, and the steps. Status and progress are derived, never written.
+The agent checks for a duplicate, finds the node on the map the request alters, and files a change with its origin in your words, its intent, what done means and its steps. With the first change in a repository that has no map, it proposes the whole map as a decision for you to accept.
 
-![A change's page: name, gist, the plan as steps, its decisions, then the origin in your words, the intent and done when](assets/change.png)
+What the plugin does, in short:
 
-### Name a ticket or a doc and the session starts from everything around it
+- **Skills** carry the rules: `pjman` (read before acting, propose decisions and never accept them, keep the plan true, run it to its end), `intake` (how a request becomes a change), `map` (how a product gets its tree) and `aspect` (how a cross-cutting rule is kept).
+- **Hooks** do the bookkeeping. At session start, the brief and the binding. On each prompt, the references in it (a change, a ticket in any shape, a URL) resolve to the change they lead to and bind the session, with that change's full context in front of the agent. After a file write, the file is linked to the change. At each stop, the receipt of what the store received, and a check that the agent stops only where the change's record allows: a decision waiting on you, a recorded blocker, or every step done and committed for review.
+- **Waking**: a decision accepted, or a note left on the change, wakes the idle session that is waiting on it.
+- **Tickets**: the plugin declares Linear's MCP server, so a session can read tickets once you sign in with `/mcp`. GitHub issues come in through `gh`. Either way `pjman sync` files each as a source and, when no change binds it yet, as a change with the ticket in its origin. pjman itself never signs in anywhere.
 
-```text
-you    pick up vinhvanvu/pjman#11
+In [cmux](https://cmux.com) the dashboard docks in a pane beside the session and follows it: it opens on the bridge and moves to the session's page once the session takes up a change. Each terminal's sidebar label carries the change and how far its plan has come. In Claude Code's desktop app a follow window does the same. In any other terminal, `pjman open` brings the session's page up in your browser. What each host gives is in [`adapters/hosts.md`](adapters/hosts.md); the hooks in full are in [the adapter's README](adapters/claude-code/README.md).
+
+## The CLI
+
+Every write goes through `pjman`, is validated and becomes one commit in the store. `pjman help` prints the whole surface by entity, and `pjman help <entity>` prints one entity.
+
+```bash
+pjman context                          # the board: what is in flight, by status
+pjman context change:card-export       # one change in full: sections, plan, decisions, sources, sessions
+pjman get ABC-1234                     # anything in (key, ticket, URL, file): the record and every change in reach
+pjman intake "export a card as a PDF"  # what already exists for a request, before it is filed
+pjman new change card-export --name … --gist … --origin … --intent … --done-when … --step "…"
+pjman step card-export start 1         # the plan: add, start, done, drop, note, edit, move
+pjman decision card-export/format --name … --gist … --question … --option pdf=… --option png=… --recommend pdf=…
+pjman ls decision --status proposed    # what waits on you
+pjman tree                             # the product map with derived status
+pjman activity feature:saved-cards     # what moved beneath a node
+pjman apply - --for change:card-export # many writes as one commit; pjman undo reverts it
+pjman validate                         # every record and every reference
 ```
 
-Before the agent reads a word of that prompt, pjman resolves what it names (a ticket id, an issue's URL, a doc's URL, a change) and puts the change it leads to in front of the agent in full: the origin in your words, the intent, what done means, the plan and where it stands, the decisions made and open, the ticket, branch, pull request, files and docs linked to it, and what earlier sessions left. A ticket the store has never seen is read from the tracker and filed first. The session is bound to that change, and the dock moves to it.
+## The dashboard
 
-The same lookup from the terminal:
+`pjman start` serves it (`pjman init` starts it); `pjman open` opens it. It has four places, one per question:
 
-```console
-$ pjman get vinhvanvu/pjman#11
-vinhvanvu/pjman#11 → github-issue:vinhvanvu/pjman#11 (ticket id; source)
-source github-issue:vinhvanvu/pjman#11 — /clear closes the cmux dock and reopens it in a new pane about 14s later
+- **Bridge**: what needs you now. Every live session, and the changes in motion grouped by what each needs from you: working now, waiting on you, stopped with the next step set, in review, blocked. Drag the playhead on the day's timeline and the whole board reads as it stood at that moment.
+- **Product map**: what the product is. Features and capabilities with their derived state, the open work at the leaves, and aspects as a filter.
+- **Milestones**: toward what. Each goal with its progress counted from the changes under it.
+- **Roadmap**: in what order. Drag to reorder; dependencies and dates are checked against the order and never move it.
 
-referenced by:
-- binds change:clear-keeps-dock
+A change has its own page: the plan, its decisions, its sections, its sources and its timeline.
 
-reached change:clear-keeps-dock through binds
+![A change's page: name, gist, the plan as steps, its decisions, then the origin, the intent and done when](assets/change.png)
 
-# change:clear-keeps-dock — Clear keeps the dock
-Clearing a session keeps its docked pane and points it at the new session's page
-status: done
-kind: bug · severity nuisance
-…
-```
+A decision waiting on you shows its options, the recommendation and its reason, and Accept with a line in your words:
 
-Issues come in from GitHub through `pjman sync`: each becomes a source in the store and, when no change has it yet, a change with the ticket in its origin.
-
-### Decisions you make, not the agent
-
-![A decision waiting on you: how pjman's panel gets into cmux, three options (upstream, companion, fork) with upstream recommended and its why, and Accept with a line in your words](assets/decision.png)
-
-Before a choice that forecloses options, the agent lays the options out and recommends one. It never accepts its own. You accept on the dashboard or in the chat, in your words, and the session working the change is told.
-
-### Releases from the record
-
-![npm run release -- --dry-run: the level each change implies, the version it adds up to, and the changelog written from the changes' own names and gists](assets/release.png)
-
-One command reads what main shipped since the last tag, resolves each merge to its change, derives the version level, writes the changelog, publishes to npm and the Homebrew tap, and records the release.
+![A decision waiting on you: three options with one recommended and its why, and Accept with a line in your words](assets/decision.png)
 
 ## How it works
 
-- The store is `~/.pjman/store`: Markdown files with YAML frontmatter, one per record, in a git repository of its own.
-- The `pjman` command is the schema. Every write goes through it and is validated.
-- A skill tells the agent what to record and when. Hooks do the rest: the brief, the binding, the log line, the receipt after every turn.
-- The terminal a session runs in is a host (cmux), reached through one interface, so another terminal is another adapter, not another design (`adapters/hosts.md`).
-- Nothing is dropped and nothing is written by hand.
+- The store is `~/.pjman/store`: one Markdown file with YAML frontmatter per record, in a git repository of its own. Every write is a commit, and `pjman undo` reverts a batch.
+- The `pjman` command is the schema. Nothing in the store is written by hand. A local index (`index.db`) is rebuilt from the files with `pjman index`.
+- The dashboard is the same store over HTTP (`pjman serve`, API under `/api/v1`), read-only except for reordering the roadmap and accepting or reopening a decision.
+- Harness specifics live in adapters; the records hold none. Claude Code is the adapter that ships today.
+
+Planned, not built yet: an opt-in to keep the record on Entire's store where that serves better, with pjman's own store staying the default.
 
 ## Docs
 
-- [Reference](docs/reference.md): the store, every command by entity (create, read, list, update, delete, rename), the dashboard and the API, trackers, releases. In the terminal, `pjman help` prints the same by entity and `pjman help <entity>` one of them.
+- [Reference](docs/reference.md): the store, every command by entity, the dashboard and its API, trackers.
 - [SCHEMA.md](SCHEMA.md): the record contract.
-- [THESIS.md](THESIS.md): why.
 - [The Claude Code adapter](adapters/claude-code/README.md): the hooks and the skills.
+- [Hosts](adapters/hosts.md): the terminals a session can run in, and what each gives.
 
 ## License
 
