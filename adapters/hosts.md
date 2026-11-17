@@ -1,8 +1,8 @@
 # Hosts: where a session runs
 
-A host is the place a session runs: a terminal multiplexer today (cmux), a cloud session later. The harness
+A host is the place a session runs: a terminal multiplexer (cmux). The harness
 adapter beside this document (`claude-code/`) is for the agent's harness; a host adapter is for the terminal the
-harness runs in. pjman asks six things of a host, and each host is one implementation of the same interface
+harness runs in. pjman asks eight things of a host, and each host is one implementation of the same interface
 (`src/hosts/host.ts`), so pjman stays host-agnostic and a second host is a second implementation, never a second design.
 
 | What pjman asks | What it is for | cmux (0.62) |
@@ -10,7 +10,7 @@ harness runs in. pjman asks six things of a host, and each host is one implement
 | **identify** | the host's own ids for the session, read from the environment the session-start hook runs in; never configured | `CMUX_WORKSPACE_ID`, `CMUX_SURFACE_ID` |
 | **version** | what the session ran on, so the record says it | `cmux --version` |
 | **status** | what the program reports: `idle`, `working`, `done`, `blocked` (`permission`, `question`, `auth`), `error` | none at 0.62: the record's own rule reads the session |
-| **label** | one line on the session's workspace: the change and where the work stands | `cmux set-status pjman <text> --workspace <ws>`, the sidebar pill; `clear-status` takes it off |
+| **label** | one line on the session's workspace: the change and where the work stands | `cmux set-status pjman <text> --icon <icon> --workspace <ws>`, the sidebar pill; `clear-status` takes it off |
 | **send** | text into the session, as if typed | `cmux send --workspace <ws> --surface <surface> -- <text>⏎` |
 | **open** | the session brought to the front | `cmux select-workspace --workspace <ws>` |
 | **launch** | a session for a change in its worktree, named for it | `cmux new-workspace --cwd <project> --command "claude --worktree <slug>"`, then `rename-workspace` |
@@ -18,7 +18,7 @@ harness runs in. pjman asks six things of a host, and each host is one implement
 
 ## The manifest
 
-Each adapter carries a manifest (decision rex-adapter/adapter-versioning, bundled-ranged): the environment it serves,
+Each adapter carries a manifest: the environment it serves,
 the version of this interface it implements, the environment version range it was validated against, and the command
 the environment answers to. The registry in `src/hosts/host.ts` (`HOSTS`) is the only place that knows where adapters come
 from, so moving one to a package of its own later is a move, not a rewrite.
@@ -73,8 +73,7 @@ it does for a write; nothing is stored.
 
 ## Delivery
 
-An accepted decision reaches the sessions working its change (decision rex-adapter/delivery-through-the-host,
-by-agent): one voice per session. A session whose agent's harness adapter wakes it itself (Claude Code: the plugin's
+An accepted decision reaches the sessions working its change, one voice per session. A session whose agent's harness adapter wakes it itself (Claude Code: the plugin's
 wake module submits a turn that the prompt hook briefs) hears it from there. Every other session on the change that
 runs in a host, has not ended and spoke inside the window is told through the host's `send`, wherever the acceptance
 came from (the dashboard, `pjman decision --accept`): one line naming the decision, the option and the person's words,
@@ -97,5 +96,5 @@ browser. The cmux dock stays as it is.
 ## Adding a host
 
 One object in `src/hosts/host.ts` implementing `HostAdapter`, with its manifest, added to `HOSTS`; a fake command in
-`src/test/host.test.ts` recording every call, so each of the six things is tested without the host installed; a row
+`src/test/host.test.ts` recording every call, so each of the eight things is tested without the host installed; a row
 in the tables above. Nothing else knows a host's name.

@@ -1,6 +1,6 @@
-# pjman — schema v3 (Phase 1)
+# pjman — schema v3
 
-*The record contract for Phase 1: layers 0–2, core, sources, work. Layer 3 (product, features) and layer 4 (authority) are Phase 2 and 3 and are not specified here. The tool (`docs/reference.md`) implements this contract; where the two disagree, the tool is wrong. Fields are marked **A** (authored by an actor on intent; may be hand-edited) or **M** (maintained by one named writer — an adapter or the tool; hand edits are reported, not forbidden). There is no "derived and checked" class: nothing in a record is verified against what a tool previously wrote.*
+*The record contract: layers 0–2, core, sources, work. The tool (`docs/reference.md`) implements this contract; where the two disagree, the tool is wrong. Fields are marked **A** (authored by an actor on intent; may be hand-edited) or **M** (maintained by one named writer — an adapter or the tool; hand edits are reported, not forbidden). There is no "derived and checked" class: nothing in a record is verified against what a tool previously wrote.*
 
 ```
 2 · Work      change, decision, the status vocabulary
@@ -55,7 +55,7 @@ No `id`, no `type` (the folder is the type), no `updated` (git has it).
 
 ### Product — `products/<slug>/product.md`
 
-The fixed root of the product tree and the namespace of everything beneath it: its features, its changes and their decisions live in its folder, so a product is one directory in git and an organisation's store is the union of its products' directories. Projects and top-level features attach to it.
+The fixed root of the product tree and the namespace of everything beneath it: its features, its changes and their decisions live in its folder, so a product is one directory in git. Projects and top-level features attach to it.
 
 | field | kind | meaning |
 |---|---|---|
@@ -112,7 +112,7 @@ A place is read as the base, then the forks of the places at the features above 
 
 ### Project — `projects/<slug>.md`
 
-A repository, registered in the store by `pjman init`. The unit a change belongs to; a product over several projects is layer 3.
+A repository, registered in the store by `pjman init`. The unit a change belongs to; a product holds one or more projects.
 
 | Field | A/M | Notes |
 |---|---|---|
@@ -135,7 +135,7 @@ A record for an actor exists only when there is something to say about one. Refe
 | `kind` | A | `person` · `agent` |
 | `name` | A | Optional |
 | `url` | A | Optional: a profile, an agent's definition. A scalar, not an edge |
-| `links` | A | A person's accounts, each a source of an identity kind keyed as the outside world keys it: `github-user:<login>`, `linear-user:<id>`, `email:<address>`, `git-author:<name <email>>`. An account is one person's; two people claiming one is an error on both. A commit, a pull request, a ticket assignee or a review resolves to its person through the account; an account no person claims resolves to nothing and is never matched by name |
+| `links` | A | A person's accounts, each a source of an identity kind keyed as the outside world keys it: `github-user:<login>`, `linear-user:<id>`, `email:<address>`, `git-author:<name <email>>`. An account is one person's; two people claiming one is an error on both. |
 | `aliases` | A | Former handles, appended by `pjman mv person:<old> person:<new>`; the user config's actor follows |
 
 A person's key is a handle of their own, unique in the store, suggested by `pjman init` from the committer name, else the machine's account name (so there is always an actor); `actor:` in `~/.pjman/config.yaml` names it, and `pjman whoami` reads it back with its record. The accounts a person holds are links on the record (`github-user:<login>`, `email:<address>`).
@@ -183,7 +183,7 @@ Dates (`created`, `decided_on`, the date in a decision's or session's file name)
 
 **Git policy.** The tool shells out to git for four things and wraps nothing else: `init` (initialise the store; ignore `index.db`), `mv` (stage the rename so history follows), reading history for views and provenance, and committing — the tool commits after every write it makes to the global store, with a `Pjman-Session:` trailer when a session is known; a store opened by path that is not its own repository it never commits. Branches, remotes, push and merge are the user's. Git on `PATH` is the only dependency.
 
-`pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (organisation word → canonical status), `source_kinds:`, `version:` (the format the store is in: the pjman version that introduced its latest move, stamped by `pjman init` and by `pjman migrate`, never by an ordinary write; absent on a store from before the field, which reads as 0.1.0; a store stamped newer than the tool is refused for writing, naming the version to install, and one stamped older is told to migrate; decision releases-homebrew/store-names-its-version). `~/.pjman/config.yaml`: `actor`, and `stores[].projects[]` as `{path, project}`. Configuration is never in a record.
+`pjman.yaml`: `name`, `layers: [core, sources, work]`, `vocabulary:` (a tracker's word → canonical status), `source_kinds:`, `version:` (the format the store is in: the pjman version that introduced its latest move, stamped by `pjman init` and by `pjman migrate`, never by an ordinary write; absent on a store from before the field, which reads as 0.1.0; a store stamped newer than the tool is refused for writing, naming the version to install, and one stamped older is told to migrate; decision releases-homebrew/store-names-its-version). `~/.pjman/config.yaml`: `actor`, and `stores[].projects[]` as `{path, project}`. Configuration is never in a record.
 
 ---
 
@@ -201,7 +201,7 @@ A thing outside the store: a ticket, a PR, a branch, a repo, a doc, a thread, a 
 | `url` | A | Optional |
 | `links` | A | Optional: source keys this source refers to |
 
-Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. Observed state (`observed`, `observed_at`) is Phase 2, with the first sync adapter; until then a source holds nothing an adapter wrote.
+Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. What a sync observed of a ticket sits under `ext.<tracker>` (`ext.linear`, `ext.github`).
 
 ---
 
@@ -278,12 +278,12 @@ Body: the release notes as published, one line per change in the words the chang
 | `open` | Declared; nobody working on it |
 | `planning` | Being shaped |
 | `active` | Work underway |
-| `blocked` | Waiting on something named in `next` |
+| `blocked` | Waiting on something named in its Blocked on section |
 | `review` | Work complete, awaiting acceptance |
 | `done` | Accepted |
 | `dropped` | Closed without acceptance |
 
-The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps an organisation's words (a tracker's state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. pjman is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the change's Origin. Ingesting it creates the change when none binds it, with a draft gist from the ticket's title and the status as the ticket stood then; afterwards a sync writes the source record and the binding, never the change's name, status or parent. Approval and in-effect states are Phase 3's.
+The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml` maps a tracker's words (its state names, or its state types) onto it for adapters and views; a sync consults it by state name first, then by state type, then falls back to the built-in map of Linear state types. pjman is the source of truth (decision record-foundation/pjman-is-the-source-of-truth): a ticket is one more source, linked in the change's Origin. Ingesting it creates the change when none binds it, with a draft gist from the ticket's title and the status as the ticket stood then; afterwards a sync writes the source record and the binding, never the change's name, status or parent.
 
 ---
 
@@ -340,4 +340,4 @@ Derived, never stored, in the scope (`/scope`): every change carries its `positi
 
 ## Backends
 
-Phase 1 has one backend: files in git, as above. A later backend (a hosted database) must provide the same operations — read, write, validate, query, reconcile — and will have to supply what git supplies here: history, provenance, and merge with typed conflicts. That is a Phase 2 design, not a layer-0 claim.
+One backend: files in git, as above. Git supplies history, provenance and merge; the index is rebuilt from the files.

@@ -522,7 +522,7 @@ export const COMMANDS: Command[] = [
     group: 'session',
     line: "the host a session runs in, asked for something: a label, text typed in, its block to the front, its program's status",
     about:
-      "where a session runs (a terminal multiplexer: cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Rex adapter · 4/7`, `Rex adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version",
+      "where a session runs (a terminal multiplexer: cmux), through the adapter for it; the session's record says which host from the environment its start ran in. label writes the change and where the work stands onto the session's block (`Host adapter · 4/7`, `Host adapter · waits: Adapter versioning`; --clear takes it off); send types text into it; open brings it to the front; status asks what the program reports; launch opens a session for a change on the host this machine runs, in the project's directory with the harness in the change's worktree. With no verb: the host this machine runs, its version, and whether the adapter validated that version",
     usage: [
       'pjman host [--json]',
       'pjman host label [<session-id>] [--clear]',
