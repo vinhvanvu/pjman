@@ -363,18 +363,31 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
   // (the follower, which passes --wake every minute, reads only the Trails a session waits on: changes in review with
   // a Trail, each within a budget; one change that cannot be written does not stop the others)
   const after = loadStore(store);
+  // (with --wake: the Trails that wait on Entire, those of changes in review, and those still open on a change that
+  // has ended, which are closed)
   const candidates = trailCandidates(after, project).filter(
-    (rec) => !opts.wake || (rec.data.status === 'review' && !!trailOf(after, rec)),
+    (rec) => !opts.wake || (rec.data.status !== 'active' && !!trailOf(after, rec)),
   );
+  // one clock for the whole run, and nothing more asked once Entire has not come back: a hanging Entire holds the
+  // command for one call, never one per change, and the follower ends well inside the time it is given
+  const end = Date.now() + 120_000;
   for (const rec of candidates) {
+    const left = end - Date.now();
+    if (left <= 0) {
+      result.pending.push('Entire was not asked for every Trail: the run reached its time');
+      break;
+    }
     let t: TrailReconcile | null;
     try {
       t = reconcileTrail(store, rec.key, {
         session: opts.session,
         writer: opts.writer,
         entire: opts.entire,
-        budget: opts.wake ? 30_000 : undefined,
+        budget: Math.min(opts.wake ? 30_000 : 90_000, left),
       });
+      // the session waiting on the Trail is woken in the same step as the move is recorded
+      if (t && opts.wake && t.moved.length && t.state)
+        note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });
     } catch (e) {
       const reason = `${rec.key}: ${(e as Error).message.split('\n')[0]}`;
       if (!result.pending.includes(reason)) result.pending.push(reason);
@@ -383,8 +396,7 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     if (!t) continue;
     result.trails.push(t);
     for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
-    if (opts.wake && t.moved.length && t.state)
-      note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });
+    if (t.down) break;
   }
   return result;
 }
