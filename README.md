@@ -154,6 +154,14 @@ A decision waiting on you shows its options, the recommendation and its reason, 
 - The dashboard is the same store over HTTP (`pjman serve`, API under `/api/v1`), read-only except for reordering the roadmap and accepting or reopening a decision.
 - Harness specifics live in adapters; the records hold none. Claude Code is the adapter that ships today.
 
+### Review
+
+`pjman review <change>` prints what a reviewer judges a branch by (the change's done-when, the decisions accepted on it and the options turned down, the diff) and takes what is found. A finding holds the merge only when it is of high severity or says the done-when is not met; `pjman merge` refuses while one stands.
+
+The review is a loop with an end. One full review by reviewers that did not write the change, one each for intent, drift and correctness (`--lens`); the findings that hold the merge are fixed; one re-review of the fix alone; then it has ended and says why. What does not hold the merge is moved to one follow-up change, a step each.
+
+How a project is reviewed is a line on its record: `pjman set <project> ext.review.mode=off`, `request` (the default: only when asked) or `auto`, where a change reaching review is reviewed without being asked.
+
 ### With Entire (opt-in)
 
 pjman's own store is the default and needs nothing else. A project can opt in to [Entire](https://entire.com), which captures each agent session as a checkpoint on its commits and runs review and merge through Trails: `pjman set <project> ext.entire.enabled=true`, with Entire's CLI installed and the repository enabled (`pjman doctor` says what is missing and names the commands; pjman never runs Entire's setup, login or approval for you). pjman then drives Entire through its own verbs:

@@ -295,6 +295,44 @@ test('run to the end: a turn that wrote code may stop only where the change rest
   passes(hook('SubagentStop', { agent_id: 'sub-run', last_assistant_message: 'Wrote some.' }), 'a subagent');
 });
 
+test('in a project that reviews every change, a change in review holds the stop until its review has ended (change:review-loop)', () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, stdio: 'ignore' });
+  const wt = path.join(tmp, 'loop-wt');
+  git(project, 'commit', '-q', '--allow-empty', '-m', 'base');
+  git(project, 'worktree', 'add', '-q', '-b', 'loop-it', wt);
+  git(wt, 'commit', '-q', '--allow-empty', '-m', 'feat: the work (change:loop-it)');
+  change(store, 'loop-it', { title: 'Loop it', summary: 's', writer: 'person:tester' });
+  step(store, 'change:loop-it', 'add', undefined, { text: 'only' });
+  const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-loop', ...input });
+  const wrote = () =>
+    at('PostToolUse', { tool_name: 'Write', tool_input: { file_path: path.join(project, 'src/loop.ts') } });
+  const stop = (text: string) => at('Stop', { last_assistant_message: text });
+  at('SessionStart', { source: 'startup' });
+  at('UserPromptSubmit', { prompt: 'build change:loop-it' });
+  wrote();
+  step(store, 'change:loop-it', 'done', 1);
+  // on request (the default) the plan at its end is a resting point
+  assert.ok(!/"decision":"block"/.test(stop('Done; committed for review.')));
+  set(store, store.project!, ['ext.review.mode=auto'], {});
+  at('UserPromptSubmit', { prompt: 'go on' });
+  wrote();
+  const refused = JSON.parse(stop('Done; committed for review.')) as { decision: string; reason: string };
+  assert.equal(refused.decision, 'block');
+  assert.match(
+    refused.reason,
+    /^pjman: change:loop-it is not at a resting point\. Its plan has run to its end and its project reviews every change: the full review is due\.\n/,
+  );
+  assert.match(refused.reason, /3 fresh agents .*pjman review change:loop-it --lens <intent\|drift\|correctness>/);
+  assert.match(refused.reason, /pjman review change:loop-it --reviewed/);
+  // reviewed, with nothing holding the merge: the review has ended and the turn may end
+  execFileSync(process.execPath, [BIN, 'review', 'change:loop-it', '--reviewed'], { cwd: project, env });
+  at('UserPromptSubmit', { prompt: 'go on' });
+  wrote();
+  assert.ok(!/"decision":"block"/.test(stop('Reviewed.')));
+  set(store, store.project!, ['ext.review.mode=request'], {});
+});
+
 test('a change filed on a product with no map holds every stop once per turn until a decision is opened or map=skip (decision pjman-27/trigger)', () => {
   const at = (event: string, input: Record<string, unknown> = {}) => hook(event, { session_id: 'sess-map', ...input });
   const passes = (out: string, what: string) => assert.ok(!/"decision":"block"/.test(out), `${what}: ${out}`);

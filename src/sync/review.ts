@@ -8,14 +8,30 @@ import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
 import {
+  FINDING_KINDS,
   FINDING_SEVERITIES,
   findingsOf,
   formatFinding,
+  holdsMerge,
   type Finding,
+  type FindingKind,
   type FindingSeverity,
   type FindingState,
 } from '../model/findings.js';
-import { decisionState, threadOf } from '../model/foundation.js';
+import { decisionState, nameProblem, threadOf } from '../model/foundation.js';
+import {
+  loopOf,
+  loopWords,
+  REVIEW_LENSES,
+  reviewMode,
+  roundsOf,
+  type Loop,
+  type ReviewLens,
+  type ReviewMode,
+  type Round,
+} from '../model/review.js';
+import { newChange } from '../ops/new.js';
+import { step } from '../ops/step.js';
 import { live } from '../model/tree.js';
 import { observedBranches } from '../model/view.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
@@ -41,6 +57,17 @@ function changeOf(loaded: Loaded, key: string): Rec {
   if (rec.data.kind === 'milestone')
     throw new CliError(`${rec.key} is a milestone: its children are reviewed, each on its own`);
   return rec;
+}
+
+/** A project that set review off is not reviewed: a brief, a finding or a round is refused, with the line that turns
+ *  it on. What is already on a change can still be settled. */
+function reviewed(loaded: Loaded, store: Store): ReviewMode {
+  const mode = reviewMode(loaded, store.project);
+  if (mode === 'off')
+    throw new CliError(
+      `${store.project} has review off (ext.review.mode=off): pjman set ${store.project} ext.review.mode=request turns it on when asked, =auto for every change reaching review`,
+    );
+  return mode;
 }
 
 /** The change's branch in this repository, when it has one. */
@@ -69,12 +96,18 @@ export interface ReviewBrief {
   findings: Finding[];
   /** Whether findings are filed onto the change's Trail. */
   entire: boolean;
+  /** How the project's changes are reviewed, and where this change's review stands. */
+  mode: ReviewMode;
+  loop: Loop;
+  /** The branch's head now. */
+  head?: string;
 }
 
 /** What a reviewer needs to judge the change's branch: what it must do, what was decided, and what it changed. */
 export function reviewBrief(store: Store, key: string): ReviewBrief {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
+  reviewed(loaded, store);
   const dir = store.projectDir;
   const { branch, base } = branchIn(loaded, rec, dir);
   const decisions: ReviewBrief['decisions'] = [];
@@ -92,6 +125,13 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     });
   }
   const range = branch && base ? `${base}...${branch}` : undefined;
+  // work to review: the commits on the branch that the base does not have
+  const commits =
+    dir && branch && base
+      ? tryGit(dir, ['log', '--reverse', '--format=%h %s', `${base}..${branch}`])
+          .split('\n')
+          .filter(Boolean)
+      : [];
   return {
     change: rec.key,
     name: typeof rec.data.name === 'string' ? rec.data.name : undefined,
@@ -102,15 +142,13 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     branch,
     base,
     diff: range ? `git diff ${range}` : undefined,
-    commits:
-      dir && branch && base
-        ? tryGit(dir, ['log', '--reverse', '--format=%h %s', `${base}..${branch}`])
-            .split('\n')
-            .filter(Boolean)
-        : [],
+    commits,
     files: dir && range ? tryGit(dir, ['diff', '--stat=120', range]).split('\n').filter(Boolean) : [],
     findings: findingsOf(rec.data),
     entire: entireOn(loaded, store.project),
+    mode: reviewMode(loaded, store.project),
+    loop: loopOf(rec.data, { reviewable: commits.length > 0 }),
+    head: (dir && branch && tryGit(dir, ['rev-parse', '--short', branch])) || undefined,
   };
 }
 
@@ -141,7 +179,7 @@ export function formatReviewBrief(b: ReviewBrief, printed: (key: string) => stri
   } else out.push('(no branch of the change in this repository: review what the change links)');
   if (b.findings.length) out.push(`\n## Findings\n\n${b.findings.map((f, i) => formatFinding(i + 1, f)).join('\n')}`);
   out.push(
-    `\n## Filing\n\nOne command per finding${b.entire ? "; each is also filed onto the change's Trail on Entire, whose Findings gate holds the merge until it is resolved" : ''}:\n  pjman review ${key} --finding "<what is wrong, and what the done-when or decision says>" --severity high|medium|low [--file <path> --line <n>]\nWhen a finding is fixed or does not hold:\n  pjman review ${key} --resolve <n> [--note "<what fixed it>"]\n  pjman review ${key} --dismiss <n> --note "<why it does not hold>"`,
+    `\n## Filing\n\nOne command per finding${b.entire ? "; each is also filed onto the change's Trail on Entire, whose Findings gate holds the merge until it is resolved" : ''}:\n  pjman review ${key} --finding "<what is wrong, and what the done-when or decision says>" --severity high|medium|low --kind intent|drift|correctness [--file <path> --line <n>]\nSeverity is high only for what is wrong in normal use or loses data, medium for what is wrong at an edge, low for the rest. Kind is intent where the done-when is not met, drift where a decision or the scope is not kept, correctness where the code breaks. Only a high finding, or one of kind intent, holds the merge: the rest are kept and go to a follow-up change.\nWhen a finding is fixed or does not hold:\n  pjman review ${key} --resolve <n> [--note "<what fixed it>"]\n  pjman review ${key} --dismiss <n> --note "<why it does not hold>"`,
   );
   return out.join('\n');
 }
@@ -182,11 +220,15 @@ export interface ReviewOpts {
 export function addFinding(
   store: Store,
   key: string,
-  f: { text: string; severity?: string; file?: string; line?: number },
+  f: { text: string; severity?: string; kind?: string; file?: string; line?: number },
   opts: ReviewOpts = {},
 ): ReviewWrite {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
+  reviewed(loaded, store);
+  const kind = f.kind?.toLowerCase();
+  if (kind !== undefined && !(FINDING_KINDS as readonly string[]).includes(kind))
+    throw usageError(`--kind ${f.kind} is not one of ${FINDING_KINDS.join(', ')}`);
   const text = f.text.trim().replace(/\s*\n\s*/g, ' ');
   if (!text) throw usageError('a finding needs its text: --finding "<what is wrong>"');
   const severity = (f.severity ?? 'medium').toLowerCase();
@@ -204,6 +246,7 @@ export function addFinding(
       id,
       text,
       severity: severity as FindingSeverity,
+      ...(kind ? { kind: kind as FindingKind } : {}),
       state: 'open' as FindingState,
       ...(f.file ? { file: f.file } : {}),
       ...(f.line ? { line: f.line } : {}),
@@ -258,6 +301,7 @@ export function settleFinding(
   findings[n - 1] = {
     ...f,
     state,
+    settled: nowIso(),
     ...(note?.trim() ? { note: note.trim() } : state === 'open' ? { note: undefined } : {}),
   };
   const commit = save(store, rec, findings, `finding ${n} ${state === 'open' ? 'reopened' : state}`, opts);
@@ -330,7 +374,8 @@ export function fileFindings(
       return;
     }
     if ((f.filed ?? 'open') === f.state) return; // Entire already knows
-    const verb = f.state === 'resolved' ? 'resolve' : f.state === 'dismissed' ? 'dismiss' : 'reopen';
+    // one moved to the follow-up change leaves the Trail as a dismissal, its note naming where it went
+    const verb = f.state === 'resolved' ? 'resolve' : f.state === 'open' ? 'reopen' : 'dismiss';
     const r = runEntire<string>(
       ['trail', 'finding', verb, '--branch', branch, f.entire, ...(f.note ? ['-m', f.note] : [])],
       { ...opts.entire, cwd: dir, timeout: 30_000, text: true },
@@ -417,9 +462,11 @@ export function readFindings(
     const at = findings.findIndex((x) => x.entire === id);
     if (at >= 0) {
       const mine = findings[at];
+      // (one moved to the follow-up change is a dismissal on Entire, which has no word for it)
+      const there = mine.state === 'deferred' && state === 'dismissed' ? 'deferred' : state;
       // settled on Entire, and not settled differently here since Entire was last told
-      if ((mine.filed ?? 'open') === mine.state && mine.state !== state) {
-        findings[at] = { ...mine, state, filed: state };
+      if ((mine.filed ?? 'open') === mine.state && mine.state !== there) {
+        findings[at] = { ...mine, state, filed: state, settled: nowIso() };
         out.read.push(`${state === 'open' ? 'reopened' : state} #${at + 1}`);
       }
       continue;
@@ -428,10 +475,14 @@ export function readFindings(
     const severity = (FINDING_SEVERITIES as readonly string[]).includes(String(f.severity))
       ? (f.severity as FindingSeverity)
       : 'medium';
+    const said = text.replace(/\s+/g, ' ').trim();
+    // Entire's reviewers mark what they judged against the brief: [intent], [drift]
+    const marked = /\[(intent|drift|correctness)\]/i.exec(said)?.[1].toLowerCase() as FindingKind | undefined;
     findings.push({
       id: randomBytes(4).toString('hex'),
-      text: text.replace(/\s+/g, ' ').trim(),
+      text: said,
       severity,
+      ...(marked ? { kind: marked } : {}),
       state,
       ...(typeof loc.filePath === 'string' ? { file: loc.filePath } : {}),
       ...(typeof loc.filePath === 'string' && typeof loc.startLine === 'number' ? { line: loc.startLine } : {}),
@@ -472,9 +523,19 @@ export function runReview(
   store: Store,
   key: string,
   opts: ReviewOpts & { profile?: string; timeout?: number } = {},
-): { change: string; ran: boolean; findings: Finding[]; read: string[]; pending: string[]; commit: string | null } {
+): {
+  change: string;
+  ran: boolean;
+  findings: Finding[];
+  read: string[];
+  pending: string[];
+  commit: string | null;
+  /** The round this review closed, and where the loop then stands. */
+  round?: RoundResult;
+} {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
+  reviewed(loaded, store);
   const none = {
     change: rec.key,
     ran: false,
@@ -513,9 +574,14 @@ export function runReview(
     none.pending.push(
       'the review profile keeps its verdict local: only findings posted to the Trail are read back (entire review --configure --set-output trail)',
     );
-  const brief = formatReviewBrief(reviewBrief(store, key));
+  const b = reviewBrief(store, key);
+  const brief = formatReviewBrief(b);
+  // the one re-review reads the fix alone: what came after the full review's head
+  const fixOf = b.loop.state === 'recheck' ? b.loop.full?.head : undefined;
   const prompt = [
-    'Judge the branch also against what the change was meant to do, given below. Report as findings of their own, marked [intent], where the code does not meet the Done when or contradicts an accepted decision, and marked [drift] where it does more than the change covers. Give each finding a severity: high only for what is wrong in normal use or loses data.',
+    fixOf
+      ? `This branch had one full review at ${fixOf}; the findings listed below as resolved held its merge and were fixed since. Judge only the fix: whether each of them is fixed, and whether the fix broke something. The rest of the branch is not yours to judge again.`
+      : 'Judge the branch also against what the change was meant to do, given below. Report as findings of their own, marked [intent], where the code does not meet the Done when, and marked [drift] where it contradicts an accepted decision or does more than the change covers. Give each finding a severity: high only for what is wrong in normal use or loses data.',
     '',
     brief,
   ].join('\n');
@@ -525,7 +591,7 @@ export function runReview(
       ...(opts.profile ? [opts.profile] : []),
       ...(checkout ? [] : ['--target', branch, '--cleanup-worktree']),
       '--base',
-      base ?? 'main',
+      fixOf ?? base ?? 'main',
       '--prompt',
       prompt,
     ],
@@ -536,12 +602,278 @@ export function runReview(
     return none;
   }
   const back = readFindings(store, key, opts);
+  // a review that was due closes its round; one asked for beside the loop (while fixing, or after its end) only files
+  const round = ['none', 'due', 'recheck'].includes(b.loop.state) ? closeRound(store, key, opts) : undefined;
   return {
     change: rec.key,
     ran: true,
-    findings: back.findings,
+    findings: round ? findingsOf(changeOf(loadStore(store), key).data) : back.findings,
     read: back.read,
-    pending: [...none.pending, ...back.pending],
+    pending: [...none.pending, ...back.pending, ...(round?.pending ?? [])],
     commit: back.commit,
+    round,
+  };
+}
+
+// ---- the loop (change:review-loop) ----
+
+/** A lens a reviewer reads through: one of a full review's three, or the re-review of the fix. */
+export const LENSES = [...REVIEW_LENSES, 'fix'] as const;
+export type Lens = ReviewLens | 'fix';
+
+const LENS_TASK: Record<ReviewLens, string> = {
+  intent:
+    'Your one question: does the branch do what the Done when says? Take the done-when clause by clause and find the code, and the test, that make each true. A clause that is not met, or is met only on paper (a stub, no test, a path nothing reaches), is a finding of --kind intent. Nothing else is yours to file.',
+  drift:
+    'Your one question: does the branch keep to what was decided and what was asked? A place where the code contradicts an accepted decision, takes up an option that was turned down, breaks an aspect the change works under (pjman context prints them), or does more than the intent covers is a finding of --kind drift. Nothing else is yours to file.',
+  correctness:
+    'Your one question: does the code break? Read the diff for what is wrong when it runs: a wrong result, lost data, a crash, a failure not handled, a race, a test that does not test what it says. Each is a finding of --kind correctness. Nothing else is yours to file.',
+};
+
+/** What one reviewer is handed: the brief, and the one question that reviewer answers. The reviewer is not the author:
+ *  it judges from this text and the branch alone. */
+export function lensBrief(
+  store: Store,
+  key: string,
+  lens: string,
+  printed: (key: string) => string = (k) => k,
+): string {
+  if (!(LENSES as readonly string[]).includes(lens))
+    throw usageError(`--lens ${lens} is not one of ${LENSES.join(', ')}`);
+  const b = reviewBrief(store, key);
+  const k = printed(b.change);
+  const head =
+    'You review this change as someone who did not write it. Judge from this brief and the branch alone: the author is not asked, and their reasoning is not evidence. File each thing found with the command under Filing, one command per finding; where you find nothing, file nothing and say so.';
+  if (lens !== 'fix') return [head, '', LENS_TASK[lens as ReviewLens], '', formatReviewBrief(b, printed)].join('\n');
+  const full = b.loop.full;
+  if (!full) throw new CliError(`${b.change} has had no full review: the fix is re-reviewed after one`);
+  const fixed = b.loop.fixed.map((n) => formatFinding(n, b.findings[n - 1]));
+  const since = full.head && b.branch ? `git diff ${full.head}..${b.branch}` : b.diff;
+  return [
+    head,
+    '',
+    `Your one question: do the fixes hold? ${k} had one full review${full.head ? ` at ${full.head}` : ''}; the findings below held its merge and were fixed since. Read only what changed since that review: ${since}`,
+    `For each finding, find the change that fixes it. One that is not fixed is reopened (pjman review ${k} --reopen <n> --note "<what is still wrong>"). Something the fix itself broke is a new finding. The rest of the branch was reviewed and is not yours to judge again.`,
+    '',
+    '## Fixed since the full review',
+    '',
+    fixed.length ? fixed.join('\n') : '(none is recorded as resolved)',
+    '',
+    formatReviewBrief(b, printed),
+  ].join('\n');
+}
+
+export interface LoopReport {
+  change: string;
+  mode: ReviewMode;
+  state: Loop['state'];
+  /** The loop in a few words; absent when there is nothing to review. */
+  words?: string;
+  /** What moves it on, for whoever works the change; absent once it has ended. */
+  next?: string;
+  rounds: Round[];
+  holding: number[];
+  left: number[];
+  /** Whether a stop here is held by the review: the project reviews every change, and the loop has not ended. */
+  due: boolean;
+}
+
+/** The change the findings that do not hold the merge go to. */
+const followUpKey = (key: string): string => `${key}-follow-ups`;
+
+function nextOf(b: ReviewBrief, k: string): string | undefined {
+  const own = (lenses: readonly string[]): string =>
+    lenses.length === 1
+      ? `start one fresh agent that has no part of this conversation, told only to run \`pjman review ${k} --lens ${lenses[0]}\` and do what it says`
+      : `start ${lenses.length} fresh agents that have no part of this conversation, one per lens, each told only to run \`pjman review ${k} --lens <${lenses.join('|')}>\` and do what it says`;
+  const entire = b.entire
+    ? `Run \`pjman review ${k} --run\` (Entire's own review: several agents and a judge, minutes long; it closes the round itself). Where it answers that no review profile is set up, `
+    : '';
+  switch (b.loop.state) {
+    case 'due':
+      return `The session that wrote the change does not review it. ${entire ? `${entire}${own(REVIEW_LENSES)}` : own(REVIEW_LENSES).replace(/^s/, 'S')}; when they are back, close the round: \`pjman review ${k} --reviewed\`.`;
+    case 'fixing':
+      return [
+        `Fix what holds the merge, commit, and settle each: \`pjman review ${k} --resolve <n> --note "<what fixed it>"\`, or \`--dismiss <n> --note "<why it does not hold>"\`. The rest wait for the follow-up change.`,
+        ...b.loop.holding.map((n) => formatFinding(n, b.findings[n - 1])),
+      ].join('\n');
+    case 'recheck':
+      return `The fix is re-reviewed once, and only the fix. ${entire ? `${entire}${own(['fix'])}` : own(['fix']).replace(/^s/, 'S')}; then close the round: \`pjman review ${k} --reviewed\`.`;
+    case 'closing':
+      return `Move what does not hold the merge to ${followUpKey(k)}: \`pjman review ${k} --follow-up\`.`;
+    default:
+      return undefined;
+  }
+}
+
+function reportOf(b: ReviewBrief, printed: (key: string) => string = (k) => k): LoopReport {
+  const state = b.loop.state;
+  return {
+    change: b.change,
+    mode: b.mode,
+    state,
+    words: loopWords(b.loop),
+    next: nextOf(b, printed(b.change)),
+    rounds: [b.loop.full, b.loop.fix].filter((r): r is Round => !!r),
+    holding: b.loop.holding,
+    left: b.loop.left,
+    due: b.mode === 'auto' && state !== 'none' && state !== 'ended',
+  };
+}
+
+/** Where the change's review stands and what moves it on. A project with review off has none. */
+export function reviewLoop(store: Store, key: string, printed?: (key: string) => string): LoopReport {
+  const loaded = loadStore(store);
+  const rec = changeOf(loaded, key);
+  const mode = reviewMode(loaded, store.project);
+  if (mode === 'off')
+    return { change: rec.key, mode, state: 'none', rounds: roundsOf(rec.data), holding: [], left: [], due: false };
+  return reportOf(reviewBrief(store, key), printed);
+}
+
+/** The loop as lines: where it stands, then what moves it on. */
+export function formatLoop(r: LoopReport, printed: (key: string) => string = (k) => k): string {
+  const head = `${printed(r.change)} review (${r.mode === 'auto' ? 'auto' : r.mode === 'off' ? 'off' : 'on request'}): ${r.words ?? 'nothing to review'}`;
+  return r.next ? `${head}\n${r.next}` : head;
+}
+
+export interface RoundResult {
+  change: string;
+  /** The round closed by this call, when one was. */
+  round?: Round;
+  loop: LoopReport;
+  /** The findings moved to the follow-up change, and that change. */
+  moved: number[];
+  followUp?: string;
+  commit: string | null;
+  filed: string[];
+  pending: string[];
+}
+
+/** Close the round the reviewers just made: the full review when none is recorded, the re-review of the fix after it.
+ *  Refused while findings hold the merge with no fix to read, and once the loop has ended. Where closing it ends the
+ *  loop, what does not hold the merge goes to the follow-up change in the same call. */
+export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): RoundResult {
+  const b = reviewBrief(store, key);
+  const loaded = loadStore(store);
+  const rec = changeOf(loaded, key);
+  const state = b.loop.state;
+  if (state === 'fixing')
+    throw new CliError(
+      `${rec.key}: ${loopWords(b.loop)}; the fix is re-reviewed once they are settled\n${b.loop.holding.map((n) => formatFinding(n, b.findings[n - 1])).join('\n')}`,
+    );
+  if (state === 'closing' || state === 'ended')
+    throw new CliError(
+      `${rec.key}: the review has ${loopWords(b.loop)}; a change is reviewed once and its fix once (decision review-loop/stop-rule)`,
+    );
+  if (!b.branch) throw new CliError(`${rec.key} has no branch in this repository: there was nothing to review`);
+  const env = envelope(opts);
+  const round: Round = {
+    round: state === 'recheck' ? 'fix' : 'full',
+    at: nowIso(),
+    ...(b.head ? { head: b.head } : {}),
+    ...(env.writer ? { by: env.writer } : {}),
+  };
+  const prior = snapshot(store, [rec.path]);
+  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...roundsOf(rec.data), round] }, rec.body));
+  validateOrUndo(store, [rec.path], [], prior);
+  const commit = finishWrite(store, `pjman: review ${rec.key} ${round.round} round closed`, env.session, [
+    {
+      op: 'set',
+      key: rec.key,
+      type: 'change',
+      path: rec.path,
+      fields: ['reviews', `${round.round} round`],
+      writer: env.writer,
+    },
+  ]);
+  const out: RoundResult = {
+    change: rec.key,
+    round,
+    loop: reviewLoop(store, key),
+    moved: [],
+    commit,
+    filed: [],
+    pending: [],
+  };
+  if (out.loop.state === 'closing') {
+    const moved = followUp(store, key, opts);
+    return { ...moved, round, commit };
+  }
+  return out;
+}
+
+/** Move every open finding that does not hold the merge to the change's follow-up change, one step each, and off the
+ *  Trail (decision review-loop/stop-rule): the finding stays on the change as deferred, its note naming where it went.
+ *  The follow-up change is filed when there is none, under the same project and features. */
+export function followUp(store: Store, key: string, opts: ReviewOpts = {}): RoundResult {
+  const loaded = loadStore(store);
+  const rec = changeOf(loaded, key);
+  reviewed(loaded, store);
+  const findings = findingsOf(rec.data);
+  const moved = findings.map((f, i) => (f.state === 'open' && !holdsMerge(f) ? i + 1 : 0)).filter((n) => n > 0);
+  const none = (): RoundResult => ({
+    change: rec.key,
+    loop: reviewLoop(store, key),
+    moved: [],
+    commit: null,
+    filed: [],
+    pending: [],
+  });
+  if (!moved.length) return none();
+  const target = followUpKey(rec.key);
+  const there = live(loaded, target);
+  if (there && ['done', 'dropped'].includes(String(there.data.status)))
+    throw new CliError(
+      `${there.key} is ${String(there.data.status)}: the findings left on ${rec.key} are not added to a change that is over; settle them here (pjman review ${rec.key} --resolve|--dismiss <n>)`,
+    );
+  const texts = moved.map((n) => {
+    const f = findings[n - 1];
+    const where = f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : '';
+    return `${f.text}${where}`;
+  });
+  const who = { session: opts.session, writer: opts.writer };
+  if (there) step(store, there.key, 'add', undefined, { texts, ...who });
+  else {
+    const name = typeof rec.data.name === 'string' ? rec.data.name : rec.changeSlug!;
+    const named = `${name} follow-ups`;
+    newChange(store, target, {
+      name: nameProblem(named) ? 'Review follow-ups' : named,
+      gist: `What the review of ${name} found that did not hold its merge`,
+      origin: rec.key,
+      intent: `The review of ${rec.key} found things that are wrong but did not hold its merge: none of high severity, none saying the done-when is not met (decision review-loop/stop-rule). Each is a step here.`,
+      doneWhen: 'Each step is fixed, or dropped with the reason',
+      features: Array.isArray(rec.data.features) ? (rec.data.features as string[]) : undefined,
+      project: typeof rec.data.project === 'string' ? rec.data.project : undefined,
+      steps: texts,
+      ...who,
+    });
+  }
+  // the record as it stands now: the follow-up was written in between
+  const now = changeOf(loadStore(store), key);
+  const current = findingsOf(now.data);
+  const at = nowIso();
+  for (const n of moved) {
+    const mine = findings[n - 1];
+    const i = mine.id ? current.findIndex((x) => x.id === mine.id) : current[n - 1]?.text === mine.text ? n - 1 : -1;
+    if (i >= 0 && current[i].state === 'open')
+      current[i] = { ...current[i], state: 'deferred', settled: at, note: `moved to ${target}` };
+  }
+  const commit = save(
+    store,
+    now,
+    current,
+    `${moved.length} finding${moved.length === 1 ? '' : 's'} moved to ${target}`,
+    opts,
+  );
+  const told = fileFindings(store, rec.key, opts);
+  return {
+    change: rec.key,
+    loop: reviewLoop(store, key),
+    moved,
+    followUp: target,
+    commit,
+    filed: told.filed,
+    pending: told.pending,
   };
 }

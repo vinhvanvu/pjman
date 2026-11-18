@@ -26,6 +26,21 @@ export interface Rest {
   /** The steps still open or active, numbered from 1 in the plan. */
   open: { n: number; step: Step }[];
   status: string;
+  /** The review that holds the stop, in a project that reviews every change (ext.review.mode=auto): where the loop
+   *  stands and what moves it on (change:review-loop). */
+  review?: { state: string; words: string; next: string };
+}
+
+/** A change in review whose project reviews every change does not rest until its review has ended: the plan has run
+ *  to its end, and the review is the work that is left. The caller reads the loop (it takes the repository). */
+export function heldByReview(r: Rest, review: { state: string; words?: string; next?: string; due: boolean }): Rest {
+  if (!r.rests || r.status !== 'review' || !review.due || !review.next) return r;
+  return {
+    ...r,
+    rests: false,
+    because: undefined,
+    review: { state: review.state, words: review.words ?? review.state, next: review.next },
+  };
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
@@ -70,6 +85,7 @@ export function restOfRecord(loaded: Loaded, rec: Rec): Rest {
 /** The verdict as a line and, when the change does not rest, the open steps beneath it. */
 export function formatRest(r: Rest): string {
   if (r.rests) return `${r.key} rests: ${r.because}`;
+  if (r.review) return `${r.key} does not rest: ${r.review.words}\n${r.review.next}`;
   return [
     `${r.key} does not rest: ${r.open.length === 1 ? 'a step is' : `${r.open.length} steps are`} open`,
     ...r.open.map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`),

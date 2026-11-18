@@ -10,6 +10,7 @@ import { git } from '../store/git.js';
 import { loadStore } from '../store/records.js';
 import { live } from '../model/tree.js';
 import { CliError } from '../store/util.js';
+import { findingsOf, formatFinding, holdsMerge } from '../model/findings.js';
 import { observedBranches } from '../model/view.js';
 import { baseBranch, branchesOf, mergedInto } from './git.js';
 import { readFindings } from './review.js';
@@ -68,6 +69,17 @@ export function mergeChange(
   const already = mergedInto(dir, branch, { base, named });
   if (already) return done('already', `${branch} is merged into ${already.on} (${already.how})`);
 
+  // a finding of high severity, or one saying the done-when is not met, holds the merge while it stands (decision
+  // review-loop/stop-rule): here as on the Trail, whose gate knows severity alone
+  const held = (): void => {
+    const findings = findingsOf(live(loadStore(store), rec.key)?.data ?? {});
+    const holding = findings.map((f, i) => (holdsMerge(f) ? formatFinding(i + 1, f) : '')).filter(Boolean);
+    if (holding.length)
+      throw new CliError(
+        `not merged: ${holding.length} finding${holding.length === 1 ? ' holds' : 's hold'} the merge of ${rec.key}\n${holding.join('\n')}\nfix and resolve each (pjman review ${rec.key} --resolve <n> --note "…"), or dismiss one that does not hold (--dismiss <n> --note "…")`,
+      );
+  };
+
   if (entireOn(loaded, store.project)) {
     // Entire merges what is on the remote: local commits not pushed would be left behind on a branch called merged
     const remote = tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]);
@@ -86,6 +98,7 @@ export function mergeChange(
     } catch (e) {
       notes.push(`the Trail's findings were not read (${(e as Error).message.split('\n')[0]})`);
     }
+    held();
     const r = runEntire<Record<string, unknown>>(['trail', 'merge', '--branch', branch], {
       ...opts.entire,
       cwd: dir,
@@ -110,6 +123,7 @@ export function mergeChange(
     return done('entire', `${branch} merged through its Trail on Entire`);
   }
 
+  held();
   // the local merge: on the base, with nothing uncommitted in the way
   if (tryGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) !== base)
     throw new CliError(`not merged: ${dir} is not on ${base}; check it out there first`);
