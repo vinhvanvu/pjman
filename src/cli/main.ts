@@ -785,6 +785,16 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       }
       if (pos[1] && !pos[1].startsWith('project:')) {
         const c = changeContext(store, pos[1]);
+        // where the review stands is the repository's to say (a branch with work on it, commits since the last
+        // round): the command reads it, where the view alone could only say the plan moved
+        if (c.review && !c.review.startsWith('off')) {
+          try {
+            const loop = reviewLoop(store, c.change.key, printed);
+            if (loop.words) c.review = `${loop.mode === 'auto' ? 'auto' : 'on request'} · ${loop.words}`;
+          } catch {
+            // a change that is not reviewed keeps the view's line
+          }
+        }
         v.json ? json(c) : out(formatChangeContext(c));
         // the session reading it is looking at it: its focus moves there (never its binding). A read never fails for it
         const session = process.env.PJMAN_SESSION;

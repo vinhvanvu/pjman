@@ -6,6 +6,7 @@
 // follow-up change. A round is data on the change (`reviews`), as its findings are; where the loop stands is read from
 // the two, never stored.
 import { findingsOf, holdsMerge, wouldHold, type Finding } from './findings.js';
+import { stepsOf } from './foundation.js';
 import type { Loaded } from '../store/records.js';
 
 export const REVIEW_MODES = ['off', 'request', 'auto'] as const;
@@ -39,7 +40,13 @@ export interface Round {
   /** The branch's head when the round was closed: the fix is what came after the full round's. */
   head?: string;
   by?: string;
+  /** The pass it belongs to, from 2 on: a change worked on again after its review ended is reviewed again, and each
+   *  pass has its own full review and re-review (change:review-reads-ended). The first pass is unmarked. */
+  pass?: number;
 }
+
+export const passOf = (r: Record<string, unknown>): number =>
+  typeof r.pass === 'number' && Number.isInteger(r.pass) && r.pass > 1 ? r.pass : 1;
 
 /** The review rounds a change holds, as written; a malformed entry is left out (the validator names it). */
 export function roundsOf(data: Record<string, unknown>): Round[] {
@@ -54,6 +61,7 @@ export function roundsOf(data: Record<string, unknown>): Round[] {
       at,
       ...(str(r.head) ? { head: str(r.head) } : {}),
       ...(str(r.by) ? { by: str(r.by) } : {}),
+      ...(passOf(r) > 1 ? { pass: passOf(r) } : {}),
     });
   }
   return out;
@@ -66,6 +74,7 @@ export interface Asked {
   lens: string;
   at: string;
   by?: string;
+  pass?: number;
 }
 
 export function lensesAsked(data: Record<string, unknown>): Asked[] {
@@ -76,7 +85,7 @@ export function lensesAsked(data: Record<string, unknown>): Asked[] {
     const at = str(r?.at);
     const lens = str(r?.lens);
     if (!r || !at || !lens || r.round !== 'lens') continue;
-    out.push({ lens, at, ...(str(r.by) ? { by: str(r.by) } : {}) });
+    out.push({ lens, at, ...(str(r.by) ? { by: str(r.by) } : {}), ...(passOf(r) > 1 ? { pass: passOf(r) } : {}) });
   }
   return out;
 }
@@ -100,20 +109,61 @@ export interface Loop {
   left: number[];
   /** The lenses of the round to close that no reviewer was handed yet. */
   missing: string[];
+  /** The pass these rounds belong to: 1, and one more each time the change is worked on again after its review ended. */
+  pass: number;
+  /** The pass has ended and the plan moved since, and the caller could not say whether the branch holds new work:
+   *  whoever can read the repository says whether the review is due again. */
+  maybeAgain?: boolean;
 }
 
 /** Where a change's review loop stands, from its rounds and findings. `reviewable` says there is a branch with work on
- *  it to review; without one a change is never due. */
-export function loopOf(data: Record<string, unknown>, opts: { reviewable: boolean }): Loop {
+ *  it to review; without one a change is never due. `newWork` answers, for the head a round was closed at, whether
+ *  the branch holds commits since that the base lacks; it is the repository's to say, so a caller with no repository
+ *  leaves it out.
+ *
+ *  The loop has an end, and a change can be worked on again after it: its plan reopened or added to and run to its end
+ *  once more, with commits the last round did not see. That is a new pass, due for its own full review; the rounds of
+ *  the pass before stay on the record and are not read again. */
+export function loopOf(
+  data: Record<string, unknown>,
+  opts: { reviewable: boolean; newWork?: (since: string) => boolean },
+): Loop {
+  const all = [...roundsOf(data), ...lensesAsked(data)];
+  const pass = Math.max(1, ...all.map((e) => e.pass ?? 1));
+  const now = loopOfPass(data, opts, pass);
+  if (now.state !== 'closing' && now.state !== 'ended') return now;
+  const last = now.fix ?? now.full;
+  if (!last) return now;
+  const steps = stepsOf(data);
+  // worked on again: the plan moved after the last round, and the branch holds commits that round did not see. The
+  // commits are what is unreviewed; the plan says the person meant it (a note on a finished step moves it too, and
+  // alone changes nothing)
+  const moved = steps.some((s) => (s.at ?? '') > last.at);
+  if (!moved) return now;
+  if (!opts.newWork || !last.head) return { ...now, maybeAgain: true };
+  if (!opts.newWork(last.head)) return now;
+  // the plan is being worked, not at its end: the review comes when it is
+  const atEnd = steps.every((s) => s.state === 'done' || s.state === 'dropped');
+  return {
+    state: atEnd && data.status === 'review' && opts.reviewable ? 'due' : 'none',
+    holding: now.holding,
+    fixed: [],
+    left: now.left,
+    missing: [...REVIEW_LENSES],
+    pass: pass + 1,
+  };
+}
+
+function loopOfPass(data: Record<string, unknown>, opts: { reviewable: boolean }, pass: number): Loop {
   const findings = findingsOf(data);
-  const rounds = roundsOf(data);
+  const rounds = roundsOf(data).filter((r) => (r.pass ?? 1) === pass);
   const full = rounds.find((r) => r.round === 'full');
   const fix = rounds.find((r) => r.round === 'fix');
   const nums = (pick: (f: Finding) => boolean): number[] =>
     findings.map((f, i) => (pick(f) ? i + 1 : 0)).filter((n) => n > 0);
   const holding = nums(holdsMerge);
   const left = nums((f) => f.state === 'open' && !wouldHold(f));
-  const asked = lensesAsked(data);
+  const asked = lensesAsked(data).filter((a) => (a.pass ?? 1) === pass);
   const askedAt = (lens: string): string | undefined => asked.find((a) => a.lens === lens)?.at;
   // the full review began when its first lens went out: a finding fixed and resolved from then on is one whose fix the
   // re-review reads, whether it was resolved before or after the round was closed
@@ -124,7 +174,7 @@ export function loopOf(data: Record<string, unknown>, opts: { reviewable: boolea
     ? nums((f) => f.state === 'resolved' && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at))
     : [];
   const missingFull = REVIEW_LENSES.filter((l) => !askedAt(l));
-  const base = { full, fix, holding, fixed, left, missing: [] as string[] };
+  const base = { full, fix, holding, fixed, left, missing: [] as string[], pass };
   if (!full)
     return {
       ...base,
@@ -142,7 +192,10 @@ export function loopOf(data: Record<string, unknown>, opts: { reviewable: boolea
     if (fixed.length || held.length) return { ...base, missing: reAt ? [] : ['fix'], state: 'recheck' };
   }
   const n = holding.length;
-  const dismissed = findings.some((f) => f.state === 'dismissed' && wouldHold(f) && !!f.settled);
+  // (in this pass: one dismissed in an earlier pass says nothing of this one)
+  const dismissed = findings.some(
+    (f) => f.state === 'dismissed' && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at),
+  );
   const because = fix
     ? n
       ? `${n} finding${n === 1 ? ' still holds' : 's still hold'} the merge after the one re-review: ${n === 1 ? 'it is' : 'they are'} the person's to settle`
@@ -161,7 +214,9 @@ export function loopWords(l: Loop): string | undefined {
     case 'none':
       return undefined;
     case 'due':
-      return 'the full review is due';
+      return l.pass > 1
+        ? 'the full review is due again: the change was worked on after its review ended'
+        : 'the full review is due';
     case 'fixing':
       return `${l.holding.length} finding${l.holding.length === 1 ? ' holds' : 's hold'} the merge`;
     case 'recheck':

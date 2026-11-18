@@ -621,6 +621,8 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
               } else if (!(REVIEW_ROUNDS as readonly string[]).includes(String(x.round)))
                 err(r, `reviews[${i}]: round '${String(x.round)}' is not one of ${REVIEW_ROUNDS.join(', ')}, lens`);
               if (!isTimestamp(x.at)) err(r, `reviews[${i}]: at must be a timestamp`);
+              if (x.pass !== undefined && !(typeof x.pass === 'number' && Number.isInteger(x.pass) && x.pass > 1))
+                err(r, `reviews[${i}]: pass must be a whole number from 2 (the first pass is unmarked)`);
             });
         }
         checkAliases('change');
