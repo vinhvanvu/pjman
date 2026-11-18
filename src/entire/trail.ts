@@ -28,6 +28,8 @@ export interface TrailState {
   findings?: { open: number; high: number; medium: number; low: number };
   /** pjman marked it ready for review. */
   ready?: boolean;
+  /** The branch's merge has ended the change once: a change reopened afterwards is not ended by it again. */
+  ended?: boolean;
   /** The hash of the title and body pjman last sent. */
   sent?: string;
   synced_at?: string;

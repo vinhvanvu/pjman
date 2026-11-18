@@ -146,6 +146,8 @@ export interface TrailReconcile {
   commit: string | null;
   /** The change was set done here because its branch was merged on Entire. */
   done?: boolean;
+  /** Entire did not come back (no binary, no answer in time): the caller asks it nothing more in this run. */
+  down?: boolean;
 }
 
 /** Bring one change's Trail to where the change stands, and read it back. Nothing is done for a project that has not
@@ -202,7 +204,13 @@ export function reconcileTrail(
     // a Trail already on the branch (made by hand, or by a run whose answer was lost) is adopted, never doubled
     const shown = call(['trail', 'show', '--branch', branch], false, true);
     const adopted = shown.ok ? readTrail(shown.data, branch) : null;
-    if (adopted) {
+    if (adopted?.status === 'closed') {
+      // a Trail from an earlier life of the branch: not taken up, since nothing more would be sent to it
+      result.pending.push(
+        `Trail #${adopted.number} on ${branch} is closed: reopen it on Entire (entire trail update ${adopted.number} --status open) or work on a new branch`,
+      );
+      return result;
+    } else if (adopted) {
       state = adopted;
       result.acts.push('adopted');
     } else if (shown.ok || !/no discoverable project trail/i.test(shown.reason)) {
@@ -269,7 +277,11 @@ export function reconcileTrail(
       state.findings = { open: n('Open'), high: n('OpenHigh'), medium: n('OpenMedium'), low: n('OpenLow') };
     }
   }
+  // the merge has ended the change (set done below, on an earlier run): marked once the change is seen done, so a
+  // failed write is tried again and a change reopened later is left to the person
+  if (state.change?.status === 'merged' && (status === 'done' || before?.ended)) state.ended = true;
   result.state = state;
+  result.down = down;
   result.moved = trailMoves(before, state);
 
   // the record: the Trail's source, bound by the change
@@ -311,9 +323,12 @@ export function reconcileTrail(
     );
   }
   if (!bound) {
-    const binds = arr(rec.data.binds).filter((k): k is string => typeof k === 'string');
-    writes.set(rec.path, render('change', { ...rec.data, binds: [...binds, key] }, rec.body));
-    events.push({ op: 'set', key: rec.key, type: 'change', path: rec.path, fields: ['binds'], writer: env.writer });
+    // the change as it stands now: Entire was asked in between, and a write made meanwhile is kept
+    const now = loadStore(store).byKey.get(changeKey)?.[0] ?? rec;
+    const binds = arr(now.data.binds).filter((k): k is string => typeof k === 'string');
+    if (!binds.includes(key)) writes.set(now.path, render('change', { ...now.data, binds: [...binds, key] }, now.body));
+    if (!binds.includes(key))
+      events.push({ op: 'set', key: rec.key, type: 'change', path: rec.path, fields: ['binds'], writer: env.writer });
   }
   if (writes.size) {
     const touched = [...writes.keys()];
@@ -333,7 +348,7 @@ export function reconcileTrail(
   // merged on Entire: the person's merge, wherever they made it, ends the change
   // (a merge read in this run and not known before: a change reopened after its merge is not ended a second time by
   // the same merge)
-  if (read && state.change?.status === 'merged' && before?.change?.status !== 'merged' && status === 'review') {
+  if (state.change?.status === 'merged' && !state.ended && status === 'review') {
     loaded = loadStore(store);
     set(store, rec.key, ['status=done'], {
       session: opts.session,
