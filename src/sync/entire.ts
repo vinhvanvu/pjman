@@ -21,7 +21,7 @@ import { CliError, localDate, nowIso } from '../store/util.js';
 import { baseBranch, mergedBranch } from './git.js';
 import { note } from '../ops/note.js';
 import { fileFindings } from './review.js';
-import { reconcileTrail, trailCandidates, type TrailReconcile } from './trail.js';
+import { reconcileTrail, trailCandidates, trailOf, type TrailReconcile } from './trail.js';
 
 export const CHECKPOINT_KIND = 'entire-checkpoint';
 
@@ -361,14 +361,36 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     );
   }
   // the Trails: each change in motion, or bound to a Trail still open, is reconciled and read back
-  for (const rec of trailCandidates(loadStore(store), project)) {
-    const t = reconcileTrail(store, rec.key, { session: opts.session, writer: opts.writer, entire: opts.entire });
+  // (the follower, which passes --wake every minute, reads only the Trails a session waits on: changes in review with
+  // a Trail, each within a budget; one change that cannot be written does not stop the others)
+  const after = loadStore(store);
+  const candidates = trailCandidates(after, project).filter(
+    (rec) => !opts.wake || (rec.data.status === 'review' && !!trailOf(after, rec)),
+  );
+  for (const rec of candidates) {
+    let t: TrailReconcile | null;
+    try {
+      t = reconcileTrail(store, rec.key, {
+        session: opts.session,
+        writer: opts.writer,
+        entire: opts.entire,
+        budget: opts.wake ? 30_000 : undefined,
+      });
+    } catch (e) {
+      const reason = `${rec.key}: ${(e as Error).message.split('\n')[0]}`;
+      if (!result.pending.includes(reason)) result.pending.push(reason);
+      continue;
+    }
     if (!t) continue;
     result.trails.push(t);
     // findings not yet on the Trail (filed while Entire did not answer, or before the Trail existed) are filed now
-    for (const p of fileFindings(store, rec.key, { session: opts.session, writer: opts.writer, entire: opts.entire })
-      .pending)
-      if (!t.pending.includes(p)) t.pending.push(p);
+    try {
+      for (const p of fileFindings(store, rec.key, { session: opts.session, writer: opts.writer, entire: opts.entire })
+        .pending)
+        if (!t.pending.includes(p)) t.pending.push(p);
+    } catch (e) {
+      t.pending.push(`${rec.key}: ${(e as Error).message.split('\n')[0]}`);
+    }
     for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
     if (opts.wake && t.moved.length && t.state)
       note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });

@@ -243,6 +243,23 @@ test('a branch merged on Entire sets the change done and closes its Trail', () =
   assert.equal(calls().length, before);
 });
 
+test('a change reopened after its merge is not ended again by that merge; an Entire that hangs holds a command for its budget only', () => {
+  set(store, 'change:web/cart', ['status=review'], {});
+  reconcileTrail(store, 'change:web/cart', { entire: { bin } });
+  assert.equal(rec('cart').data.status, 'review');
+  set(store, 'change:web/cart', ['status=done'], {});
+  const slowLog = path.join(tmp, 'slow.log');
+  const slow = path.join(tmp, 'entire-slow');
+  fs.writeFileSync(slow, `#!/bin/sh\necho x >> ${slowLog}\nexec sleep 6\n`, { mode: 0o755 });
+  set(store, 'change:web/cart', ['status=review'], {});
+  const t0 = Date.now();
+  const r = reconcileTrail(store, 'change:web/cart', { entire: { bin: slow }, budget: 1000 });
+  assert.ok(Date.now() - t0 < 4000, 'the budget bounds the wait');
+  assert.equal(fs.readFileSync(slowLog, 'utf8').trim().split('\n').length, 1, 'one call, and no more after it hung');
+  assert.ok(r!.pending.some((p) => /did not answer in time/.test(p)));
+  set(store, 'change:web/cart', ['status=done'], {});
+});
+
 test('a dropped change closes its Trail; a Trail already on the branch is adopted, never doubled', () => {
   change(store, 'gone', { name: 'Gone', project: 'project:web', next: 'build it' });
   step(store, 'change:gone', 'start', 1, {});

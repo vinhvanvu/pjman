@@ -269,8 +269,13 @@ export function fileFindings(
     return out;
   }
   const slug = rec.key.replace(/^change:/, '');
+  // what Entire answered, by the finding's place: written onto the record as it stands when the calls are over
+  const told = new Map<number, Partial<Finding>>();
+  // no more is asked of Entire in this run once a call has not come back
+  let down = false;
   findings.forEach((f, i) => {
     const n = i + 1;
+    if (down) return;
     const fail = (reason: string) => {
       if (!out.pending.includes(reason)) out.pending.push(reason);
     };
@@ -292,10 +297,14 @@ export function fileFindings(
           '--client-id',
           `pjman:${slug}#${n}`,
         ],
-        { ...opts.entire, cwd: dir, timeout: 60_000 },
+        { ...opts.entire, cwd: dir, timeout: 30_000 },
       );
-      if (!r.ok) return fail(r.reason);
+      if (!r.ok) {
+        down = r.kind === 'timeout' || r.kind === 'missing';
+        return fail(r.reason);
+      }
       if (typeof r.data.id !== 'string') return fail('entire trail finding add answered no id');
+      told.set(i, { entire: r.data.id, filed: 'open' });
       findings[i] = { ...f, entire: r.data.id, filed: 'open' };
       out.filed.push(`filed #${n}`);
       return;
@@ -304,12 +313,25 @@ export function fileFindings(
     const verb = f.state === 'resolved' ? 'resolve' : f.state === 'dismissed' ? 'dismiss' : 'reopen';
     const r = runEntire<string>(
       ['trail', 'finding', verb, '--branch', branch, f.entire, ...(f.note ? ['-m', f.note] : [])],
-      { ...opts.entire, cwd: dir, timeout: 60_000, text: true },
+      { ...opts.entire, cwd: dir, timeout: 30_000, text: true },
     );
-    if (!r.ok) return fail(r.reason);
+    if (!r.ok) {
+      down = r.kind === 'timeout' || r.kind === 'missing';
+      return fail(r.reason);
+    }
+    told.set(i, { filed: f.state });
     findings[i] = { ...f, filed: f.state };
     out.filed.push(`${f.state === 'open' ? 'reopened' : f.state} #${n}`);
   });
-  if (out.filed.length) save(store, rec, findings, `told Entire (${out.filed.join(', ')})`, opts);
+  if (out.filed.length) {
+    // the record may have been written while Entire was asked (a status, a binding, another finding): what Entire
+    // answered goes onto the record as it stands now, finding by finding, never the copy read before the calls
+    const now = changeOf(loadStore(store), key);
+    const current = findingsOf(now.data);
+    for (const [i, patch] of told)
+      if (current[i] && current[i].text === findings[i].text) current[i] = { ...current[i], ...patch };
+    save(store, now, current, `told Entire (${out.filed.join(', ')})`, opts);
+    out.findings = current;
+  }
   return out;
 }
