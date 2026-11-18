@@ -126,6 +126,7 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     });
   }
   const range = branch && base ? `${base}...${branch}` : undefined;
+  const head = (dir && branch && tryGit(dir, ['rev-parse', '--short', branch])) || undefined;
   // work to review: the commits on the branch that the base does not have
   const commits =
     dir && branch && base
@@ -148,8 +149,8 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     findings: findingsOf(rec.data),
     entire: entireOn(loaded, store.project),
     mode: reviewMode(loaded, store.project),
-    loop: loopOf(rec.data, { reviewable: commits.length > 0 }),
-    head: (dir && branch && tryGit(dir, ['rev-parse', '--short', branch])) || undefined,
+    loop: loopOf(rec.data, { reviewable: commits.length > 0, head }),
+    head,
   };
 }
 
@@ -593,7 +594,7 @@ export function runReview(
   // Entire's reviewers read through every lens: recorded before they run, so what they post is told from what stood
   const due = b.loop.state === 'due' || b.loop.state === 'recheck';
   const handed = due
-    ? recordLenses(store, key, b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES], 'entire', opts)
+    ? recordLenses(store, key, b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES], 'entire', opts, b.loop.pass)
     : [];
   const ran = runEntire<string>(
     [
@@ -609,7 +610,7 @@ export function runReview(
   );
   if (!ran.ok) {
     // no reviewer read anything: the lenses recorded for this run are taken back
-    if (handed.length) unrecordLenses(store, key, handed, opts);
+    if (handed.length) unrecordLenses(store, key, handed, opts, b.loop.pass);
     none.pending.push(ran.reason);
     return none;
   }
@@ -778,15 +779,32 @@ function followUpTarget(loaded: Loaded, rec: Rec): Rec | undefined {
 }
 
 /** Record that these lenses went out to reviewers, once each. */
-function recordLenses(store: Store, key: string, lenses: string[], by: string | undefined, opts: ReviewOpts): string[] {
+function recordLenses(
+  store: Store,
+  key: string,
+  lenses: string[],
+  by: string | undefined,
+  opts: ReviewOpts,
+  pass = 1,
+): string[] {
   const rec = changeOf(loadStore(store), key);
-  const had = new Set(lensesAsked(rec.data).map((a) => a.lens));
+  const had = new Set(
+    lensesAsked(rec.data)
+      .filter((a) => (a.pass ?? 1) === pass)
+      .map((a) => a.lens),
+  );
   const fresh = lenses.filter((l) => !had.has(l));
   if (!fresh.length) return [];
   const env = envelope(opts);
   const at = nowIso();
   const who = by ?? env.writer;
-  const entries = fresh.map((lens) => ({ round: 'lens', lens, at, ...(who ? { by: who } : {}) }));
+  const entries = fresh.map((lens) => ({
+    round: 'lens',
+    lens,
+    at,
+    ...(who ? { by: who } : {}),
+    ...(pass > 1 ? { pass } : {}),
+  }));
   const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...reviewsOf(rec.data), ...entries] }, rec.body));
   validateOrUndo(store, [rec.path], [], prior);
@@ -804,11 +822,17 @@ function recordLenses(store: Store, key: string, lenses: string[], by: string | 
 }
 
 /** Take back lenses recorded for a review that then did not run. */
-function unrecordLenses(store: Store, key: string, lenses: string[], opts: ReviewOpts): void {
+function unrecordLenses(store: Store, key: string, lenses: string[], opts: ReviewOpts, pass = 1): void {
   const rec = changeOf(loadStore(store), key);
   const kept = reviewsOf(rec.data).filter((raw) => {
     const r = raw as Record<string, unknown> | null;
-    return !(r && r.round === 'lens' && r.by === 'entire' && lenses.includes(String(r.lens)));
+    return !(
+      r &&
+      r.round === 'lens' &&
+      r.by === 'entire' &&
+      (typeof r.pass === 'number' ? r.pass : 1) === pass &&
+      lenses.includes(String(r.lens))
+    );
   });
   if (kept.length === reviewsOf(rec.data).length) return;
   const env = envelope(opts);
@@ -852,7 +876,7 @@ export function handLens(
         ? `${b.change} has had its full review (${loopWords(b.loop)}); a change is reviewed once and its fix once (decision review-loop/stop-rule)`
         : `${b.change} is not up for review: a lens is handed out once its plan has run to its end (status review) with work on its branch; pjman review ${b.change} prints the brief before then`,
     );
-  recordLenses(store, key, [lens], undefined, opts);
+  recordLenses(store, key, [lens], undefined, opts, b.loop.pass);
   return text;
 }
 
@@ -891,6 +915,7 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): Ro
     at: nowIso(),
     ...(b.head ? { head: b.head } : {}),
     ...(env.writer ? { by: env.writer } : {}),
+    ...(b.loop.pass > 1 ? { pass: b.loop.pass } : {}),
   };
   const prior = snapshot(store, [rec.path]);
   fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...reviewsOf(rec.data), round] }, rec.body));

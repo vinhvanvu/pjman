@@ -380,3 +380,46 @@ test('three reviewers started together are each handed their lens, and each hand
   );
   assert.equal(closeRound(store, C).loop.state, 'ended');
 });
+
+test('a change worked on again after its review ended is due again, and each pass keeps the stop rule', () => {
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
+  const S = 'change:web/ship';
+  const first = reviewLoop(store, S);
+  assert.deepEqual([first.state, first.rounds.length], ['ended', 1]);
+  // a step added: the plan is being worked, and nothing is due while it is
+  step(store, S, 'add', undefined, { text: 'ship abroad' });
+  assert.equal(reviewLoop(store, S).state, 'ended', 'no commit yet: the branch is where the round left it');
+  g('switch', '-q', 'ship');
+  fs.writeFileSync(path.join(dir, 'ship.ts'), 'export const ship = 2;\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'feat: ship abroad (change:ship)');
+  g('switch', '-q', 'main');
+  assert.equal(reviewLoop(store, S).state, 'none', 'the plan is not at its end');
+  // run to its end again, with commits the round did not see: the full review is due again
+  step(store, S, 'done', 2, {});
+  const again = reviewLoop(store, S);
+  assert.deepEqual([again.state, again.due, again.rounds.length], ['due', true, 0]);
+  assert.equal(again.words, 'the full review is due again: the change was worked on after its review ended');
+  assert.throws(() => mergeChange(store, S), /not merged: .*the full review is due again/);
+  assert.equal(heldByReview(restOf(loadStore(store), S), again).rests, false);
+  // the lenses of the first pass do not count for this one
+  assert.throws(() => closeRound(store, S), /no reviewer was handed --lens intent, --lens drift, --lens correctness/);
+  handed(S);
+  addFinding(store, S, { text: 'Abroad has no rate', severity: 'high' });
+  const full = closeRound(store, S);
+  assert.deepEqual([full.round?.round, full.round?.pass, full.loop.state], ['full', 2, 'fixing']);
+  // one re-review of the fix, then it has ended: no third round within the pass
+  settleFinding(store, S, 1, 'resolved', 'a rate for abroad');
+  handLens(store, S, 'fix');
+  const fix = closeRound(store, S);
+  assert.deepEqual([fix.round?.round, fix.round?.pass, fix.loop.state], ['fix', 2, 'ended']);
+  assert.throws(() => closeRound(store, S), /reviewed once and its fix once/);
+  assert.deepEqual(
+    roundsOf(data(S)).map((r) => `${r.round} ${r.pass ?? 1}`),
+    ['full 1', 'full 2', 'fix 2'],
+  );
+  assert.deepEqual(
+    validate(loadStore(store)).filter((p) => p.level === 'error'),
+    [],
+  );
+});
