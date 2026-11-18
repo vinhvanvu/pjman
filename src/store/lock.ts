@@ -47,6 +47,9 @@ function readHolder(file: string): Holder | null {
   }
 }
 
+/** A lock nobody holds: unreadable, its process gone, or held longer than any write takes. */
+const isStale = (h: Holder | null): boolean => !h || !alive(h.pid) || Date.now() - Date.parse(h.at) > staleMs();
+
 /** Take the store's lock for this process; re-entrant. Waits a few seconds for another writer, then refuses. */
 export function lockStore(root: string): void {
   const file = lockPath(root);
@@ -63,17 +66,41 @@ export function lockStore(root: string): void {
   };
   const started = Date.now();
   for (;;) {
+    // the lock appears whole or not at all: written beside it, then linked into place. Created and then written in two
+    // steps, a second writer could read it in between, find nothing in it, take it for dead and remove it
+    const mine = `${file}.${process.pid}`;
     try {
-      fs.writeFileSync(file, JSON.stringify(holder), { flag: 'wx' });
+      fs.writeFileSync(mine, JSON.stringify(holder));
+      fs.linkSync(mine, file);
       held.set(file, 1);
       return;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    } finally {
+      fs.rmSync(mine, { force: true });
     }
     const other = readHolder(file);
-    const stale = !other || !alive(other.pid) || Date.now() - Date.parse(other.at) > staleMs();
-    if (stale) {
-      fs.rmSync(file, { force: true }); // reclaimed; the next loop takes it, or loses to another reclaimer
+    if (!other || isStale(other)) {
+      // reclaimed by one writer at a time, and only if it is still the dead lock that was read: two waiters removing
+      // "the stale lock" one after the other would have the second remove the first one's fresh lock
+      const reclaim = `${file}.reclaim`;
+      try {
+        fs.mkdirSync(reclaim);
+      } catch {
+        // another writer is reclaiming (or died doing so: its marker is cleared once it is old)
+        try {
+          if (Date.now() - fs.statSync(reclaim).mtimeMs > 2000) fs.rmSync(reclaim, { recursive: true, force: true });
+        } catch {
+          // gone already
+        }
+        sleep(POLL_MS);
+        continue;
+      }
+      try {
+        if (isStale(readHolder(file))) fs.rmSync(file, { force: true });
+      } finally {
+        fs.rmSync(reclaim, { recursive: true, force: true });
+      }
       continue;
     }
     if (Date.now() - started >= waitMs()) {
