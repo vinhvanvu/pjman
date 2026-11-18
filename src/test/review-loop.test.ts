@@ -389,6 +389,11 @@ test('a change worked on again after its review ended is due again, and each pas
   // a step added: the plan is being worked, and nothing is due while it is
   step(store, S, 'add', undefined, { text: 'ship abroad' });
   assert.equal(reviewLoop(store, S).state, 'ended', 'no commit yet: the branch is where the round left it');
+  // the view alone has no repository: it says the plan moved, and who can tell whether the review is due again
+  assert.match(
+    formatChangeContext(changeContext(store, S)),
+    /\nreview: auto · ended: one full review left nothing that holds the merge; its plan moved since \(pjman review says whether it is due again\)\n/,
+  );
   g('switch', '-q', 'ship');
   fs.writeFileSync(path.join(dir, 'ship.ts'), 'export const ship = 2;\n');
   g('add', '-A');
@@ -418,6 +423,13 @@ test('a change worked on again after its review ended is due again, and each pas
     roundsOf(data(S)).map((r) => `${r.round} ${r.pass ?? 1}`),
     ['full 1', 'full 2', 'fix 2'],
   );
+  // a note on a finished step and the base merged in are not new work: nothing is due
+  g('commit', '-q', '--allow-empty', '-m', 'chore: on main');
+  g('switch', '-q', 'ship');
+  g('merge', '-q', '--no-edit', 'main');
+  g('switch', '-q', 'main');
+  step(store, S, 'note', 2, { text: 'shipped abroad from the second warehouse' });
+  assert.equal(reviewLoop(store, S).state, 'ended');
   assert.deepEqual(
     validate(loadStore(store)).filter((p) => p.level === 'error'),
     [],

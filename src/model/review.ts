@@ -45,7 +45,7 @@ export interface Round {
   pass?: number;
 }
 
-const passOf = (r: Record<string, unknown>): number =>
+export const passOf = (r: Record<string, unknown>): number =>
   typeof r.pass === 'number' && Number.isInteger(r.pass) && r.pass > 1 ? r.pass : 1;
 
 /** The review rounds a change holds, as written; a malformed entry is left out (the validator names it). */
@@ -111,15 +111,23 @@ export interface Loop {
   missing: string[];
   /** The pass these rounds belong to: 1, and one more each time the change is worked on again after its review ended. */
   pass: number;
+  /** The pass has ended and the plan moved since, and the caller could not say whether the branch holds new work:
+   *  whoever can read the repository says whether the review is due again. */
+  maybeAgain?: boolean;
 }
 
 /** Where a change's review loop stands, from its rounds and findings. `reviewable` says there is a branch with work on
- *  it to review; without one a change is never due. `head` is the branch's head now, when the caller knows it.
+ *  it to review; without one a change is never due. `newWork` answers, for the head a round was closed at, whether
+ *  the branch holds commits since that the base lacks; it is the repository's to say, so a caller with no repository
+ *  leaves it out.
  *
  *  The loop has an end, and a change can be worked on again after it: its plan reopened or added to and run to its end
  *  once more, with commits the last round did not see. That is a new pass, due for its own full review; the rounds of
  *  the pass before stay on the record and are not read again. */
-export function loopOf(data: Record<string, unknown>, opts: { reviewable: boolean; head?: string }): Loop {
+export function loopOf(
+  data: Record<string, unknown>,
+  opts: { reviewable: boolean; newWork?: (since: string) => boolean },
+): Loop {
   const all = [...roundsOf(data), ...lensesAsked(data)];
   const pass = Math.max(1, ...all.map((e) => e.pass ?? 1));
   const now = loopOfPass(data, opts, pass);
@@ -127,11 +135,13 @@ export function loopOf(data: Record<string, unknown>, opts: { reviewable: boolea
   const last = now.fix ?? now.full;
   if (!last) return now;
   const steps = stepsOf(data);
-  // worked on again: a step moved after the last round, and the branch is not where that round left it (a caller
-  // that does not know the head takes the plan's word)
+  // worked on again: the plan moved after the last round, and the branch holds commits that round did not see. The
+  // commits are what is unreviewed; the plan says the person meant it (a note on a finished step moves it too, and
+  // alone changes nothing)
   const moved = steps.some((s) => (s.at ?? '') > last.at);
-  const ahead = opts.head === undefined || last.head === undefined || opts.head !== last.head;
-  if (!moved || !ahead) return now;
+  if (!moved) return now;
+  if (!opts.newWork || !last.head) return { ...now, maybeAgain: true };
+  if (!opts.newWork(last.head)) return now;
   // the plan is being worked, not at its end: the review comes when it is
   const atEnd = steps.every((s) => s.state === 'done' || s.state === 'dropped');
   return {
@@ -182,7 +192,10 @@ function loopOfPass(data: Record<string, unknown>, opts: { reviewable: boolean }
     if (fixed.length || held.length) return { ...base, missing: reAt ? [] : ['fix'], state: 'recheck' };
   }
   const n = holding.length;
-  const dismissed = findings.some((f) => f.state === 'dismissed' && wouldHold(f) && !!f.settled);
+  // (in this pass: one dismissed in an earlier pass says nothing of this one)
+  const dismissed = findings.some(
+    (f) => f.state === 'dismissed' && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at),
+  );
   const because = fix
     ? n
       ? `${n} finding${n === 1 ? ' still holds' : 's still hold'} the merge after the one re-review: ${n === 1 ? 'it is' : 'they are'} the person's to settle`

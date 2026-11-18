@@ -650,7 +650,9 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
       const loop = loopOf(rec.data, { reviewable: true });
       if (mode === 'off') return 'off for this project';
       if (!loop.full) return mode === 'auto' ? 'auto (reviewed without being asked when it reaches review)' : undefined;
-      return `${mode === 'auto' ? 'auto' : 'on request'} · ${loopWords(loop)}`;
+      // (worked on since its review ended: whether the branch holds new work is the repository's to say)
+      const since = loop.maybeAgain ? '; its plan moved since (pjman review says whether it is due again)' : '';
+      return `${mode === 'auto' ? 'auto' : 'on request'} · ${loopWords(loop)}${since}`;
     })(),
     trail: (() => {
       const bound = sources.find((x) => x.relation === 'binds' && x.key.startsWith(`${TRAIL_KIND}:`));

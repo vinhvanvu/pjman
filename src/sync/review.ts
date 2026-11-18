@@ -23,6 +23,7 @@ import {
   loopOf,
   lensesAsked,
   loopWords,
+  passOf,
   REVIEW_LENSES,
   reviewMode,
   roundsOf,
@@ -149,7 +150,15 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     findings: findingsOf(rec.data),
     entire: entireOn(loaded, store.project),
     mode: reviewMode(loaded, store.project),
-    loop: loopOf(rec.data, { reviewable: commits.length > 0, head }),
+    loop: loopOf(rec.data, {
+      reviewable: commits.length > 0,
+      // commits on the branch since that head which the base does not have (the base merged in is not new work)
+      newWork: (since) =>
+        !!dir &&
+        !!branch &&
+        !!base &&
+        Number(tryGit(dir, ['rev-list', '--count', '--no-merges', `${since}..${branch}`, '--not', base]) || 0) > 0,
+    }),
     head,
   };
 }
@@ -826,13 +835,7 @@ function unrecordLenses(store: Store, key: string, lenses: string[], opts: Revie
   const rec = changeOf(loadStore(store), key);
   const kept = reviewsOf(rec.data).filter((raw) => {
     const r = raw as Record<string, unknown> | null;
-    return !(
-      r &&
-      r.round === 'lens' &&
-      r.by === 'entire' &&
-      (typeof r.pass === 'number' ? r.pass : 1) === pass &&
-      lenses.includes(String(r.lens))
-    );
+    return !(r && r.round === 'lens' && r.by === 'entire' && passOf(r) === pass && lenses.includes(String(r.lens)));
   });
   if (kept.length === reviewsOf(rec.data).length) return;
   const env = envelope(opts);
