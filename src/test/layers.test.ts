@@ -34,3 +34,12 @@ test('the source holds only the layers and the tests', () => {
   const entries = fs.readdirSync(SRC).toSorted();
   assert.deepEqual(entries, [...LAYERS, 'test'].toSorted());
 });
+
+test('the package ships every layer', () => {
+  // a layer left out of `files` builds and tests here, and is missing from the installed tool
+  const pkg = JSON.parse(fs.readFileSync(path.join(SRC, '..', 'package.json'), 'utf8')) as { files: string[] };
+  assert.deepEqual(
+    LAYERS.filter((l) => !pkg.files.includes(`dist/${l}`)),
+    [],
+  );
+});

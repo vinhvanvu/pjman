@@ -68,6 +68,10 @@ export function mergeChange(
   if (already) return done('already', `${branch} is merged into ${already.on} (${already.how})`);
 
   if (entireOn(loaded, store.project)) {
+    // Entire merges what is on the remote: local commits not pushed would be left behind on a branch called merged
+    const remote = tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]);
+    if (remote && tryGit(dir, ['merge-base', '--is-ancestor', branch, remote]) === null)
+      throw new CliError(`not merged: ${branch} has commits that are not on origin; push it first`);
     const r = runEntire<Record<string, unknown>>(['trail', 'merge', '--branch', branch], {
       ...opts.entire,
       cwd: dir,
@@ -84,6 +88,11 @@ export function mergeChange(
       notes.push(`${base} is not checked out here; git pull on it brings the merge`);
     else if (tryGit(dir, ['merge', '--ff-only', '--quiet', `origin/${base}`]) === null)
       notes.push(`${base} could not be fast-forwarded to origin/${base}; pull it by hand`);
+    // done is said of a merge that is seen, never of an answer alone
+    if (!mergedInto(dir, branch, { base, named }))
+      throw new CliError(
+        `Entire answered the merge of ${branch}, but it is not on origin/${base} here yet, so ${rec.key} was not set done; pjman sync git sets it once the merge is fetched`,
+      );
     return done('entire', `${branch} merged through its Trail on Entire`);
   }
 
