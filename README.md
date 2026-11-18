@@ -59,7 +59,7 @@ One person working with coding agents on real products, who wants the work to su
 
 ## Install
 
-Node 22.13 or newer, and git.
+Node 24 or newer, and git.
 
 ```bash
 npm install -g @vinhvanvu/pjman   # or: brew install vinhvanvu/pjman/pjman
