@@ -17,7 +17,7 @@ import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
-import { reconcileTrail, trailLines, trailOf } from '../sync/trail.js';
+import { reconcileTrail, trailLines, trailMoves, trailOf } from '../sync/trail.js';
 import { render } from '../ops/write.js';
 import { change } from './shape.js';
 
@@ -253,7 +253,8 @@ test('a branch merged on Entire sets the change done and closes its Trail', () =
   });
   const r = syncEntire(store, { entire: { bin } }).trails[0];
   assert.equal(r.done, true);
-  assert.ok(r.moved.includes('its branch was merged'));
+  // (its gates had passed when they were last read: a merge through them)
+  assert.deepEqual(r.moved, ['its branch was merged']);
   assert.ok(r.acts.includes('closed'));
   assert.equal(rec('cart').data.status, 'done');
   assert.equal(trails()[0].status, 'closed');
@@ -437,4 +438,27 @@ test('a create that made the Trail and never answered is not followed by a secon
   const two = reconcileTrail(store, 'change:web/half-two', { entire: { bin } })!;
   assert.deepEqual(two.acts.slice(0, 1), ['created']);
   assert.equal(trails().find((t) => t.id === 'OTHER')!.branch, 'elsewhere');
+});
+
+test('a merge that went past a gate is said as that: a merge made on GitHub does not wait for the Trail', () => {
+  const open = {
+    id: '01T',
+    number: 9,
+    status: 'open',
+    change: { number: 9, status: 'open' },
+    gates: [
+      { key: 'approvals', status: 'pending', blocking: true },
+      { key: 'findings', status: 'failed', blocking: true },
+      { key: 'checks', status: 'passed', blocking: true },
+      { key: 'advice', status: 'pending', blocking: false },
+    ],
+  };
+  const merged = { ...open, change: { number: 9, status: 'merged' }, gates: [] };
+  assert.deepEqual(trailMoves(open, merged), [
+    "its branch was merged past the approvals, findings gates, not passed when last read (a merge made on GitHub does not wait for the Trail's gates)",
+  ]);
+  const passed = { ...open, gates: open.gates.map((g) => ({ ...g, status: 'passed' })) };
+  assert.deepEqual(trailMoves(passed, merged), ['its branch was merged']);
+  // said once: a Trail already read as merged does not say it again
+  assert.deepEqual(trailMoves(merged, merged), []);
 });
