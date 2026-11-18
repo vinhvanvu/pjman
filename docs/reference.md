@@ -317,7 +317,8 @@ pjman note <change|session:<id>> <text>
 pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]
 pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]
 pjman sync github            (no --from: prints the gh command that reads the issues)
-    apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered
+pjman sync entire [--json]   (the checkpoints on the repository's commits, linked to their changes and sessions)
+    apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered. sync entire, for a project that opted in to Entire (ext.entire.enabled=true), reads the repository's own commits: each Entire-Checkpoint trailer becomes a source (entire-checkpoint:<id>, opening on entire.com at its commit) linked to the change the commit names (change:<slug>) or its branch was cut for, and observed by the sessions that contributed to it; what Entire does not answer is printed as pending and read again next time
 
 pjman context [<change> | project:<slug> | product:<slug> | feature:<slug>] [--all] [--json]
     what an agent reads first: this project's open changes (--all: every project; project:<slug>: that project), or one change with its decisions, sources and sessions; a product or a feature with its tree and activity
