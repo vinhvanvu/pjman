@@ -27,7 +27,7 @@ import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
 import { syncGit } from '../sync/git.js';
 import { mergeChange } from '../sync/merge.js';
-import { addFinding, formatReviewBrief, reviewBrief, settleFinding } from '../sync/review.js';
+import { addFinding, formatReviewBrief, readFindings, reviewBrief, runReview, settleFinding } from '../sync/review.js';
 import { formatFinding } from '../model/findings.js';
 import { formatWhy, parseWhere, searchPast, why } from '../sync/why.js';
 import { reconcileTrail, trailLines, type TrailReconcile } from '../sync/trail.js';
@@ -975,6 +975,25 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (!pos[1]) throw usageError('usage: pjman review <change> [--finding "…" --severity high|medium|low]');
       const key = resolveArg(loadStore(store), pos[1], { kinds: ['change'] });
       const settle = v.resolve ? 'resolved' : v.dismiss ? 'dismissed' : v.reopen ? 'open' : null;
+      if (v.run || v.read) {
+        if (v.finding !== undefined || settle)
+          throw usageError('one act per call: --run, --read, --finding or a settle');
+        const o = { session: v.session, writer: v.writer };
+        const r = v.run ? runReview(store, key, { ...o, profile: v.profile }) : readFindings(store, key, o);
+        if (v.json) json(r);
+        else {
+          if ('ran' in r)
+            out(r.ran ? `${printed(r.change)} reviewed by Entire's review` : `${printed(r.change)} not reviewed`);
+          out(
+            r.read.length
+              ? `${plural(r.read.length, 'finding')} read from the Trail${r.commit ? ` (committed ${r.commit})` : ''}`
+              : 'nothing new on the Trail',
+          );
+          r.findings.forEach((f, i) => f.state === 'open' && out(`  ${formatFinding(i + 1, f)}`));
+          for (const reason of r.pending) out(pendingLine({ reason }));
+        }
+        return 0;
+      }
       if (v.finding === undefined && !settle) {
         const b = reviewBrief(store, key);
         v.json ? json(b) : out(formatReviewBrief(b, printed));

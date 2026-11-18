@@ -335,3 +335,181 @@ export function fileFindings(
   }
   return out;
 }
+
+/** What the findings on the change's Trail read as on the change: Entire's own review posts there, and so may a person.
+ *  A finding the change does not hold is added, with its id on Entire; one it holds follows Entire's state where it was
+ *  not settled here since. The Trail is read whole each time; nothing is asked of a project that did not opt in. */
+export function readFindings(
+  store: Store,
+  key: string,
+  opts: ReviewOpts = {},
+): { change: string; findings: Finding[]; read: string[]; pending: string[]; commit: string | null } {
+  const loaded = loadStore(store);
+  const rec = changeOf(loaded, key);
+  const out = {
+    change: rec.key,
+    findings: findingsOf(rec.data),
+    read: [] as string[],
+    pending: [] as string[],
+    commit: null as string | null,
+  };
+  const dir = store.projectDir;
+  if (!dir || !entireOn(loaded, store.project)) return out;
+  const trail = trailOf(loaded, rec);
+  const branch = trail?.state?.branch ?? branchIn(loaded, rec, dir).branch;
+  if (!trail?.state || !branch) {
+    out.pending.push(`${rec.key} has no Trail yet: there are no findings on Entire to read`);
+    return out;
+  }
+  const r = runEntire<Record<string, unknown>>(
+    ['trail', 'finding', 'list', '--branch', branch, '--status', 'any', '--freshness', 'any'],
+    { ...opts.entire, cwd: dir, timeout: 30_000 },
+  );
+  if (!r.ok) {
+    out.pending.push(r.reason);
+    return out;
+  }
+  const listed = Array.isArray(r.data.findings) ? (r.data.findings as unknown[]) : [];
+  if (r.data.has_more === true)
+    out.pending.push('the Trail holds more findings than one page: the rest are read next time');
+  // the record as it stands now: Entire was asked in between
+  const now = changeOf(loadStore(store), key);
+  const findings = findingsOf(now.data);
+  const asState = (v: unknown): FindingState => (v === 'resolved' || v === 'dismissed' ? v : 'open');
+  for (const raw of listed) {
+    if (!raw || typeof raw !== 'object') continue;
+    const f = raw as Record<string, unknown>;
+    const id = typeof f.id === 'string' ? f.id : undefined;
+    const text = [f.title, f.body].find((t): t is string => typeof t === 'string' && !!t.trim());
+    if (!id || !text) continue;
+    const state = asState(f.status);
+    const at = findings.findIndex((x) => x.entire === id);
+    if (at >= 0) {
+      const mine = findings[at];
+      // settled on Entire, and not settled differently here since Entire was last told
+      if ((mine.filed ?? 'open') === mine.state && mine.state !== state) {
+        findings[at] = { ...mine, state, filed: state };
+        out.read.push(`${state === 'open' ? 'reopened' : state} #${at + 1}`);
+      }
+      continue;
+    }
+    const loc = f.location && typeof f.location === 'object' ? (f.location as Record<string, unknown>) : {};
+    const severity = (FINDING_SEVERITIES as readonly string[]).includes(String(f.severity))
+      ? (f.severity as FindingSeverity)
+      : 'medium';
+    findings.push({
+      text: text.replace(/\s+/g, ' ').trim(),
+      severity,
+      state,
+      ...(typeof loc.filePath === 'string' ? { file: loc.filePath } : {}),
+      ...(typeof loc.filePath === 'string' && typeof loc.startLine === 'number' ? { line: loc.startLine } : {}),
+      by: 'entire',
+      at: typeof f.createdAt === 'string' ? f.createdAt : nowIso(),
+      entire: id,
+      filed: state,
+    });
+    out.read.push(`read #${findings.length}`);
+  }
+  out.findings = findings;
+  if (out.read.length)
+    out.commit = save(
+      store,
+      now,
+      findings,
+      `read from Entire (${out.read.length} finding${out.read.length === 1 ? '' : 's'})`,
+      opts,
+    );
+  return out;
+}
+
+/** The checkout a branch is in: its worktree, or the project's folder when that is on the branch. */
+function checkoutOf(dir: string, branch: string): string | undefined {
+  let at: string | undefined;
+  for (const line of tryGit(dir, ['worktree', 'list', '--porcelain']).split('\n')) {
+    if (line.startsWith('worktree ')) at = line.slice('worktree '.length);
+    else if (line === `branch refs/heads/${branch}` && at) return at;
+  }
+  return undefined;
+}
+
+/** Hand the review to Entire's own (decision pjman-review/who-reviews): several agents and a judge read the branch,
+ *  with the brief only pjman holds added to their task, and post what they find onto the Trail; the findings are then
+ *  read back onto the change. The review profile is the person's to set up (`entire review --configure`); with none,
+ *  nothing runs and the command to run is named. Long: the agents take minutes. */
+export function runReview(
+  store: Store,
+  key: string,
+  opts: ReviewOpts & { profile?: string; timeout?: number } = {},
+): { change: string; ran: boolean; findings: Finding[]; read: string[]; pending: string[]; commit: string | null } {
+  const loaded = loadStore(store);
+  const rec = changeOf(loaded, key);
+  const none = {
+    change: rec.key,
+    ran: false,
+    findings: findingsOf(rec.data),
+    read: [],
+    pending: [] as string[],
+    commit: null,
+  };
+  const dir = store.projectDir;
+  if (!dir || !entireOn(loaded, store.project)) {
+    none.pending.push(
+      `${store.project ?? 'the project'} has not opted in to Entire: the review is the session's own (pjman review ${rec.key} prints the brief; --finding files what is found)`,
+    );
+    return none;
+  }
+  const { branch, base } = branchIn(loaded, rec, dir);
+  if (!branch) {
+    none.pending.push(`${rec.key} has no branch in this repository to review`);
+    return none;
+  }
+  // where the branch is checked out, Entire reviews it there; else it is asked to check the branch out itself
+  const checkout = checkoutOf(dir, branch);
+  const at = checkout ?? dir;
+  const profiles = runEntire<string>(['review', '--list'], { ...opts.entire, cwd: at, timeout: 20_000, text: true });
+  if (!profiles.ok) {
+    none.pending.push(profiles.reason);
+    return none;
+  }
+  if (/no review profiles? configured/i.test(profiles.data)) {
+    none.pending.push(
+      `no review profile in ${at}: set one up, which is yours to run (entire review --configure --set-output trail)`,
+    );
+    return none;
+  }
+  if (!/output:\s+trail/i.test(profiles.data))
+    none.pending.push(
+      'the review profile keeps its verdict local: only findings posted to the Trail are read back (entire review --configure --set-output trail)',
+    );
+  const brief = formatReviewBrief(reviewBrief(store, key));
+  const prompt = [
+    'Judge the branch also against what the change was meant to do, given below. Report as findings of their own, marked [intent], where the code does not meet the Done when or contradicts an accepted decision, and marked [drift] where it does more than the change covers. Give each finding a severity: high only for what is wrong in normal use or loses data.',
+    '',
+    brief,
+  ].join('\n');
+  const ran = runEntire<string>(
+    [
+      'review',
+      ...(opts.profile ? [opts.profile] : []),
+      ...(checkout ? [] : ['--target', branch, '--cleanup-worktree']),
+      '--base',
+      base ?? 'main',
+      '--prompt',
+      prompt,
+    ],
+    { ...opts.entire, cwd: at, timeout: opts.timeout ?? 45 * 60_000, text: true },
+  );
+  if (!ran.ok) {
+    none.pending.push(ran.reason);
+    return none;
+  }
+  const back = readFindings(store, key, opts);
+  return {
+    change: rec.key,
+    ran: true,
+    findings: back.findings,
+    read: back.read,
+    pending: [...none.pending, ...back.pending],
+    commit: back.commit,
+  };
+}

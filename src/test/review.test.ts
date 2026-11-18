@@ -17,7 +17,7 @@ import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
-import { addFinding, formatReviewBrief, reviewBrief, settleFinding } from '../sync/review.js';
+import { addFinding, formatReviewBrief, readFindings, reviewBrief, runReview, settleFinding } from '../sync/review.js';
 import { reconcileTrail } from '../sync/trail.js';
 import { change } from './shape.js';
 
@@ -58,12 +58,16 @@ const flag = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
 const fail = (m) => { process.stderr.write(m + '\\n'); process.exit(1); };
 const show = () => ({ id: '01T', number: 1, url: 'https://entire.com/gh/acme/-/trails/1', status: state.trail.status, phase: 'building',
   changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: 'open', mergeability: { mergeable: true, gates: [] } }] });
-if (args[1] === 'show') { if (!state.trail) fail('branch "x" has no discoverable project trail'); console.log(JSON.stringify(show())); }
+if (args[0] === 'review') {
+  if (args.includes('--list')) console.log(fs.existsSync(${JSON.stringify(path.join(tmp, 'profile'))}) ? 'Profiles:\\n  general  (default)\\n    output:     trail' : 'No review profiles configured. Create one with entire review --configure.');
+  else { state.findings.push({ id: 'R' + (state.findings.length + 1), body: '[intent] the total ignores discounts, which the done-when asks for', severity: 'high', file: 'cart.ts', line: '1', status: 'open' }); save(); console.log('Review complete.'); }
+}
+else if (args[1] === 'show') { if (!state.trail) fail('branch "x" has no discoverable project trail'); console.log(JSON.stringify(show())); }
 else if (args[1] === 'create') { state.trail = { branch: flag('--branch'), status: 'open' }; save(); console.log(JSON.stringify(show())); }
 else if (args[1] === 'update') { if (flag('--status')) state.trail.status = flag('--status'); save(); console.log(JSON.stringify(show())); }
 else if (args[1] === 'ready') console.log('Marked ready');
 else if (args[1] === 'finding') {
-  if (args[2] === 'list') { const open = state.findings.filter((f) => f.status === 'open').length; console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 } })); }
+  if (args[2] === 'list') { const open = state.findings.filter((f) => f.status === 'open').length; console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 }, findings: state.findings.map((f) => ({ id: f.id, body: f.body, severity: f.severity, status: f.status, location: f.file ? { filePath: f.file, startLine: f.line ? Number(f.line) : null } : {} })) })); }
   else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'down'))})) fail('the server did not answer (503)');
   else if (args[2] === 'add') {
     const known = state.findings.find((f) => f.clientId === flag('--client-id'));
@@ -235,4 +239,43 @@ test('when Entire does not answer the finding stands on the change, pending, and
   syncEntire(store, { entire: { bin } });
   assert.equal(findings()[3].entire, 'F3');
   assert.equal(onEntire().length, 3);
+});
+
+test("opted in, the review is handed to Entire's own with the brief, and what it posts on the Trail is read onto the change", () => {
+  fs.rmSync(path.join(tmp, 'down'), { force: true });
+  // no profile: nothing runs, and the command that is the person's is named
+  const none = runReview(store, 'change:web/cart', { entire: { bin } });
+  assert.equal(none.ran, false);
+  assert.match(none.pending[0], /no review profile .*entire review --configure/);
+  assert.ok(!calls().some((c) => c[0] === 'review' && c.includes('--prompt')));
+  fs.writeFileSync(path.join(tmp, 'profile'), '');
+  const held = findings().length;
+  const r = runReview(store, 'change:web/cart', { entire: { bin } });
+  assert.equal(r.ran, true);
+  assert.deepEqual(r.pending, []);
+  const run = calls().find((c) => c[0] === 'review' && c.includes('--prompt'))!;
+  assert.match(run[run.indexOf('--prompt') + 1], /Done when[\s\S]*discounts applied/);
+  assert.equal(run[run.indexOf('--base') + 1], 'main');
+  const got = findings();
+  assert.equal(got.length, held + 1);
+  assert.deepEqual(
+    { ...got.at(-1), at: undefined },
+    {
+      text: '[intent] the total ignores discounts, which the done-when asks for',
+      severity: 'high',
+      state: 'open',
+      file: 'cart.ts',
+      line: 1,
+      by: 'entire',
+      at: undefined,
+      entire: got.at(-1)!.entire,
+      filed: 'open',
+    },
+  );
+  // read again: nothing new, nothing written; settled on Entire, it is settled here
+  assert.equal(readFindings(store, 'change:web/cart', { entire: { bin } }).commit, null);
+  execFileSync(bin, ['trail', 'finding', 'resolve', '--branch', 'cart', got.at(-1)!.entire!, '-m', 'fixed']);
+  const back = readFindings(store, 'change:web/cart', { entire: { bin } });
+  assert.deepEqual(back.read, [`resolved #${got.length}`]);
+  assert.equal(findings().at(-1)!.state, 'resolved');
 });
