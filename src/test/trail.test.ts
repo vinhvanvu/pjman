@@ -17,7 +17,8 @@ import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
-import { reconcileTrail, trailOf } from '../sync/trail.js';
+import { reconcileTrail, trailLines, trailOf } from '../sync/trail.js';
+import { render } from '../ops/write.js';
 import { change } from './shape.js';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-trail-')));
@@ -106,7 +107,7 @@ if (args[1] === 'show') {
   console.log(JSON.stringify(show(t, false)));
 } else if (args[1] === 'ready') {
   if (args.includes('--json')) fail('unknown flag: --json');
-  const t = pick(); t.ready = true; t.change = 'open'; save();
+  const t = pick(); t.ready = !args.includes('--undo'); t.change = t.ready ? 'open' : 'draft'; save();
   console.log('Marked trail #' + t.number + ' ready for review');
 } else if (args[1] === 'finding' && args[2] === 'list') {
   const t = pick();
@@ -308,8 +309,56 @@ test('what Entire refuses or does not answer is pending: the change is written a
   assert.equal(trailOf(loadStore(store), rec('refused')), undefined);
   assert.equal(rec('refused').data.status, 'active');
   const none = reconcileTrail(store, 'change:web/refused', { entire: { bin: path.join(tmp, 'no-entire') } })!;
-  assert.deepEqual(none.pending, ['no entire on the PATH']);
+  assert.deepEqual(none.pending, [`no entire at ${path.join(tmp, 'no-entire')}`]);
 
   change(store, 'search', { name: 'Search', project: 'project:web', next: 'build it' });
   assert.equal(reconcileTrail(store, 'change:web/search', { entire: { bin } }), null, 'work has not started');
+});
+
+test('the sweep starts no Trail: it names the branch and the command, and --start starts that one and says it pushed', () => {
+  step(store, 'change:search', 'start', 1, {});
+  const made = () => calls().filter((c) => c[1] === 'create' && c[c.indexOf('--branch') + 1] === 'search').length;
+  const swept = syncEntire(store, { entire: { bin } }).trails.find((t) => t.change === 'change:web/search')!;
+  assert.equal(swept.unstarted, 'search');
+  assert.equal(made(), 0, 'nothing created, so nothing pushed');
+  assert.equal(trailOf(loadStore(store), rec('search')), undefined);
+  assert.deepEqual(trailLines(swept), [
+    'entire: change:web/search has no Trail: starting one pushes search to origin (pjman sync entire --start change:web/search)',
+  ]);
+  const started = syncEntire(store, { entire: { bin }, start: 'change:web/search' }).trails.find(
+    (t) => t.change === 'change:web/search',
+  )!;
+  assert.deepEqual(started.acts, ['created']);
+  assert.equal(started.pushed, 'search');
+  assert.ok(trailLines(started).includes('entire: pushed search to origin (a Trail is created with its branch)'));
+  assert.equal(made(), 1);
+  assert.equal(reconcileTrail(store, 'change:web/search', { entire: { bin } })!.pushed, undefined, 'said once');
+});
+
+test('back at work the ready mark is taken back, and the next review marks the Trail again', () => {
+  const n = trailOf(loadStore(store), rec('search'))!.state!.number;
+  const fakeTrail = () => trails().find((t) => t.number === n)!;
+  step(store, 'change:search', 'done', 1, {});
+  assert.deepEqual(reconcileTrail(store, 'change:web/search', { entire: { bin } })!.acts, ['readied']);
+  assert.equal(fakeTrail().ready, true);
+  set(store, 'change:web/search', ['status=active'], {});
+  assert.deepEqual(reconcileTrail(store, 'change:web/search', { entire: { bin } })!.acts, ['returned to draft']);
+  assert.equal(fakeTrail().ready, false);
+  assert.deepEqual(reconcileTrail(store, 'change:web/search', { entire: { bin } })!.acts, [], 'taken back once');
+  set(store, 'change:web/search', ['status=review'], {});
+  assert.deepEqual(reconcileTrail(store, 'change:web/search', { entire: { bin } })!.acts, ['readied']);
+  assert.equal(fakeTrail().ready, true);
+});
+
+test("a Trail's key follows its own address where the project recorded no repository", () => {
+  const web = loadStore(store).byKey.get('project:web')![0];
+  const ext = { ...(web.data.ext as Record<string, unknown>) };
+  delete ext.github;
+  fs.writeFileSync(web.abs, render('project', { ...web.data, ext }, web.body));
+  g('branch', 'norepo');
+  change(store, 'norepo', { name: 'No repo', project: 'project:web', next: 'build it' });
+  step(store, 'change:norepo', 'start', 1, {});
+  const r = reconcileTrail(store, 'change:web/norepo', { entire: { bin } })!;
+  assert.deepEqual(r.acts, ['created']);
+  assert.equal(r.trail, `entire-trail:gh/acme/${r.state!.number}`);
 });

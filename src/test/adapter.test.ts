@@ -1439,3 +1439,36 @@ test('a session bound to no change that ran a tool is sent back once to be named
   });
   passes(hook('SubagentStop', { agent_id: 'sub-q', last_assistant_message: 'Found it.' }), 'a subagent');
 });
+
+test('a turn arms the repository sync for a commit, merge or pull, not for one that only asks or backs out', () => {
+  const sid = 'sess-moves';
+  const armed = (command: string): boolean => {
+    const file = path.join(env.PJMAN_HOME, 'claude-code', 'state', `${sid}.json`);
+    const st = JSON.parse(fs.readFileSync(file, 'utf8')) as { committed?: number };
+    fs.writeFileSync(file, JSON.stringify({ ...st, committed: 0 }));
+    hook('PostToolUse', { session_id: sid, tool_name: 'Bash', tool_input: { command } });
+    return Boolean((JSON.parse(fs.readFileSync(file, 'utf8')) as { committed?: number }).committed);
+  };
+  hook('SessionStart', { session_id: sid, source: 'startup' });
+  hook('PostToolUse', { session_id: sid, tool_name: 'Bash', tool_input: { command: 'ls' } });
+  for (const yes of [
+    'git commit -m "feat: x"',
+    'git -C ../web merge --no-ff cart',
+    'git rebase main',
+    'git rebase --continue',
+    'git pull',
+    'gh pr merge 12 --squash',
+    'git commit --help; git commit -m x',
+    'git commit -m "drop the --dry-run flag"',
+  ])
+    assert.equal(armed(yes), true, yes);
+  for (const no of [
+    'git commit --help',
+    'git rebase --abort',
+    'git merge --abort && git status',
+    'git commit --dry-run',
+    'git pull -h',
+    'git log --grep commit',
+  ])
+    assert.equal(armed(no), false, no);
+});

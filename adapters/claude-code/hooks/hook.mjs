@@ -186,6 +186,25 @@ async function shAsync(cmd, args, cwd) {
 }
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Whether a shell command may have moved the repository's history: a commit, merge, rebase, cherry-pick or pull,
+ *  or a pull request merged with gh. One that only asks for help, checks, or backs out of a rebase or merge moved
+ *  nothing, and arms no sync. */
+function movedRepository(command) {
+  const verb =
+    /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(?:commit|merge|rebase|cherry-pick|pull)(?=\s|$)|\bgh\s+pr\s+merge(?=\s|$)/g;
+  for (const m of command.matchAll(verb)) {
+    // the rest of that one command, up to what ends it in a shell line
+    // (what is quoted is a message, not a flag: `commit -m "drop --dry-run"` commits)
+    const rest = command
+      .slice(m.index + m[0].length)
+      .split(/&&|\|\||[;|\n]/)[0]
+      .replace(/"[^"]*"|'[^']*'/g, '');
+    if (!/(?:^|\s)(?:--help|-h|--abort|--quit|--dry-run|--show-current-patch|--edit-todo)(?=\s|$)/.test(rest))
+      return true;
+  }
+  return false;
+}
+
 // --- state per session: what this adapter remembers between hook invocations --------------------
 function stateFile(sid) {
   return path.join(dataDir, 'state', `${sid}.json`);
@@ -1297,12 +1316,7 @@ async function main() {
       // a turn that committed, merged or pulled ends by following the repository: a change in review whose branch is now on
       // the base is done (change:merge-via-pr), and, in a project that opted in to Entire, the checkpoints on the new
       // commits are linked to their changes and sessions (change:checkpoint-link)
-      if (
-        input.tool_name === 'Bash' &&
-        /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(?:commit|merge|rebase|cherry-pick|pull)(?=\s|$)|\bgh\s+pr\s+merge(?=\s|$)/.test(
-          String(input.tool_input?.command ?? ''),
-        )
-      )
+      if (input.tool_name === 'Bash' && movedRepository(String(input.tool_input?.command ?? '')))
         st.committed = (st.committed ?? 0) + 1;
       // a change filed on a product with no map arms the map's stop until a decision is opened or the project says skip
       // (decision pjman-27/trigger); the tool says so in the line it prints when it files the change

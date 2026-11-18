@@ -148,6 +148,10 @@ export interface TrailReconcile {
   done?: boolean;
   /** Entire did not come back (no binary, no answer in time): the caller asks it nothing more in this run. */
   down?: boolean;
+  /** The branch this run published to origin: creating a Trail pushes it. */
+  pushed?: string;
+  /** The branch that has no Trail and was not given one: the caller did not ask for it to be started (the sweep). */
+  unstarted?: string;
 }
 
 /** Bring one change's Trail to where the change stands, and read it back. Nothing is done for a project that has not
@@ -156,7 +160,9 @@ export function reconcileTrail(
   store: Store,
   changeKey: string,
   /** `budget`: the milliseconds Entire may take in all; past it, and after a call that did not come back, no more is asked. */
-  opts: { session?: string; writer?: string; entire?: EntireOpts; budget?: number } = {},
+  /** `create: false`: a Trail that does not exist is not started, since starting one pushes the branch; the branch is
+   *  named as `unstarted` (decision entire-follow-ups/unasked-push: the sweep only follows). */
+  opts: { session?: string; writer?: string; entire?: EntireOpts; budget?: number; create?: boolean } = {},
 ): TrailReconcile | null {
   let loaded = loadStore(store);
   const rec = loaded.byKey.get(changeKey)?.[0];
@@ -220,6 +226,9 @@ export function reconcileTrail(
         shown.ok ? `entire trail show --branch ${branch} answered a Trail that cannot be read` : shown.reason,
       );
       return result;
+    } else if (opts.create === false) {
+      result.unstarted = branch;
+      return result;
     } else {
       const made = run([
         'trail',
@@ -239,6 +248,7 @@ export function reconcileTrail(
       if (!created) return result;
       state = { ...created, sent };
       result.acts.push('created');
+      result.pushed = branch;
     }
   }
 
@@ -256,6 +266,14 @@ export function reconcileTrail(
     if (r.ok || /readiness is only tracked/i.test(r.reason)) {
       state.ready = true;
       if (r.ok) result.acts.push('readied');
+    } else result.pending.push(r.reason);
+  }
+  // back at work after review: the ready mark is taken back, so the next review marks it again
+  if (status === 'active' && state.ready && state.status !== 'closed' && branch && state.change?.status !== 'merged') {
+    const r = call<string>(['trail', 'ready', '--branch', branch, '--undo'], true, true);
+    if (r.ok || /readiness is only tracked/i.test(r.reason)) {
+      state.ready = false;
+      if (r.ok) result.acts.push('returned to draft');
     } else result.pending.push(r.reason);
   }
   // done or dropped: the Trail closes with its change
@@ -286,7 +304,12 @@ export function reconcileTrail(
 
   // the record: the Trail's source, bound by the change
   const repo = repoOf(loaded, store.project);
-  const key = bound?.key ?? `${TRAIL_KIND}:${repo ? `gh/${repo.split('/')[0]}` : 'trail'}/${state.number}`;
+  // the Trail's own address names its project (entire.com/<forge>/<project>/-/trails/<n>): the key follows it, and
+  // only a Trail with no address falls back on the repository the project recorded
+  const at = /^https?:\/\/[^/]+\/([a-z]+)\/([^/]+)\/-\/trails\/\d+/.exec(state.url ?? '');
+  const key =
+    bound?.key ??
+    `${TRAIL_KIND}:${at ? `${at[1]}/${at[2]}` : repo ? `gh/${repo.split('/')[0]}` : 'trail'}/${state.number}`;
   result.trail = key;
   const rest = key.slice(TRAIL_KIND.length + 1);
   const src = loaded.byKey.get(key)?.[0];
@@ -381,6 +404,11 @@ export function trailLines(r: TrailReconcile, printed: (key: string) => string =
   if (r.state)
     out.push(
       `entire: ${printed(r.change)} ${r.acts.length ? `${r.acts.join(', ')} · ` : ''}${trailLine(r.state)}${r.state.url ? ` (${r.state.url})` : ''}`,
+    );
+  if (r.pushed) out.push(`entire: pushed ${r.pushed} to origin (a Trail is created with its branch)`);
+  if (r.unstarted)
+    out.push(
+      `entire: ${printed(r.change)} has no Trail: starting one pushes ${r.unstarted} to origin (pjman sync entire --start ${printed(r.change)})`,
     );
   for (const m of r.moved) out.push(`entire: ${m}`);
   if (r.done) out.push(`entire: ${printed(r.change)} is done (merged on Entire)`);

@@ -9,6 +9,9 @@ export const FINDING_STATES = ['open', 'resolved', 'dismissed'] as const;
 export type FindingState = (typeof FINDING_STATES)[number];
 
 export interface Finding {
+  /** Its own id, given when it is filed and never reused: what Entire knows it by (`pjman:<change>#<id>`). A finding
+   *  filed before ids has none, and is known to Entire by its place. */
+  id?: string;
   text: string;
   severity: FindingSeverity;
   state: FindingState;
@@ -39,6 +42,7 @@ export function findingsOf(data: Record<string, unknown>): Finding[] {
     const text = str(f?.text);
     if (!f || !text) continue;
     out.push({
+      ...(str(f.id) ? { id: str(f.id) } : {}),
       text,
       severity: oneOf(FINDING_SEVERITIES, f.severity, 'medium'),
       state: oneOf(FINDING_STATES, f.state, 'open'),

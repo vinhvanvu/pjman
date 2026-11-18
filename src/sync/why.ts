@@ -3,6 +3,7 @@
 // that commit; pjman adds what neither holds: the change the commit was for, its intent, and the decisions accepted on
 // it. Without Entire the answer starts at git and still reaches the change. Also here: Entire's search over past
 // sessions, which intake reads when looking for work like the request.
+import fs from 'node:fs';
 import path from 'node:path';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
 import { decisionState, threadOf } from '../model/foundation.js';
@@ -121,7 +122,15 @@ export function why(
 ): Why {
   const loaded = loadStore(store);
   const { cwd } = opts;
-  const abs = path.resolve(cwd, where.file);
+  // the folder as git names it: a path through a symlink (macOS's /tmp, a linked checkout) would otherwise fall
+  // outside the repository's top; the file's own name is kept, so a symlinked file is blamed as itself
+  const given = path.resolve(cwd, where.file);
+  let abs = given;
+  try {
+    abs = path.join(fs.realpathSync(path.dirname(given)), path.basename(given));
+  } catch {
+    // no such folder: git says so below
+  }
   let top: string;
   try {
     top = git(path.dirname(abs), ['rev-parse', '--show-toplevel']);

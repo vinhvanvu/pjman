@@ -9,7 +9,14 @@ import { init } from '../cli/init.js';
 import { newRecord } from '../ops/new.js';
 import { sessionBind, sessionLog } from '../ops/session.js';
 import { findStore, type Store } from '../store/config.js';
-import { lastPortPath, readLastPort, readServeAddress, serveAddressPath, startServer } from '../server/server.js';
+import {
+  isRegistered,
+  lastPortPath,
+  readLastPort,
+  readServeAddress,
+  serveAddressPath,
+  startServer,
+} from '../server/server.js';
 import { change, decisionRec } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-server-'));
@@ -70,6 +77,9 @@ test('PORT names the port when none is passed; a checkout does not register unle
   assert.equal(free.registered, false, 'the tests run from the checkout');
   assert.notEqual(free.address.port, before!.port);
   assert.equal(readServeAddress()?.pid, before!.pid, 'the address file still names the first server');
+  // only the registered dashboard follows Entire: a second server in the same process is not it
+  assert.equal(isRegistered(server), true);
+  assert.equal(isRegistered(free.server), false);
   free.server.close();
   const srv = http.createServer();
   await new Promise<void>((res) => srv.listen(0, '127.0.0.1', res));

@@ -15,6 +15,8 @@ import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { mergedInto, syncGit } from '../sync/git.js';
 import { mergeChange } from '../sync/merge.js';
+import { findingsOf } from '../model/findings.js';
+import { reconcileTrail } from '../sync/trail.js';
 import { change } from './shape.js';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-merge-')));
@@ -201,4 +203,40 @@ test('a branch with no commits of its own is not merged by a later merge of anot
   assert.equal(mergedInto(dir, 'idle', { named: 'change:idle' }), null);
   // the merged branch itself is still found
   assert.equal(mergedInto(dir, 'idle-later', { named: 'change:idle-later' })?.how, 'merge');
+});
+
+test("the Trail's findings are read onto the change before the merge, since a merged Trail lists none", () => {
+  g('switch', '-q', 'main');
+  g('pull', '-q', '--no-rebase', '--no-edit', 'origin', 'main');
+  branch('late');
+  inReview('late');
+  g('push', '-q', 'origin', 'late');
+  const other = path.join(tmp, 'other3');
+  execFileSync('git', ['clone', '-q', origin, other]);
+  const trail =
+    '{"id":"01L","number":4,"url":"https://entire.com/gh/acme/-/trails/4","status":"open","phase":"building","changes":[{"number":4,"branch":"late","status":"open","mergeability":{"mergeable":true,"gates":[]}}]}';
+  const bin = fake(
+    'entire-late',
+    `case "$1 $2" in
+  "trail show"|"trail update") echo '${trail}' ;;
+  "trail ready") echo ready ;;
+  "trail finding") echo '{"counts":{"Open":1},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"open"}]}' ;;
+  "trail merge") cd ${other} && git -c user.name=t -c user.email=t@example.com merge -q --no-ff origin/late -m "Merge pull request #10 from acme/late" && git push -q origin main && echo '{"merged":true}' ;;
+esac`,
+  );
+  assert.deepEqual(reconcileTrail(store, 'change:web/late', { entire: { bin } })!.pending, []);
+  fs.rmSync(path.join(tmp, 'calls.log'));
+  const r = mergeChange(store, 'change:web/late', { entire: { bin } });
+  assert.equal(r.by, 'entire');
+  assert.deepEqual(r.notes, ['1 finding read from the Trail onto the change']);
+  const log = fs.readFileSync(path.join(tmp, 'calls.log'), 'utf8').trim().split('\n');
+  assert.ok(
+    log.findIndex((l) => l.startsWith('trail finding list')) < log.findIndex((l) => l.startsWith('trail merge')),
+    'read first',
+  );
+  assert.deepEqual(
+    findingsOf(loadStore(store).byKey.get('change:web/late')![0].data).map((f) => [f.text, f.by, f.entire]),
+    [['a late finding', 'entire', 'L1']],
+  );
+  assert.equal(statusOf('late'), 'done');
 });

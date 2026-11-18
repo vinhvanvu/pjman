@@ -100,9 +100,16 @@ test('the runner reads JSON, and anything short of an answer is pending, never t
   assert.deepEqual(runEntire(['version'], { ...fine, text: true }), { ok: true, data: 'Entire CLI 9.9.9' });
 
   const missing = runEntire(['status'], { bin: path.join(tmp, 'no-such-entire') });
-  assert.deepEqual(missing, { ok: false, pending: true, kind: 'missing', reason: 'no entire on the PATH' });
+  // the binary named and not there is said as that, not as a PATH that was never searched
+  assert.deepEqual(missing, {
+    ok: false,
+    pending: true,
+    kind: 'missing',
+    reason: `no entire at ${path.join(tmp, 'no-such-entire')}`,
+  });
   assert.equal(entireBinary({ path: path.join(tmp, 'empty') }), null);
-  assert.equal(pendingLine(missing), 'entire: pending (no entire on the PATH)');
+  const nowhere = runEntire(['status'], { path: path.join(tmp, 'empty') });
+  assert.equal(pendingLine(nowhere as { reason: string }), 'entire: pending (no entire on the PATH)');
 
   const broken = { bin: fake('entire-broken', 'broken'), cwd: dir };
   const failed = runEntire(['trail', 'show', '1'], broken);

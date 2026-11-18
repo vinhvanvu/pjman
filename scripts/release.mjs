@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { keysOf } from './release-keys.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const say = (line) => process.stdout.write(`${line}\n`);
@@ -129,24 +130,6 @@ for (const c of changes) {
   for (const alias of c.data?.aliases ?? []) bySlug.set(alias.replace(/^change:[^/]+\//, ''), c);
 }
 const resolve = (slug) => bySlug.get(slug) ?? bySlug.get(slug.replace(/^worktree-/, '')) ?? null;
-
-/** The change keys a commit names: every `change:<slug>` in the parenthesised group that ends the subject (the trailer
- *  the merge convention writes, `(change:a, change:b)`, or `(decision x/y; change:a)`; a squash merge's `(#12)` may
- *  follow it), else the branch a merge into main brought in, by git's merge commit or a pull request's. */
-const keysIn = (m) => [...m[1].matchAll(/change:([A-Za-z0-9_./-]+)/g)].map((k) => k[1].replace(/^[^/]+\//, ''));
-function keysOf(subject, body = '') {
-  // a squash merge ends its subject with the pull request's number, after the group: `… (change:a) (#12)`
-  const trailer = /\(([^()]*\bchange:[^()]*)\)(?:\s*\(#\d+\))?\s*$/.exec(subject);
-  if (trailer) return keysIn(trailer);
-  const merge = /^Merge branch '([^']+)'(?:\s+into\s+main\b)?(?!\s+into\b)/.exec(subject);
-  if (merge) return [merge[1]];
-  // a pull request merged on GitHub: its merge commit names the head branch (`Merge pull request #12 from owner/branch`)
-  const pr = /^Merge pull request #\d+ from [^/\s]+\/(\S+)/.exec(subject);
-  if (pr) return [pr[1].split('/').pop()];
-  // a squash merge: the subject is the pull request's title, and the body lists the commits it folded, each naming
-  // its change the same way
-  return [...new Set([...body.matchAll(/\(([^()]*\bchange:[^()]*)\)/g)].flatMap(keysIn))];
-}
 
 const shipped = new Map(); // key -> { change, commits: [] }
 const also = []; // commits that resolve to no change

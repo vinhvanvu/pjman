@@ -12,6 +12,7 @@ import { live } from '../model/tree.js';
 import { CliError } from '../store/util.js';
 import { observedBranches } from '../model/view.js';
 import { baseBranch, branchesOf, mergedInto } from './git.js';
+import { readFindings } from './review.js';
 
 export interface MergeResult {
   change: string;
@@ -72,6 +73,19 @@ export function mergeChange(
     const remote = tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`]);
     if (remote && tryGit(dir, ['merge-base', '--is-ancestor', branch, remote]) === null)
       throw new CliError(`not merged: ${branch} has commits that are not on origin; push it first`);
+    // the Trail's findings are read onto the change now: once the branch is merged Entire lists them no more
+    try {
+      const read = readFindings(store, rec.key, { session: opts.session, entire: opts.entire });
+      if (read.read.length)
+        notes.push(
+          `${read.read.length} finding${read.read.length === 1 ? '' : 's'} read from the Trail onto the change`,
+        );
+      // (a change with no Trail has none to read: the merge below says what it needs)
+      else if (read.pending.length && !/has no Trail yet/.test(read.pending[0]))
+        notes.push(`the Trail's findings were not read (${read.pending[0]})`);
+    } catch (e) {
+      notes.push(`the Trail's findings were not read (${(e as Error).message.split('\n')[0]})`);
+    }
     const r = runEntire<Record<string, unknown>>(['trail', 'merge', '--branch', branch], {
       ...opts.entire,
       cwd: dir,

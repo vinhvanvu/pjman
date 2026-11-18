@@ -57,7 +57,7 @@ const save = () => fs.writeFileSync(${JSON.stringify(stateFile)}, JSON.stringify
 const flag = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
 const fail = (m) => { process.stderr.write(m + '\\n'); process.exit(1); };
 const show = () => ({ id: '01T', number: 1, url: 'https://entire.com/gh/acme/-/trails/1', status: state.trail.status, phase: 'building',
-  changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: 'open', mergeability: { mergeable: true, gates: [] } }] });
+  changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: fs.existsSync(${JSON.stringify(path.join(tmp, 'merged'))}) ? 'merged' : 'open', mergeability: { mergeable: true, gates: [] } }] });
 if (args[0] === 'review') {
   if (args.includes('--list')) console.log(fs.existsSync(${JSON.stringify(path.join(tmp, 'profile'))}) ? 'Profiles:\\n  general  (default)\\n    output:     trail' : 'No review profiles configured. Create one with entire review --configure.');
   else { state.findings.push({ id: 'R' + (state.findings.length + 1), body: '[intent] the total ignores discounts, which the done-when asks for', severity: 'high', file: 'cart.ts', line: '1', status: 'open' }); save(); console.log('Review complete.'); }
@@ -208,7 +208,9 @@ test('opted in, each finding is filed onto the Trail, and settling one here sett
     ],
   );
   const add = calls().find((c) => c[2] === 'add')!;
-  assert.equal(add[add.indexOf('--client-id') + 1], 'pjman:web/cart#1', 'a retry files nothing twice');
+  // by the finding's own id, which stays its own whatever lands before it: a retry files nothing twice
+  assert.match(findings()[0].id!, /^[0-9a-f]{8}$/);
+  assert.equal(add[add.indexOf('--client-id') + 1], `pjman:web/cart#${findings()[0].id}`);
   assert.match(
     formatReviewBrief(reviewBrief(store, 'change:web/cart')),
     /also filed onto the change's Trail on Entire/,
@@ -261,6 +263,7 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
   assert.deepEqual(
     { ...got.at(-1), at: undefined },
     {
+      id: got.at(-1)!.id,
       text: '[intent] the total ignores discounts, which the done-when asks for',
       severity: 'high',
       state: 'open',
@@ -278,4 +281,40 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
   const back = readFindings(store, 'change:web/cart', { entire: { bin } });
   assert.deepEqual(back.read, [`resolved #${got.length}`]);
   assert.equal(findings().at(-1)!.state, 'resolved');
+});
+
+test('settling a finding again after Entire did not answer tells Entire then', () => {
+  fs.writeFileSync(path.join(tmp, 'down'), '');
+  const first = settleFinding(store, 'change:web/cart', 3, 'resolved', 'rounds half to even now', { entire: { bin } });
+  assert.deepEqual(first.filed, []);
+  assert.match(first.pending[0], /the server did not answer/);
+  assert.deepEqual([findings()[2].state, findings()[2].filed], ['resolved', 'open']);
+  fs.rmSync(path.join(tmp, 'down'));
+  const again = settleFinding(store, 'change:web/cart', 3, 'resolved', 'rounds half to even now', { entire: { bin } });
+  assert.equal(again.commit, null, 'already resolved here');
+  assert.deepEqual(again.filed, ['resolved #3']);
+  assert.equal(onEntire().find((f) => f.id === findings()[2].entire)!.status, 'resolved');
+  assert.equal(findings()[2].filed, 'resolved');
+});
+
+test('a sync reads what was posted on the Trail onto the change while its branch is open; a merged Trail is not asked', () => {
+  // a reviewer posts on the Trail, with pjman not in the room
+  execFileSync(bin, ['review']);
+  const held = findings().length;
+  const s = syncEntire(store, { entire: { bin } });
+  assert.deepEqual(s.read, [{ change: 'change:web/cart', read: [`read #${held + 1}`] }]);
+  assert.equal(findings().length, held + 1);
+  assert.deepEqual(syncEntire(store, { entire: { bin } }).read, [], 'read once');
+  // merged: Entire lists a Trail's findings no more, and is not asked; what was read stays
+  fs.writeFileSync(path.join(tmp, 'merged'), '');
+  reconcileTrail(store, 'change:web/cart', { entire: { bin } });
+  const lists = () => calls().filter((c) => c[1] === 'finding' && c[2] === 'list' && c.includes('any')).length;
+  const before = lists();
+  const r = readFindings(store, 'change:web/cart', { entire: { bin } });
+  assert.match(
+    r.pending[0],
+    /^Trail #1 is merged: Entire no longer lists its findings; the change keeps what was read before$/,
+  );
+  assert.equal(lists(), before);
+  assert.equal(r.findings.length, held + 1);
 });
