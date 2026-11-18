@@ -47,7 +47,13 @@ export interface Why {
     name?: string;
     gist?: string;
     intent?: string;
-    decisions: { key: string; name?: string; accepted: string }[];
+    doneWhen?: string;
+    /** The nodes of the product map the change adds, changes or removes. */
+    features: string[];
+    /** The milestone it is filed under. */
+    parent?: { key: string; name?: string };
+    /** What was decided on the change, and on each milestone above it (`on` names that milestone). */
+    decisions: { key: string; name?: string; accepted: string; on?: string }[];
     /** How the change was found: the commit names it, its checkpoint is linked on it, or its session worked on it. */
     by: 'commit' | 'checkpoint' | 'session';
   }[];
@@ -56,17 +62,42 @@ export interface Why {
 
 function describe(loaded: Loaded, rec: Rec, by: Why['changes'][number]['by']): Why['changes'][number] {
   const decisions: Why['changes'][number]['decisions'] = [];
-  for (const d of loaded.records) {
-    if (d.type !== 'decision' || !d.valid || d.changeKey !== rec.key || d.data.status !== 'decided') continue;
-    const s = decisionState(threadOf(d.data));
-    const option = s.options.find((o) => o.id === s.accepted?.option);
-    if (option) decisions.push({ key: d.key, name: str(d.data.name), accepted: option.text.replace(/\s+/g, ' ') });
+  const decidedOn = (key: string, on?: string) => {
+    for (const d of loaded.records) {
+      if (d.type !== 'decision' || !d.valid || d.changeKey !== key || d.data.status !== 'decided') continue;
+      const s = decisionState(threadOf(d.data));
+      const option = s.options.find((o) => o.id === s.accepted?.option);
+      if (option)
+        decisions.push({
+          key: d.key,
+          name: str(d.data.name),
+          accepted: option.text.replace(/\s+/g, ' '),
+          ...(on ? { on } : {}),
+        });
+    }
+  };
+  decidedOn(rec.key);
+  // what shaped the change was often decided on the milestone it is filed under: those decisions are its reasons too
+  const above = (r: Rec): Rec | undefined => {
+    const k = str(r.data.parent);
+    return k ? loaded.byKey.get(k)?.[0] : undefined;
+  };
+  const parent = above(rec);
+  const seen = new Set([rec.key]);
+  for (let up = parent; up && !seen.has(up.key); up = above(up)) {
+    seen.add(up.key);
+    decidedOn(up.key, up.key);
   }
   return {
     key: rec.key,
     name: str(rec.data.name),
     gist: str(rec.data.gist),
     intent: rec.sections.get('Intent')?.trim() || undefined,
+    doneWhen: rec.sections.get('Done when')?.trim() || undefined,
+    features: Array.isArray(rec.data.features)
+      ? rec.data.features.filter((f): f is string => typeof f === 'string')
+      : [],
+    ...(parent ? { parent: { key: parent.key, name: str(parent.data.name) } } : {}),
     decisions,
     by,
   };
@@ -201,8 +232,13 @@ export function formatWhy(w: Why, printed: (key: string) => string = (k) => k): 
   for (const c of w.changes) {
     out.push(`\n${printed(c.key)}${c.name ? ` — ${c.name}` : ''}${c.gist ? `: ${c.gist}` : ''}`);
     if (many) continue;
+    if (c.parent) out.push(`  under: ${printed(c.parent.key)}${c.parent.name ? ` — ${c.parent.name}` : ''}`);
+    if (c.features.length) out.push(`  on the map: ${c.features.join(', ')}`);
     if (c.intent) out.push(`  intent: ${c.intent.replace(/\s+/g, ' ')}`);
-    for (const d of c.decisions) out.push(`  decided (${d.name ?? printed(d.key)}): ${d.accepted}`);
+    if (c.doneWhen) out.push(`  done when: ${c.doneWhen.replace(/\s+/g, ' ')}`);
+    for (const d of c.decisions)
+      out.push(`  decided${d.on ? ` on ${printed(d.on)}` : ''} (${d.name ?? printed(d.key)}): ${d.accepted}`);
+    out.push(`  the rest (origin, plan, sources): pjman context ${printed(c.key)}`);
   }
   for (const p of w.pending) out.push(`\nentire: pending (${p})`);
   return out.filter((l) => l !== '').join('\n');

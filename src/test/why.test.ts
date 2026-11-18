@@ -103,7 +103,7 @@ test('without Entire the answer starts at git and reaches the change, its intent
   assert.ok(!fs.existsSync(path.join(tmp, 'calls.log')), 'nothing of Entire ran');
   assert.match(
     formatWhy(w),
-    /^cart\.ts:2 {2}export const round.*\n\ncommit [0-9a-f]{8} \d{4}-\d\d-\d\d Tess\n {2}feat: the cart rounds.*\n\nchange:web\/cart — Cart: The cart totals what a shopper picked\n {2}intent: A shopper sees what they owe\.\n {2}decided \(Rounding\): Half to even, per line$/,
+    /^cart\.ts:2 {2}export const round.*\n\ncommit [0-9a-f]{8} \d{4}-\d\d-\d\d Tess\n {2}feat: the cart rounds.*\n\nchange:web\/cart — Cart: The cart totals what a shopper picked\n {2}intent: A shopper sees what they owe\.\n(?: {2}done when: .*\n)? {2}decided \(Rounding\): Half to even, per line\n {2}the rest \(origin, plan, sources\): pjman context change:web\/cart$/,
   );
   assert.deepEqual(why(store, parseWhere('cart.ts', '1'), { cwd: dir }).changes, [], 'a commit that names no change');
   assert.equal(why(store, parseWhere('cart.ts:4'), { cwd: dir }).commit, undefined, 'not committed yet');
