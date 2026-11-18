@@ -430,7 +430,7 @@ export const COMMANDS: Command[] = [
     group: 'reading',
     line: 'what already exists for a request, before it is filed',
     about:
-      "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this",
+      "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this; and the past sessions that did work like it, from the store's own sessions and, in a project that opted in to Entire, from Entire's search over what its sessions said and did",
     usage: ['pjman intake <text> [--all] [--json]', 'pjman intake - [--all] [--json]   (text on stdin)'],
     flags: ['all'],
   },
@@ -476,6 +476,16 @@ export const COMMANDS: Command[] = [
       "land a change's branch on the base branch and set the change done. In a project that opted in to Entire (ext.entire.enabled=true) the merge is its Trail's: entire trail merge checks the gates (review, findings, checks, up to date) and merges the pull request, then the base is fetched and fast-forwarded; a gate that blocks is printed and nothing is merged, here or locally (pjman never forces a merge past a gate and never approves one). Elsewhere it is a local merge commit on the base naming the change, refused when the checkout is not on the base, has uncommitted changes or the merge conflicts. A branch already merged (by a merge commit, a squash, a rebase or a fast-forward) only sets the change done",
     usage: ['pjman merge <change> [--json]'],
     flags: [],
+    args: 1,
+  },
+  {
+    name: 'why',
+    group: 'reading',
+    line: 'why a line of code exists: its commit, session, change, intent and decisions',
+    about:
+      "why a line exists, as far down as the record goes: the commit that last wrote it (git); in a project that opted in to Entire (ext.entire.enabled=true), the checkpoint, the session and the prompt behind that commit (entire why); and what only the store holds, the change the line was written for with its intent and the decisions accepted on it. The change is the one the commit's message names (change:<slug>), else the one its checkpoint is linked on, else what its session worked on. Without Entire the answer starts at git and still reaches the change; what Entire does not answer is printed as pending. Never writes",
+    usage: ['pjman why <file>:<line> [--json]', 'pjman why <file> --line <n> [--json]'],
+    flags: ['line'],
     args: 1,
   },
   {

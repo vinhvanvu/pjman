@@ -217,6 +217,7 @@ A version the product shipped.
 - `pjman intake`: what already exists for a request, before it is filed
 - `pjman refs`: every reference in a text and the change it leads to
 - `pjman view`: one reference as a Markdown document
+- `pjman why`: why a line of code exists: its commit, session, change, intent and decisions
 - `pjman rest`: whether a stop on a change is one the record allows (exit 1 when not)
 - `pjman events`: the store's event stream, one event per write
 - `pjman follow`: print events as they are appended
@@ -334,7 +335,7 @@ pjman activity <ref> [--days 14] [--since <iso>] [--json]
 
 pjman intake <text> [--all] [--json]
 pjman intake - [--all] [--json]   (text on stdin)
-    what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this
+    what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this; and the past sessions that did work like it, from the store's own sessions and, in a project that opted in to Entire, from Entire's search over what its sessions said and did
 
 pjman refs <text> [--json]
 pjman refs - [--json]   (text on stdin)
@@ -351,6 +352,10 @@ pjman review <change> --run [--profile <name>] | --read
 
 pjman merge <change> [--json]
     land a change's branch on the base branch and set the change done. In a project that opted in to Entire (ext.entire.enabled=true) the merge is its Trail's: entire trail merge checks the gates (review, findings, checks, up to date) and merges the pull request, then the base is fetched and fast-forwarded; a gate that blocks is printed and nothing is merged, here or locally (pjman never forces a merge past a gate and never approves one). Elsewhere it is a local merge commit on the base naming the change, refused when the checkout is not on the base, has uncommitted changes or the merge conflicts. A branch already merged (by a merge commit, a squash, a rebase or a fast-forward) only sets the change done
+
+pjman why <file>:<line> [--json]
+pjman why <file> --line <n> [--json]
+    why a line exists, as far down as the record goes: the commit that last wrote it (git); in a project that opted in to Entire (ext.entire.enabled=true), the checkpoint, the session and the prompt behind that commit (entire why); and what only the store holds, the change the line was written for with its intent and the decisions accepted on it. The change is the one the commit's message names (change:<slug>), else the one its checkpoint is linked on, else what its session worked on. Without Entire the answer starts at git and still reaches the change; what Entire does not answer is printed as pending. Never writes
 
 pjman rest <change> [--json]
     where a change may rest: whether a stop on it is one the record allows, and why. It rests when a decision on it is proposed, a blocker is recorded (blocked-on, a dependency not done), a person set it blocked, review, done or dropped, or its plan has run to its end; with steps still open and none of those it does not rest, and the open steps are listed (exit 1). The adapter's stop hook reads this; never writes

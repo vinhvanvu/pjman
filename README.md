@@ -154,7 +154,16 @@ A decision waiting on you shows its options, the recommendation and its reason, 
 - The dashboard is the same store over HTTP (`pjman serve`, API under `/api/v1`), read-only except for reordering the roadmap and accepting or reopening a decision.
 - Harness specifics live in adapters; the records hold none. Claude Code is the adapter that ships today.
 
-Planned, not built yet: an opt-in to keep the record on Entire's store where that serves better, with pjman's own store staying the default.
+### With Entire (opt-in)
+
+pjman's own store is the default and needs nothing else. A project can opt in to [Entire](https://entire.com), which captures each agent session as a checkpoint on its commits and runs review and merge through Trails: `pjman set <project> ext.entire.enabled=true`, with Entire's CLI installed and the repository enabled (`pjman doctor` says what is missing and names the commands; pjman never runs Entire's setup, login or approval for you). pjman then drives Entire through its own verbs:
+
+- a change's Trail is created when work starts on it, carries the change's intent, done-when and accepted decisions, is marked ready when the plan has run to its end, and closes when the change is done or dropped;
+- `pjman review <change>` files what it finds onto the Trail, whose Findings gate holds the merge until each is resolved;
+- `pjman merge <change>` merges through the Trail's gates, and a merge made on Entire sets the change done;
+- a change and its sessions link the checkpoints behind their commits, and `pjman why <file>:<line>` reads a line back to its commit, session, change, intent and decisions.
+
+Opted out, none of Entire's commands run, and review, merge and `pjman why` work locally.
 
 ## Docs
 
