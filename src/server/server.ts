@@ -856,21 +856,26 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
           b.project &&
           entireOn(loaded, b.project) &&
           fs.existsSync(b.path) &&
-          trailCandidates(loaded, b.project).some((r) => r.data.status === 'review' && trailOf(loaded, r)),
+          trailCandidates(loaded, b.project).some((r) => r.data.status !== 'active' && trailOf(loaded, r)),
       )
       .map((b) => b.path);
     if (!dirs.length) return;
     entireBusy = true;
-    let left = dirs.length;
-    for (const cwd of dirs)
+    // one project after another: two syncs at once would race for the store's commit and note the same move twice
+    const script = opts.followEntire;
+    const next = (i: number): void => {
+      if (i >= dirs.length) {
+        entireBusy = false;
+        return;
+      }
       execFile(
         process.execPath,
-        [opts.followEntire, 'sync', 'entire', '--wake', '--json'],
-        { cwd, timeout: 240_000 },
-        () => {
-          if (--left === 0) entireBusy = false;
-        },
+        [script, 'sync', 'entire', '--wake', '--json'],
+        { cwd: dirs[i], timeout: 240_000 },
+        () => next(i + 1),
       );
+    };
+    next(0);
   };
   const entireTimer = opts.followEntire ? setInterval(followEntire, ENTIRE_FOLLOW_MS) : undefined;
   entireTimer?.unref?.();

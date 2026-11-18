@@ -1312,6 +1312,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (pos[1] === 'git') {
         const r = syncGit(store, { session: v.session });
+        // a change this ended has a Trail to close, where the project opted in
+        for (const d of r.done) followTrail(store, d.change, v.session);
         if (v.json) json(r);
         else {
           out(
