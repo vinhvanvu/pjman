@@ -29,6 +29,7 @@ import { syncGit } from '../sync/git.js';
 import { mergeChange } from '../sync/merge.js';
 import { addFinding, formatReviewBrief, reviewBrief, settleFinding } from '../sync/review.js';
 import { formatFinding } from '../model/findings.js';
+import { formatWhy, parseWhere, searchPast, why } from '../sync/why.js';
 import { reconcileTrail, trailLines, type TrailReconcile } from '../sync/trail.js';
 import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
@@ -761,7 +762,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         project: store.project,
         product: v.all ? null : hereProduct(store),
       });
-      v.json ? json(i) : out(formatIntake(i));
+      // in a project that opted in to Entire, its search over past sessions joins what the store's own sessions gave
+      const found = searchPast(store, i);
+      v.json ? json(found) : out(formatIntake(found));
       return 0;
     }
     case 'refs': {
@@ -958,6 +961,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const r = restOf(loaded, resolveArg(loaded, pos[1], { kinds: ['change'] }));
       v.json ? json({ ...r, printed: printed(r.key) }) : out(formatRest(r));
       return r.rests ? 0 : 1;
+    }
+    case 'why': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw usageError('usage: pjman why <file>:<line> [--json]');
+      const w = why(store, parseWhere(pos[1], v.line), { cwd });
+      v.json ? json(w) : out(formatWhy(w, printed));
+      return 0;
     }
     case 'review': {
       const store = scoped(requireStore(cwd, v.store));
