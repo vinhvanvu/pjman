@@ -8,7 +8,7 @@
 // merge are never done here.
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
+import { entireOn, runEntire, type EntireOpts, type EntireResult } from '../entire/entire.js';
 import { TRAIL_KIND, trailLine, type TrailGate, type TrailState } from '../entire/trail.js';
 
 export { TRAIL_KIND, trailLine, type TrailGate, type TrailState };
@@ -153,7 +153,8 @@ export interface TrailReconcile {
 export function reconcileTrail(
   store: Store,
   changeKey: string,
-  opts: { session?: string; writer?: string; entire?: EntireOpts } = {},
+  /** `budget`: the milliseconds Entire may take in all; past it, and after a call that did not come back, no more is asked. */
+  opts: { session?: string; writer?: string; entire?: EntireOpts; budget?: number } = {},
 ): TrailReconcile | null {
   let loaded = loadStore(store);
   const rec = loaded.byKey.get(changeKey)?.[0];
@@ -165,11 +166,21 @@ export function reconcileTrail(
   const status = str(rec.data.status) ?? 'open';
   const bound = trailOf(loaded, rec);
   const result: TrailReconcile = { change: rec.key, trail: bound?.key, acts: [], moved: [], pending: [], commit: null };
-  const run = <T = Record<string, unknown>>(args: string[], text = false) => {
-    const r = runEntire<T>(args, { ...opts.entire, cwd: dir, timeout: 90_000, text });
-    if (!r.ok && !result.pending.includes(r.reason)) result.pending.push(r.reason);
+  // every call to Entire goes through here: within the caller's budget, and none after one has not come back (no
+  // binary, no answer in time), so a command that wrote the store is never held by an Entire that hangs
+  const deadline = opts.budget ? Date.now() + opts.budget : Infinity;
+  let down = false;
+  const call = <T = Record<string, unknown>>(args: string[], text = false, quiet = false): EntireResult<T> => {
+    const left = deadline - Date.now();
+    const r: EntireResult<T> =
+      down || left <= 0
+        ? { ok: false, pending: true, kind: 'timeout', reason: 'Entire was not asked again: it did not answer in time' }
+        : runEntire<T>(args, { ...opts.entire, cwd: dir, timeout: Math.min(90_000, left), text });
+    if (!r.ok && (r.kind === 'timeout' || r.kind === 'missing')) down = true;
+    if (!r.ok && !quiet && !result.pending.includes(r.reason)) result.pending.push(r.reason);
     return r;
   };
+  const run = <T = Record<string, unknown>>(args: string[], text = false) => call<T>(args, text);
   const text = trailText(loaded, rec);
   const sent = hashOf(text);
   const before = bound?.state;
@@ -189,17 +200,17 @@ export function reconcileTrail(
     branch = branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.includes(b));
     if (!branch) return null;
     // a Trail already on the branch (made by hand, or by a run whose answer was lost) is adopted, never doubled
-    const shown = runEntire<Record<string, unknown>>(['trail', 'show', '--branch', branch], {
-      ...opts.entire,
-      cwd: dir,
-      timeout: 60_000,
-    });
+    const shown = call(['trail', 'show', '--branch', branch], false, true);
     const adopted = shown.ok ? readTrail(shown.data, branch) : null;
     if (adopted) {
       state = adopted;
       result.acts.push('adopted');
-    } else if (!shown.ok && !/no discoverable project trail|not found/i.test(shown.reason)) {
-      result.pending.push(shown.reason);
+    } else if (shown.ok || !/no discoverable project trail/i.test(shown.reason)) {
+      // a Trail is made only when Entire says in its own words that the branch has none: an answer that cannot be
+      // read, or any other failure, may hide one, and a second Trail on the branch is worse than a later try
+      result.pending.push(
+        shown.ok ? `entire trail show --branch ${branch} answered a Trail that cannot be read` : shown.reason,
+      );
       return result;
     } else {
       const made = run([
@@ -232,7 +243,7 @@ export function reconcileTrail(
   }
   // the plan has run to its end: ready for review
   if (status === 'review' && !state.ready && state.status !== 'closed' && branch) {
-    const r = runEntire<string>(['trail', 'ready', '--branch', branch], { ...opts.entire, cwd: dir, text: true });
+    const r = call<string>(['trail', 'ready', '--branch', branch], true, true);
     // a repository with no approval gate tracks no readiness: nothing to mark, and nothing to try again
     if (r.ok || /readiness is only tracked/i.test(r.reason)) {
       state.ready = true;
@@ -320,7 +331,9 @@ export function reconcileTrail(
     );
   }
   // merged on Entire: the person's merge, wherever they made it, ends the change
-  if (state.change?.status === 'merged' && status === 'review') {
+  // (a merge read in this run and not known before: a change reopened after its merge is not ended a second time by
+  // the same merge)
+  if (read && state.change?.status === 'merged' && before?.change?.status !== 'merged' && status === 'review') {
     loaded = loadStore(store);
     set(store, rec.key, ['status=done'], {
       session: opts.session,
