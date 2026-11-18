@@ -67,6 +67,8 @@ const personOnly = (args: string[]): boolean => {
   const [a, b] = args;
   if (a === 'auth') return b !== 'status';
   // approving is the person's; so is merging past a gate that blocks
+  // a review profile is the person's to set up; running a review with one is not
+  if (a === 'review') return args.includes('--configure') || args.includes('--edit');
   if (a === 'trail') return b === 'approve' || (b === 'merge' && args.includes('--force'));
   return PERSON_ONLY.has(a);
 };
