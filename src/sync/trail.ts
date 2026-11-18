@@ -195,6 +195,8 @@ export function reconcileTrail(
   let state: TrailState | undefined = before ? { ...before } : undefined;
   let branch = before?.branch;
 
+  /** A create was asked of Entire before and did not answer (the mark is on the change, cleared once it has a Trail). */
+  const unanswered = !!obj(obj(rec.data.ext)?.entire)?.create_unanswered;
   if (!state) {
     // the Trail starts with the work: the change is in motion and its branch exists (decision trail-start, at-work)
     if (status !== 'active' && status !== 'review') return null;
@@ -229,6 +231,56 @@ export function reconcileTrail(
     } else if (opts.create === false) {
       result.unstarted = branch;
       return result;
+    } else if (
+      // a create that did not answer may have made the Trail all the same, without its branch (change:trail-doubled:
+      // Entire creates the Trail, then links the branch). The change remembers such a create; the next run looks among
+      // the person's own open Trails for one that carries this change's key and has no branch yet, and links the
+      // branch to it. Entire's own word: "retry with trail link rather than creating another"
+      (() => {
+        if (!unanswered) return false;
+        const listed = call(['trail', 'list', '--mine', '--limit', '100'], false, true);
+        if (!listed.ok) {
+          // a list that cannot be read may hide that Trail: none is made on a guess, and the next run asks again
+          if (!result.pending.includes(listed.reason)) result.pending.push(listed.reason);
+          return true;
+        }
+        const mark = `pjman: ${rec.key}`;
+        const mine = arr(listed.data.items)
+          .map(obj)
+          .filter((t): t is Record<string, unknown> => !!t && typeof t.number === 'number' && t.status === 'open')
+          .filter((t) => (str(t.body) ?? '').trimEnd().endsWith(mark))
+          .toSorted((a, b) => (b.number as number) - (a.number as number));
+        for (const t of mine) {
+          const n = String(t.number);
+          // only one with no branch yet is the half-made one: a Trail of this change that holds another branch is left
+          const whole = call(['trail', 'show', n], false, true);
+          if (!whole.ok) {
+            if (!result.pending.includes(whole.reason)) result.pending.push(whole.reason);
+            return true;
+          }
+          if (arr(whole.data.changes).some((c) => str(obj(c)?.branch))) continue;
+          const linked = call(['trail', 'link', n, '--branch', branch, '--base', base], false, true);
+          if (!linked.ok) {
+            // the way out is said: the link takes a branch that is on origin, and the Trail can be closed instead
+            result.pending.push(
+              `Trail #${n} was made for ${rec.key} without its branch, and linking ${branch} to it failed (${linked.reason}): push the branch (git push origin ${branch}) and run pjman sync entire --start ${rec.key}, or close that Trail (entire trail update ${n} --status closed) and a new one is created`,
+            );
+            return true;
+          }
+          const shownNow = call(['trail', 'show', '--branch', branch], false, true);
+          const taken = (shownNow.ok ? readTrail(shownNow.data, branch) : null) ?? readTrail(linked.data, branch);
+          if (!taken) {
+            result.pending.push(`Trail #${n} was linked to ${branch} and could not be read back`);
+            return true;
+          }
+          state = taken;
+          result.acts.push('linked');
+          return true;
+        }
+        return false;
+      })()
+    ) {
+      if (!state) return result;
     } else {
       const made = run([
         'trail',
@@ -245,7 +297,22 @@ export function reconcileTrail(
         base,
       ]);
       const created = made.ok ? readTrail(made.data, branch) : null;
-      if (!created) return result;
+      if (!created) {
+        // the create may have made the Trail all the same: the change remembers it asked, so the next run looks for
+        // that Trail before it makes another
+        // (a create that was never sent, Entire being down before it, is not one)
+        if (!made.ok && !unanswered && !made.reason.startsWith('Entire was not asked again')) {
+          try {
+            set(store, rec.key, [`ext.entire.create_unanswered=${nowIso()}`], {
+              session: opts.session,
+              because: 'entire trail create did not answer',
+            });
+          } catch {
+            // the change stands without the mark: the next run looks all the same
+          }
+        }
+        return result;
+      }
       state = { ...created, sent };
       result.acts.push('created');
       result.pushed = branch;
@@ -349,7 +416,21 @@ export function reconcileTrail(
     // the change as it stands now: Entire was asked in between, and a write made meanwhile is kept
     const now = loadStore(store).byKey.get(changeKey)?.[0] ?? rec;
     const binds = arr(now.data.binds).filter((k): k is string => typeof k === 'string');
-    if (!binds.includes(key)) writes.set(now.path, render('change', { ...now.data, binds: [...binds, key] }, now.body));
+    // (the change has its Trail: the mark of a create that went unanswered has done its work)
+    const ext = { ...obj(now.data.ext) };
+    const mine = { ...obj(ext.entire) };
+    delete mine.create_unanswered;
+    if (Object.keys(mine).length) ext.entire = mine;
+    else delete ext.entire;
+    if (!binds.includes(key))
+      writes.set(
+        now.path,
+        render(
+          'change',
+          { ...now.data, binds: [...binds, key], ext: Object.keys(ext).length ? ext : undefined },
+          now.body,
+        ),
+      );
     if (!binds.includes(key))
       events.push({ op: 'set', key: rec.key, type: 'change', path: rec.path, fields: ['binds'], writer: env.writer });
   }
