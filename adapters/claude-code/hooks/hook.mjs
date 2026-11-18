@@ -833,6 +833,14 @@ function decisionHead(key) {
 /** Why the stop is refused, for the agent: the change, the open steps, and the three ways the record lets it stop. */
 function restRefusal(r) {
   const key = r.printed ?? r.key;
+  // the plan has run to its end and the project reviews every change (ext.review.mode=auto): the review is what is
+  // left, and the tool says what moves it on (change:review-loop)
+  if (r.review)
+    return [
+      `pjman: ${key} is not at a resting point. Its plan has run to its end and its project reviews every change: ${r.review.words}.`,
+      r.review.next,
+      `Stop only where the record lets you: the review ended (pjman rest ${key} says so), or a choice opened as a decision, proposed. If the person asked you to stop here, end the turn again.`,
+    ].join('\n');
   const steps = r.open
     .map((s) => `- ${s.n}. ${s.step.text}${s.step.state === 'active' ? ' (in progress)' : ''}`)
     .join('\n');

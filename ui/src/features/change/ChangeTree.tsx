@@ -542,8 +542,13 @@ export function Sources({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: L
           </span>
           <span className="text-meta text-ink-faint">
             · {f.severity}
+            {f.kind ? ` ${f.kind}` : ''}
             {f.file ? ` · ${f.file}${f.line ? `:${f.line}` : ''}` : ''}
-            {f.state === 'open' ? '' : ` · ${f.state}`}
+            {f.state !== 'open'
+              ? ` · ${f.state}`
+              : f.severity === 'high' || f.kind === 'intent'
+                ? ' · holds the merge'
+                : ''}
           </span>
         </SourceRow>
       ))}

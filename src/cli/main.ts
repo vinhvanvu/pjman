@@ -27,7 +27,21 @@ import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
 import { syncGit } from '../sync/git.js';
 import { mergeChange } from '../sync/merge.js';
-import { addFinding, formatReviewBrief, readFindings, reviewBrief, runReview, settleFinding } from '../sync/review.js';
+import {
+  addFinding,
+  closeRound,
+  followUp,
+  formatLoop,
+  formatReviewBrief,
+  handLens,
+  readFindings,
+  reviewBrief,
+  reviewLoop,
+  runReview,
+  settleFinding,
+  type LoopReport,
+  type RoundResult,
+} from '../sync/review.js';
 import { formatFinding } from '../model/findings.js';
 import { formatWhy, parseWhere, searchPast, why } from '../sync/why.js';
 import { reconcileTrail, trailLines, type TrailReconcile } from '../sync/trail.js';
@@ -58,7 +72,8 @@ import { mv } from '../ops/mv.js';
 import { rm } from '../ops/rm.js';
 import { apply, applyLines, undo } from '../ops/apply.js';
 import { liftsOfStore } from '../ops/lift.js';
-import { formatRest, restOf } from '../model/rest.js';
+import { formatRest, heldByReview, restOf } from '../model/rest.js';
+import { reviewMode } from '../model/review.js';
 import { formatTree, live, tree } from '../model/tree.js';
 import { formatReceipt, receipt } from '../model/receipt.js';
 import { activity, formatActivity } from '../model/activity.js';
@@ -93,6 +108,34 @@ const PARSE_OPTIONS = FLAG_TYPES;
 /** The arguments parsed, then held to the command's own declaration (decision interface-audit/flags-per-command): a
  *  flag it does not take is refused naming the ones it does, a retired flag with where its job went, and more
  *  positionals than it takes are refused (a text with spaces is one quoted argument). */
+/** The review a write just made due: the loop, when the change's project reviews every change and it has not ended. */
+function reviewDue(store: Store, key: string): LoopReport | undefined {
+  try {
+    const loop = reviewLoop(store, key, printed);
+    return loop.due ? loop : undefined;
+  } catch {
+    return undefined; // a change that is not reviewed (a milestone, an invalid record) has none
+  }
+}
+
+/** What closing a round, or moving findings to the follow-up change, did: the round, what moved, where the loop stands. */
+function roundLines(r: RoundResult, printed: (key: string) => string): string[] {
+  const lines: string[] = [];
+  if (r.round)
+    lines.push(
+      `${printed(r.change)}: the ${r.round.round === 'fix' ? 're-review of the fix' : 'full review'} is closed${r.round.head ? ` at ${r.round.head}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+    );
+  if (r.moved.length)
+    lines.push(
+      `${plural(r.moved.length, 'finding')} that ${r.moved.length === 1 ? 'does' : 'do'} not hold the merge moved to ${printed(r.followUp!)} (${r.moved.map((n) => `#${n}`).join(', ')})`,
+    );
+  else if (!r.round) lines.push(`${printed(r.change)}: no open finding to move`);
+  if (r.filed.length) lines.push(`entire: ${r.filed.join(', ')} on the Trail`);
+  for (const reason of r.pending) lines.push(pendingLine({ reason }));
+  lines.push(formatLoop(r.loop, printed));
+  return lines;
+}
+
 function parse(args: string[]) {
   let parsed;
   try {
@@ -255,6 +298,16 @@ function main(argv: string[]): number {
   // a session's brief records its watermark, and a session reading a change's context moves its focus: both write
   const writes =
     WRITE_COMMANDS.has(cmd) ||
+    // a review that files, settles, hands out a lens or closes a round writes the change (three reviewers are started
+    // together, each with its lens); Entire's own review runs for minutes and takes no lock
+    (cmd === 'review' &&
+      (v.finding !== undefined ||
+        !!v.resolve ||
+        !!v.dismiss ||
+        !!v.reopen ||
+        v.lens !== undefined ||
+        !!v.reviewed ||
+        !!v['follow-up'])) ||
     (cmd === 'brief' && !!v.session) ||
     (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
   if (!writes) return dispatch(v, pos, cmd, cwd);
@@ -512,10 +565,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         writer: v.writer,
       });
       const trail = followTrail(store, r.key, v.session);
-      if (v.json) json(trail ? { ...r, trail } : r);
+      // the last step done, in a project that reviews every change: the review is due, said by the command that made
+      // it so (a turn that ran only commands meets no stop hook)
+      const review = verb === 'done' && !r.next ? reviewDue(store, r.key) : undefined;
+      if (v.json) json({ ...r, ...(trail ? { trail } : {}), ...(review ? { review } : {}) });
       else
         out(
-          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}`,
+          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}${review ? `\n${formatLoop(review, printed)}` : ''}`,
         );
       return 0;
     }
@@ -959,7 +1015,15 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (!pos[1]) throw usageError('usage: pjman rest <change> [--json]');
       // the argument resolves as every command's does: the slug alone names the project's change (change:rest-takes-the-slug)
       const loaded = loadStore(store);
-      const r = restOf(loaded, resolveArg(loaded, pos[1], { kinds: ['change'] }));
+      let r = restOf(loaded, resolveArg(loaded, pos[1], { kinds: ['change'] }));
+      // in review, in a project that reviews every change: the stop is the review's to allow (change:review-loop)
+      if (r.rests && r.status === 'review' && reviewMode(loaded, store.project) === 'auto') {
+        try {
+          r = heldByReview(r, reviewLoop(store, r.key, printed));
+        } catch {
+          // a change that cannot be reviewed (invalid, a milestone) rests as its status says
+        }
+      }
       v.json ? json({ ...r, printed: printed(r.key) }) : out(formatRest(r));
       return r.rests ? 0 : 1;
     }
@@ -975,15 +1039,30 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (!pos[1]) throw usageError('usage: pjman review <change> [--finding "…" --severity high|medium|low]');
       const key = resolveArg(loadStore(store), pos[1], { kinds: ['change'] });
       const settle = v.resolve ? 'resolved' : v.dismiss ? 'dismissed' : v.reopen ? 'open' : null;
-      if (v.run || v.read) {
-        if (v.finding !== undefined || settle)
-          throw usageError('one act per call: --run, --read, --finding or a settle');
+      const acts = [v.run, v.read, v.finding !== undefined, !!settle, v.lens !== undefined, v.reviewed, v['follow-up']];
+      if (acts.filter(Boolean).length > 1)
+        throw usageError(
+          'one act per call: --finding, a settle (--resolve|--dismiss|--reopen <n>), --lens, --reviewed, --follow-up, --run or --read',
+        );
+      if (v.lens !== undefined) {
+        out(handLens(store, key, v.lens, { session: v.session, writer: v.writer }, printed));
+        return 0;
+      }
+      if (v.reviewed || v['follow-up']) {
         const o = { session: v.session, writer: v.writer };
-        const r = v.run ? runReview(store, key, { ...o, profile: v.profile }) : readFindings(store, key, o);
+        const r = v.reviewed ? closeRound(store, key, o) : followUp(store, key, o);
+        if (v.json) json(r);
+        else for (const line of roundLines(r, printed)) out(line);
+        return 0;
+      }
+      if (v.run || v.read) {
+        const o = { session: v.session, writer: v.writer };
+        const ran = v.run ? runReview(store, key, { ...o, profile: v.profile }) : undefined;
+        const r = ran ?? readFindings(store, key, o);
         if (v.json) json(r);
         else {
-          if ('ran' in r)
-            out(r.ran ? `${printed(r.change)} reviewed by Entire's review` : `${printed(r.change)} not reviewed`);
+          if (ran)
+            out(ran.ran ? `${printed(r.change)} reviewed by Entire's review` : `${printed(r.change)} not reviewed`);
           out(
             r.read.length
               ? `${plural(r.read.length, 'finding')} read from the Trail${r.commit ? ` (committed ${r.commit})` : ''}`
@@ -991,16 +1070,20 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           );
           r.findings.forEach((f, i) => f.state === 'open' && out(`  ${formatFinding(i + 1, f)}`));
           for (const reason of r.pending) out(pendingLine({ reason }));
+          if (ran?.round) for (const line of roundLines(ran.round, printed)) out(line);
         }
         return 0;
       }
       if (v.finding === undefined && !settle) {
         const b = reviewBrief(store, key);
-        v.json ? json(b) : out(formatReviewBrief(b, printed));
+        const loop = reviewLoop(store, key, printed);
+        if (v.json) json({ ...b, review: loop });
+        else {
+          out(formatReviewBrief(b, printed));
+          out(`\n## Where the review stands\n\n${formatLoop(loop, printed)}`);
+        }
         return 0;
       }
-      if (v.finding !== undefined && settle)
-        throw usageError('one write per call: --finding, or --resolve|--dismiss|--reopen <n>');
       const r =
         v.finding !== undefined
           ? addFinding(
@@ -1009,6 +1092,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
               {
                 text: v.finding,
                 severity: v.severity,
+                kind: v.kind,
                 file: v.file,
                 line: v.line === undefined ? undefined : Number(v.line),
               },

@@ -1,4 +1,5 @@
-import { FINDING_SEVERITIES, FINDING_STATES } from './findings.js';
+import { FINDING_KINDS, FINDING_SEVERITIES, FINDING_STATES } from './findings.js';
+import { REVIEW_MODES, REVIEW_ROUNDS } from './review.js';
 import {
   ACTOR_KINDS,
   CANONICAL_STATUSES,
@@ -416,6 +417,13 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
       }
       case 'project': {
         if (r.projectSlug && !SLUG_RE.test(r.projectSlug)) err(r, `file name '${r.projectSlug}' is not a slug`);
+        {
+          // how the project's changes are reviewed (decision review-loop/setting)
+          const ext = d.ext && typeof d.ext === 'object' ? (d.ext as Record<string, unknown>) : {};
+          const review = ext.review && typeof ext.review === 'object' ? (ext.review as Record<string, unknown>) : {};
+          if (review.mode !== undefined && !(REVIEW_MODES as readonly unknown[]).includes(review.mode))
+            err(r, `ext.review.mode '${String(review.mode)}' is not one of ${REVIEW_MODES.join(', ')}`);
+        }
         if (typeof d.product === 'string') checkRef(r, 'product', d.product, ['product']);
         if (typeof d.parent === 'string') {
           checkRef(r, 'parent', d.parent, ['project']);
@@ -585,12 +593,34 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
                   r,
                   `findings[${i}]: severity '${String(f.severity)}' is not one of ${FINDING_SEVERITIES.join(', ')}`,
                 );
+              if (f.kind !== undefined && !(FINDING_KINDS as readonly string[]).includes(String(f.kind)))
+                err(r, `findings[${i}]: kind '${String(f.kind)}' is not one of ${FINDING_KINDS.join(', ')}`);
+              if (f.settled !== undefined && !isTimestamp(f.settled))
+                err(r, `findings[${i}]: settled must be a timestamp`);
               for (const k of ['state', 'filed'] as const)
                 if (f[k] !== undefined && !(FINDING_STATES as readonly string[]).includes(String(f[k])))
                   err(r, `findings[${i}]: ${k} '${String(f[k])}' is not one of ${FINDING_STATES.join(', ')}`);
               if (f.line !== undefined && !(typeof f.line === 'number' && Number.isInteger(f.line) && f.line > 0))
                 err(r, `findings[${i}]: line must be a line number`);
               if (f.at !== undefined && !isTimestamp(f.at)) err(r, `findings[${i}]: at must be a timestamp`);
+            });
+        }
+        // the review's rounds: one full review, then at most one of the fix (decision review-loop/stop-rule)
+        if (d.reviews !== undefined) {
+          if (!Array.isArray(d.reviews)) err(r, `'reviews' must be a list of rounds {round, at, head, by}`);
+          else
+            d.reviews.forEach((raw, i) => {
+              if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+                err(r, `reviews[${i}] must be a mapping {round, at, head, by}`);
+                return;
+              }
+              const x = raw as Record<string, unknown>;
+              // (a lens handed to a reviewer is recorded among the rounds: {round: lens, lens, at})
+              if (x.round === 'lens') {
+                if (typeof x.lens !== 'string' || !x.lens.trim()) err(r, `reviews[${i}]: a lens names itself`);
+              } else if (!(REVIEW_ROUNDS as readonly string[]).includes(String(x.round)))
+                err(r, `reviews[${i}]: round '${String(x.round)}' is not one of ${REVIEW_ROUNDS.join(', ')}, lens`);
+              if (!isTimestamp(x.at)) err(r, `reviews[${i}]: at must be a timestamp`);
             });
         }
         checkAliases('change');

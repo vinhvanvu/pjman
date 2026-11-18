@@ -30,6 +30,7 @@ import {
 } from './aspects.js';
 import { urlOf } from './refs.js';
 import { findingsLine, findingsOf, formatFinding, type Finding } from './findings.js';
+import { loopOf, loopWords, reviewMode } from './review.js';
 import { TRAIL_KIND, trailLine, trailStateOf } from '../entire/trail.js';
 import { CliError, usageError, notFound } from '../store/util.js';
 import {
@@ -417,6 +418,9 @@ export interface ChangeContext {
   sources: { key: string; record?: Row; relation: 'binds' | 'links'; url?: string }[];
   /** What a review found on the change's branch (pjman review), each with whether it still stands. */
   findings: Finding[];
+  /** How the change is reviewed and where its review stands, in a line: absent in a project that reviews on request
+   *  while the change has had no round (change:review-loop). */
+  review?: string;
   /** The change's Trail on Entire, as last read (pjman sync entire): its phase, the branch's state, the gates and the
    *  open findings, in one line with its address. */
   trail?: string;
@@ -640,6 +644,14 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     decisions,
     sources,
     findings: findingsOf(rec.data),
+    review: (() => {
+      const mode = reviewMode(loaded, typeof rec.data.project === 'string' ? rec.data.project : undefined);
+      // (whether there is a branch to review is the repository's to say: pjman review reads it)
+      const loop = loopOf(rec.data, { reviewable: true });
+      if (mode === 'off') return 'off for this project';
+      if (!loop.full) return mode === 'auto' ? 'auto (reviewed without being asked when it reaches review)' : undefined;
+      return `${mode === 'auto' ? 'auto' : 'on request'} · ${loopWords(loop)}`;
+    })(),
     trail: (() => {
       const bound = sources.find((x) => x.relation === 'binds' && x.key.startsWith(`${TRAIL_KIND}:`));
       const state = trailStateOf(bound?.record?.data);
@@ -720,7 +732,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const d = c.change.data;
   out.push(heading('#', c.change));
   out.push(
-    `status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`,
+    `status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.review ? `\nreview: ${c.review}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`,
   );
   out.push(...readinessLines(c, 'change'));
   // the foundation in order of depth; the plan sits after Scope, where the work's shape ends and its steps begin

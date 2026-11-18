@@ -11,13 +11,22 @@ import { init } from '../cli/init.js';
 import { decision } from '../ops/decision.js';
 import { set } from '../ops/set.js';
 import { step } from '../ops/step.js';
-import { findingsOf } from '../model/findings.js';
+import { findingsOf, holdsMerge } from '../model/findings.js';
+import { lensesAsked, roundsOf } from '../model/review.js';
 import { validate } from '../model/validate.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
-import { addFinding, formatReviewBrief, readFindings, reviewBrief, runReview, settleFinding } from '../sync/review.js';
+import {
+  addFinding,
+  formatReviewBrief,
+  readFindings,
+  reviewBrief,
+  reviewLoop,
+  runReview,
+  settleFinding,
+} from '../sync/review.js';
 import { reconcileTrail } from '../sync/trail.js';
 import { change } from './shape.js';
 
@@ -60,6 +69,7 @@ const show = () => ({ id: '01T', number: 1, url: 'https://entire.com/gh/acme/-/t
   changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: fs.existsSync(${JSON.stringify(path.join(tmp, 'merged'))}) ? 'merged' : 'open', mergeability: { mergeable: true, gates: [] } }] });
 if (args[0] === 'review') {
   if (args.includes('--list')) console.log(fs.existsSync(${JSON.stringify(path.join(tmp, 'profile'))}) ? 'Profiles:\\n  general  (default)\\n    output:     trail' : 'No review profiles configured. Create one with entire review --configure.');
+  else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'noreview'))})) fail('the review agents did not start');
   else { state.findings.push({ id: 'R' + (state.findings.length + 1), body: '[intent] the total ignores discounts, which the done-when asks for', severity: 'high', file: 'cart.ts', line: '1', status: 'open' }); save(); console.log('Review complete.'); }
 }
 else if (args[1] === 'show') { if (!state.trail) fail('branch "x" has no discoverable project trail'); console.log(JSON.stringify(show())); }
@@ -174,7 +184,7 @@ test('with no Entire the review is local: findings are data on the change, settl
   );
   assert.match(
     formatChangeContext(changeContext(store, 'change:web/cart')),
-    /## Findings \(2 open findings \(1 high\)\)\n\n1\. \[open\] high cart\.ts:1 — The total counts items.*\n2\. \[open\] medium — No test covers a discount/,
+    /## Findings \(2 open findings \(1 holds the merge\)\)\n\n1\. \[open, holds the merge\] high cart\.ts:1 — The total counts items.*\n2\. \[open\] medium — No test covers a discount/,
   );
   assert.throws(() => settleFinding(store, 'change:web/cart', 2, 'dismissed', undefined), /says why it does not hold/);
   assert.throws(() => settleFinding(store, 'change:web/cart', 9, 'resolved', undefined), /has no finding 9 \(1 to 2\)/);
@@ -266,6 +276,7 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
       id: got.at(-1)!.id,
       text: '[intent] the total ignores discounts, which the done-when asks for',
       severity: 'high',
+      kind: 'intent',
       state: 'open',
       file: 'cart.ts',
       line: 1,
@@ -295,6 +306,69 @@ test('settling a finding again after Entire did not answer tells Entire then', (
   assert.deepEqual(again.filed, ['resolved #3']);
   assert.equal(onEntire().find((f) => f.id === findings()[2].entire)!.status, 'resolved');
   assert.equal(findings()[2].filed, 'resolved');
+});
+
+test('opted in, the re-review is handed the fix alone, and what does not hold the merge leaves the Trail for the follow-up change', () => {
+  const o = { entire: { bin } };
+  // a review asked for before the change reached review filed what it found and closed no round
+  const rounds = () => roundsOf(loadStore(store).byKey.get('change:web/cart')![0].data);
+  assert.deepEqual(rounds(), []);
+  // in review, the review Entire makes is the full round: its lenses are Entire's, and it closes the round itself
+  step(store, 'change:cart', 'done', 1, {});
+  // a review that does not run handed nothing out: no lens stays on the record, and no round is closed
+  fs.writeFileSync(path.join(tmp, 'noreview'), '');
+  const failed = runReview(store, 'change:web/cart', o);
+  assert.equal(failed.ran, false);
+  assert.match(failed.pending.at(-1)!, /failed: the review agents did not start$/);
+  assert.deepEqual(lensesAsked(loadStore(store).byKey.get('change:web/cart')![0].data), []);
+  assert.deepEqual(rounds(), []);
+  fs.rmSync(path.join(tmp, 'noreview'));
+  const first = runReview(store, 'change:web/cart', o);
+  assert.equal(first.round?.round?.round, 'full');
+  assert.deepEqual(
+    lensesAsked(loadStore(store).byKey.get('change:web/cart')![0].data).map((a) => `${a.lens} ${a.by}`),
+    ['intent entire', 'drift entire', 'correctness entire'],
+  );
+  // on request, what does not hold the merge stays where it is until asked
+  assert.deepEqual(first.round?.moved, []);
+  const full = rounds()[0];
+  assert.equal(full.round, 'full');
+  assert.equal(full.head, g('rev-parse', '--short', 'cart').trim());
+  findings().forEach((f, i) => holdsMerge(f) && settleFinding(store, 'change:web/cart', i + 1, 'resolved', 'fixed', o));
+  assert.equal(reviewLoop(store, 'change:web/cart').state, 'recheck');
+  assert.match(reviewLoop(store, 'change:web/cart').next!, /^The fix is re-reviewed once.*Run `pjman review .* --run`/);
+  const low = addFinding(store, 'change:web/cart', { text: 'A name could be clearer', severity: 'low' }, o);
+  assert.deepEqual(low.filed, [`filed #${low.n}`]);
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
+  // Entire reviews what came after the full review's head, told to judge the fix alone
+  fs.writeFileSync(callsFile, '');
+  const r = runReview(store, 'change:web/cart', o);
+  const run = calls().find((c) => c[0] === 'review' && c.includes('--prompt'))!;
+  assert.equal(run[run.indexOf('--base') + 1], full.head);
+  assert.match(run[run.indexOf('--prompt') + 1], /^This branch had one full review at .* Judge only the fix/);
+  assert.equal(r.round?.round?.round, 'fix');
+  // its own review posts a high finding again (the fake's one answer): the loop ends with it standing
+  assert.equal(r.round?.loop.state, 'ended');
+  assert.match(r.round.loop.words!, /1 finding still holds the merge after the one re-review/);
+  // what does not hold the merge is a step of the follow-up change, deferred here and dismissed on the Trail
+  const moved = r.round.moved;
+  assert.ok(moved.includes(low.n!));
+  assert.equal(r.round?.followUp, 'change:web/cart-follow-ups');
+  const mine = findings()[low.n! - 1];
+  assert.deepEqual(
+    [mine.state, mine.filed, mine.note],
+    ['deferred', 'deferred', 'moved to change:web/cart-follow-ups'],
+  );
+  const there = onEntire().find((f) => f.id === mine.entire)! as { status: string; reason?: string };
+  assert.deepEqual([there.status, there.reason], ['dismissed', 'moved to change:web/cart-follow-ups']);
+  // read back, the dismissal on Entire is the move, not a new state
+  assert.deepEqual(readFindings(store, 'change:web/cart', o).read, []);
+  assert.equal(findings()[low.n! - 1].state, 'deferred');
+  set(store, 'project:web', ['ext.review.mode=request'], {});
+  // settle what the re-review left, so the tests after start clean
+  findings().forEach(
+    (f, i) => holdsMerge(f) && settleFinding(store, 'change:web/cart', i + 1, 'dismissed', 'a stand-in', o),
+  );
 });
 
 test('a sync reads what was posted on the Trail onto the change while its branch is open; a merged Trail is not asked', () => {
