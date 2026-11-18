@@ -1,7 +1,7 @@
-# Every push to main and every pull request (decision repo-hygiene/guardrails): the tool is linted, format-checked
-# and tested on the oldest Node the package supports and the current one; the dashboard is typechecked, linted,
-# format-checked, tested and built on the current one, since its toolchain is the developer's, never the installer's
-# (the package ships it built).
+# Every push to main and every pull request (decision repo-hygiene/guardrails), on Node 24, the one Node the package
+# supports. Two jobs per package (decision ci-checks/job-names): check runs everything short of running the code
+# (compile or typecheck, lint, format; the dashboard also builds, since the package ships it built), test runs the tests.
+# npm ci compiles the CLI through its prepare script; the dashboard's contract types come from those declarations.
 name: CI
 
 on:
@@ -17,27 +17,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tool:
-    name: tool (Node ${{ matrix.node }})
+  cli-check:
+    name: cli / check
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ['22.13', '24']
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: ${{ matrix.node }}
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: compile
+        run: npm run build
+      - name: lint
+        run: npm run lint
+      - name: format
+        run: npm run fmt:check
+
+  cli-test:
+    name: cli / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
           cache: npm
       # the tests write stores that commit to git
       - run: git config --global user.name "pjman ci" && git config --global user.email "ci@pjman.invalid"
       - run: npm ci
-      - name: lint, format, test
-        run: npm run check
+      - name: test
+        run: npm test
 
-  dashboard:
-    name: dashboard
+  dashboard-check:
+    name: dashboard / check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -48,10 +61,30 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             ui/package-lock.json
-      # the dashboard's contract types come from the tool's built declarations
       - run: npm ci
       - run: npm ci --prefix ui
-      - name: typecheck, lint, format, test
-        run: npm --prefix ui run check
+      - name: typecheck
+        run: npm --prefix ui run typecheck
+      - name: lint
+        run: npm --prefix ui run lint
+      - name: format
+        run: npm --prefix ui run fmt:check
       - name: build
         run: npm --prefix ui run build
+
+  dashboard-test:
+    name: dashboard / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ui/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix ui
+      - name: test
+        run: npm --prefix ui run test
