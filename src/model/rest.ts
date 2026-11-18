@@ -35,6 +35,8 @@ export interface Rest {
  *  to its end, and the review is the work that is left. The caller reads the loop (it takes the repository). */
 export function heldByReview(r: Rest, review: { state: string; words?: string; next?: string; due: boolean }): Rest {
   if (!r.rests || r.status !== 'review' || !review.due || !review.next) return r;
+  // what waits on a person, or on something outside, is a resting point in review as anywhere
+  if (r.waiting.length || r.blockedOn || r.dependsOn.length) return r;
   return {
     ...r,
     rests: false,

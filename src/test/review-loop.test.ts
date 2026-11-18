@@ -12,7 +12,7 @@ import { set } from '../ops/set.js';
 import { step } from '../ops/step.js';
 import { findingsLine, findingsOf, formatFinding } from '../model/findings.js';
 import { formatRest, heldByReview, restOf } from '../model/rest.js';
-import { reviewMode, roundsOf } from '../model/review.js';
+import { lensesAsked, reviewMode, roundsOf } from '../model/review.js';
 import { stepsOf } from '../model/foundation.js';
 import { validate } from '../model/validate.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
@@ -24,6 +24,7 @@ import {
   closeRound,
   followUp,
   formatLoop,
+  handLens,
   lensBrief,
   reviewBrief,
   reviewLoop,
@@ -43,6 +44,10 @@ const findings = () => findingsOf(data());
 const rest = () => {
   const loaded = loadStore(store);
   return heldByReview(restOf(loaded, KEY), reviewLoop(store, KEY));
+};
+/** Three reviewers were handed their lenses. */
+const handed = (key = KEY) => {
+  for (const lens of ['intent', 'drift', 'correctness']) handLens(store, key, lens);
 };
 const commit = (file: string, text: string, message: string) => {
   g('switch', '-q', 'cart');
@@ -116,6 +121,18 @@ test('a reviewer is handed the brief and one question; the fix has none to read 
   assert.match(lensBrief(store, KEY, 'correctness'), /--kind correctness/);
   assert.throws(() => lensBrief(store, KEY, 'taste'), /not one of intent, drift, correctness, fix/);
   assert.throws(() => lensBrief(store, KEY, 'fix'), /has had no full review/);
+  // a round is closed only once a reviewer was handed each lens: the handout is on the record
+  assert.throws(() => closeRound(store, KEY), /no reviewer was handed --lens intent, --lens drift, --lens correctness/);
+  assert.equal(handLens(store, KEY, 'intent'), intent);
+  handLens(store, KEY, 'intent');
+  assert.deepEqual(
+    lensesAsked(data()).map((a) => a.lens),
+    ['intent'],
+  );
+  assert.throws(() => closeRound(store, KEY), /no reviewer was handed --lens drift, --lens correctness\./);
+  assert.throws(() => handLens(store, KEY, 'fix'), /has had no full review/);
+  handLens(store, KEY, 'drift');
+  handLens(store, KEY, 'correctness');
 });
 
 test('a finding says whether it holds the merge: high severity, or the done-when not met', () => {
@@ -161,6 +178,8 @@ test('the full review is closed once; what holds the merge is fixed before the f
     /2 findings hold the merge; the fix is re-reviewed once they are settled/,
   );
   // the merge is held, with or without Entire
+  assert.throws(() => handLens(store, KEY, 'fix'), /2 findings hold the merge; the fix is re-reviewed once/);
+  assert.throws(() => handLens(store, KEY, 'intent'), /has had its full review/);
   assert.throws(() => mergeChange(store, KEY), /not merged: 2 findings hold the merge[\s\S]*--resolve <n>/);
   assert.match(formatChangeContext(changeContext(store, KEY)), /\nreview: auto · 2 findings hold the merge\n/);
 });
@@ -181,6 +200,18 @@ test('the fix is re-reviewed once and alone; then the review has ended, and says
     /## Fixed since the full review\n\n1\. \[resolved\] high correctness cart\.ts:1 — The total counts items \(sums the prices\)\n/,
   );
   assert.doesNotMatch(fix.split('## Fixed since the full review')[1].split('# Review')[0], /Discounts/);
+  // a finding that comes in late, before the fix is handed to its reviewer, is still to be fixed
+  addFinding(store, KEY, { text: 'An empty cart throws', severity: 'high' });
+  assert.equal(reviewLoop(store, KEY).state, 'fixing');
+  settleFinding(store, KEY, 5, 'dismissed', 'it does not: reduce has a start value');
+  assert.equal(reviewLoop(store, KEY).state, 'recheck');
+  // in a project that reviews every change, the fix is re-reviewed before the merge
+  assert.throws(() => closeRound(store, KEY), /no reviewer was handed --lens fix\. The fix is re-reviewed/);
+  assert.throws(
+    () => mergeChange(store, KEY),
+    /not merged: change:web\/cart review \(auto\): the re-review of the fix is due/,
+  );
+  assert.match(handLens(store, KEY, 'fix'), /^You review this change[\s\S]*## Fixed since the full review/);
   // the re-reviewer finds the fix lacking in one small way: it does not hold the merge
   addFinding(store, KEY, { text: 'The sum is not rounded', kind: 'correctness' });
   const r = closeRound(store, KEY);
@@ -189,7 +220,7 @@ test('the fix is re-reviewed once and alone; then the review has ended, and says
   assert.equal(r.loop.words, 'ended: the fixes were re-reviewed and nothing holds the merge');
   assert.equal(r.loop.next, undefined);
   // what does not hold the merge went to one follow-up change, a step each, and stays on the change as deferred
-  assert.deepEqual(r.moved, [3, 4, 5]);
+  assert.deepEqual(r.moved, [3, 4, 6]);
   assert.equal(r.followUp, 'change:web/cart-follow-ups');
   const follow = data('change:web/cart-follow-ups');
   assert.equal(follow.name, 'Cart follow-ups');
@@ -199,7 +230,7 @@ test('the fix is re-reviewed once and alone; then the review has ended, and says
   );
   assert.deepEqual(
     findings().map((f) => f.state),
-    ['resolved', 'dismissed', 'deferred', 'deferred', 'deferred'],
+    ['resolved', 'dismissed', 'deferred', 'deferred', 'dismissed', 'deferred'],
   );
   assert.equal(findings()[2].note, 'moved to change:web/cart-follow-ups');
   assert.equal(rest().rests, true);
@@ -223,10 +254,13 @@ test('a finding that still holds after the re-review ends the loop as the person
   change(store, 'tax', { name: 'Tax', gist: 'Tax on the total', project: 'project:web', next: 'build it' });
   const T = 'change:web/tax';
   step(store, T, 'done', 1, {});
+  handed(T);
   addFinding(store, T, { text: 'Tax is always zero', severity: 'high' });
-  assert.equal(closeRound(store, T).loop.state, 'fixing');
+  // fixed and resolved before the round is closed: the fix is re-reviewed all the same
   settleFinding(store, T, 1, 'resolved', 'reads the rate');
-  assert.equal(reviewLoop(store, T).state, 'recheck');
+  assert.equal(closeRound(store, T).loop.state, 'recheck');
+  assert.match(lensBrief(store, T, 'fix'), /Read only what changed since that review: git diff main\.\.\.tax/);
+  handLens(store, T, 'fix');
   // the re-review finds it is not fixed, and that the fix broke something: neither sends the loop back to fixing
   settleFinding(store, T, 1, 'open', 'the rate is read from the wrong table');
   assert.equal(reviewLoop(store, T).state, 'recheck');
@@ -267,8 +301,19 @@ test('a full review that finds nothing holding the merge ends there', () => {
   const S = 'change:web/ship';
   // not in review yet, or with no work on a branch: nothing is due
   assert.equal(reviewLoop(store, S).state, 'none');
+  assert.throws(() => closeRound(store, S), /is not up for review: a round is closed once its plan has run to its end/);
+  assert.throws(() => handLens(store, S, 'intent'), /is not up for review: a lens is handed out once/);
   step(store, S, 'done', 1, {});
   assert.equal(reviewLoop(store, S).due, true);
+  // a project that reviews every change merges none unreviewed, hook or no hook
+  assert.throws(() => mergeChange(store, S), /not merged: change:web\/ship review \(auto\): the full review is due\n/);
+  // what waits on a person is a resting point in review as anywhere
+  const held = () => heldByReview(restOf(loadStore(store), S), reviewLoop(store, S));
+  assert.equal(held().rests, false);
+  set(store, S, ['blocked-on=the carrier price list'], {});
+  assert.equal(held().rests, true);
+  set(store, S, ['blocked-on='], {});
+  handed(S);
   const r = closeRound(store, S);
   assert.deepEqual([r.round?.round, r.loop.state, r.loop.due], ['full', 'ended', false]);
   assert.equal(r.loop.words, 'ended: one full review left nothing that holds the merge');
@@ -276,4 +321,32 @@ test('a full review that finds nothing holding the merge ends there', () => {
   change(store, 'notes', { name: 'Notes', gist: 'A record only', project: 'project:web', next: 'write it' });
   step(store, 'change:web/notes', 'done', 1, {});
   assert.equal(reviewLoop(store, 'change:web/notes').due, false);
+});
+
+test('on request nothing moves unasked, and what held the merge and was dismissed is said as that', () => {
+  set(store, 'project:web', ['ext.review.mode=request'], {});
+  g('branch', 'gift', 'main');
+  g('switch', '-q', 'gift');
+  fs.writeFileSync(path.join(dir, 'gift.ts'), 'export const gift = 1;\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'feat: gift wrap (change:gift)');
+  g('switch', '-q', 'main');
+  change(store, 'gift', { name: 'Gift wrap', gist: 'Wrap it', project: 'project:web', next: 'build it' });
+  const G = 'change:web/gift';
+  step(store, G, 'done', 1, {});
+  handed(G);
+  addFinding(store, G, { text: 'The wrap has no price', kind: 'intent' });
+  addFinding(store, G, { text: 'A name could be clearer', severity: 'low' });
+  assert.equal(closeRound(store, G).loop.state, 'fixing');
+  settleFinding(store, G, 1, 'dismissed', 'the price is another change');
+  const loop = reviewLoop(store, G);
+  assert.deepEqual([loop.state, loop.due], ['closing', false]);
+  assert.equal(
+    loop.words,
+    'ended: what held the merge was dismissed, the reason on each, so there is no fix to re-review',
+  );
+  assert.match(loop.next!, /pjman review change:web\/gift --follow-up/);
+  assert.equal(findingsOf(data(G))[1].state, 'open');
+  // on request the merge is the person's call: only a finding that holds it is in the way
+  assert.equal(mergeChange(store, G).by, 'local');
 });

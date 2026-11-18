@@ -18,9 +18,10 @@ import {
   type FindingSeverity,
   type FindingState,
 } from '../model/findings.js';
-import { decisionState, nameProblem, threadOf } from '../model/foundation.js';
+import { decisionState, nameProblem, stepsOf, threadOf } from '../model/foundation.js';
 import {
   loopOf,
+  lensesAsked,
   loopWords,
   REVIEW_LENSES,
   reviewMode,
@@ -487,7 +488,11 @@ export function readFindings(
       ...(typeof loc.filePath === 'string' ? { file: loc.filePath } : {}),
       ...(typeof loc.filePath === 'string' && typeof loc.startLine === 'number' ? { line: loc.startLine } : {}),
       by: 'entire',
-      at: typeof f.createdAt === 'string' ? f.createdAt : nowIso(),
+      // (as pjman writes its own, so the two compare)
+      at:
+        typeof f.createdAt === 'string' && !Number.isNaN(Date.parse(f.createdAt))
+          ? new Date(f.createdAt).toISOString()
+          : nowIso(),
       entire: id,
       filed: state,
     });
@@ -585,6 +590,9 @@ export function runReview(
     '',
     brief,
   ].join('\n');
+  // Entire's reviewers read through every lens: recorded before they run, so what they post is told from what stood
+  const due = b.loop.state === 'due' || b.loop.state === 'recheck';
+  if (due) recordLenses(store, key, fixOf || b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES], 'entire', opts);
   const ran = runEntire<string>(
     [
       'review',
@@ -602,8 +610,9 @@ export function runReview(
     return none;
   }
   const back = readFindings(store, key, opts);
-  // a review that was due closes its round; one asked for beside the loop (while fixing, or after its end) only files
-  const round = ['none', 'due', 'recheck'].includes(b.loop.state) ? closeRound(store, key, opts) : undefined;
+  // a review that was due closes its round; one asked for beside the loop (before the change reaches review, while
+  // fixing, or after its end) only files
+  const round = due ? closeRound(store, key, opts) : undefined;
   return {
     change: rec.key,
     ran: true,
@@ -648,7 +657,8 @@ export function lensBrief(
   const full = b.loop.full;
   if (!full) throw new CliError(`${b.change} has had no full review: the fix is re-reviewed after one`);
   const fixed = b.loop.fixed.map((n) => formatFinding(n, b.findings[n - 1]));
-  const since = full.head && b.branch ? `git diff ${full.head}..${b.branch}` : b.diff;
+  // (a fix committed before the round was closed is in the branch's diff, not after the round's head)
+  const since = full.head && b.branch && full.head !== b.head ? `git diff ${full.head}..${b.branch}` : b.diff;
   return [
     head,
     '',
@@ -750,6 +760,73 @@ export interface RoundResult {
   pending: string[];
 }
 
+/** The change's `reviews` as written: rounds, and the lenses handed out. */
+const reviewsOf = (data: Record<string, unknown>): unknown[] => (Array.isArray(data.reviews) ? data.reviews : []);
+
+/** The follow-up change as it stands, when there is one; refused when it is over. */
+function followUpTarget(loaded: Loaded, rec: Rec): Rec | undefined {
+  const there = live(loaded, followUpKey(rec.key));
+  if (there && ['done', 'dropped'].includes(String(there.data.status)))
+    throw new CliError(
+      `${there.key} is ${String(there.data.status)}: the findings left on ${rec.key} are not added to a change that is over; settle them here (pjman review ${rec.key} --resolve|--dismiss <n>)`,
+    );
+  return there && there.type === 'change' ? there : undefined;
+}
+
+/** Record that these lenses went out to reviewers, once each. */
+function recordLenses(store: Store, key: string, lenses: string[], by: string | undefined, opts: ReviewOpts): void {
+  const rec = changeOf(loadStore(store), key);
+  const had = new Set(lensesAsked(rec.data).map((a) => a.lens));
+  const fresh = lenses.filter((l) => !had.has(l));
+  if (!fresh.length) return;
+  const env = envelope(opts);
+  const at = nowIso();
+  const who = by ?? env.writer;
+  const entries = fresh.map((lens) => ({ round: 'lens', lens, at, ...(who ? { by: who } : {}) }));
+  const prior = snapshot(store, [rec.path]);
+  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...reviewsOf(rec.data), ...entries] }, rec.body));
+  validateOrUndo(store, [rec.path], [], prior);
+  finishWrite(store, `pjman: review ${rec.key} lens ${fresh.join(', ')} handed out`, env.session, [
+    {
+      op: 'set',
+      key: rec.key,
+      type: 'change',
+      path: rec.path,
+      fields: ['reviews', `lens ${fresh.join(', ')}`],
+      writer: env.writer,
+    },
+  ]);
+}
+
+/** Hand a reviewer its lens: the brief with the one question, and the record that it went out (a round is closed only
+ *  once each of its lenses did). A lens of the full review is handed while that review is due; the fix's once what held
+ *  the merge is settled. */
+export function handLens(
+  store: Store,
+  key: string,
+  lens: string,
+  opts: ReviewOpts = {},
+  printed: (key: string) => string = (k) => k,
+): string {
+  const text = lensBrief(store, key, lens, printed);
+  const b = reviewBrief(store, key);
+  const state = b.loop.state;
+  if (lens === 'fix') {
+    if (state === 'fixing')
+      throw new CliError(
+        `${b.change}: ${loopWords(b.loop)}; the fix is re-reviewed once they are settled\n${b.loop.holding.map((n) => formatFinding(n, b.findings[n - 1])).join('\n')}`,
+      );
+    if (state !== 'recheck') throw new CliError(`${b.change}: there is no fix to re-review (${loopWords(b.loop)})`);
+  } else if (state !== 'due')
+    throw new CliError(
+      b.loop.full
+        ? `${b.change} has had its full review (${loopWords(b.loop)}); a change is reviewed once and its fix once (decision review-loop/stop-rule)`
+        : `${b.change} is not up for review: a lens is handed out once its plan has run to its end (status review) with work on its branch; pjman review ${b.change} prints the brief before then`,
+    );
+  recordLenses(store, key, [lens], undefined, opts);
+  return text;
+}
+
 /** Close the round the reviewers just made: the full review when none is recorded, the re-review of the fix after it.
  *  Refused while findings hold the merge with no fix to read, and once the loop has ended. Where closing it ends the
  *  loop, what does not hold the merge goes to the follow-up change in the same call. */
@@ -758,6 +835,10 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): Ro
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
   const state = b.loop.state;
+  if (state === 'none')
+    throw new CliError(
+      `${rec.key} is not up for review: a round is closed once its plan has run to its end (status review) with work on its branch${b.loop.full ? '' : '; what is found before then is filed all the same (--finding)'}`,
+    );
   if (state === 'fixing')
     throw new CliError(
       `${rec.key}: ${loopWords(b.loop)}; the fix is re-reviewed once they are settled\n${b.loop.holding.map((n) => formatFinding(n, b.findings[n - 1])).join('\n')}`,
@@ -767,6 +848,14 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): Ro
       `${rec.key}: the review has ${loopWords(b.loop)}; a change is reviewed once and its fix once (decision review-loop/stop-rule)`,
     );
   if (!b.branch) throw new CliError(`${rec.key} has no branch in this repository: there was nothing to review`);
+  // a round was made through its lenses: each handed to a reviewer (--lens), or all of them Entire's (--run)
+  if (b.loop.missing.length)
+    throw new CliError(
+      `${rec.key}: no reviewer was handed ${b.loop.missing.map((l) => `--lens ${l}`).join(', ')}. ${state === 'recheck' ? 'The fix is re-reviewed' : 'A full review is made'} by reviewers that did not write the change, each told only to run \`pjman review ${rec.key} --lens <lens>\`; the round is closed when they are back`,
+    );
+  // where closing it ends the loop in a project that reviews every change, what is left moves to the follow-up change:
+  // refused before the round is written when that change is over
+  if (b.mode === 'auto' && b.loop.left.length) followUpTarget(loaded, rec);
   const env = envelope(opts);
   const round: Round = {
     round: state === 'recheck' ? 'fix' : 'full',
@@ -775,7 +864,7 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): Ro
     ...(env.writer ? { by: env.writer } : {}),
   };
   const prior = snapshot(store, [rec.path]);
-  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...roundsOf(rec.data), round] }, rec.body));
+  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...reviewsOf(rec.data), round] }, rec.body));
   validateOrUndo(store, [rec.path], [], prior);
   const commit = finishWrite(store, `pjman: review ${rec.key} ${round.round} round closed`, env.session, [
     {
@@ -796,7 +885,8 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): Ro
     filed: [],
     pending: [],
   };
-  if (out.loop.state === 'closing') {
+  // (on request nothing moves unasked: the loop says what is left, and --follow-up moves it)
+  if (out.loop.state === 'closing' && b.mode === 'auto') {
     const moved = followUp(store, key, opts);
     return { ...moved, round, commit };
   }
@@ -822,19 +912,19 @@ export function followUp(store: Store, key: string, opts: ReviewOpts = {}): Roun
   });
   if (!moved.length) return none();
   const target = followUpKey(rec.key);
-  const there = live(loaded, target);
-  if (there && ['done', 'dropped'].includes(String(there.data.status)))
-    throw new CliError(
-      `${there.key} is ${String(there.data.status)}: the findings left on ${rec.key} are not added to a change that is over; settle them here (pjman review ${rec.key} --resolve|--dismiss <n>)`,
-    );
+  const there = followUpTarget(loaded, rec);
   const texts = moved.map((n) => {
     const f = findings[n - 1];
     const where = f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : '';
     return `${f.text}${where}`;
   });
   const who = { session: opts.session, writer: opts.writer };
-  if (there) step(store, there.key, 'add', undefined, { texts, ...who });
-  else {
+  if (there) {
+    // (a move cut short after this write is taken up again: a step already there is not added twice)
+    const held = new Set(stepsOf(there.data).map((s) => s.text));
+    const fresh = texts.filter((t) => !held.has(t));
+    if (fresh.length) step(store, there.key, 'add', undefined, { texts: fresh, ...who });
+  } else {
     const name = typeof rec.data.name === 'string' ? rec.data.name : rec.changeSlug!;
     const named = `${name} follow-ups`;
     newChange(store, target, {

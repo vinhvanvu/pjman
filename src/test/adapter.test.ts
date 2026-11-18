@@ -326,6 +326,8 @@ test('in a project that reviews every change, a change in review holds the stop 
   assert.match(refused.reason, /3 fresh agents .*pjman review change:loop-it --lens <intent\|drift\|correctness>/);
   assert.match(refused.reason, /pjman review change:loop-it --reviewed/);
   // reviewed, with nothing holding the merge: the review has ended and the turn may end
+  for (const lens of ['intent', 'drift', 'correctness'])
+    execFileSync(process.execPath, [BIN, 'review', 'change:loop-it', '--lens', lens], { cwd: project, env });
   execFileSync(process.execPath, [BIN, 'review', 'change:loop-it', '--reviewed'], { cwd: project, env });
   at('UserPromptSubmit', { prompt: 'go on' });
   wrote();

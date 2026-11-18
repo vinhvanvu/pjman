@@ -12,7 +12,7 @@ import { decision } from '../ops/decision.js';
 import { set } from '../ops/set.js';
 import { step } from '../ops/step.js';
 import { findingsOf, holdsMerge } from '../model/findings.js';
-import { roundsOf } from '../model/review.js';
+import { lensesAsked, roundsOf } from '../model/review.js';
 import { validate } from '../model/validate.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
@@ -309,8 +309,20 @@ test('settling a finding again after Entire did not answer tells Entire then', (
 
 test('opted in, the re-review is handed the fix alone, and what does not hold the merge leaves the Trail for the follow-up change', () => {
   const o = { entire: { bin } };
-  // the review Entire made closed the full round; what holds the merge is fixed and settled
-  const full = roundsOf(loadStore(store).byKey.get('change:web/cart')![0].data)[0];
+  // a review asked for before the change reached review filed what it found and closed no round
+  const rounds = () => roundsOf(loadStore(store).byKey.get('change:web/cart')![0].data);
+  assert.deepEqual(rounds(), []);
+  // in review, the review Entire makes is the full round: its lenses are Entire's, and it closes the round itself
+  step(store, 'change:cart', 'done', 1, {});
+  const first = runReview(store, 'change:web/cart', o);
+  assert.equal(first.round?.round?.round, 'full');
+  assert.deepEqual(
+    lensesAsked(loadStore(store).byKey.get('change:web/cart')![0].data).map((a) => `${a.lens} ${a.by}`),
+    ['intent entire', 'drift entire', 'correctness entire'],
+  );
+  // on request, what does not hold the merge stays where it is until asked
+  assert.deepEqual(first.round?.moved, []);
+  const full = rounds()[0];
   assert.equal(full.round, 'full');
   assert.equal(full.head, g('rev-parse', '--short', 'cart').trim());
   findings().forEach((f, i) => holdsMerge(f) && settleFinding(store, 'change:web/cart', i + 1, 'resolved', 'fixed', o));
@@ -318,6 +330,7 @@ test('opted in, the re-review is handed the fix alone, and what does not hold th
   assert.match(reviewLoop(store, 'change:web/cart').next!, /^The fix is re-reviewed once.*Run `pjman review .* --run`/);
   const low = addFinding(store, 'change:web/cart', { text: 'A name could be clearer', severity: 'low' }, o);
   assert.deepEqual(low.filed, [`filed #${low.n}`]);
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
   // Entire reviews what came after the full review's head, told to judge the fix alone
   fs.writeFileSync(callsFile, '');
   const r = runReview(store, 'change:web/cart', o);
@@ -342,6 +355,7 @@ test('opted in, the re-review is handed the fix alone, and what does not hold th
   // read back, the dismissal on Entire is the move, not a new state
   assert.deepEqual(readFindings(store, 'change:web/cart', o).read, []);
   assert.equal(findings()[low.n! - 1].state, 'deferred');
+  set(store, 'project:web', ['ext.review.mode=request'], {});
   // settle what the re-review left, so the tests after start clean
   findings().forEach(
     (f, i) => holdsMerge(f) && settleFinding(store, 'change:web/cart', i + 1, 'dismissed', 'a stand-in', o),

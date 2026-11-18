@@ -59,6 +59,28 @@ export function roundsOf(data: Record<string, unknown>): Round[] {
   return out;
 }
 
+/** A lens handed to a reviewer: `pjman review <change> --lens <lens>` records that its brief went out, and when. A
+ *  round is closed only once each of its lenses was handed out, and what a reviewer files is told from what stood
+ *  before by that time. Entire's own review is recorded the same way, by `entire`. */
+export interface Asked {
+  lens: string;
+  at: string;
+  by?: string;
+}
+
+export function lensesAsked(data: Record<string, unknown>): Asked[] {
+  if (!Array.isArray(data.reviews)) return [];
+  const out: Asked[] = [];
+  for (const raw of data.reviews) {
+    const r = obj(raw);
+    const at = str(r?.at);
+    const lens = str(r?.lens);
+    if (!r || !at || !lens || r.round !== 'lens') continue;
+    out.push({ lens, at, ...(str(r.by) ? { by: str(r.by) } : {}) });
+  }
+  return out;
+}
+
 /** Where the loop stands. `none`: nothing to review (not in review, or no branch). `due`: the full review has not been
  *  made. `fixing`: findings hold the merge. `recheck`: they were fixed, and the fix has not been re-reviewed.
  *  `closing`: the review is over but findings that do not hold the merge are still on the change. `ended`: over. */
@@ -76,6 +98,8 @@ export interface Loop {
   fixed: number[];
   /** The open findings that do not hold the merge: what goes to the follow-up change. */
   left: number[];
+  /** The lenses of the round to close that no reviewer was handed yet. */
+  missing: string[];
 }
 
 /** Where a change's review loop stands, from its rounds and findings. `reviewable` says there is a branch with work on
@@ -89,28 +113,45 @@ export function loopOf(data: Record<string, unknown>, opts: { reviewable: boolea
     findings.map((f, i) => (pick(f) ? i + 1 : 0)).filter((n) => n > 0);
   const holding = nums(holdsMerge);
   const left = nums((f) => f.state === 'open' && !wouldHold(f));
-  // fixed since the full review: one settled before it was reviewed again by that round, and is not the fix's to read
+  const asked = lensesAsked(data);
+  const askedAt = (lens: string): string | undefined => asked.find((a) => a.lens === lens)?.at;
+  // the full review began when its first lens went out: a finding fixed and resolved from then on is one whose fix the
+  // re-review reads, whether it was resolved before or after the round was closed
+  const began = REVIEW_LENSES.map(askedAt)
+    .filter((t): t is string => !!t)
+    .toSorted()[0];
   const fixed = full
-    ? nums((f) => f.state === 'resolved' && wouldHold(f) && (f.settled ?? f.at ?? full.at) >= full.at)
+    ? nums((f) => f.state === 'resolved' && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at))
     : [];
-  const base = { full, fix, holding, fixed, left };
-  if (!full) return { ...base, state: data.status === 'review' && opts.reviewable ? 'due' : 'none' };
+  const missingFull = REVIEW_LENSES.filter((l) => !askedAt(l));
+  const base = { full, fix, holding, fixed, left, missing: [] as string[] };
+  if (!full)
+    return {
+      ...base,
+      missing: missingFull,
+      state: data.status === 'review' && opts.reviewable ? 'due' : 'none',
+    };
   if (!fix) {
-    // what the re-review itself brought: a finding reopened since the full review (the fix did not hold), or one filed
-    // since. These do not send the loop back to fixing: there is one re-review, and it is closed with them standing
-    const reopened = (f: Finding): boolean => f.state === 'open' && !!f.settled && f.settled >= full.at;
-    const late = (f: Finding): boolean => reopened(f) || (f.at ?? '') > full.at;
+    // what the re-review itself brought, told by when its lens went out: a finding reopened since (the fix did not
+    // hold), or one filed since. These do not send the loop back to fixing: there is one re-review, and it is closed
+    // with them standing. A finding filed before that, however late, is still to be fixed
+    const reAt = askedAt('fix');
+    const fromRecheck = (f: Finding): boolean => !!reAt && ((!!f.settled && f.settled >= reAt) || (f.at ?? '') > reAt);
     const held = holding.map((n) => findings[n - 1]);
-    const fixTried = fixed.length > 0 || held.some(reopened);
-    if (fixTried && held.every(late)) return { ...base, state: 'recheck' };
-    if (holding.length) return { ...base, state: 'fixing' };
+    if (held.some((f) => !fromRecheck(f))) return { ...base, state: 'fixing' };
+    if (fixed.length || held.length) return { ...base, missing: reAt ? [] : ['fix'], state: 'recheck' };
   }
   const n = holding.length;
+  const dismissed = findings.some((f) => f.state === 'dismissed' && wouldHold(f) && !!f.settled);
   const because = fix
     ? n
       ? `${n} finding${n === 1 ? ' still holds' : 's still hold'} the merge after the one re-review: ${n === 1 ? 'it is' : 'they are'} the person's to settle`
       : 'the fixes were re-reviewed and nothing holds the merge'
-    : 'one full review left nothing that holds the merge';
+    : n
+      ? `${n} finding${n === 1 ? ' holds' : 's hold'} the merge`
+      : dismissed
+        ? 'what held the merge was dismissed, the reason on each, so there is no fix to re-review'
+        : 'one full review left nothing that holds the merge';
   return { ...base, state: left.length ? 'closing' : 'ended', because };
 }
 

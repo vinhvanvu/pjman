@@ -13,7 +13,7 @@ import { CliError } from '../store/util.js';
 import { findingsOf, formatFinding, holdsMerge } from '../model/findings.js';
 import { observedBranches } from '../model/view.js';
 import { baseBranch, branchesOf, mergedInto } from './git.js';
-import { readFindings } from './review.js';
+import { formatLoop, readFindings, reviewLoop } from './review.js';
 
 export interface MergeResult {
   change: string;
@@ -78,6 +78,11 @@ export function mergeChange(
       throw new CliError(
         `not merged: ${holding.length} finding${holding.length === 1 ? ' holds' : 's hold'} the merge of ${rec.key}\n${holding.join('\n')}\nfix and resolve each (pjman review ${rec.key} --resolve <n> --note "…"), or dismiss one that does not hold (--dismiss <n> --note "…")`,
       );
+    // a project that reviews every change merges none unreviewed: the full review, and the re-review of a fix, come
+    // first, whoever started the merge and whether or not a hook was there to say so
+    const loop = reviewLoop(store, rec.key);
+    if (loop.due && (loop.state === 'due' || loop.state === 'recheck'))
+      throw new CliError(`not merged: ${formatLoop(loop)}`);
   };
 
   if (entireOn(loaded, store.project)) {

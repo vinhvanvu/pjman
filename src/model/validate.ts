@@ -615,8 +615,11 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
                 return;
               }
               const x = raw as Record<string, unknown>;
-              if (!(REVIEW_ROUNDS as readonly string[]).includes(String(x.round)))
-                err(r, `reviews[${i}]: round '${String(x.round)}' is not one of ${REVIEW_ROUNDS.join(', ')}`);
+              // (a lens handed to a reviewer is recorded among the rounds: {round: lens, lens, at})
+              if (x.round === 'lens') {
+                if (typeof x.lens !== 'string' || !x.lens.trim()) err(r, `reviews[${i}]: a lens names itself`);
+              } else if (!(REVIEW_ROUNDS as readonly string[]).includes(String(x.round)))
+                err(r, `reviews[${i}]: round '${String(x.round)}' is not one of ${REVIEW_ROUNDS.join(', ')}, lens`);
               if (!isTimestamp(x.at)) err(r, `reviews[${i}]: at must be a timestamp`);
             });
         }

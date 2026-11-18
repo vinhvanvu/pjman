@@ -33,12 +33,13 @@ import {
   followUp,
   formatLoop,
   formatReviewBrief,
-  lensBrief,
+  handLens,
   readFindings,
   reviewBrief,
   reviewLoop,
   runReview,
   settleFinding,
+  type LoopReport,
   type RoundResult,
 } from '../sync/review.js';
 import { formatFinding } from '../model/findings.js';
@@ -107,6 +108,16 @@ const PARSE_OPTIONS = FLAG_TYPES;
 /** The arguments parsed, then held to the command's own declaration (decision interface-audit/flags-per-command): a
  *  flag it does not take is refused naming the ones it does, a retired flag with where its job went, and more
  *  positionals than it takes are refused (a text with spaces is one quoted argument). */
+/** The review a write just made due: the loop, when the change's project reviews every change and it has not ended. */
+function reviewDue(store: Store, key: string): LoopReport | undefined {
+  try {
+    const loop = reviewLoop(store, key, printed);
+    return loop.due ? loop : undefined;
+  } catch {
+    return undefined; // a change that is not reviewed (a milestone, an invalid record) has none
+  }
+}
+
 /** What closing a round, or moving findings to the follow-up change, did: the round, what moved, where the loop stands. */
 function roundLines(r: RoundResult, printed: (key: string) => string): string[] {
   const lines: string[] = [];
@@ -544,10 +555,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         writer: v.writer,
       });
       const trail = followTrail(store, r.key, v.session);
-      if (v.json) json(trail ? { ...r, trail } : r);
+      // the last step done, in a project that reviews every change: the review is due, said by the command that made
+      // it so (a turn that ran only commands meets no stop hook)
+      const review = verb === 'done' && !r.next ? reviewDue(store, r.key) : undefined;
+      if (v.json) json({ ...r, ...(trail ? { trail } : {}), ...(review ? { review } : {}) });
       else
         out(
-          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}`,
+          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}${review ? `\n${formatLoop(review, printed)}` : ''}`,
         );
       return 0;
     }
@@ -1021,7 +1035,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           'one act per call: --finding, a settle (--resolve|--dismiss|--reopen <n>), --lens, --reviewed, --follow-up, --run or --read',
         );
       if (v.lens !== undefined) {
-        out(lensBrief(store, key, v.lens, printed));
+        out(handLens(store, key, v.lens, { session: v.session, writer: v.writer }, printed));
         return 0;
       }
       if (v.reviewed || v['follow-up']) {
