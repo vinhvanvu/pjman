@@ -1354,7 +1354,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         return 0;
       }
       if (pos[1] === 'entire') {
-        const r = syncEntire(store, { session: v.session, wake: v.wake });
+        const startOn = v.start ? resolveArg(loadStore(store), v.start, { kinds: ['change'] }) : undefined;
+        const r = syncEntire(store, { session: v.session, wake: v.wake, start: startOn });
         if (v.json) json(r);
         else {
           out(
@@ -1363,6 +1364,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           for (const l of r.linked)
             out(`  ${l.checkpoint} → ${l.change}${l.sessions.length ? ` (${l.sessions.join(', ')})` : ''}`);
           for (const t of r.trails) for (const line of trailLines({ ...t, pending: [] }, printed)) out(line);
+          for (const f of r.read)
+            out(`entire: ${plural(f.read.length, 'finding')} read from the Trail onto ${printed(f.change)}`);
           for (const reason of r.pending) out(pendingLine({ reason }));
         }
         return 0;
@@ -1411,6 +1414,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = findStore(cwd, v.store);
       if (!store) throw new CliError('no store found');
       scoped(store);
+      // read once, and only for the answer that needs it
+      const whereLoaded = v.json ? loadStore(store) : undefined;
       v.json
         ? json({
             root: store.root,
@@ -1418,8 +1423,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             project: store.project ?? null,
             product: scopeProduct ? `product:${scopeProduct}` : null,
             project_dir: store.projectDir ?? null,
-            tracker: (store.project && trackerOf(loadStore(store), store.project)) || null,
-            entire: entireOn(loadStore(store), store.project),
+            tracker: (store.project && trackerOf(whereLoaded!, store.project)) || null,
+            entire: entireOn(whereLoaded!, store.project),
             actor: readUserConfig().actor ?? null,
             source_kinds: store.config.source_kinds,
           })

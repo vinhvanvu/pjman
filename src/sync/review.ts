@@ -4,6 +4,7 @@
 // Entire each finding is also filed onto the change's Trail (`entire trail finding add`), where the Findings gate holds
 // the merge until it is resolved, and resolving or dismissing it here is told to Entire too; with no Entire the review
 // is local and the findings stand on the change alone. Filing may be left pending: the next review or sync files it.
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
 import {
@@ -173,6 +174,8 @@ export interface ReviewOpts {
   session?: string;
   writer?: string;
   entire?: EntireOpts;
+  /** Milliseconds one call to Entire may take (default 30s). */
+  timeout?: number;
 }
 
 /** File one finding on the change. */
@@ -192,9 +195,13 @@ export function addFinding(
   if (f.line !== undefined && !f.file) throw usageError('--line names a line of a file: pass --file <path> with it');
   if (f.line !== undefined && !(Number.isInteger(f.line) && f.line > 0)) throw usageError('--line takes a line number');
   const env = envelope(opts);
+  const held = findingsOf(rec.data);
+  let id = randomBytes(4).toString('hex');
+  while (held.some((x) => x.id === id)) id = randomBytes(4).toString('hex');
   const findings = [
-    ...findingsOf(rec.data),
+    ...held,
     {
+      id,
       text,
       severity: severity as FindingSeverity,
       state: 'open' as FindingState,
@@ -235,7 +242,19 @@ export function settleFinding(
     );
   if (state === 'dismissed' && !note?.trim())
     throw usageError('dismissing a finding says why it does not hold: --note "…"');
-  if (f.state === state) return { change: rec.key, n, findings, commit: null, filed: [], pending: [] };
+  if (f.state === state) {
+    // already so here; Entire may not have been told (the call was left pending): told now
+    const due = f.entire ? (f.filed ?? 'open') !== state : state === 'open';
+    const told = due ? fileFindings(store, rec.key, opts) : undefined;
+    return {
+      change: rec.key,
+      n,
+      findings: told?.findings ?? findings,
+      commit: null,
+      filed: told?.filed ?? [],
+      pending: told?.pending ?? [],
+    };
+  }
   findings[n - 1] = {
     ...f,
     state,
@@ -295,7 +314,8 @@ export function fileFindings(
           ...(f.file ? ['--file', f.file] : []),
           ...(f.file && f.line ? ['--line', String(f.line)] : []),
           '--client-id',
-          `pjman:${slug}#${n}`,
+          // the finding's own id: its place moves when another writer's finding lands before it
+          `pjman:${slug}#${f.id ?? n}`,
         ],
         { ...opts.entire, cwd: dir, timeout: 30_000 },
       );
@@ -328,8 +348,12 @@ export function fileFindings(
     // answered goes onto the record as it stands now, finding by finding, never the copy read before the calls
     const now = changeOf(loadStore(store), key);
     const current = findingsOf(now.data);
-    for (const [i, patch] of told)
-      if (current[i] && current[i].text === findings[i].text) current[i] = { ...current[i], ...patch };
+    for (const [i, patch] of told) {
+      // by its id, wherever it now stands; one filed before ids, by its place and text
+      const mine = findings[i];
+      const at = mine.id ? current.findIndex((x) => x.id === mine.id) : current[i]?.text === mine.text ? i : -1;
+      if (at >= 0) current[at] = { ...current[at], ...patch };
+    }
     save(store, now, current, `told Entire (${out.filed.join(', ')})`, opts);
     out.findings = current;
   }
@@ -361,12 +385,19 @@ export function readFindings(
     out.pending.push(`${rec.key} has no Trail yet: there are no findings on Entire to read`);
     return out;
   }
+  // Entire lists a Trail's findings only while its branch is open: they are read before the merge (pjman merge, and
+  // each sync while the change is in review), and what was read then is what the change keeps
+  const gone = `Trail #${trail.state.number} is ${trail.state.change?.status === 'closed' ? 'closed' : 'merged'}: Entire no longer lists its findings; the change keeps what was read before`;
+  if (trail.state.change?.status === 'merged' || trail.state.change?.status === 'closed') {
+    out.pending.push(gone);
+    return out;
+  }
   const r = runEntire<Record<string, unknown>>(
     ['trail', 'finding', 'list', '--branch', branch, '--status', 'any', '--freshness', 'any'],
-    { ...opts.entire, cwd: dir, timeout: 30_000 },
+    { ...opts.entire, cwd: dir, timeout: opts.timeout ?? 30_000 },
   );
   if (!r.ok) {
-    out.pending.push(r.reason);
+    out.pending.push(/has no open changes|no discoverable project trail/i.test(r.reason) ? gone : r.reason);
     return out;
   }
   const listed = Array.isArray(r.data.findings) ? (r.data.findings as unknown[]) : [];
@@ -398,6 +429,7 @@ export function readFindings(
       ? (f.severity as FindingSeverity)
       : 'medium';
     findings.push({
+      id: randomBytes(4).toString('hex'),
       text: text.replace(/\s+/g, ' ').trim(),
       severity,
       state,

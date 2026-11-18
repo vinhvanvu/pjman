@@ -178,7 +178,7 @@ test('what Entire does not answer is pending: the link is made from git alone, a
   assert.equal(r.pending.length, 1);
   assert.match(r.pending[0], /entire checkpoint explain 01E+ failed: checkpoint not found on the remote/);
   const none = syncEntire(store, { entire: { bin: path.join(tmp, 'no-entire') } });
-  assert.deepEqual(none.pending, ['no entire on the PATH']);
+  assert.deepEqual(none.pending, [`no entire at ${path.join(tmp, 'no-entire')}`]);
   assert.equal(none.commit, null);
 });
 

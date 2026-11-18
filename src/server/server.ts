@@ -847,7 +847,9 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
   // still open; a project that did not opt in is never looked at
   let entireBusy = false;
   const followEntire = () => {
-    if (entireBusy || !opts.followEntire) return;
+    // only the machine's dashboard follows: a second server (a worktree's dev server, a test) would run the same
+    // poll beside it and note every move twice
+    if (entireBusy || !opts.followEntire || !isRegistered(server)) return;
     const loaded = current();
     const dirs = readUserConfig()
       .stores.flatMap((st) => st.projects)
@@ -887,6 +889,13 @@ export function createServer(store: Store, opts: ServeOpts = {}): http.Server {
     watch.close();
   });
   return server;
+}
+
+/** Whether this server is the one the machine's address file names: the registered dashboard. */
+export function isRegistered(server: http.Server): boolean {
+  const a = server.address();
+  const at = readServeAddress();
+  return !!at && at.pid === process.pid && typeof a === 'object' && !!a && a.port === at.port;
 }
 
 /** Listen; when registering, write the address file and remove it on exit. Resolves with the address and whether it registered. */

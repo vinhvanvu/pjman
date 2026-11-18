@@ -140,7 +140,7 @@ test("opted in, Entire's checkpoint, session and prompt join it, and a commit na
   assert.match(String(linked.entire?.url), /^https:\/\/entire\.com\/gh\/acme\/web\/commit\/[0-9a-f]{40}$/);
   // Entire not answering leaves git's answer and the change standing
   const down = why(store, parseWhere('cart.ts:2'), { cwd: dir, entire: { bin: path.join(tmp, 'gone') } });
-  assert.deepEqual(down.pending, ['no entire on the PATH']);
+  assert.deepEqual(down.pending, [`no entire at ${path.join(tmp, 'gone')}`]);
   assert.deepEqual(
     down.changes.map((c) => c.key),
     ['change:web/cart'],
@@ -168,9 +168,47 @@ test("intake lists past sessions like the request: the store's own, and Entire's
     /## Past sessions .*\n- session:s1 "Cart rounding" \d{4}-\d\d-\d\d · worked on change:web\/fees · round, cart, total\n- \(a session Entire holds, not in this store\) "Totals spike" 2026-10-02 · Entire: tried rounding totals in the cart \(elsewhere\)/,
   );
   const down = searchPast(store, own, { entire: { bin: path.join(tmp, 'gone') } });
-  assert.equal(down.searchPending, 'no entire on the PATH');
+  assert.equal(down.searchPending, `no entire at ${path.join(tmp, 'gone')}`);
   assert.equal(down.sessions.length, 1);
   set(store, 'project:web', ['ext.entire.enabled='], {});
   assert.equal(searchPast(store, own, { entire: { bin } }), own, 'off: Entire is not asked');
   assert.doesNotMatch(formatIntake(intake(store, loadStore(store), 'ship the invoices')), /Past sessions/);
+});
+
+test('a path through a symlink is blamed as the file it is', () => {
+  const link = path.join(os.tmpdir(), `pjman-why-link-${process.pid}`);
+  fs.symlinkSync(dir, link);
+  try {
+    const w = why(store, parseWhere('cart.ts:2'), { cwd: link, entire: { bin } });
+    assert.equal(w.file, 'cart.ts');
+    assert.equal(w.commit?.subject, 'feat: the cart rounds half to even (change:cart)');
+  } finally {
+    fs.rmSync(link);
+  }
+});
+
+test('the decisions made on the milestones above the change are its reasons too', () => {
+  change(store, 'checkout', { name: 'Checkout', gist: 'A shopper can pay', project: 'project:web', kind: 'milestone' });
+  set(store, 'change:cart', ['parent=change:checkout'], {});
+  decision(store, 'checkout/currency', {
+    name: 'Currency',
+    gist: 'What the shop charges in',
+    entries: [
+      { type: 'question', text: 'Which currency?' },
+      { type: 'option', id: 'eur', text: 'Euros only' },
+      { type: 'accept', option: 'eur', by: 'person:tester' },
+    ],
+  });
+  const w = why(store, parseWhere('cart.ts:2'), { cwd: dir, entire: { bin: path.join(tmp, 'gone') } });
+  assert.deepEqual(w.changes[0].parent, { key: 'change:web/checkout', name: 'Checkout' });
+  assert.deepEqual(
+    w.changes[0].decisions.map((d) => [d.name, d.accepted, d.on]),
+    [
+      ['Rounding', 'Half to even, per line', undefined],
+      ['Currency', 'Euros only', 'change:web/checkout'],
+    ],
+  );
+  const text = formatWhy(w);
+  assert.match(text, /\n {2}under: change:web\/checkout — Checkout\n/);
+  assert.match(text, /\n {2}decided on change:web\/checkout \(Currency\): Euros only\n/);
 });

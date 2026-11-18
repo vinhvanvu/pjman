@@ -20,7 +20,7 @@ import { findSession, loadStore, type Loaded, type Rec } from '../store/records.
 import { CliError, localDate, nowIso } from '../store/util.js';
 import { baseBranch, mergedBranch } from './git.js';
 import { note } from '../ops/note.js';
-import { fileFindings } from './review.js';
+import { fileFindings, readFindings } from './review.js';
 import { reconcileTrail, trailCandidates, trailOf, type TrailReconcile } from './trail.js';
 
 export const CHECKPOINT_KIND = 'entire-checkpoint';
@@ -47,6 +47,8 @@ export interface EntireSyncResult {
   commit: string | null;
   /** Each change's Trail, brought to where the change stands and read back (change:trail-lifecycle). */
   trails: TrailReconcile[];
+  /** The findings read from a Trail onto its change in this run. */
+  read: { change: string; read: string[] }[];
 }
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
@@ -179,6 +181,8 @@ export interface EntireSyncOpts {
   /** Write a note on a change when its Trail moved (a gate passed or failed, a finding, a merge), which wakes the
    *  session waiting on it. The dashboard's follower passes it; a session's own sync does not wake itself. */
   wake?: boolean;
+  /** The one change whose Trail this run may start, pushing its branch. */
+  start?: string;
 }
 
 export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncResult {
@@ -204,6 +208,7 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     pending: [],
     commit: null,
     trails: [],
+    read: [],
   };
   let commits: CheckpointCommit[];
   try {
@@ -385,6 +390,9 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         writer: opts.writer,
         entire: opts.entire,
         budget: Math.min(opts.wake ? 30_000 : 90_000, left),
+        // the sweep only follows: a Trail is started, and its branch pushed, by a command run on the change, or here
+        // for the one change named (decision entire-follow-ups/unasked-push)
+        create: opts.start === rec.key,
       });
       // the session waiting on the Trail is woken in the same step as the move is recorded
       if (t && opts.wake && t.moved.length && t.state)
@@ -403,6 +411,22 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         if (!t.pending.includes(p)) t.pending.push(p);
     } catch (e) {
       t.pending.push(`${rec.key}: ${(e as Error).message.split('\n')[0]}`);
+    }
+    // and what Entire's review or a person posted there is read onto the change while the branch is open: a merged
+    // Trail lists none
+    if (!t.down && (t.state?.change?.status === 'open' || t.state?.change?.status === 'draft')) {
+      try {
+        const read = readFindings(store, rec.key, {
+          session: opts.session,
+          writer: opts.writer,
+          entire: opts.entire,
+          timeout: Math.max(1_000, Math.min(30_000, end - Date.now())),
+        });
+        if (read.read.length) result.read.push({ change: rec.key, read: read.read });
+        for (const p of read.pending) if (!t.pending.includes(p)) t.pending.push(p);
+      } catch (e) {
+        t.pending.push(`${rec.key}: ${(e as Error).message.split('\n')[0]}`);
+      }
     }
     for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
     if (t.down) break;

@@ -96,7 +96,14 @@ export function runEntire<T = unknown>(args: string[], o: EntireOpts = {}): Enti
   const said = `entire ${args.map((x) => (x.length > 60 || x.includes('\n') ? `${x.split('\n')[0].slice(0, 40)}…` : x)).join(' ')}`;
   if (personOnly(args)) return pending('person', `${said} is yours to run; pjman never runs it`);
   const bin = entireBinary(o);
-  if (!bin) return pending('missing', 'no entire on the PATH');
+  if (!bin) {
+    // a binary named and not there is said as that: the PATH was never searched
+    const named = o.bin ?? process.env.PJMAN_ENTIRE_BIN;
+    return pending(
+      'missing',
+      named ? `no entire at ${named}${o.bin ? '' : ' (PJMAN_ENTIRE_BIN)'}` : 'no entire on the PATH',
+    );
+  }
   let stdout: string;
   try {
     stdout = execFileSync(bin, o.text ? args : [...args, '--json'], {
