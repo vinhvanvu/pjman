@@ -153,17 +153,33 @@ test('two commands writing the store at once each land in their own commit', asy
   }
 });
 
-test('a lock file just created and not yet written is another writer’s, never reclaimed; one that stays unreadable is', () => {
-  const file = lockPath(store.root);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  // the writer has created the file and not yet said who it is
-  fs.writeFileSync(file, '');
-  assert.throws(() => lockStore(store.root), /the store is busy/);
-  assert.equal(fs.readFileSync(file, 'utf8'), '', 'left as it was');
-  // left unreadable by a writer that died while creating it
-  const old = new Date(Date.now() - 10_000);
-  fs.utimesSync(file, old, old);
-  lockStore(store.root);
-  assert.equal(holdsLock(store.root), true);
-  unlockStore(store.root);
+test('the lock appears whole: many writers starting at once never see one half-written, and each takes its turn', async () => {
+  process.env.PJMAN_LOCK_WAIT_MS = '5000';
+  const lockJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'store', 'lock.js');
+  const log = path.join(tmp, 'turns.log');
+  // each writer takes the lock, notes that it is in, waits, notes that it is out: two in at once would interleave
+  const writer = (n: number) =>
+    new Promise<number | null>((res) =>
+      spawn(
+        process.execPath,
+        [
+          '--input-type=module',
+          '-e',
+          `import fs from 'node:fs'; import { lockStore, unlockStore } from ${JSON.stringify(lockJs)};
+           lockStore(${JSON.stringify(store.root)}); fs.appendFileSync(${JSON.stringify(log)}, 'in ${n}\\n');
+           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
+           fs.appendFileSync(${JSON.stringify(log)}, 'out ${n}\\n'); unlockStore(${JSON.stringify(store.root)});`,
+        ],
+        { env: process.env, stdio: 'ignore' },
+      ).on('close', res),
+    );
+  const codes = await Promise.all(Array.from({ length: 8 }, (_, n) => writer(n)));
+  assert.deepEqual(
+    codes,
+    Array.from({ length: 8 }, () => 0),
+  );
+  const turns = fs.readFileSync(log, 'utf8').trim().split('\n');
+  assert.equal(turns.length, 16);
+  for (let i = 0; i < turns.length; i += 2) assert.equal(turns[i + 1], turns[i].replace('in', 'out'), turns.join(' '));
+  process.env.PJMAN_LOCK_WAIT_MS = '400';
 });
