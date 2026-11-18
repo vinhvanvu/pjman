@@ -27,6 +27,8 @@ import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
 import { syncGit } from '../sync/git.js';
 import { mergeChange } from '../sync/merge.js';
+import { addFinding, formatReviewBrief, readFindings, reviewBrief, runReview, settleFinding } from '../sync/review.js';
+import { formatFinding } from '../model/findings.js';
 import { reconcileTrail, trailLines, type TrailReconcile } from '../sync/trail.js';
 import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
@@ -957,6 +959,62 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const r = restOf(loaded, resolveArg(loaded, pos[1], { kinds: ['change'] }));
       v.json ? json({ ...r, printed: printed(r.key) }) : out(formatRest(r));
       return r.rests ? 0 : 1;
+    }
+    case 'review': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw usageError('usage: pjman review <change> [--finding "…" --severity high|medium|low]');
+      const key = resolveArg(loadStore(store), pos[1], { kinds: ['change'] });
+      const settle = v.resolve ? 'resolved' : v.dismiss ? 'dismissed' : v.reopen ? 'open' : null;
+      if (v.run || v.read) {
+        if (v.finding !== undefined || settle)
+          throw usageError('one act per call: --run, --read, --finding or a settle');
+        const o = { session: v.session, writer: v.writer };
+        const r = v.run ? runReview(store, key, { ...o, profile: v.profile }) : readFindings(store, key, o);
+        if (v.json) json(r);
+        else {
+          if ('ran' in r)
+            out(r.ran ? `${printed(r.change)} reviewed by Entire's review` : `${printed(r.change)} not reviewed`);
+          out(
+            r.read.length
+              ? `${plural(r.read.length, 'finding')} read from the Trail${r.commit ? ` (committed ${r.commit})` : ''}`
+              : 'nothing new on the Trail',
+          );
+          r.findings.forEach((f, i) => f.state === 'open' && out(`  ${formatFinding(i + 1, f)}`));
+          for (const reason of r.pending) out(pendingLine({ reason }));
+        }
+        return 0;
+      }
+      if (v.finding === undefined && !settle) {
+        const b = reviewBrief(store, key);
+        v.json ? json(b) : out(formatReviewBrief(b, printed));
+        return 0;
+      }
+      if (v.finding !== undefined && settle)
+        throw usageError('one write per call: --finding, or --resolve|--dismiss|--reopen <n>');
+      const r =
+        v.finding !== undefined
+          ? addFinding(
+              store,
+              key,
+              {
+                text: v.finding,
+                severity: v.severity,
+                file: v.file,
+                line: v.line === undefined ? undefined : Number(v.line),
+              },
+              { session: v.session, writer: v.writer },
+            )
+          : settleFinding(store, key, Number(pos[2]), settle!, v.note, { session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else {
+        const f = r.findings[r.n! - 1];
+        out(
+          `${printed(r.change)} finding ${formatFinding(r.n!, f)}${r.commit ? ` (committed ${r.commit})` : r.filed.length ? '' : ' (unchanged)'}`,
+        );
+        if (r.filed.length) out(`entire: ${r.filed.join(', ')} on the Trail`);
+        for (const reason of r.pending) out(pendingLine({ reason }));
+      }
+      return 0;
     }
     case 'merge': {
       const store = scoped(requireStore(cwd, v.store));

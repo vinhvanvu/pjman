@@ -93,22 +93,33 @@ type Source = ChangeContext['sources'][number];
 
 /** The sources as rows: the branch and whether a session was seen on it, the links, the files; and the one-line sum
  *  the head says. */
-export function sourcesView(ctx: Pick<ChangeContext, 'sources' | 'branch'>): {
+/** A Trail's line as the context carries it, less its address (the row's link opens that). */
+export const trailWords = (trail: string): string => trail.replace(/ \(https?:[^)]*\)$/, '');
+
+export function sourcesView(
+  ctx: Pick<ChangeContext, 'sources' | 'branch'> & Partial<Pick<ChangeContext, 'findings'>>,
+): {
   branch?: { name: string; observed: boolean };
   links: Source[];
   files: Source[];
+  /** What a review found (pjman review), the ones still standing first. */
+  findings: NonNullable<ChangeContext['findings']>;
   sum: string;
 } {
+  const all = ctx.findings ?? [];
+  const findings = [...all.filter((f) => f.state === 'open'), ...all.filter((f) => f.state !== 'open')];
+  const standing = all.filter((f) => f.state === 'open').length;
   const files = ctx.sources.filter((s) => s.key.startsWith('file:'));
   const links = ctx.sources.filter((s) => !s.key.startsWith('file:'));
   const sum = [
     ctx.branch ? `branch ${ctx.branch.name}` : '',
     links.length ? plural(links.length, 'link') : '',
+    standing ? plural(standing, 'open finding') : '',
     files.length ? plural(files.length, 'file') : 'no files yet',
   ]
     .filter(Boolean)
     .join(' · ');
-  return { branch: ctx.branch, links, files, sum };
+  return { branch: ctx.branch, links, files, findings, sum };
 }
 
 /** The identity row's label: where the session is now, or what the person is viewing instead. */
