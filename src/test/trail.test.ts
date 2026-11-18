@@ -90,8 +90,22 @@ if (args[1] === 'show') {
   const t = pick();
   if (!t) fail('branch "' + flag('--branch') + '" has no discoverable project trail; pass a project trail ID with --project');
   console.log(JSON.stringify(show(t, true)));
+} else if (args[1] === 'list') {
+  if (fs.existsSync(${JSON.stringify(path.join(tmp, 'nolist'))})) fail('the server did not answer (503)');
+  console.log(JSON.stringify({ items: state.filter((t) => t.status === 'open').map((t) => ({ id: t.id, number: t.number, title: t.title, body: t.body, status: t.status })) }));
+} else if (args[1] === 'link') {
+  const t = state.find((x) => String(x.number) === args[2]);
+  if (!t) fail('no trail ' + args[2]);
+  t.branch = flag('--branch'); save();
+  console.log(JSON.stringify(show(t, false)));
 } else if (args[1] === 'create') {
   if (flag('--branch') === 'refused') fail('trails are not enabled for gh/acme/web; an admin can turn them on');
+  if (flag('--branch') === 'half' && !state.some((t) => t.title === flag('--title'))) {
+    // the Trail is made, its branch is not linked, and the answer never comes
+    state.push({ number: state.length + 1, id: '01TRAIL' + (state.length + 1), title: flag('--title'), body: flag('--body'),
+      status: 'open', phase: 'planning', branch: '', change: 'draft', ready: false, gates: [], open: 0 });
+    save(); fail('context deadline exceeded');
+  }
   const t = { number: state.length + 1, id: '01TRAIL' + (state.length + 1), title: flag('--title'), body: flag('--body'),
     status: 'open', phase: 'building', branch: flag('--branch'), change: 'draft', ready: false,
     gates: [{ gate_key: 'approvals', status: 'pending', blocking: true, state: 'evaluated' },
@@ -128,7 +142,7 @@ before(() => {
   fs.mkdirSync(dir, { recursive: true });
   g('init', '-q', '-b', 'main');
   g('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'start');
-  for (const b of ['cart', 'search', 'gone', 'adopted', 'refused']) g('branch', b);
+  for (const b of ['cart', 'search', 'gone', 'adopted', 'refused', 'half']) g('branch', b);
   init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
   set(store, 'project:web', ['ext.github.repo=acme/web'], {});
@@ -165,8 +179,8 @@ test('work starting creates the Trail from the change and binds it', () => {
   assert.deepEqual(r.acts, ['created']);
   assert.deepEqual(r.pending, []);
   assert.equal(r.trail, 'entire-trail:gh/acme/1');
-  assert.deepEqual(verbs(), ['trail show', 'trail create', 'trail show', 'trail finding list']);
-  const create = calls()[1];
+  assert.deepEqual(verbs(), ['trail show', 'trail list', 'trail create', 'trail show', 'trail finding list']);
+  const create = calls()[2];
   assert.deepEqual(create.slice(0, 4), ['trail', 'create', '--title', 'Cart']);
   assert.ok(create.includes('--branch') && create[create.indexOf('--branch') + 1] === 'cart');
   assert.equal(create[create.indexOf('--base') + 1], 'main');
@@ -361,4 +375,33 @@ test("a Trail's key follows its own address where the project recorded no reposi
   const r = reconcileTrail(store, 'change:web/norepo', { entire: { bin } })!;
   assert.deepEqual(r.acts, ['created']);
   assert.equal(r.trail, `entire-trail:gh/acme/${r.state!.number}`);
+});
+
+test('a create that made the Trail and never answered is not followed by a second: the branch is linked to that Trail', () => {
+  // (the project's repository names the project the Trails are listed in)
+  set(store, 'project:web', ['ext.github.repo=acme/web'], {});
+  change(store, 'half', { title: 'Half made', summary: 's', project: 'project:web', next: 'build it' });
+  step(store, 'change:half', 'start', 1, {});
+  const first = reconcileTrail(store, 'change:web/half', { entire: { bin } })!;
+  assert.match(first.pending[0], /context deadline exceeded/);
+  assert.equal(first.trail, undefined);
+  const made = trails().filter((t) => t.title === 'Half made');
+  assert.equal(made.length, 1);
+  assert.equal(made[0].branch, '');
+
+  // while Entire does not answer the list, nothing is created on a guess
+  fs.writeFileSync(path.join(tmp, 'nolist'), '');
+  const blind = reconcileTrail(store, 'change:web/half', { entire: { bin } })!;
+  assert.deepEqual([blind.acts, blind.trail], [[], undefined]);
+  assert.equal(trails().filter((t) => t.title === 'Half made').length, 1);
+  fs.rmSync(path.join(tmp, 'nolist'));
+  // the next run finds the Trail by the change's key in its body and links the branch to it
+  const r = reconcileTrail(store, 'change:web/half', { entire: { bin } })!;
+  assert.deepEqual(r.acts.slice(0, 1), ['linked']);
+  assert.equal(r.pushed, 'half');
+  assert.equal(r.trail, `entire-trail:gh/acme/${made[0].number}`);
+  const now = trails().filter((t) => t.title === 'Half made');
+  assert.deepEqual([now.length, now[0].branch], [1, 'half']);
+  // one create was ever asked for this change
+  assert.equal(calls().filter((c) => c[1] === 'create' && c.includes('Half made')).length, 1);
 });

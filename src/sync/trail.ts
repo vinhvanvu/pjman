@@ -229,6 +229,48 @@ export function reconcileTrail(
     } else if (opts.create === false) {
       result.unstarted = branch;
       return result;
+    } else if (
+      // a create that did not answer may have made the Trail all the same, without its branch (change:trail-doubled:
+      // Entire creates the Trail, then links the branch): one of the project that carries this change's key is that
+      // Trail, and the branch is linked to it. Entire's own word: "retry with trail link rather than creating another"
+      (() => {
+        const repo = repoOf(loaded, store.project);
+        if (!repo) return false;
+        const listed = call(
+          ['trail', 'list', '--project', `gh/${repo.split('/')[0]}`, '--status', 'open', '--limit', '100'],
+          false,
+          true,
+        );
+        if (!listed.ok) {
+          // after a create that went unanswered, a list that cannot be read may hide the Trail it made: none is made
+          // on a guess, the reason is printed, and the next run asks again. With no such create behind it, the list
+          // is a courtesy and the create goes on
+          if (!obj(obj(rec.data.ext)?.entire)?.create_unanswered) return false;
+          if (!result.pending.includes(listed.reason)) result.pending.push(listed.reason);
+          return true;
+        }
+        const mark = `pjman: ${rec.key}`;
+        const half = arr(listed.data.items)
+          .map(obj)
+          .filter((t): t is Record<string, unknown> => !!t && typeof t.number === 'number')
+          .filter((t) => (str(t.body) ?? '').trimEnd().endsWith(mark))
+          .toSorted((a, b) => (b.number as number) - (a.number as number))[0];
+        if (!half) return false;
+        const linked = run(['trail', 'link', String(half.number), '--branch', branch, '--base', base]);
+        if (!linked.ok) return true;
+        const shownNow = call(['trail', 'show', '--branch', branch], false, true);
+        const taken = (shownNow.ok ? readTrail(shownNow.data, branch) : null) ?? readTrail(linked.data, branch);
+        if (!taken) {
+          result.pending.push(`Trail #${String(half.number)} was linked to ${branch} and could not be read back`);
+          return true;
+        }
+        state = taken;
+        result.acts.push('linked');
+        result.pushed = branch;
+        return true;
+      })()
+    ) {
+      if (!state) return result;
     } else {
       const made = run([
         'trail',
@@ -245,7 +287,21 @@ export function reconcileTrail(
         base,
       ]);
       const created = made.ok ? readTrail(made.data, branch) : null;
-      if (!created) return result;
+      if (!created) {
+        // the create may have made the Trail all the same: the change remembers it asked, so the next run looks for
+        // that Trail before it makes another
+        if (!made.ok && !obj(obj(rec.data.ext)?.entire)?.create_unanswered) {
+          try {
+            set(store, rec.key, [`ext.entire.create_unanswered=${nowIso()}`], {
+              session: opts.session,
+              because: 'entire trail create did not answer',
+            });
+          } catch {
+            // the change stands without the mark: the next run looks all the same
+          }
+        }
+        return result;
+      }
       state = { ...created, sent };
       result.acts.push('created');
       result.pushed = branch;
