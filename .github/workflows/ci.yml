@@ -1,7 +1,6 @@
-# Every push to main and every pull request (decision repo-hygiene/guardrails): the tool is linted, format-checked
-# and tested on the oldest Node the package supports and the current one; the dashboard is typechecked, linted,
-# format-checked, tested and built on the current one, since its toolchain is the developer's, never the installer's
-# (the package ships it built).
+# Every push to main and every pull request (decision repo-hygiene/guardrails): on Node 24, the one Node the package
+# supports, the tool is linted, format-checked and tested, and the dashboard is typechecked, linted, format-checked,
+# tested and built (the package ships it built).
 name: CI
 
 on:
@@ -18,17 +17,13 @@ concurrency:
 
 jobs:
   tool:
-    name: tool (Node ${{ matrix.node }})
+    name: tool
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: ['22.13', '24']
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: ${{ matrix.node }}
+          node-version: '24'
           cache: npm
       # the tests write stores that commit to git
       - run: git config --global user.name "pjman ci" && git config --global user.email "ci@pjman.invalid"

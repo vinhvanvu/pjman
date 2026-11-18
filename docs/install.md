@@ -8,7 +8,7 @@ pjman installs from npm or from its Homebrew tap. Either way, run `pjman init` i
 npm install -g @vinhvanvu/pjman
 ```
 
-Node 22.13 or newer and git.
+Node 24 or newer and git.
 
 ## With Homebrew
 
