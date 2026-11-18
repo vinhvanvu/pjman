@@ -12,8 +12,9 @@ import { TOOL_VERSION } from '../store/version.js';
 import { knownMarketplace } from './init.js';
 import { describeMigration, pendingMigration } from '../ops/migrate.js';
 import { stableRoot } from './start.js';
+import { entireOn, entireState, type EntireOpts } from '../entire/entire.js';
 
-export type Area = 'binary' | 'plugin' | 'sessions' | 'hook' | 'dashboard' | 'store' | 'config';
+export type Area = 'binary' | 'plugin' | 'sessions' | 'hook' | 'dashboard' | 'store' | 'config' | 'entire';
 export interface Finding {
   area: Area;
   /** ok: nothing to do; warn: works, but not as it should; error: broken. */
@@ -32,6 +33,8 @@ export interface DoctorOpts {
   processes?: () => { pid: number; started: Date }[];
   /** Whether a URL answers (tests pass fakes; default: a fetch with a short timeout, in a child). */
   answers?: (url: string) => boolean;
+  /** How Entire is reached, for the projects that opted in (tests pass a fake binary). */
+  entire?: EntireOpts;
 }
 
 const claudeDirOf = (o: DoctorOpts) =>
@@ -354,6 +357,61 @@ function checkConfig(): Finding[] {
   return out;
 }
 
+/** Entire, for each registered project that opted in (`ext.entire.enabled`): the binary, the repository's enablement,
+ *  the login, and that Entire's hooks and pjman's run side by side. A project that did not opt in is not looked at and
+ *  nothing is spawned. Setup is the person's: every fix here is a command to run, never one doctor runs. */
+function checkEntire(o: DoctorOpts): Finding[] {
+  const store = globalStore();
+  if (!store) return [];
+  let loaded;
+  try {
+    loaded = loadStore(store);
+  } catch {
+    return []; // the store area already says it cannot be read
+  }
+  const out: Finding[] = [];
+  const bindings = readUserConfig().stores.flatMap((s) => s.projects);
+  for (const b of bindings) {
+    if (!b.project || !entireOn(loaded, b.project) || !fs.existsSync(b.path)) continue;
+    const at = `${b.project} (${b.path})`;
+    const warn = (message: string, fix: string) => out.push({ area: 'entire', level: 'warn', message, fix });
+    const s = entireState(b.path, o.entire);
+    if (!s.binary) {
+      warn(
+        `${at} opted in to Entire, and there is no entire on the PATH; pjman works as without it`,
+        'install Entire (https://docs.entire.io), or pjman set ' + b.project + ' ext.entire.enabled=',
+      );
+      continue;
+    }
+    const before = out.length;
+    if (s.enabled === false) warn(`Entire is not enabled in ${at}`, `run in ${b.path}: entire enable`);
+    if (s.loggedIn === false) warn(`no Entire login is saved, so ${at} cannot reach its Trails`, 'run: entire login');
+    for (const reason of s.pending) warn(`Entire did not answer for ${at}: ${reason}`, 'run: entire doctor');
+    if (s.enabled !== false && s.missingGitHooks.length)
+      warn(
+        `Entire's git hooks are missing in ${at}: ${s.missingGitHooks.join(', ')}; commits there link no checkpoint`,
+        `run in ${b.path}: entire enable`,
+      );
+    if (s.enabled !== false && !s.claudeEvents.length)
+      warn(
+        `Entire's Claude Code hooks are not in ${at}'s .claude/settings.json; its sessions are not captured`,
+        `run in ${b.path}: entire agent add claude-code`,
+      );
+    if (s.unguarded.length)
+      warn(
+        `${s.unguarded.length} of Entire's Claude Code hooks in ${at} fail a session where entire is not installed`,
+        "wrap each in: sh -c 'if ! command -v entire >/dev/null 2>&1; then exit 0; fi; exec entire hooks …'",
+      );
+    if (out.length === before)
+      out.push({
+        area: 'entire',
+        level: 'ok',
+        message: `Entire ${s.version ?? '?'} is on for ${at}${s.user ? `, logged in as ${s.user}` : ''}${s.checkpointRemote ? `, checkpoints to ${s.checkpointRemote}` : ''}; its hooks run beside pjman's (${s.claudeEvents.join(', ')})`,
+      });
+  }
+  return out;
+}
+
 /** Every check, in the order the issue named them. Writes nothing. */
 export function doctor(o: DoctorOpts = {}): Finding[] {
   found.clear();
@@ -365,6 +423,7 @@ export function doctor(o: DoctorOpts = {}): Finding[] {
     ...checkDashboard(o),
     ...checkStore(),
     ...checkConfig(),
+    ...checkEntire(o),
   ];
 }
 

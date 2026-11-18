@@ -49,7 +49,7 @@ A key is resolved by the tool; a reference to a record that does not exist is a 
 | `writer` | M | The actor that created the record, when a tool or adapter created it. Absent on a hand-written record |
 | `session` | M | The session that created it, when an adapter created it. Absent otherwise |
 | `created` | M | Date. Set by the tool at creation; a hand-written record may set it |
-| `ext` | — | Extension namespace, `ext.<owner>.<field>`, one writer per `<owner>` subtree. Preserved structurally (a YAML round-trip may reformat it); never validated |
+| `ext` | — | Extension namespace, `ext.<owner>.<field>`, one writer per `<owner>` subtree. Preserved structurally (a YAML round-trip may reformat it); never validated. The tool reads two of a project's: `ext.github.repo` (the repository a `#12` means) and `ext.entire.enabled` (`true` opts the project in to Entire; absent, pjman runs nothing of Entire's) |
 
 No `id`, no `type` (the folder is the type), no `updated` (git has it).
 

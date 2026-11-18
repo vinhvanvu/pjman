@@ -1,5 +1,6 @@
 // The source is in layers, each importing only from those below it (decision repo-hygiene/src-layers):
-// store ← hosts ← model ← ops ← sync ← server ← cli. A layer may import its own modules; an import that reaches up
+// store ← hosts ← entire ← model ← ops ← sync ← server ← cli (entire, the one module that talks to Entire, sits low
+// so every layer above may call it: change:entire-adapter). A layer may import its own modules; an import that reaches up
 // is refused here, naming the file and what it imports.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const LAYERS = ['store', 'hosts', 'model', 'ops', 'sync', 'server', 'cli'] as const;
+const LAYERS = ['store', 'hosts', 'entire', 'model', 'ops', 'sync', 'server', 'cli'] as const;
 const rank = (layer: string): number => LAYERS.indexOf(layer as (typeof LAYERS)[number]);
 
 // the tests run from dist/test; the source sits two folders up, under src/
