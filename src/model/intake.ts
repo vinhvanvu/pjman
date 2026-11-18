@@ -58,6 +58,24 @@ export interface Intake {
   /** The product has no map yet (decision cold-start-gaps/map-first-at-intake): what the repository holds and how the map
    *  comes with this change, in the same breath. Absent once the product has a feature or the project said skip. */
   map?: MapState;
+  /** Past sessions that did something like it (change:pjman-why): from the store's own sessions by their names and
+   *  logs, and, in a project that opted in to Entire, from Entire's search over what those sessions said and did. */
+  sessions: PastSession[];
+  /** Why Entire's search added nothing, when it was asked and did not answer. */
+  searchPending?: string;
+}
+
+/** A session that worked on something like the request. */
+export interface PastSession {
+  /** The store's session, when it holds one. */
+  session?: string;
+  name?: string;
+  at?: string;
+  /** The changes that session worked on. */
+  changes: string[];
+  /** What matched: the shared words (the store), or what Entire's search quoted. */
+  matched: string;
+  from: 'store' | 'entire';
 }
 
 const STOP = new Set(
@@ -140,6 +158,24 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: IntakeO
   };
   const rank = (a: Candidate, b: Candidate) => b.score - a.score || a.key.localeCompare(b.key);
   const keep = (x: Candidate) => x.score >= 0.34 || (x as ChangeCandidate).referenced;
+  // sessions of the store that read like it: by the name they were given and what they logged
+  const sessions: PastSession[] = loaded.records
+    .filter((r) => r.type === 'session' && r.valid && (!opts.project || r.data.project === opts.project))
+    .map((r) => ({
+      r,
+      o: overlap(ask, `${str(r.data.name) ?? ''} ${r.sections.get('Log') ?? ''}`),
+    }))
+    .filter((x) => x.o.score >= 0.5 && x.o.words.length >= 2)
+    .toSorted((a, b) => b.o.score - a.o.score || String(b.r.data.started).localeCompare(String(a.r.data.started)))
+    .slice(0, 5)
+    .map(({ r, o }) => ({
+      session: r.key,
+      name: str(r.data.name),
+      at: str(r.data.started)?.slice(0, 10),
+      changes: (Array.isArray(r.data.changes) ? r.data.changes : []).filter((k): k is string => typeof k === 'string'),
+      matched: o.words.join(', '),
+      from: 'store' as const,
+    }));
   const duplicates = changes.filter(isOpen).map(candidate).filter(keep).toSorted(rank).slice(0, 8);
   const done = changes
     .filter((c) => c.data.status === 'done')
@@ -227,6 +263,7 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: IntakeO
     milestones,
     tail: { product: product?.key ?? null, sequence: sequence.slice(-3), later },
     map,
+    sessions,
   };
 }
 
@@ -268,6 +305,18 @@ export function formatIntake(i: Intake): string {
           .join('\n')
       : '(none)',
   );
+  if (i.sessions.length) {
+    out.push(`\n## Past sessions (work like it, already done or tried; read one before starting over)`);
+    out.push(
+      i.sessions
+        .map(
+          (p) =>
+            `- ${p.session ?? '(a session Entire holds, not in this store)'}${p.name ? ` "${p.name}"` : ''}${p.at ? ` ${p.at}` : ''}${p.changes.length ? ` · worked on ${p.changes.slice(0, 3).join(', ')}${p.changes.length > 3 ? ` and ${p.changes.length - 3} more` : ''}` : ''} · ${p.from === 'entire' ? `Entire: ${p.matched}` : p.matched}`,
+        )
+        .join('\n'),
+    );
+  }
+  if (i.searchPending) out.push(`\nentire: pending (${i.searchPending})`);
   out.push(`\n## The order's tail${i.tail.product ? ` (${i.tail.product})` : ''}`);
   out.push(i.tail.sequence.length ? `… ${i.tail.sequence.join(' → ')}` : '(the sequence is empty)');
   out.push(`${i.tail.later} open change${i.tail.later === 1 ? '' : 's'} after it as later`);

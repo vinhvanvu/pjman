@@ -49,7 +49,7 @@ A key is resolved by the tool; a reference to a record that does not exist is a 
 | `writer` | M | The actor that created the record, when a tool or adapter created it. Absent on a hand-written record |
 | `session` | M | The session that created it, when an adapter created it. Absent otherwise |
 | `created` | M | Date. Set by the tool at creation; a hand-written record may set it |
-| `ext` | — | Extension namespace, `ext.<owner>.<field>`, one writer per `<owner>` subtree. Preserved structurally (a YAML round-trip may reformat it); never validated |
+| `ext` | — | Extension namespace, `ext.<owner>.<field>`, one writer per `<owner>` subtree. Preserved structurally (a YAML round-trip may reformat it); never validated. The tool reads two of a project's: `ext.github.repo` (the repository a `#12` means) and `ext.entire.enabled` (`true` opts the project in to Entire; absent, pjman runs nothing of Entire's) |
 
 No `id`, no `type` (the folder is the type), no `updated` (git has it).
 
@@ -201,7 +201,7 @@ A thing outside the store: a ticket, a PR, a branch, a repo, a doc, a thread, a 
 | `url` | A | Optional |
 | `links` | A | Optional: source keys this source refers to |
 
-Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. What a sync observed of a ticket sits under `ext.<tracker>` (`ext.linear`, `ext.github`).
+Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. What a sync observed of a ticket sits under `ext.<tracker>` (`ext.linear`, `ext.github`). Two kinds are Entire's, linked only in a project that opted in (`ext.entire.enabled` on the project): `entire-checkpoint:<id>`, the sessions behind one commit, written by `pjman sync entire` from the commit's `Entire-Checkpoint` trailer with the commit and the session ids under `ext.entire` and a `url` that opens it on entire.com; and `entire-trail:<forge>/<owner>/<number>`, a change's Trail (one change, one Trail), bound by the change (`binds`) and written by pjman as the change moves: under `ext.entire` its id, number, status (open, closed), phase, the branch and its state on the Trail (draft, open, merged, closed), the gates with their status, the open findings by severity, and what pjman last sent.
 
 ---
 
@@ -228,6 +228,7 @@ A change reads as a ladder (decision record-foundation/the-ladder): its `name`, 
 | `depends_on` | A | Optional list of change keys: what must land before this one. A cycle and a self-dependency are refused. The roadmap draws the edge on focus and checks it against the order; it warns and never reorders |
 | `target` | A | Optional date: a milestone's target, set by a person, shown where present, never required and never inferred |
 | `plan` | M | The plan as steps, written only through `pjman step`: a list of `{text, state, note, at}`, state one of `open`, `active`, `done`, `dropped`, the note where the work stands on it, `at` when it last moved. Every move is one event on the change (`fields: [plan, step <verb>]`). Derived from it: the next step (the active one, else the first open), the plan's progress (done over not dropped), the active step's note. There is no `next` field: the next step is the plan's |
+| `findings` | — | What a review found on the change's branch (`pjman review`): a list of `{text, severity (high, medium, low), state (open, resolved, dismissed), file, line, note, by, at}`, written only by the command. In a project that opted in to Entire each also carries `entire` (its id on the change's Trail) and `filed` (the state Entire was last told) |
 | `parent` | A | Optional. The change this one is part of. Depth is unbounded; a cycle is an error; the parent may be in another project. Children are derived, never written. The parent is a milestone by its `kind`, never by having children; its progress is the children done over children, dropped excluded, derived |
 | `aliases` | A | Former slugs, appended by `pjman mv` (`<product>/<slug>` for a key once held in another product; the flat slug from before keys were paths under the product, added by `pjman migrate`). A reference to an alias resolves and is reported as "resolves via alias" |
 | `rungs_from` | M | The hash of the foundation (Origin, Intent, Done when) the name and gist were written from. Set whenever they are written; a foundation written without them leaves it behind, and the rungs read as stale |

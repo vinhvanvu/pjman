@@ -107,12 +107,13 @@ if (!VERSION_RE.test(current)) fail(`package.json version ${current} is not a pl
 
 const lastTag = soft('git', ['describe', '--tags', '--abbrev=0', '--match', 'v*']);
 const since = lastTag ? `${lastTag}..HEAD` : 'HEAD';
-const commits = git('log', '--first-parent', '--reverse', '--format=%H%x1f%s', since)
-  .split('\n')
+const commits = git('log', '--first-parent', '--reverse', '--format=%H%x1f%s%x1f%b%x1e', since)
+  .split('\x1e')
+  .map((entry) => entry.replace(/^\s+/, ''))
   .filter(Boolean)
-  .map((line) => {
-    const [sha, subject] = line.split('\x1f');
-    return { sha, short: sha.slice(0, 7), subject };
+  .map((entry) => {
+    const [sha, subject, body] = entry.split('\x1f');
+    return { sha, short: sha.slice(0, 7), subject, body: body ?? '' };
   });
 if (!commits.length) fail(`nothing to release: no commit on main since ${lastTag}`);
 if (lastTag && lastTag !== `v${current}`)
@@ -130,19 +131,27 @@ for (const c of changes) {
 const resolve = (slug) => bySlug.get(slug) ?? bySlug.get(slug.replace(/^worktree-/, '')) ?? null;
 
 /** The change keys a commit names: every `change:<slug>` in the parenthesised group that ends the subject (the trailer
- *  the merge convention writes, `(change:a, change:b)`, or `(decision x/y; change:a)`), else the branch a merge into
- *  main brought in. */
-function keysOf(subject) {
-  const trailer = /\(([^()]*\bchange:[^()]*)\)\s*$/.exec(subject);
-  if (trailer) return [...trailer[1].matchAll(/change:([A-Za-z0-9_./-]+)/g)].map((m) => m[1].replace(/^[^/]+\//, ''));
+ *  the merge convention writes, `(change:a, change:b)`, or `(decision x/y; change:a)`; a squash merge's `(#12)` may
+ *  follow it), else the branch a merge into main brought in, by git's merge commit or a pull request's. */
+const keysIn = (m) => [...m[1].matchAll(/change:([A-Za-z0-9_./-]+)/g)].map((k) => k[1].replace(/^[^/]+\//, ''));
+function keysOf(subject, body = '') {
+  // a squash merge ends its subject with the pull request's number, after the group: `… (change:a) (#12)`
+  const trailer = /\(([^()]*\bchange:[^()]*)\)(?:\s*\(#\d+\))?\s*$/.exec(subject);
+  if (trailer) return keysIn(trailer);
   const merge = /^Merge branch '([^']+)'(?:\s+into\s+main\b)?(?!\s+into\b)/.exec(subject);
-  return merge ? [merge[1]] : [];
+  if (merge) return [merge[1]];
+  // a pull request merged on GitHub: its merge commit names the head branch (`Merge pull request #12 from owner/branch`)
+  const pr = /^Merge pull request #\d+ from [^/\s]+\/(\S+)/.exec(subject);
+  if (pr) return [pr[1].split('/').pop()];
+  // a squash merge: the subject is the pull request's title, and the body lists the commits it folded, each naming
+  // its change the same way
+  return [...new Set([...body.matchAll(/\(([^()]*\bchange:[^()]*)\)/g)].flatMap(keysIn))];
 }
 
 const shipped = new Map(); // key -> { change, commits: [] }
 const also = []; // commits that resolve to no change
 for (const commit of commits) {
-  const found = keysOf(commit.subject).map(resolve).filter(Boolean);
+  const found = keysOf(commit.subject, commit.body).map(resolve).filter(Boolean);
   if (!found.length) {
     also.push(commit);
     continue;

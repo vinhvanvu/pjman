@@ -90,6 +90,15 @@ export const FLAG_TYPES = {
   detach: { type: 'boolean' },
   full: { type: 'boolean' },
   follow: { type: 'boolean' },
+  wake: { type: 'boolean' },
+  finding: { type: 'string' },
+  run: { type: 'boolean' },
+  read: { type: 'boolean' },
+  profile: { type: 'string' },
+  file: { type: 'string' },
+  line: { type: 'string' },
+  resolve: { type: 'boolean' },
+  dismiss: { type: 'boolean' },
   receipt: { type: 'boolean' },
   reason: { type: 'string' },
   via: { type: 'string' },
@@ -364,13 +373,14 @@ export const COMMANDS: Command[] = [
     group: 'records',
     line: "a tracker's tickets applied to the store: sources and the changes they bind",
     about:
-      "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered",
+      "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered. sync git follows merges pjman did not make: every change of the project in review whose branch is on the base branch or its fetched remote, by a merge commit (git's or a pull request's), a squash, a rebase or a fast-forward, is set done, one write each. sync entire, for a project that opted in to Entire (ext.entire.enabled=true), reads the repository's own commits: each Entire-Checkpoint trailer becomes a source (entire-checkpoint:<id>, opening on entire.com at its commit) linked to the change the commit names (change:<slug>) or its branch was cut for, and observed by the sessions that contributed to it; what Entire does not answer is printed as pending and read again next time. It also brings each change's Trail to where the change stands (decision entire-opt-in/trail-granularity: one change, one Trail): created with the change's branch, name, intent, done-when and accepted decisions when work has started on it, its body kept to the change, marked ready when the plan has run to its end, closed when the change is done or dropped; and reads back its phase, the branch's state, the gates and the open findings, which the change's context shows. A branch merged on Entire sets its change done. pjman step, pjman set and pjman merge do the same for the one change they wrote. --wake (the dashboard's follower passes it) leaves a note on a change whose Trail moved, which wakes the session waiting on it. pjman never approves a Trail and never merges past a gate",
     usage: [
       'pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]',
       'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]',
       'pjman sync github            (no --from: prints the gh command that reads the issues)',
+      "pjman sync entire [--json]   (the checkpoints on the repository's commits, linked to their changes and sessions)",
     ],
-    flags: ['from', 'project', 'team', 'repo'],
+    flags: ['from', 'project', 'team', 'repo', 'wake'],
     args: 1,
   },
 
@@ -420,7 +430,7 @@ export const COMMANDS: Command[] = [
     group: 'reading',
     line: 'what already exists for a request, before it is filed',
     about:
-      "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this",
+      "what already exists for a request, before it is filed: open changes that share its words or are named in it (duplicates), done ones like it, the nodes of the map it may alter with their path, the milestones in flight, the order's tail. Inside a project, only its product's (a change named in the request wherever it lives; --all: the whole store). Never writes; the intake skill answers its four questions from this; and the past sessions that did work like it, from the store's own sessions and, in a project that opted in to Entire, from Entire's search over what its sessions said and did",
     usage: ['pjman intake <text> [--all] [--json]', 'pjman intake - [--all] [--json]   (text on stdin)'],
     flags: ['all'],
   },
@@ -441,6 +451,41 @@ export const COMMANDS: Command[] = [
       "one reference as a Markdown document, or the project's board without one; --out writes a file, --watch re-renders whenever the store changes. A session's view is the dashboard's: pjman open --session",
     usage: ['pjman view [<ref>] [--out <file>] [--watch]'],
     flags: ['out', 'watch'],
+    args: 1,
+  },
+  {
+    name: 'review',
+    group: 'records',
+    line: "a change's branch judged against its done-when and decisions; what is found, filed",
+    about:
+      "the review of a change, pjman's own: with no flag it prints the brief a reviewer judges by (the change's intent and done-when, each decision accepted on it with the options turned down, the branch's commits and changed files with the command that prints its diff, and the findings so far). --finding files one thing found, with its severity (high, medium, low; medium when not said) and, when it points at code, --file and --line; --resolve <n>, --dismiss <n> (with --note saying why it does not hold) and --reopen <n> settle one by its number. Findings are data on the change, shown in its context. In a project that opted in to Entire each is also filed onto the change's Trail, whose Findings gate holds the merge until it is resolved, and settling one here settles it there; what Entire does not answer is printed as pending and filed by the next review or pjman sync entire. With no Entire the review is local --run, in a project that opted in to Entire, hands the review to Entire's own (several agents and a judge) with this brief added to their task, then reads what they posted on the Trail onto the change; the review profile is the person's to set up (entire review --configure --set-output trail), and with none nothing runs. --read only reads the Trail's findings onto the change: those the change does not hold are added, and one settled on Entire is settled here",
+    usage: [
+      'pjman review <change> [--json]',
+      'pjman review <change> --finding "<text>" [--severity high|medium|low] [--file <path> [--line <n>]]',
+      'pjman review <change> --resolve <n> [--note "…"] | --dismiss <n> --note "…" | --reopen <n>',
+      'pjman review <change> --run [--profile <name>] | --read',
+    ],
+    flags: ['finding', 'severity', 'file', 'line', 'resolve', 'dismiss', 'reopen', 'note', 'run', 'read', 'profile'],
+    args: 2,
+  },
+  {
+    name: 'merge',
+    group: 'records',
+    line: "a change's branch landed on the base, and the change set done",
+    about:
+      "land a change's branch on the base branch and set the change done. In a project that opted in to Entire (ext.entire.enabled=true) the merge is its Trail's: entire trail merge checks the gates (review, findings, checks, up to date) and merges the pull request, then the base is fetched and fast-forwarded; a gate that blocks is printed and nothing is merged, here or locally (pjman never forces a merge past a gate and never approves one). Elsewhere it is a local merge commit on the base naming the change, refused when the checkout is not on the base, has uncommitted changes or the merge conflicts. A branch already merged (by a merge commit, a squash, a rebase or a fast-forward) only sets the change done",
+    usage: ['pjman merge <change> [--json]'],
+    flags: [],
+    args: 1,
+  },
+  {
+    name: 'why',
+    group: 'reading',
+    line: 'why a line of code exists: its commit, session, change, intent and decisions',
+    about:
+      "why a line exists, as far down as the record goes: the commit that last wrote it (git); in a project that opted in to Entire (ext.entire.enabled=true), the checkpoint, the session and the prompt behind that commit (entire why); and what only the store holds, the change the line was written for with its intent and the decisions accepted on it. The change is the one the commit's message names (change:<slug>), else the one its checkpoint is linked on, else what its session worked on. Without Entire the answer starts at git and still reaches the change; what Entire does not answer is printed as pending. Never writes",
+    usage: ['pjman why <file>:<line> [--json]', 'pjman why <file> --line <n> [--json]'],
+    flags: ['line'],
     args: 1,
   },
   {
@@ -625,7 +670,7 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'the store this directory resolves to, its project and product',
     about:
-      'print the store this directory resolves to and its mode; --json adds the project, its product, its tracker and the actor',
+      'print the store this directory resolves to and its mode; --json adds the project, its product, its tracker, whether it opted in to Entire, and the actor',
     usage: ['pjman where [--json]'],
     flags: [],
     args: 0,
@@ -645,7 +690,7 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'what is wrong with this install, and the command that fixes each thing (writes nothing)',
     about:
-      "check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, and the registered project folders. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports",
+      "check this install without changing it: every pjman on the PATH and whether one shadows another, where the Claude Code plugin's marketplace reads from (this install, another, a folder that is gone, a versioned Homebrew folder) and the installed plugin's version against the tool's, Claude Code processes started before the plugin was last refreshed, the adapter's folder and the hook log's errors of the last day, the dashboard's process and whether it answers, the store's validation and pending migrations, the registered project folders, and, for a project that opted in to Entire (ext.entire.enabled=true), the entire binary, the repository's enablement, the login and that Entire's hooks run beside pjman's. One line per thing that is off, with the command that fixes it (--all shows what is fine too); exit 1 when anything is off. pjman init makes the fixes; doctor only reports, and what is Entire's to set up (entire enable, entire login) it names for the person and never runs",
     usage: ['pjman doctor [--all] [--json]'],
     flags: ['all'],
     args: 0,

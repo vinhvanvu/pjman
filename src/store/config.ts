@@ -33,7 +33,11 @@ export const DEFAULT_SOURCE_KINDS = [
   'jira',
   'thread',
   ...['github-user', 'linear-user', 'email', 'git-author'],
+  ...['entire-checkpoint', 'entire-trail'],
 ];
+/** What Entire holds that a record may link (change:checkpoint-link): a checkpoint (the sessions behind a commit) and
+ *  a Trail (a change's review and merge on Entire). Kinds of every store, used only by a project that opted in. */
+export const ENTIRE_KINDS = ['entire-checkpoint', 'entire-trail'];
 /** The accounts a person holds, keyed as the outside world keys them; a person record links them. */
 export const IDENTITY_KINDS = ['github-user', 'linear-user', 'email', 'git-author'];
 

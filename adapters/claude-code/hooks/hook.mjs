@@ -30,7 +30,10 @@
 //                     on a product with no map (the tool prints `no product map:`) holds every stop to one refusal per turn until a
 //                     decision is opened or map=skip is set (decision pjman-27/trigger). Then a turn that acted appends one log line,
 //                     from the harness's last message; the size of each brief given this turn and the receipt of what the store received
-//                     since the last turn are shown to the person
+//                     since the last turn are shown to the person. A turn that ran a git commit, merge, rebase, cherry-pick or pull
+//                     ends with `pjman sync git` (a change in review whose branch is now on the base is done: change:merge-via-pr) and,
+//                     in a project that opted in to Entire, `pjman sync entire` (the checkpoints on the new commits are linked to
+//                     their changes and sessions: change:checkpoint-link)
 //   SubagentStart     a child session with `parent`
 //   SubagentStop      the child's log line
 //   SessionEnd        a closing log line; the view's pane is closed, or parked on the bridge when the session was cleared, from
@@ -92,7 +95,7 @@ function note(msg) {
 const localBin = path.resolve(here, '..', '..', '..', 'bin', 'pjman.js');
 const PJMAN = fs.existsSync(localBin) ? [process.execPath, localBin] : ['pjman'];
 
-function pjman(args, { cwd, env = {}, json = false, input } = {}) {
+function pjman(args, { cwd, env = {}, json = false, input, timeout } = {}) {
   const [cmd, ...pre] = PJMAN;
   const t0 = performance.now();
   try {
@@ -101,6 +104,7 @@ function pjman(args, { cwd, env = {}, json = false, input } = {}) {
       encoding: 'utf8',
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       input,
+      timeout,
       env: { ...process.env, ...env },
     });
     return json ? JSON.parse(out) : out;
@@ -379,9 +383,12 @@ function staleWorktrees(cwd, done) {
     if (!c.branch) continue;
     const w = byBranch.get(c.branch.name) ?? byName.get(c.branch.worktree);
     if (!w || w.branch === trunk || out.some((o) => o.dir === w.dir)) continue;
-    merged ??= new Set(
-      (sh('git', ['branch', '--merged', trunk, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
-    );
+    // the tool reads how each branch reached the base (a merge commit, a squash, a rebase, a fast-forward; local or
+    // fetched: change:merge-via-pr) and sets done what it finds merged; git's own listing is the fallback
+    merged ??= new Set([
+      ...(tryPjman(['sync', 'git', '--json'], { cwd, json: true })?.merged ?? []).map((m) => m.branch),
+      ...(sh('git', ['branch', '--merged', trunk, '--format=%(refname:short)'], cwd) ?? '').split('\n').filter(Boolean),
+    ]);
     if (!merged.has(w.branch)) continue;
     out.push({ dir: w.dir, branch: w.branch, change: c.printed ?? c.key });
   }
@@ -1287,6 +1294,16 @@ async function main() {
       if (input.tool_name === 'Bash' && decisionWrite.test(String(input.tool_input?.command ?? '')))
         st.decided = (st.decided ?? 0) + 1;
       if (input.tool_name === 'AskUserQuestion') st.asked = (st.asked ?? 0) + 1;
+      // a turn that committed, merged or pulled ends by following the repository: a change in review whose branch is now on
+      // the base is done (change:merge-via-pr), and, in a project that opted in to Entire, the checkpoints on the new
+      // commits are linked to their changes and sessions (change:checkpoint-link)
+      if (
+        input.tool_name === 'Bash' &&
+        /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(?:commit|merge|rebase|cherry-pick|pull)(?=\s|$)|\bgh\s+pr\s+merge(?=\s|$)/.test(
+          String(input.tool_input?.command ?? ''),
+        )
+      )
+        st.committed = (st.committed ?? 0) + 1;
       // a change filed on a product with no map arms the map's stop until a decision is opened or the project says skip
       // (decision pjman-27/trigger); the tool says so in the line it prints when it files the change
       if (input.tool_name === 'Bash') {
@@ -1419,6 +1436,12 @@ async function main() {
         st.acted = 0;
         // the turn wrote the store: the plan or a decision may have moved, so the block's label is written again
         if (EVENT === 'Stop' && st.bound) hostLabel(sid, cwd, env);
+      }
+      if (EVENT === 'Stop' && st.committed) {
+        // cleared first and bounded: a sync that is slow or killed is not run again by every later turn
+        st.committed = 0;
+        tryPjman(['sync', 'git'], { cwd, env, timeout: 45_000 }); // a branch merged or pulled in: its change in review is done
+        if (store?.entire) tryPjman(['sync', 'entire'], { cwd, env, timeout: 45_000 });
       }
       // the receipt: what this session and the sessions it spawned wrote since the last turn, composed by the tool, shown to the person
       if (EVENT === 'Stop') {

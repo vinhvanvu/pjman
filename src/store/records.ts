@@ -85,6 +85,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
     'owners',
     'target',
     'plan',
+    'findings',
     'binds',
     'links',
     'aliases',

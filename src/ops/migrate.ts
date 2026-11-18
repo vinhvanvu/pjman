@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import { IDENTITY_KINDS, ownsRepository, writeStoreConfig, type Store } from '../store/config.js';
+import { ENTIRE_KINDS, IDENTITY_KINDS, ownsRepository, writeStoreConfig, type Store } from '../store/config.js';
 import { emit } from '../store/events.js';
 import { commitAll, git, gitMv, isTracked, toplevel } from '../store/git.js';
 import { loadLegacy } from '../store/legacy.js';
@@ -26,7 +26,7 @@ import { missingSessionKinds, seedSessionKinds } from './session-kinds.js';
  *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
  *  since they predate the stamp and a store from then carries no version; a move from here on checks the stamp
  *  (`compareVersions(storeVersion(store), since) < 0`). */
-export type MigrationName = 'layout' | 'foundation' | 'kinds' | 'session-kinds';
+export type MigrationName = 'layout' | 'foundation' | 'kinds' | 'session-kinds' | 'entire-kinds';
 
 export interface Migration {
   name: MigrationName;
@@ -70,7 +70,47 @@ export const MIGRATIONS: readonly Migration[] = [
     run: (store, opts) => migrateSessionKinds(store, opts),
     about: 'the kinds a session with no change may be given (review, backlog, chat, other) as records',
   },
+  {
+    name: 'entire-kinds',
+    since: '0.7.0',
+    pending: (store) =>
+      compareVersions(storeVersion(store), '0.7.0') < 0 &&
+      ENTIRE_KINDS.some((k) => !store.config.source_kinds.includes(k)),
+    run: (store, opts) => migrateEntireKinds(store, opts),
+    about: "Entire's checkpoints and Trails as source kinds",
+  },
 ];
+
+/** Entire's source kinds (change:checkpoint-link): `entire-checkpoint` and `entire-trail` join the store's list, so a
+ *  project that opts in to Entire can link them. One commit, one event; a store that lists its own kinds keeps them. */
+export function migrateEntireKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  const root = store.root;
+  if (ownsRepository(store) && git(root, ['status', '--porcelain', '--', '.']))
+    throw new CliError('the store has uncommitted changes; commit or discard them first');
+  const added = ENTIRE_KINDS.filter((k) => !store.config.source_kinds.includes(k));
+  store.config.source_kinds = [...store.config.source_kinds, ...added];
+  writeStoreConfig(root, store.config);
+  const env = envelope(opts);
+  const commit = ownsRepository(store)
+    ? commitAll(root, `pjman: migrate source kinds (${added.join(', ')})`, env.session)
+    : null;
+  emit(
+    store,
+    [
+      {
+        op: 'migrated',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        fields: ['source_kinds', ...added],
+        writer: env.writer,
+        session: env.session,
+      },
+    ],
+    commit,
+  );
+  return { kind: 'entire-kinds', since: '0.7.0', products: 0, moved: 0, rewritten: added.length, commit };
+}
 
 /** The session kinds (decision unbound-sessions/kinds): the four defaults the store lacks are created, one write each. */
 export function migrateSessionKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
@@ -125,7 +165,7 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
   const pending = pendingMigration(store);
   if (!pending) {
     throw new CliError(
-      `nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, the session kinds are records, and the store is in format ${storeVersion(store)}`,
+      `nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, the session kinds are records, Entire's source kinds are listed, and the store is in format ${storeVersion(store)}`,
     );
   }
   if (pending === 'stamp') return stamp(store, opts);

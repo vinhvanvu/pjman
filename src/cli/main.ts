@@ -23,6 +23,14 @@ import { ambiguous, CliError, notFound, plural, usageError } from '../store/util
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from '../model/validate.js';
 import { trackerOf } from '../model/refs.js';
+import { entireOn, pendingLine } from '../entire/entire.js';
+import { syncEntire } from '../sync/entire.js';
+import { syncGit } from '../sync/git.js';
+import { mergeChange } from '../sync/merge.js';
+import { addFinding, formatReviewBrief, readFindings, reviewBrief, runReview, settleFinding } from '../sync/review.js';
+import { formatFinding } from '../model/findings.js';
+import { formatWhy, parseWhere, searchPast, why } from '../sync/why.js';
+import { reconcileTrail, trailLines, type TrailReconcile } from '../sync/trail.js';
 import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
 import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from '../store/events.js';
@@ -147,6 +155,17 @@ const json = (x: unknown) => process.stdout.write(JSON.stringify(x, null, 2) + '
 // a key as it prints inside the project (the one formatter, decision pjman-22/key-form), carried in JSON as `printed`
 // beside the full key where a program relays it to a person or an agent (decision pjman-22/hook-printed-keys)
 const printed = (key: string): string => shortKey(key, scopeProduct);
+
+/** In a project that opted in to Entire, the Trail of a change a command just wrote is brought to where the change
+ *  now stands (change:trail-lifecycle). Never fails the command: what Entire does not answer is printed as pending. */
+function followTrail(store: Store, key: string, session?: string): TrailReconcile | null {
+  try {
+    // the command's own write has landed: Entire gets a few seconds, and the next sync does what it did not
+    return reconcileTrail(store, key, { session, budget: 12_000 });
+  } catch (e) {
+    return { change: key, acts: [], moved: [], pending: [(e as Error).message.split('\n')[0]], commit: null };
+  }
+}
 /** The map a change just filed brings: its project's product has none, the project did not say skip, and the
  *  repository has something to survey. */
 const mapDueFor = (store: Store, key: string): MapState | undefined => {
@@ -492,10 +511,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         session: v.session,
         writer: v.writer,
       });
-      if (v.json) json(r);
+      const trail = followTrail(store, r.key, v.session);
+      if (v.json) json(trail ? { ...r, trail } : r);
       else
         out(
-          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}`,
+          `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}`,
         );
       return 0;
     }
@@ -743,7 +763,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         project: store.project,
         product: v.all ? null : hereProduct(store),
       });
-      v.json ? json(i) : out(formatIntake(i));
+      // in a project that opted in to Entire, its search over past sessions joins what the store's own sessions gave
+      const found = searchPast(store, i);
+      v.json ? json(found) : out(formatIntake(found));
       return 0;
     }
     case 'refs': {
@@ -826,10 +848,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       );
       if (keys.length === 1) {
         const r = set(store, keys[0], stdinPairs, { session: v.session });
+        // a change's Trail follows what was just written of it: its status, name, gist or sections
+        const trail = r.key.startsWith('change:') && r.changed.length ? followTrail(store, r.key, v.session) : null;
         v.json
-          ? json(r)
+          ? json(trail ? { ...r, trail } : r)
           : out(
-              `${r.changed.length ? `set ${r.changed.join(', ')} on` : 'nothing to change on'} ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}`,
+              `${r.changed.length ? `set ${r.changed.join(', ')} on` : 'nothing to change on'} ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}${r.notes.map((n) => `\nnote: ${n}`).join('')}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}`,
             );
         return 0;
       }
@@ -939,6 +963,89 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       v.json ? json({ ...r, printed: printed(r.key) }) : out(formatRest(r));
       return r.rests ? 0 : 1;
     }
+    case 'why': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw usageError('usage: pjman why <file>:<line> [--json]');
+      const w = why(store, parseWhere(pos[1], v.line), { cwd });
+      v.json ? json(w) : out(formatWhy(w, printed));
+      return 0;
+    }
+    case 'review': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw usageError('usage: pjman review <change> [--finding "…" --severity high|medium|low]');
+      const key = resolveArg(loadStore(store), pos[1], { kinds: ['change'] });
+      const settle = v.resolve ? 'resolved' : v.dismiss ? 'dismissed' : v.reopen ? 'open' : null;
+      if (v.run || v.read) {
+        if (v.finding !== undefined || settle)
+          throw usageError('one act per call: --run, --read, --finding or a settle');
+        const o = { session: v.session, writer: v.writer };
+        const r = v.run ? runReview(store, key, { ...o, profile: v.profile }) : readFindings(store, key, o);
+        if (v.json) json(r);
+        else {
+          if ('ran' in r)
+            out(r.ran ? `${printed(r.change)} reviewed by Entire's review` : `${printed(r.change)} not reviewed`);
+          out(
+            r.read.length
+              ? `${plural(r.read.length, 'finding')} read from the Trail${r.commit ? ` (committed ${r.commit})` : ''}`
+              : 'nothing new on the Trail',
+          );
+          r.findings.forEach((f, i) => f.state === 'open' && out(`  ${formatFinding(i + 1, f)}`));
+          for (const reason of r.pending) out(pendingLine({ reason }));
+        }
+        return 0;
+      }
+      if (v.finding === undefined && !settle) {
+        const b = reviewBrief(store, key);
+        v.json ? json(b) : out(formatReviewBrief(b, printed));
+        return 0;
+      }
+      if (v.finding !== undefined && settle)
+        throw usageError('one write per call: --finding, or --resolve|--dismiss|--reopen <n>');
+      const r =
+        v.finding !== undefined
+          ? addFinding(
+              store,
+              key,
+              {
+                text: v.finding,
+                severity: v.severity,
+                file: v.file,
+                line: v.line === undefined ? undefined : Number(v.line),
+              },
+              { session: v.session, writer: v.writer },
+            )
+          : settleFinding(store, key, Number(pos[2]), settle!, v.note, { session: v.session, writer: v.writer });
+      if (v.json) json(r);
+      else {
+        const f = r.findings[r.n! - 1];
+        out(
+          `${printed(r.change)} finding ${formatFinding(r.n!, f)}${r.commit ? ` (committed ${r.commit})` : r.filed.length ? '' : ' (unchanged)'}`,
+        );
+        if (r.filed.length) out(`entire: ${r.filed.join(', ')} on the Trail`);
+        for (const reason of r.pending) out(pendingLine({ reason }));
+      }
+      return 0;
+    }
+    case 'merge': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw usageError('usage: pjman merge <change> [--json]');
+      const loaded = loadStore(store);
+      const r = mergeChange(store, resolveArg(loaded, pos[1], { kinds: ['change'] }), { session: v.session });
+      const trail = followTrail(store, r.change, v.session);
+      if (v.json) json(trail ? { ...r, trail } : r);
+      else {
+        const how =
+          r.by === 'entire'
+            ? `merged ${r.branch} into ${r.base} through its Trail on Entire`
+            : r.by === 'local'
+              ? `merged ${r.branch} into ${r.base}`
+              : `${r.branch} was already merged into ${r.base}`;
+        out(`${how}; ${printed(r.change)} is done${r.commit ? ` (committed ${r.commit})` : ''}`);
+        for (const n of r.notes) out(`note: ${n}`);
+        if (trail) for (const line of trailLines(trail, printed)) out(line);
+      }
+      return 0;
+    }
     case 'lift': {
       const store = scoped(requireStore(cwd, v.store));
       const lifts = liftsOfStore(loadStore(store));
@@ -988,6 +1095,10 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         else if (r.kind === 'kinds')
           out(
             `migrated: ${plural(r.changes ?? 0, 'parent change')} now a milestone by kind (introduced in ${r.since}); steps one carried are in its Notes, since a milestone's plan is its children${reverts}`,
+          );
+        else if (r.kind === 'entire-kinds')
+          out(
+            `migrated: ${plural(r.rewritten, 'source kind')} added (introduced in ${r.since}): Entire's checkpoints and Trails, linked only by a project that opted in${reverts}`,
           );
         else if (r.kind === 'session-kinds')
           out(
@@ -1204,7 +1315,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       // that session would not wake it, and its receipt would claim the person's act
       delete process.env.PJMAN_SESSION;
       delete process.env.PJMAN_WRITER;
-      startServer(store, { port: v.port ? Number(v.port) : undefined, host: v.host, staticDir: v.static, register })
+      startServer(store, {
+        port: v.port ? Number(v.port) : undefined,
+        host: v.host,
+        staticDir: v.static,
+        register,
+        followEntire: process.argv[1],
+      })
         .then(({ address, registered }) =>
           out(
             `pjman serve: ${address.url} (store ${store.root}; api ${address.url}/api/v1; ctrl-c to stop)${registered ? '' : `\n  not registered: this is a checkout, so the machine's dashboard (${running?.url ?? 'none running'}) is left as it is; --register claims it`}`,
@@ -1217,9 +1334,39 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       return 0;
     }
     case 'sync': {
-      if (pos[1] !== 'linear' && pos[1] !== 'github')
-        throw usageError('usage: pjman sync linear|github --from <file|-> [--project <key>]');
+      if (pos[1] !== 'linear' && pos[1] !== 'github' && pos[1] !== 'entire' && pos[1] !== 'git')
+        throw usageError(
+          'usage: pjman sync linear|github --from <file|-> [--project <key>], pjman sync git, or pjman sync entire (a project that opted in to Entire)',
+        );
       const store = scoped(requireStore(cwd, v.store));
+      if (pos[1] === 'git') {
+        const r = syncGit(store, { session: v.session });
+        // a change this ended has a Trail to close, where the project opted in
+        for (const d of r.done) followTrail(store, d.change, v.session);
+        if (v.json) json(r);
+        else {
+          out(
+            `git → ${r.project}: ${r.done.length ? `${plural(r.done.length, 'change')} merged into ${r.base} and set done` : `no change in review has been merged into ${r.base}`}`,
+          );
+          for (const d of r.done)
+            out(`  ${printed(d.change)}: ${d.branch} (${d.how})${d.commit ? ` (committed ${d.commit})` : ''}`);
+        }
+        return 0;
+      }
+      if (pos[1] === 'entire') {
+        const r = syncEntire(store, { session: v.session, wake: v.wake });
+        if (v.json) json(r);
+        else {
+          out(
+            `entire → ${r.project}: ${plural(r.checkpoints, 'checkpoint')} on the repository's commits; ${r.linked.length} linked${r.unplaced ? `, ${r.unplaced} on commits that name no change` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+          );
+          for (const l of r.linked)
+            out(`  ${l.checkpoint} → ${l.change}${l.sessions.length ? ` (${l.sessions.join(', ')})` : ''}`);
+          for (const t of r.trails) for (const line of trailLines({ ...t, pending: [] }, printed)) out(line);
+          for (const reason of r.pending) out(pendingLine({ reason }));
+        }
+        return 0;
+      }
       const r =
         pos[1] === 'linear'
           ? syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session })
@@ -1272,6 +1419,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             product: scopeProduct ? `product:${scopeProduct}` : null,
             project_dir: store.projectDir ?? null,
             tracker: (store.project && trackerOf(loadStore(store), store.project)) || null,
+            entire: entireOn(loadStore(store), store.project),
             actor: readUserConfig().actor ?? null,
             source_kinds: store.config.source_kinds,
           })

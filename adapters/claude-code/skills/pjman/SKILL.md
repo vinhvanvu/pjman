@@ -121,11 +121,27 @@ working it.
    line; `pjman new change` prints it), the harness creates the worktree and its branch (`claude --worktree <slug>`, or
    the enter-worktree tool in a running session). A session on a branch so named is bound to the change at start, with
    no prompt. Two sessions on one change share its worktree. When you stop, leave the worktree clean or committed so the
-   harness can remove it on exit. Once the person has approved the work, merge the branch into main yourself, then remove
-   the worktree and its branch before the change is set done (`git worktree remove <path> && git branch -d <branch>`;
-   the project's own instructions say what an install after a merge takes); the session-start context names any
+   harness can remove it on exit. Once the person has approved the work, land it with `pjman merge <change>`: it merges
+   the branch into the base and sets the change done; in a project that opted in to Entire the merge is the change's
+   Trail's, whose gates decide, and a gate that blocks is said and nothing is merged (never merge around it by hand,
+   and never approve: the approval is the person's, on Entire). A merge made elsewhere (a pull request merged on the
+   forge, squashed or rebased) is followed by itself: `pjman sync git` sets its change done. Then remove the worktree
+   and its branch (`git worktree remove <path> && git branch -D <branch>`; the project's own instructions say what an
+   install after a merge takes); the session-start context names any
    worktree whose change is done and whose branch is merged, so a leftover is seen the next time someone sits down.
    pjman creates and removes no worktree itself.
+   In a project that opted in to Entire (`pjman where --json` says `entire: true`) a change's Trail on Entire follows
+   the change by itself: created with the change's branch when its first step starts, its body kept to the change's
+   intent, done-when and accepted decisions, marked ready when the last step is done, closed when the change is done
+   or dropped. `pjman context` shows it under Trail (phase, gates, open findings). Push the branch as the work lands,
+   so the Trail shows it; never run `entire trail approve`, `entire login` or `entire enable`, which are the person's,
+   and never merge past a gate. A line `entire: pending (…)` means Entire did not answer: the write stands, and
+   `pjman sync entire` takes it up again.
+   A review is pjman's own, with or without Entire: `pjman review <change>` prints what to judge the branch by (the
+   done-when, the decisions accepted and the options turned down, the branch's diff), and each thing found is filed
+   with `pjman review <change> --finding "…" --severity high|medium|low [--file <path> --line <n>]`, then settled
+   with `--resolve <n>` or `--dismiss <n> --note "why"`. Review before asking the person to approve; where the
+   project opted in to Entire the findings go onto the Trail and hold its merge until resolved.
 
 ## Tickets
 
