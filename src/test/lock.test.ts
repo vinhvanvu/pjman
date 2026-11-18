@@ -152,3 +152,18 @@ test('two commands writing the store at once each land in their own commit', asy
     );
   }
 });
+
+test('a lock file just created and not yet written is another writer’s, never reclaimed; one that stays unreadable is', () => {
+  const file = lockPath(store.root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  // the writer has created the file and not yet said who it is
+  fs.writeFileSync(file, '');
+  assert.throws(() => lockStore(store.root), /the store is busy/);
+  assert.equal(fs.readFileSync(file, 'utf8'), '', 'left as it was');
+  // left unreadable by a writer that died while creating it
+  const old = new Date(Date.now() - 10_000);
+  fs.utimesSync(file, old, old);
+  lockStore(store.root);
+  assert.equal(holdsLock(store.root), true);
+  unlockStore(store.root);
+});

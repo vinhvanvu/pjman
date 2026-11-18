@@ -13,6 +13,8 @@ import { CliError } from './util.js';
 const waitMs = () => Number(process.env.PJMAN_LOCK_WAIT_MS) || 5000;
 const staleMs = () => Number(process.env.PJMAN_LOCK_STALE_MS) || 120_000;
 const POLL_MS = 25;
+/** How long a lock file may stay unreadable before it is taken for a writer that died while creating it. */
+const UNREADABLE_MS = 2000;
 
 interface Holder {
   pid: number;
@@ -71,6 +73,22 @@ export function lockStore(root: string): void {
       if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
     }
     const other = readHolder(file);
+    if (!other) {
+      // the file is there and cannot be read: its writer has created it and not yet written who it is (the two are
+      // not one step), so it is another writer's fresh lock, not a dead one. Only one that stays unreadable is reclaimed
+      let age = Infinity;
+      try {
+        age = Date.now() - fs.statSync(file).mtimeMs;
+      } catch {
+        continue; // gone in between: the next loop takes it
+      }
+      if (age < UNREADABLE_MS) {
+        if (Date.now() - started >= waitMs())
+          throw new CliError('the store is busy: another pjman is writing it; try again in a moment');
+        sleep(POLL_MS);
+        continue;
+      }
+    }
     const stale = !other || !alive(other.pid) || Date.now() - Date.parse(other.at) > staleMs();
     if (stale) {
       fs.rmSync(file, { force: true }); // reclaimed; the next loop takes it, or loses to another reclaimer
