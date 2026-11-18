@@ -364,7 +364,7 @@ export const COMMANDS: Command[] = [
     group: 'records',
     line: "a tracker's tickets applied to the store: sources and the changes they bind",
     about:
-      "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered. sync entire, for a project that opted in to Entire (ext.entire.enabled=true), reads the repository's own commits: each Entire-Checkpoint trailer becomes a source (entire-checkpoint:<id>, opening on entire.com at its commit) linked to the change the commit names (change:<slug>) or its branch was cut for, and observed by the sessions that contributed to it; what Entire does not answer is printed as pending and read again next time",
+      "apply a tracker's tickets to the store, as observed by whoever holds the connection (the harness's MCP session): each ticket becomes a source and the change that binds it; title, status and parent follow the ticket; everything pjman adds is kept. --from takes the issues as JSON, in whatever shape the tracker's tools answered. sync git follows merges pjman did not make: every change of the project in review whose branch is on the base branch or its fetched remote, by a merge commit (git's or a pull request's), a squash, a rebase or a fast-forward, is set done, one write each. sync entire, for a project that opted in to Entire (ext.entire.enabled=true), reads the repository's own commits: each Entire-Checkpoint trailer becomes a source (entire-checkpoint:<id>, opening on entire.com at its commit) linked to the change the commit names (change:<slug>) or its branch was cut for, and observed by the sessions that contributed to it; what Entire does not answer is printed as pending and read again next time",
     usage: [
       'pjman sync linear --from <file|-> [--project <key>] [--team <KEY>] [--json]',
       'pjman sync github --from <file|-> [--project <key>] [--repo <owner/name>] [--json]',
@@ -442,6 +442,16 @@ export const COMMANDS: Command[] = [
       "one reference as a Markdown document, or the project's board without one; --out writes a file, --watch re-renders whenever the store changes. A session's view is the dashboard's: pjman open --session",
     usage: ['pjman view [<ref>] [--out <file>] [--watch]'],
     flags: ['out', 'watch'],
+    args: 1,
+  },
+  {
+    name: 'merge',
+    group: 'records',
+    line: "a change's branch landed on the base, and the change set done",
+    about:
+      "land a change's branch on the base branch and set the change done. In a project that opted in to Entire (ext.entire.enabled=true) the merge is its Trail's: entire trail merge checks the gates (review, findings, checks, up to date) and merges the pull request, then the base is fetched and fast-forwarded; a gate that blocks is printed and nothing is merged, here or locally (pjman never forces a merge past a gate and never approves one). Elsewhere it is a local merge commit on the base naming the change, refused when the checkout is not on the base, has uncommitted changes or the merge conflicts. A branch already merged (by a merge commit, a squash, a rebase or a fast-forward) only sets the change done",
+    usage: ['pjman merge <change> [--json]'],
+    flags: [],
     args: 1,
   },
   {

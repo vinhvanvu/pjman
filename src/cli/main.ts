@@ -25,6 +25,8 @@ import { formatProblems, summarise, validate } from '../model/validate.js';
 import { trackerOf } from '../model/refs.js';
 import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
+import { syncGit } from '../sync/git.js';
+import { mergeChange } from '../sync/merge.js';
 import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
 import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from '../store/events.js';
@@ -941,6 +943,24 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       v.json ? json({ ...r, printed: printed(r.key) }) : out(formatRest(r));
       return r.rests ? 0 : 1;
     }
+    case 'merge': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw usageError('usage: pjman merge <change> [--json]');
+      const loaded = loadStore(store);
+      const r = mergeChange(store, resolveArg(loaded, pos[1], { kinds: ['change'] }), { session: v.session });
+      if (v.json) json(r);
+      else {
+        const how =
+          r.by === 'entire'
+            ? `merged ${r.branch} into ${r.base} through its Trail on Entire`
+            : r.by === 'local'
+              ? `merged ${r.branch} into ${r.base}`
+              : `${r.branch} was already merged into ${r.base}`;
+        out(`${how}; ${printed(r.change)} is done${r.commit ? ` (committed ${r.commit})` : ''}`);
+        for (const n of r.notes) out(`note: ${n}`);
+      }
+      return 0;
+    }
     case 'lift': {
       const store = scoped(requireStore(cwd, v.store));
       const lifts = liftsOfStore(loadStore(store));
@@ -1223,11 +1243,23 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       return 0;
     }
     case 'sync': {
-      if (pos[1] !== 'linear' && pos[1] !== 'github' && pos[1] !== 'entire')
+      if (pos[1] !== 'linear' && pos[1] !== 'github' && pos[1] !== 'entire' && pos[1] !== 'git')
         throw usageError(
-          'usage: pjman sync linear|github --from <file|-> [--project <key>], or pjman sync entire (a project that opted in to Entire)',
+          'usage: pjman sync linear|github --from <file|-> [--project <key>], pjman sync git, or pjman sync entire (a project that opted in to Entire)',
         );
       const store = scoped(requireStore(cwd, v.store));
+      if (pos[1] === 'git') {
+        const r = syncGit(store, { session: v.session });
+        if (v.json) json(r);
+        else {
+          out(
+            `git → ${r.project}: ${r.done.length ? `${plural(r.done.length, 'change')} merged into ${r.base} and set done` : `no change in review has been merged into ${r.base}`}`,
+          );
+          for (const d of r.done)
+            out(`  ${printed(d.change)}: ${d.branch} (${d.how})${d.commit ? ` (committed ${d.commit})` : ''}`);
+        }
+        return 0;
+      }
       if (pos[1] === 'entire') {
         const r = syncEntire(store, { session: v.session });
         if (v.json) json(r);

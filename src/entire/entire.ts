@@ -66,7 +66,8 @@ const PERSON_ONLY = new Set([
 const personOnly = (args: string[]): boolean => {
   const [a, b] = args;
   if (a === 'auth') return b !== 'status';
-  if (a === 'trail') return b === 'approve';
+  // approving is the person's; so is merging past a gate that blocks
+  if (a === 'trail') return b === 'approve' || (b === 'merge' && args.includes('--force'));
   return PERSON_ONLY.has(a);
 };
 
@@ -110,7 +111,14 @@ export function runEntire<T = unknown>(args: string[], o: EntireOpts = {}): Enti
       .split('\n')
       .map((l) => l.trim())
       .find(Boolean);
-    return pending('failed', `${said} failed: ${(line ?? err.message).slice(0, 300)}`);
+    // a refusal answered as JSON spread over lines (trail merge --json): its whole text on one line, not its first brace
+    const why =
+      line && /^[{[]$/.test(line)
+        ? String(err.stdout ?? '')
+            .replace(/\s+/g, ' ')
+            .trim()
+        : line;
+    return pending('failed', `${said} failed: ${(why ?? err.message).slice(0, 300)}`);
   }
   if (o.text) return { ok: true, data: stdout.trim() as T };
   try {
