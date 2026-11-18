@@ -298,6 +298,16 @@ function main(argv: string[]): number {
   // a session's brief records its watermark, and a session reading a change's context moves its focus: both write
   const writes =
     WRITE_COMMANDS.has(cmd) ||
+    // a review that files, settles, hands out a lens or closes a round writes the change (three reviewers are started
+    // together, each with its lens); Entire's own review runs for minutes and takes no lock
+    (cmd === 'review' &&
+      (v.finding !== undefined ||
+        !!v.resolve ||
+        !!v.dismiss ||
+        !!v.reopen ||
+        v.lens !== undefined ||
+        !!v.reviewed ||
+        !!v['follow-up'])) ||
     (cmd === 'brief' && !!v.session) ||
     (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
   if (!writes) return dispatch(v, pos, cmd, cwd);

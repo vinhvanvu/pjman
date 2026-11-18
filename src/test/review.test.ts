@@ -69,6 +69,7 @@ const show = () => ({ id: '01T', number: 1, url: 'https://entire.com/gh/acme/-/t
   changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: fs.existsSync(${JSON.stringify(path.join(tmp, 'merged'))}) ? 'merged' : 'open', mergeability: { mergeable: true, gates: [] } }] });
 if (args[0] === 'review') {
   if (args.includes('--list')) console.log(fs.existsSync(${JSON.stringify(path.join(tmp, 'profile'))}) ? 'Profiles:\\n  general  (default)\\n    output:     trail' : 'No review profiles configured. Create one with entire review --configure.');
+  else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'noreview'))})) fail('the review agents did not start');
   else { state.findings.push({ id: 'R' + (state.findings.length + 1), body: '[intent] the total ignores discounts, which the done-when asks for', severity: 'high', file: 'cart.ts', line: '1', status: 'open' }); save(); console.log('Review complete.'); }
 }
 else if (args[1] === 'show') { if (!state.trail) fail('branch "x" has no discoverable project trail'); console.log(JSON.stringify(show())); }
@@ -314,6 +315,14 @@ test('opted in, the re-review is handed the fix alone, and what does not hold th
   assert.deepEqual(rounds(), []);
   // in review, the review Entire makes is the full round: its lenses are Entire's, and it closes the round itself
   step(store, 'change:cart', 'done', 1, {});
+  // a review that does not run handed nothing out: no lens stays on the record, and no round is closed
+  fs.writeFileSync(path.join(tmp, 'noreview'), '');
+  const failed = runReview(store, 'change:web/cart', o);
+  assert.equal(failed.ran, false);
+  assert.match(failed.pending.at(-1)!, /failed: the review agents did not start$/);
+  assert.deepEqual(lensesAsked(loadStore(store).byKey.get('change:web/cart')![0].data), []);
+  assert.deepEqual(rounds(), []);
+  fs.rmSync(path.join(tmp, 'noreview'));
   const first = runReview(store, 'change:web/cart', o);
   assert.equal(first.round?.round?.round, 'full');
   assert.deepEqual(

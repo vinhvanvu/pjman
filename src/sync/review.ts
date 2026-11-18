@@ -592,7 +592,9 @@ export function runReview(
   ].join('\n');
   // Entire's reviewers read through every lens: recorded before they run, so what they post is told from what stood
   const due = b.loop.state === 'due' || b.loop.state === 'recheck';
-  if (due) recordLenses(store, key, fixOf || b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES], 'entire', opts);
+  const handed = due
+    ? recordLenses(store, key, b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES], 'entire', opts)
+    : [];
   const ran = runEntire<string>(
     [
       'review',
@@ -606,6 +608,8 @@ export function runReview(
     { ...opts.entire, cwd: at, timeout: opts.timeout ?? 45 * 60_000, text: true },
   );
   if (!ran.ok) {
+    // no reviewer read anything: the lenses recorded for this run are taken back
+    if (handed.length) unrecordLenses(store, key, handed, opts);
     none.pending.push(ran.reason);
     return none;
   }
@@ -774,11 +778,11 @@ function followUpTarget(loaded: Loaded, rec: Rec): Rec | undefined {
 }
 
 /** Record that these lenses went out to reviewers, once each. */
-function recordLenses(store: Store, key: string, lenses: string[], by: string | undefined, opts: ReviewOpts): void {
+function recordLenses(store: Store, key: string, lenses: string[], by: string | undefined, opts: ReviewOpts): string[] {
   const rec = changeOf(loadStore(store), key);
   const had = new Set(lensesAsked(rec.data).map((a) => a.lens));
   const fresh = lenses.filter((l) => !had.has(l));
-  if (!fresh.length) return;
+  if (!fresh.length) return [];
   const env = envelope(opts);
   const at = nowIso();
   const who = by ?? env.writer;
@@ -793,6 +797,31 @@ function recordLenses(store: Store, key: string, lenses: string[], by: string | 
       type: 'change',
       path: rec.path,
       fields: ['reviews', `lens ${fresh.join(', ')}`],
+      writer: env.writer,
+    },
+  ]);
+  return fresh;
+}
+
+/** Take back lenses recorded for a review that then did not run. */
+function unrecordLenses(store: Store, key: string, lenses: string[], opts: ReviewOpts): void {
+  const rec = changeOf(loadStore(store), key);
+  const kept = reviewsOf(rec.data).filter((raw) => {
+    const r = raw as Record<string, unknown> | null;
+    return !(r && r.round === 'lens' && r.by === 'entire' && lenses.includes(String(r.lens)));
+  });
+  if (kept.length === reviewsOf(rec.data).length) return;
+  const env = envelope(opts);
+  const prior = snapshot(store, [rec.path]);
+  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: kept.length ? kept : undefined }, rec.body));
+  validateOrUndo(store, [rec.path], [], prior);
+  finishWrite(store, `pjman: review ${rec.key} lens ${lenses.join(', ')} taken back`, env.session, [
+    {
+      op: 'set',
+      key: rec.key,
+      type: 'change',
+      path: rec.path,
+      fields: ['reviews', `lens ${lenses.join(', ')} taken back`],
       writer: env.writer,
     },
   ]);

@@ -2,11 +2,13 @@
 // whether it holds the merge; a change reaching review in a project that reviews every change does not rest until one
 // full review and one re-review of the fix have been made; what does not hold the merge goes to one follow-up change.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { init } from '../cli/init.js';
 import { set } from '../ops/set.js';
 import { step } from '../ops/step.js';
@@ -349,4 +351,32 @@ test('on request nothing moves unasked, and what held the merge and was dismisse
   assert.equal(findingsOf(data(G))[1].state, 'open');
   // on request the merge is the person's call: only a finding that holds it is in the way
   assert.equal(mergeChange(store, G).by, 'local');
+});
+
+test('three reviewers started together are each handed their lens, and each handout is on the record', async () => {
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
+  g('branch', 'coupon', 'main');
+  g('switch', '-q', 'coupon');
+  fs.writeFileSync(path.join(dir, 'coupon.ts'), 'export const coupon = 1;\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'feat: coupons (change:coupon)');
+  g('switch', '-q', 'main');
+  change(store, 'coupon', { name: 'Coupons', gist: 'A coupon', project: 'project:web', next: 'build it' });
+  const C = 'change:web/coupon';
+  step(store, C, 'done', 1, {});
+  const bin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'pjman.js');
+  const run = promisify(execFile);
+  const briefs = await Promise.all(
+    ['intent', 'drift', 'correctness'].map((lens) =>
+      run(process.execPath, [bin, 'review', 'change:coupon', '--lens', lens], { cwd: dir, env: process.env }),
+    ),
+  );
+  for (const b of briefs) assert.match(b.stdout, /^You review this change as someone who did not write it/);
+  assert.deepEqual(
+    lensesAsked(data(C))
+      .map((a) => a.lens)
+      .toSorted(),
+    ['correctness', 'drift', 'intent'],
+  );
+  assert.equal(closeRound(store, C).loop.state, 'ended');
 });
