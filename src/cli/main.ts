@@ -160,7 +160,8 @@ const printed = (key: string): string => shortKey(key, scopeProduct);
  *  now stands (change:trail-lifecycle). Never fails the command: what Entire does not answer is printed as pending. */
 function followTrail(store: Store, key: string, session?: string): TrailReconcile | null {
   try {
-    return reconcileTrail(store, key, { session });
+    // the command's own write has landed: Entire gets a few seconds, and the next sync does what it did not
+    return reconcileTrail(store, key, { session, budget: 12_000 });
   } catch (e) {
     return { change: key, acts: [], moved: [], pending: [(e as Error).message.split('\n')[0]], commit: null };
   }
