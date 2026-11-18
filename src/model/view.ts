@@ -29,6 +29,7 @@ import {
   type ChangeAspects,
 } from './aspects.js';
 import { urlOf } from './refs.js';
+import { TRAIL_KIND, trailLine, trailStateOf } from '../entire/trail.js';
 import { CliError, usageError, notFound } from '../store/util.js';
 import {
   CHANGE_SECTIONS,
@@ -413,6 +414,9 @@ export interface ChangeContext {
   /** Each source the change binds or links, once, bound before linked; `relation` names which (decision
    *  pjman-22/relation-field). */
   sources: { key: string; record?: Row; relation: 'binds' | 'links'; url?: string }[];
+  /** The change's Trail on Entire, as last read (pjman sync entire): its phase, the branch's state, the gates and the
+   *  open findings, in one line with its address. */
+  trail?: string;
   /** The change's branch: one a session was seen on (observed), else the recommended name derived from the key. */
   branch?: { name: string; worktree: string; observed: boolean };
   sessions: (Row & { last?: string })[];
@@ -632,6 +636,11 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     migrated: typeof rec.data.migrated === 'string' ? rec.data.migrated : undefined,
     decisions,
     sources,
+    trail: (() => {
+      const bound = sources.find((x) => x.relation === 'binds' && x.key.startsWith(`${TRAIL_KIND}:`));
+      const state = trailStateOf(bound?.record?.data);
+      return state ? `${trailLine(state)}${state.url ? ` (${state.url})` : ''}` : undefined;
+    })(),
     branch,
     sessions,
     parent,
@@ -734,6 +743,7 @@ export function formatChangeContext(c: ChangeContext): string {
   // the contract the change works under, after what was decided on it
   if (c.aspects) out.push('\n' + formatChangeAspects(c.aspects).join('\n').trimEnd());
   if (c.aspectCues.length) out.push('\n' + formatAspectCues(c.aspectCues).join('\n'));
+  if (c.trail) out.push(`\n## Trail\n\n${c.trail}`);
   if (c.sources.length) {
     out.push('\n## Sources');
     for (const s of c.sources) {

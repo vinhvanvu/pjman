@@ -19,6 +19,8 @@ import { sourceFileSlug } from '../store/keys.js';
 import { findSession, loadStore, type Loaded, type Rec } from '../store/records.js';
 import { CliError, localDate, nowIso } from '../store/util.js';
 import { baseBranch, mergedBranch } from './git.js';
+import { note } from '../ops/note.js';
+import { reconcileTrail, trailCandidates, trailOf, type TrailReconcile } from './trail.js';
 
 export const CHECKPOINT_KIND = 'entire-checkpoint';
 
@@ -42,6 +44,8 @@ export interface EntireSyncResult {
   /** What Entire did not answer; the next sync reads it again. */
   pending: string[];
   commit: string | null;
+  /** Each change's Trail, brought to where the change stands and read back (change:trail-lifecycle). */
+  trails: TrailReconcile[];
 }
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
@@ -171,6 +175,9 @@ export interface EntireSyncOpts {
   writer?: string;
   /** How Entire is reached (tests pass a fake binary). */
   entire?: EntireOpts;
+  /** Write a note on a change when its Trail moved (a gate passed or failed, a finding, a merge), which wakes the
+   *  session waiting on it. The dashboard's follower passes it; a session's own sync does not wake itself. */
+  wake?: boolean;
 }
 
 export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncResult {
@@ -188,14 +195,23 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     throw new CliError(
       `the store has no ${CHECKPOINT_KIND} source kind: run pjman migrate, or, where the store lists its own kinds, add it to source_kinds in pjman.yaml`,
     );
-  const result: EntireSyncResult = { project, checkpoints: 0, linked: [], unplaced: 0, pending: [], commit: null };
+  const result: EntireSyncResult = {
+    project,
+    checkpoints: 0,
+    linked: [],
+    unplaced: 0,
+    pending: [],
+    commit: null,
+    trails: [],
+  };
   let commits: CheckpointCommit[];
   try {
     commits = trailerCommits(dir);
   } catch (e) {
     // the history could not be read: said, never taken for a repository with no checkpoints
+    // (the Trails below are still followed)
     result.pending.push(`git log failed in ${dir}: ${(e as Error).message.split('\n')[0].slice(0, 200)}`);
-    return result;
+    commits = [];
   }
   // a checkpoint on several commits (a cherry-pick, a rebase whose old copy is still a branch) is one checkpoint: the
   // commit on the base speaks for it, else the newest
@@ -342,6 +358,45 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
       env.session,
       events,
     );
+  }
+  // the Trails: each change in motion, or bound to a Trail still open, is reconciled and read back
+  // (the follower, which passes --wake every minute, reads only the Trails a session waits on: changes in review with
+  // a Trail, each within a budget; one change that cannot be written does not stop the others)
+  const after = loadStore(store);
+  // (with --wake: the Trails that wait on Entire, those of changes in review, and those still open on a change that
+  // has ended, which are closed)
+  const candidates = trailCandidates(after, project).filter(
+    (rec) => !opts.wake || (rec.data.status !== 'active' && !!trailOf(after, rec)),
+  );
+  // one clock for the whole run, and nothing more asked once Entire has not come back: a hanging Entire holds the
+  // command for one call, never one per change, and the follower ends well inside the time it is given
+  const end = Date.now() + 120_000;
+  for (const rec of candidates) {
+    const left = end - Date.now();
+    if (left <= 0) {
+      result.pending.push('Entire was not asked for every Trail: the run reached its time');
+      break;
+    }
+    let t: TrailReconcile | null;
+    try {
+      t = reconcileTrail(store, rec.key, {
+        session: opts.session,
+        writer: opts.writer,
+        entire: opts.entire,
+        budget: Math.min(opts.wake ? 30_000 : 90_000, left),
+      });
+      // the session waiting on the Trail is woken in the same step as the move is recorded
+      if (t && opts.wake && t.moved.length && t.state)
+        note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });
+    } catch (e) {
+      const reason = `${rec.key}: ${(e as Error).message.split('\n')[0]}`;
+      if (!result.pending.includes(reason)) result.pending.push(reason);
+      continue;
+    }
+    if (!t) continue;
+    result.trails.push(t);
+    for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
+    if (t.down) break;
   }
   return result;
 }
