@@ -94,7 +94,7 @@ function note(msg) {
 const localBin = path.resolve(here, '..', '..', '..', 'bin', 'pjman.js');
 const PJMAN = fs.existsSync(localBin) ? [process.execPath, localBin] : ['pjman'];
 
-function pjman(args, { cwd, env = {}, json = false, input } = {}) {
+function pjman(args, { cwd, env = {}, json = false, input, timeout } = {}) {
   const [cmd, ...pre] = PJMAN;
   const t0 = performance.now();
   try {
@@ -103,6 +103,7 @@ function pjman(args, { cwd, env = {}, json = false, input } = {}) {
       encoding: 'utf8',
       stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       input,
+      timeout,
       env: { ...process.env, ...env },
     });
     return json ? JSON.parse(out) : out;
@@ -1294,7 +1295,7 @@ async function main() {
       if (
         store?.entire &&
         input.tool_name === 'Bash' &&
-        /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(?:commit|merge|rebase|cherry-pick|pull)\b/.test(
+        /\bgit\s+(?:-\S+\s+(?:\S+\s+)?)*(?:commit|merge|rebase|cherry-pick|pull)(?=\s|$)|\bgh\s+pr\s+merge(?=\s|$)/.test(
           String(input.tool_input?.command ?? ''),
         )
       )
@@ -1433,8 +1434,9 @@ async function main() {
         if (EVENT === 'Stop' && st.bound) hostLabel(sid, cwd, env);
       }
       if (EVENT === 'Stop' && st.committed) {
-        tryPjman(['sync', 'entire'], { cwd, env });
+        // cleared first and bounded: a sync that is slow or killed is not run again by every later turn
         st.committed = 0;
+        tryPjman(['sync', 'entire'], { cwd, env, timeout: 45_000 });
       }
       // the receipt: what this session and the sessions it spawned wrote since the last turn, composed by the tool, shown to the person
       if (EVENT === 'Stop') {

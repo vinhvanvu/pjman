@@ -181,6 +181,40 @@ test('what Entire does not answer is pending: the link is made from git alone, a
   assert.equal(none.commit, null);
 });
 
+test("Entire is not asked again in a run once it fails, a checkpoint follows its commit, and stacked work is the lower branch's", () => {
+  const F = '01FFFFFFFFFFFFFFFFFFFFFFFF';
+  const G = '01GGGGGGGGGGGGGGGGGGGGGGGG';
+  g('switch', '-q', 'vinh/search');
+  commit('feat: search sorts (change:search)', F);
+  commit('feat: search pages (change:search)', G);
+  g('switch', '-q', 'main');
+  // three checkpoints Entire cannot answer for: one call fails, and the run asks no more
+  const asked = calls().length;
+  const r = syncEntire(store, { entire: { bin: fake() } });
+  assert.equal(calls().length - asked, 1);
+  assert.equal(r.pending.length, 1);
+  assert.equal(r.linked.length, 2);
+  // the commit is amended: the trailer sits on a new commit, and the source follows it there
+  g('switch', '-q', 'vinh/search');
+  g('commit', '-q', '--amend', '-m', `feat: search pages well (change:search)\n\nEntire-Checkpoint: ${G}`);
+  const amended = g('rev-parse', 'HEAD');
+  g('switch', '-q', 'main');
+  syncEntire(store, { entire: { bin: fake() } });
+  const src = loadStore(store).byKey.get(`entire-checkpoint:${G}`)![0];
+  assert.equal((src.data.ext as { entire: { commit: string } }).entire.commit, amended);
+  assert.match(String(src.data.url), new RegExp(`${amended}$`));
+  // a branch stacked on another: the lower branch's commit is the lower branch's alone
+  g('switch', '-q', '-c', 'lower', 'main');
+  const low = commit('feat: lower', '01HHHHHHHHHHHHHHHHHHHHHHHH');
+  g('switch', '-q', '-c', 'upper');
+  const up = commit('feat: upper', '01KKKKKKKKKKKKKKKKKKKKKKKK');
+  g('switch', '-q', 'main');
+  const found = checkpointCommits(dir);
+  assert.deepEqual(found.find((c) => c.sha === low)!.branches, ['lower']);
+  assert.deepEqual(found.find((c) => c.sha === up)!.branches, ['upper']);
+  g('branch', '-q', '-D', 'lower', 'upper');
+});
+
 test('the entire-kinds move: a store from before 0.7.0 gains the two source kinds, then the stamp', () => {
   const cfg = loadStoreConfig(store.root);
   assert.ok(cfg.source_kinds.includes('entire-checkpoint') && cfg.source_kinds.includes('entire-trail'));
