@@ -191,3 +191,14 @@ test("opted in, the merge is the Trail's: a gate that blocks merges nothing; a m
     'the base was pulled',
   );
 });
+
+test('a branch with no commits of its own is not merged by a later merge of another branch, nor by a longer key', () => {
+  g('switch', '-q', 'main');
+  // cut and never built on, then main moves past it by another branch's merge
+  g('branch', 'idle');
+  branch('idle-later');
+  g('merge', '-q', '--no-ff', 'idle-later', '-m', "Merge branch 'idle-later' (change:idle-later)");
+  assert.equal(mergedInto(dir, 'idle', { named: 'change:idle' }), null);
+  // the merged branch itself is still found
+  assert.equal(mergedInto(dir, 'idle-later', { named: 'change:idle-later' })?.how, 'merge');
+});
