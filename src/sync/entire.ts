@@ -11,6 +11,7 @@ import path from 'node:path';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
 import { findReferences } from '../model/graph.js';
 import { repoOf } from '../model/refs.js';
+import { live } from '../model/tree.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
@@ -192,6 +193,32 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
   if (!project || !loaded.byKey.has(project))
     throw new CliError('sync entire reads a project: run it inside a registered project');
   if (!dir) throw new CliError(`sync entire reads ${project}'s repository: run it inside the project's folder`);
+  // the change to start, by whatever form names it (the slug's short key, the full key, an alias): the sweep below
+  // knows a change by its full key, so a name that reaches no change is refused here, before anything is read or written
+  const startRec = opts.start === undefined ? undefined : live(loaded, opts.start);
+  if (opts.start !== undefined && startRec?.type !== 'change')
+    throw new CliError(
+      startRec
+        ? `${startRec.key} is a ${startRec.type}; --start takes a change`
+        : `${opts.start} is not a change: --start takes the change whose Trail to start`,
+    );
+  const start = startRec?.key;
+  // and a change the sweep would never reach is refused with the reason, never passed over in silence
+  if (startRec) {
+    const why =
+      startRec.data.project !== project
+        ? `it belongs to ${typeof startRec.data.project === 'string' ? startRec.data.project : 'no project'}, not ${project}`
+        : startRec.data.kind === 'milestone'
+          ? 'it is a milestone: its children have Trails, each its own'
+          : !startRec.valid
+            ? 'its record does not validate (pjman validate says why)'
+            : !trailCandidates(loaded, project).includes(startRec)
+              ? trailOf(loaded, startRec)
+                ? 'its Trail is closed'
+                : `work has not started on it (status ${typeof startRec.data.status === 'string' ? startRec.data.status : 'open'}): a Trail starts with the first step (pjman step ${startRec.key} start <n>)`
+              : null;
+    if (why) throw new CliError(`${startRec.key} gets no Trail from --start: ${why}`);
+  }
   if (!entireOn(loaded, project))
     throw new CliError(
       `${project} has not opted in to Entire: pjman set ${project} ext.entire.enabled=true (then pjman doctor says what Entire still needs)`,
@@ -372,8 +399,11 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
   // (with --wake: the Trails that wait on Entire, those of changes in review, and those still open on a change that
   // has ended, which are closed)
   const candidates = trailCandidates(after, project).filter(
-    (rec) => !opts.wake || (rec.data.status !== 'active' && !!trailOf(after, rec)),
+    // (the one change named to start is read whatever the run narrows to)
+    (rec) => !opts.wake || rec.key === start || (rec.data.status !== 'active' && !!trailOf(after, rec)),
   );
+  // whether the change named to start was answered for: by its reconcile, or by a reason already said
+  let startSaid = false;
   // one clock for the whole run, and nothing more asked once Entire has not come back: a hanging Entire holds the
   // command for one call, never one per change, and the follower ends well inside the time it is given
   const end = Date.now() + 120_000;
@@ -392,7 +422,7 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         budget: Math.min(opts.wake ? 30_000 : 90_000, left),
         // the sweep only follows: a Trail is started, and its branch pushed, by a command run on the change, or here
         // for the one change named (decision entire-follow-ups/unasked-push)
-        create: opts.start === rec.key,
+        create: start === rec.key,
       });
       // the session waiting on the Trail is woken in the same step as the move is recorded
       if (t && opts.wake && t.moved.length && t.state)
@@ -400,9 +430,11 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     } catch (e) {
       const reason = `${rec.key}: ${(e as Error).message.split('\n')[0]}`;
       if (!result.pending.includes(reason)) result.pending.push(reason);
+      if (rec.key === start) startSaid = true;
       continue;
     }
     if (!t) continue;
+    if (rec.key === start) startSaid = true;
     result.trails.push(t);
     // findings not yet on the Trail (filed while Entire did not answer, or before the Trail existed) are filed now
     try {
@@ -431,5 +463,11 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
     if (t.down) break;
   }
+  // the change named to start, where the sweep had nothing to say of it: no branch of its own in this repository, or
+  // the run ended before it was reached
+  if (start && !startSaid)
+    result.pending.push(
+      `${start} was not started: ${candidates.some((r) => r.key === start) ? 'no Trail was made for it, since it has no branch of its own in this repository or Entire was not asked in time; create its branch, or run the command again' : 'it is no longer a change whose Trail may start'}`,
+    );
   return result;
 }
