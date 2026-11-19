@@ -39,9 +39,17 @@ function alive(pid: number): boolean {
   }
 }
 
-function readHolder(file: string): Holder | null {
+/** Who holds the lock: undefined when there is no lock (released, not dead), null when the file cannot be read. */
+function readHolder(file: string): Holder | null | undefined {
+  let text: string;
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as Holder;
+    text = fs.readFileSync(file, 'utf8');
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'ENOENT' ? undefined : null;
+  }
+  try {
+    const h = JSON.parse(text) as Holder | null;
+    return h && typeof h.pid === 'number' ? h : null;
   } catch {
     return null;
   }
@@ -49,6 +57,26 @@ function readHolder(file: string): Holder | null {
 
 /** A lock nobody holds: unreadable, its process gone, or held longer than any write takes. */
 const isStale = (h: Holder | null): boolean => !h || !alive(h.pid) || Date.now() - Date.parse(h.at) > staleMs();
+
+/** Remove a lock read as dead, and only that one: it is moved aside first and what was moved is read. Removed by
+ *  its path, a lock released and taken afresh since the read would be the one removed, and two writers would hold
+ *  the store; a fresh lock found in what was moved is put back. */
+function removeDead(file: string): void {
+  const aside = `${file}.dead.${process.pid}`;
+  try {
+    fs.renameSync(file, aside);
+  } catch {
+    return; // gone already
+  }
+  try {
+    const moved = readHolder(aside);
+    if (moved && !isStale(moved)) fs.linkSync(aside, file);
+  } catch {
+    // its place was taken meanwhile: nothing to put back into
+  } finally {
+    fs.rmSync(aside, { force: true });
+  }
+}
 
 /** Take the store's lock for this process; re-entrant. Waits a few seconds for another writer, then refuses. */
 export function lockStore(root: string): void {
@@ -80,6 +108,9 @@ export function lockStore(root: string): void {
       fs.rmSync(mine, { force: true });
     }
     const other = readHolder(file);
+    // released since the link was refused: there is nothing to reclaim, and the link is tried again. Taken for a dead
+    // lock, each release under contention would send the waiters to remove whatever lock came next
+    if (other === undefined) continue;
     if (!other || isStale(other)) {
       // reclaimed by one writer at a time, and only if it is still the dead lock that was read: two waiters removing
       // "the stale lock" one after the other would have the second remove the first one's fresh lock
@@ -97,7 +128,8 @@ export function lockStore(root: string): void {
         continue;
       }
       try {
-        if (isStale(readHolder(file))) fs.rmSync(file, { force: true });
+        const still = readHolder(file);
+        if (still !== undefined && isStale(still)) removeDead(file);
       } finally {
         fs.rmSync(reclaim, { recursive: true, force: true });
       }

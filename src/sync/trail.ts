@@ -69,6 +69,10 @@ export function trailText(loaded: Loaded, rec: Rec): { title: string; body: stri
 const hashOf = (t: { title: string; body: string }): string =>
   createHash('sha256').update(`${t.title}\n${t.body}`).digest('hex').slice(0, 16);
 
+/** How many Trails one list asks Entire for (its most), and how many pages of a project's list are read. */
+const TRAIL_PAGE = 100;
+const TRAIL_PAGES = 50;
+
 /** A Trail as `entire trail show|create|update --json` prints it, read into what pjman keeps. `branch` picks the
  *  change among the Trail's. */
 export function readTrail(data: Record<string, unknown>, branch?: string): TrailState | null {
@@ -247,41 +251,90 @@ export function reconcileTrail(
       // branch to it. Entire's own word: "retry with trail link rather than creating another"
       (() => {
         if (!unanswered) return false;
-        const listed = call(['trail', 'list', '--mine', '--limit', '100'], false, true);
-        if (!listed.ok) {
-          // a list that cannot be read may hide that Trail: none is made on a guess, and the next run asks again
-          if (!result.pending.includes(listed.reason)) result.pending.push(listed.reason);
+        // whatever may hide that Trail holds the create: none is made on a guess, and the next run asks again
+        const hold = (reason: string): true => {
+          if (!result.pending.includes(reason)) result.pending.push(reason);
           return true;
-        }
+        };
         const mark = `pjman: ${rec.key}`;
-        const mine = arr(listed.data.items)
-          .map(obj)
-          .filter((t): t is Record<string, unknown> => !!t && typeof t.number === 'number' && t.status === 'open')
-          .filter((t) => (str(t.body) ?? '').trimEnd().endsWith(mark))
-          .toSorted((a, b) => (b.number as number) - (a.number as number));
-        for (const t of mine) {
-          const n = String(t.number);
-          // only one with no branch yet is the half-made one: a Trail of this change that holds another branch is left
-          const whole = call(['trail', 'show', n], false, true);
-          if (!whole.ok) {
-            if (!result.pending.includes(whole.reason)) result.pending.push(whole.reason);
-            return true;
+        const carries = (t: Record<string, unknown>) => (str(t.body) ?? '').trimEnd().endsWith(mark);
+        // a Trail is numbered within its project: each one found keeps the project it was listed in, and is shown
+        // and linked there, never by its bare number in the checkout's own project
+        const found = new Map<string, { number: number; project?: string }>();
+        const take = (items: unknown, listedIn?: string) => {
+          for (const t of arr(items).map(obj)) {
+            if (!t || typeof t.number !== 'number' || t.status !== 'open' || !carries(t)) continue;
+            const ref = obj(obj(t.project)?.reference);
+            const project = str(ref?.forge) && str(ref?.project) ? `${str(ref?.forge)}/${str(ref?.project)}` : listedIn;
+            found.set(`${project ?? ''}#${t.number}`, { number: t.number, project });
           }
-          if (arr(whole.data.changes).some((c) => str(obj(c)?.branch))) continue;
-          const linked = call(['trail', 'link', n, '--branch', branch, '--base', base], false, true);
-          if (!linked.ok) {
-            // the way out is said: the link takes a branch that is on origin, and the Trail can be closed instead
-            result.pending.push(
-              `Trail #${n} was made for ${rec.key} without its branch, and linking ${branch} to it failed (${linked.reason}): push the branch (git push origin ${branch}) and run pjman sync entire --start ${rec.key}, or close that Trail (entire trail update ${n} --status closed) and a new one is created`,
+        };
+        // open ones only, filtered by Entire before it cuts the page: closed Trails do not fill it
+        const listed = call(
+          ['trail', 'list', '--mine', '--status', 'open', '--limit', String(TRAIL_PAGE)],
+          false,
+          true,
+        );
+        if (!listed.ok) return hold(listed.reason);
+        // a region Entire could not reach is only a warning there, and the Trail may be in it
+        const missed = listed.data.partial;
+        if (missed === true || arr(missed).length) {
+          const regions = arr(missed)
+            .map((m) => str(m) ?? str(obj(m)?.jurisdiction) ?? str(obj(m)?.region))
+            .filter(Boolean);
+          return hold(
+            `entire trail list --mine did not reach every region${regions.length ? ` (${regions.join(', ')})` : ''}: the Trail made for ${rec.key} may be in one`,
+          );
+        }
+        take(listed.data.items);
+        if (arr(listed.data.items).length >= TRAIL_PAGE) {
+          // a full page of the person's own Trails has no next one (--mine takes no page token): the project's list
+          // has, and is read to its end
+          const repo = repoOf(loaded, store.project);
+          if (!repo)
+            return hold(
+              `${TRAIL_PAGE} or more of your Trails are open and ${store.project} records no repository to list its own by: the Trail made for ${rec.key} may be past them`,
             );
-            return true;
+          const project = `gh/${repo.split('/')[0]}`;
+          let token: string | undefined;
+          for (let page = 0; page === 0 || token; page++) {
+            if (page >= TRAIL_PAGES)
+              return hold(`${project} has more open Trails than pjman reads (${TRAIL_PAGE * TRAIL_PAGES})`);
+            const more = call(
+              ['trail', 'list', '--project', project, '--status', 'open', '--limit', String(TRAIL_PAGE)].concat(
+                token ? ['--page-token', token] : [],
+              ),
+              false,
+              true,
+            );
+            if (!more.ok) return hold(more.reason);
+            take(more.data.items, project);
+            token = str(more.data.nextPageToken);
+          }
+        }
+        for (const t of [...found.values()].toSorted((a, b) => b.number - a.number)) {
+          const n = String(t.number);
+          const where = t.project ? ['--project', t.project] : [];
+          const whole = call(['trail', 'show', n, ...where], false, true);
+          if (!whole.ok) return hold(whole.reason);
+          // only one with no change at all is the half-made one: a Trail of this change that holds a branch, or held
+          // one that was merged (Entire empties a merged change's branch), is left. And what was shown is the Trail
+          // that was listed only if it carries the key too
+          if (!carries(whole.data) || arr(whole.data.changes).length) continue;
+          const linked = call(['trail', 'link', n, '--branch', branch, '--base', base, ...where], false, true);
+          if (!linked.ok) {
+            // a link that did not answer may have landed all the same (the next run finds the Trail on the branch):
+            // only one Entire refused has a way out to say, since the link takes a branch that is on origin, and the
+            // Trail can be closed instead
+            return hold(
+              linked.kind === 'failed'
+                ? `Trail #${n} was made for ${rec.key} without its branch, and linking ${branch} to it failed (${linked.reason}): push the branch (git push origin ${branch}) and run pjman sync entire --start ${rec.key}, or close that Trail (entire trail update ${[n, ...where].join(' ')} --status closed) and a new one is created`
+                : linked.reason,
+            );
           }
           const shownNow = call(['trail', 'show', '--branch', branch], false, true);
           const taken = (shownNow.ok ? readTrail(shownNow.data, branch) : null) ?? readTrail(linked.data, branch);
-          if (!taken) {
-            result.pending.push(`Trail #${n} was linked to ${branch} and could not be read back`);
-            return true;
-          }
+          if (!taken) return hold(`Trail #${n} was linked to ${branch} and could not be read back`);
           state = taken;
           result.acts.push('linked');
           return true;
@@ -316,8 +369,12 @@ export function reconcileTrail(
               session: opts.session,
               because: 'entire trail create did not answer',
             });
-          } catch {
-            // the change stands without the mark: the next run looks all the same
+          } catch (e) {
+            // the change stands without the mark, and the next run looks for that Trail only where the mark is set:
+            // it would make a second one, so the failure is said with what to look for first
+            result.pending.push(
+              `${rec.key} could not be marked as having asked Entire for a Trail (${e instanceof Error ? e.message : String(e)}): Entire may have made one without its branch, and the next run would make another. Look first (entire trail list --mine --status open) and link it (entire trail link <n> --branch ${branch} --base ${base})`,
+            );
           }
         }
         return result;
@@ -428,6 +485,7 @@ export function reconcileTrail(
     // (the change has its Trail: the mark of a create that went unanswered has done its work)
     const ext = { ...obj(now.data.ext) };
     const mine = { ...obj(ext.entire) };
+    const marked = 'create_unanswered' in mine;
     delete mine.create_unanswered;
     if (Object.keys(mine).length) ext.entire = mine;
     else delete ext.entire;
@@ -441,7 +499,15 @@ export function reconcileTrail(
         ),
       );
     if (!binds.includes(key))
-      events.push({ op: 'set', key: rec.key, type: 'change', path: rec.path, fields: ['binds'], writer: env.writer });
+      events.push({
+        op: 'set',
+        key: rec.key,
+        type: 'change',
+        path: rec.path,
+        // (the mark taken off is part of the write, and of what reverses it)
+        fields: marked ? ['binds', 'ext'] : ['binds'],
+        writer: env.writer,
+      });
   }
   if (writes.size) {
     const touched = [...writes.keys()];
