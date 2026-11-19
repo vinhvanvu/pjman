@@ -163,7 +163,10 @@ working it.
    when the person says so. Review before asking the person to approve; where the
    project opted in to Entire the findings go onto the Trail and hold its merge until resolved, and what is posted on
    the Trail (by Entire's own review, or a person) is read onto the change by each sync and by `pjman merge` before it
-   merges: Entire lists a Trail's findings only while its branch is open.
+   merges: Entire lists a Trail's findings only while its branch is open. A round handed to Entire's review
+   (`pjman review <change> --run`) is closed only once what it posted was read: with no Trail the review is not run
+   and the command names what starts one, which is the person's to ask for; where the read fails the round stays open,
+   the review stays due, and `pjman review <change> --reviewed` reads the Trail and closes it.
 
 ## Tickets
 

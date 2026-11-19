@@ -20,6 +20,7 @@ import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
 import {
   addFinding,
+  closeRound,
   formatReviewBrief,
   readFindings,
   reviewBrief,
@@ -53,7 +54,8 @@ const findings = () => findingsOf(loadStore(store).byKey.get('change:web/cart')!
 const onEntire = (): { id: string; body: string; severity: string; file?: string; line?: string; status: string }[] =>
   (JSON.parse(fs.readFileSync(stateFile, 'utf8')) as { findings: never[] }).findings;
 
-/** The fake: one Trail per branch, and its findings. `ENTIRE_DOWN=1` makes every finding write fail. */
+/** The fake: one Trail per branch, and its findings. A `down` file makes every finding write fail, a `nolist` file
+ *  the listing of them; a `number` file holds the Trail's number where it is not 1. */
 function fake(): string {
   const file = path.join(tmp, 'entire');
   fs.writeFileSync(
@@ -66,7 +68,8 @@ const state = fs.existsSync(${JSON.stringify(stateFile)}) ? JSON.parse(fs.readFi
 const save = () => fs.writeFileSync(${JSON.stringify(stateFile)}, JSON.stringify(state));
 const flag = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
 const fail = (m) => { process.stderr.write(m + '\\n'); process.exit(1); };
-const show = () => ({ id: '01T', number: 1, url: 'https://entire.com/gh/acme/-/trails/1', status: state.trail.status, phase: 'building',
+const num = fs.existsSync(${JSON.stringify(path.join(tmp, 'number'))}) ? Number(fs.readFileSync(${JSON.stringify(path.join(tmp, 'number'))}, 'utf8')) : 1;
+const show = () => ({ id: '01T' + num, number: num, url: 'https://entire.com/gh/acme/-/trails/' + num, status: state.trail.status, phase: 'building',
   changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: fs.existsSync(${JSON.stringify(path.join(tmp, 'merged'))}) ? 'merged' : 'open', mergeability: { mergeable: true, gates: [] } }] });
 if (args[0] === 'review') {
   // the profiles: a listing written to the 'profile' file, the usual one where that file is empty; with 'personal'
@@ -84,7 +87,7 @@ else if (args[1] === 'create') { state.trail = { branch: flag('--branch'), statu
 else if (args[1] === 'update') { if (flag('--status')) state.trail.status = flag('--status'); save(); console.log(JSON.stringify(show())); }
 else if (args[1] === 'ready') console.log('Marked ready');
 else if (args[1] === 'finding') {
-  if (args[2] === 'list') { const open = state.findings.filter((f) => f.status === 'open').length; console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 }, findings: state.findings.map((f) => ({ id: f.id, body: f.body, severity: f.severity, status: f.status, location: f.file ? { filePath: f.file, startLine: f.line ? Number(f.line) : null } : {} })) })); }
+  if (args[2] === 'list') { if (fs.existsSync(${JSON.stringify(path.join(tmp, 'nolist'))})) fail('the server did not answer (503)'); const open = state.findings.filter((f) => f.status === 'open').length; console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 }, findings: state.findings.map((f) => ({ id: f.id, body: f.body, severity: f.severity, status: f.status, location: f.file ? { filePath: f.file, startLine: f.line ? Number(f.line) : null } : {} })) })); }
   else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'down'))})) fail('the server did not answer (503)');
   else if (args[2] === 'add') {
     const known = state.findings.find((f) => f.clientId === flag('--client-id'));
@@ -487,4 +490,77 @@ test('a sync reads what was posted on the Trail onto the change while its branch
   );
   assert.equal(lists(), before);
   assert.equal(r.findings.length, held + 1);
+});
+
+test('a round whose findings could not be read is not closed: with no Trail nothing runs, and a read that fails leaves the review due', () => {
+  const o = { entire: { bin } };
+  const k = 'change:web/coupon';
+  fs.rmSync(path.join(tmp, 'merged'), { force: true });
+  g('switch', '-q', '-c', 'coupon');
+  fs.writeFileSync(path.join(dir, 'coupon.ts'), 'export const off = (total) => total;\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'feat: a coupon takes its share off (change:coupon)');
+  g('switch', '-q', 'main');
+  change(store, 'coupon', {
+    name: 'Coupon',
+    gist: 'A coupon takes its share off the total',
+    intent: 'A shopper with a coupon pays less.',
+    doneWhen: 'The total is less by what the coupon says.',
+    project: 'project:web',
+    next: 'build it',
+  });
+  step(store, 'change:coupon', 'start', 1, {});
+  step(store, 'change:coupon', 'done', 1, {});
+  const data = () => loadStore(store).byKey.get(k)![0].data;
+  const reviewers = () => calls().filter((c) => c[0] === 'review' && c.includes('--prompt')).length;
+  assert.equal(reviewLoop(store, k).state, 'due');
+  // no Trail: the reviewers are not started, nothing is recorded, and what starts a Trail is said
+  fs.writeFileSync(callsFile, '');
+  const none = runReview(store, k, o);
+  assert.equal(none.ran, false);
+  assert.match(
+    none.pending[0],
+    /^change:web\/coupon has no Trail yet: .* it was not run; the review is still due\. `pjman sync entire --start change:web\/coupon` starts the Trail \(it publishes coupon on origin/,
+  );
+  assert.equal(reviewers(), 0);
+  assert.deepEqual(lensesAsked(data()), []);
+  assert.deepEqual(roundsOf(data()), []);
+  assert.equal(reviewLoop(store, k).state, 'due');
+  // a profile that keeps its verdict local posts nothing to read: not run either while the review is due
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  deep\n    output:     local');
+  const local = runReview(store, k, o);
+  assert.equal(local.ran, false);
+  assert.match(local.pending[0], /^the review profile deep keeps its verdict local: nothing it finds can be read back/);
+  assert.equal(reviewers(), 0);
+  fs.writeFileSync(path.join(tmp, 'profile'), '');
+  // with its Trail, the reviewers run; Entire then does not list what they posted: the round stays open
+  // (the stand-in holds one Trail, closed by the test before: it starts again with none, and numbers the next 2)
+  fs.rmSync(stateFile);
+  fs.writeFileSync(path.join(tmp, 'number'), '2');
+  assert.deepEqual(reconcileTrail(store, k, o)?.pending, []);
+  fs.writeFileSync(path.join(tmp, 'nolist'), '');
+  const unread = runReview(store, k, o);
+  assert.equal(unread.ran, true);
+  assert.equal(reviewers(), 1);
+  assert.equal(unread.round, undefined);
+  assert.deepEqual(unread.read, []);
+  assert.match(unread.pending[0], /the server did not answer/);
+  assert.match(unread.pending.at(-1)!, /the round is not closed and the review is still due/);
+  assert.deepEqual(roundsOf(data()), []);
+  const loop = reviewLoop(store, k);
+  assert.equal(loop.state, 'due');
+  assert.match(loop.next!, /what they posted on the Trail was not read\. `pjman review .* --reviewed` reads it/);
+  // closing it by hand meets the same gate
+  assert.throws(
+    () => closeRound(store, k, o),
+    /the round is not closed and the review is still due: .*\(.*the server did not answer.*\)/,
+  );
+  assert.deepEqual(roundsOf(data()), []);
+  // once Entire lists them, closing the round reads them first: the round is closed on what was found
+  fs.rmSync(path.join(tmp, 'nolist'));
+  const closed = closeRound(store, k, o);
+  assert.equal(closed.round?.round, 'full');
+  assert.equal(reviewers(), 1, 'the reviewers are not run again');
+  assert.ok(findingsOf(data()).some((f) => f.by === 'entire' && f.state === 'open' && holdsMerge(f)));
+  assert.equal(closed.loop.state, 'fixing');
 });
