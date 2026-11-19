@@ -2,7 +2,7 @@
 // kept as data on the change, and, in a project that opted in to Entire, each finding filed onto the change's Trail
 // and settled there when it is settled here. With no Entire the review is local.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -20,7 +20,9 @@ import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
 import {
   addFinding,
+  closeRound,
   formatReviewBrief,
+  handLens,
   readFindings,
   reviewBrief,
   reviewLoop,
@@ -40,6 +42,13 @@ let bin: string;
 
 const g = (...args: string[]) =>
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir, encoding: 'utf8' });
+/** The command's exit status, run as a process against the stand-in. */
+const status = (...args: string[]): number | null =>
+  spawnSync(process.execPath, [path.resolve(import.meta.dirname, '..', '..', 'bin', 'pjman.js'), ...args], {
+    cwd: dir,
+    env: { ...process.env, PJMAN_ENTIRE_BIN: bin },
+    encoding: 'utf8',
+  }).status;
 const calls = (): string[][] =>
   fs.existsSync(callsFile)
     ? fs
@@ -53,7 +62,9 @@ const findings = () => findingsOf(loadStore(store).byKey.get('change:web/cart')!
 const onEntire = (): { id: string; body: string; severity: string; file?: string; line?: string; status: string }[] =>
   (JSON.parse(fs.readFileSync(stateFile, 'utf8')) as { findings: never[] }).findings;
 
-/** The fake: one Trail per branch, and its findings. `ENTIRE_DOWN=1` makes every finding write fail. */
+/** The fake: one Trail per branch, and its findings. A `down` file makes every finding write fail, a `nolist` file
+ *  the listing of them; a `paged` file lists them one a page, and a `nocursor` file says there are more and names no
+ *  next page; a `number` file holds the Trail's number where it is not 1. */
 function fake(): string {
   const file = path.join(tmp, 'entire');
   fs.writeFileSync(
@@ -66,7 +77,8 @@ const state = fs.existsSync(${JSON.stringify(stateFile)}) ? JSON.parse(fs.readFi
 const save = () => fs.writeFileSync(${JSON.stringify(stateFile)}, JSON.stringify(state));
 const flag = (n) => (args.includes(n) ? args[args.indexOf(n) + 1] : undefined);
 const fail = (m) => { process.stderr.write(m + '\\n'); process.exit(1); };
-const show = () => ({ id: '01T', number: 1, url: 'https://entire.com/gh/acme/-/trails/1', status: state.trail.status, phase: 'building',
+const num = fs.existsSync(${JSON.stringify(path.join(tmp, 'number'))}) ? Number(fs.readFileSync(${JSON.stringify(path.join(tmp, 'number'))}, 'utf8')) : 1;
+const show = () => ({ id: '01T' + num, number: num, url: 'https://entire.com/gh/acme/-/trails/' + num, status: state.trail.status, phase: 'building',
   changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: fs.existsSync(${JSON.stringify(path.join(tmp, 'merged'))}) ? 'merged' : 'open', mergeability: { mergeable: true, gates: [] } }] });
 if (args[0] === 'review') {
   // the profiles: a listing written to the 'profile' file, the usual one where that file is empty; with 'personal'
@@ -84,7 +96,10 @@ else if (args[1] === 'create') { state.trail = { branch: flag('--branch'), statu
 else if (args[1] === 'update') { if (flag('--status')) state.trail.status = flag('--status'); save(); console.log(JSON.stringify(show())); }
 else if (args[1] === 'ready') console.log('Marked ready');
 else if (args[1] === 'finding') {
-  if (args[2] === 'list') { const open = state.findings.filter((f) => f.status === 'open').length; console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 }, findings: state.findings.map((f) => ({ id: f.id, body: f.body, severity: f.severity, status: f.status, location: f.file ? { filePath: f.file, startLine: f.line ? Number(f.line) : null } : {} })) })); }
+  if (args[2] === 'list') { if (fs.existsSync(${JSON.stringify(path.join(tmp, 'nolist'))})) fail('the server did not answer (503)'); const open = state.findings.filter((f) => f.status === 'open').length;
+    const paged = fs.existsSync(${JSON.stringify(path.join(tmp, 'paged'))}); const nocursor = fs.existsSync(${JSON.stringify(path.join(tmp, 'nocursor'))});
+    const from = Number(flag('--cursor') || 0); const some = paged || nocursor ? state.findings.slice(from, from + 1) : state.findings; const more = (paged || nocursor) && from + 1 < state.findings.length;
+    console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 }, ...(more ? { has_more: true } : {}), ...(more && paged ? { next_cursor: String(from + 1) } : {}), findings: some.map((f) => ({ id: f.id, body: f.body, severity: f.severity, status: f.status, location: f.file ? { filePath: f.file, startLine: f.line ? Number(f.line) : null } : {} })) })); }
   else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'down'))})) fail('the server did not answer (503)');
   else if (args[2] === 'add') {
     const known = state.findings.find((f) => f.clientId === flag('--client-id'));
@@ -487,4 +502,170 @@ test('a sync reads what was posted on the Trail onto the change while its branch
   );
   assert.equal(lists(), before);
   assert.equal(r.findings.length, held + 1);
+});
+
+test('a round whose findings could not be read is not closed: with no Trail nothing runs, and a read that fails leaves the review due', () => {
+  const o = { entire: { bin } };
+  const k = 'change:web/coupon';
+  fs.rmSync(path.join(tmp, 'merged'), { force: true });
+  g('switch', '-q', '-c', 'coupon');
+  fs.writeFileSync(path.join(dir, 'coupon.ts'), 'export const off = (total) => total;\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'feat: a coupon takes its share off (change:coupon)');
+  g('switch', '-q', 'main');
+  change(store, 'coupon', {
+    name: 'Coupon',
+    gist: 'A coupon takes its share off the total',
+    intent: 'A shopper with a coupon pays less.',
+    doneWhen: 'The total is less by what the coupon says.',
+    project: 'project:web',
+    next: 'build it',
+  });
+  step(store, 'change:coupon', 'start', 1, {});
+  step(store, 'change:coupon', 'done', 1, {});
+  const data = () => loadStore(store).byKey.get(k)![0].data;
+  const reviewers = () => calls().filter((c) => c[0] === 'review' && c.includes('--prompt')).length;
+  assert.equal(reviewLoop(store, k).state, 'due');
+  // no Trail: the reviewers are not started, nothing is recorded, and what starts a Trail is said
+  fs.writeFileSync(callsFile, '');
+  const none = runReview(store, k, o);
+  assert.equal(none.ran, false);
+  assert.match(
+    none.pending[0],
+    /^change:web\/coupon has no Trail yet: .* it was not run; the review is still due\. `pjman sync entire --start change:web\/coupon` starts the Trail \(it publishes coupon on origin/,
+  );
+  assert.equal(reviewers(), 0);
+  // the command says so by its status too: a review that did not run is not a review made
+  assert.equal(status('review', k, '--run'), 1);
+  assert.equal(reviewers(), 0);
+  assert.deepEqual(lensesAsked(data()), []);
+  assert.deepEqual(roundsOf(data()), []);
+  assert.equal(reviewLoop(store, k).state, 'due');
+  // a profile that keeps its verdict local posts nothing to read: not run either while the review is due
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  deep\n    output:     local');
+  const local = runReview(store, k, o);
+  assert.equal(local.ran, false);
+  assert.match(
+    local.pending[0],
+    /^the review profile deep keeps its verdict local: only findings posted to the Trail can be read back, so it was not run and the review is still due/,
+  );
+  // one whose listing does not say where its verdict goes is not taken for the Trail, and is not called local
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  bare\n    reviewers: claude-code');
+  assert.match(
+    runReview(store, k, o).pending[0],
+    /^Entire does not say where the review profile bare sends its verdict: .* it was not run/,
+  );
+  assert.equal(reviewers(), 0);
+  fs.writeFileSync(path.join(tmp, 'profile'), '');
+  // with its Trail, the reviewers run; Entire then does not list what they posted: the round stays open
+  // (the stand-in holds one Trail, closed by the test before: it starts again with none, and numbers the next 2)
+  fs.rmSync(stateFile);
+  fs.writeFileSync(path.join(tmp, 'number'), '2');
+  assert.deepEqual(reconcileTrail(store, k, o)?.pending, []);
+  fs.writeFileSync(path.join(tmp, 'nolist'), '');
+  const unread = runReview(store, k, o);
+  assert.equal(unread.ran, true);
+  assert.equal(reviewers(), 1);
+  assert.equal(unread.round, undefined);
+  assert.equal(unread.open, true);
+  // the reviewers are back, so their lenses are on the record, by the time they went out
+  assert.deepEqual(
+    lensesAsked(data()).map((a) => `${a.lens} ${a.by}`),
+    ['intent entire', 'drift entire', 'correctness entire'],
+  );
+  assert.deepEqual(unread.read, []);
+  assert.match(unread.pending[0], /the server did not answer/);
+  assert.match(unread.pending.at(-1)!, /the round is not closed and the review is still due/);
+  assert.deepEqual(roundsOf(data()), []);
+  const loop = reviewLoop(store, k);
+  assert.equal(loop.state, 'due');
+  assert.match(loop.next!, /what they posted on the Trail was not read\. `pjman review .* --reviewed` reads it/);
+  // a listing that says there is more and names no next page is not a Trail read: nothing is taken from it
+  execFileSync(bin, ['review']);
+  fs.rmSync(path.join(tmp, 'nolist'));
+  fs.writeFileSync(path.join(tmp, 'nocursor'), '');
+  const part = readFindings(store, k, o);
+  assert.deepEqual([part.listed, part.read, part.commit], [false, [], null]);
+  assert.match(
+    part.pending[0],
+    /^the Trail holds more findings than could be read \(1 listed, and Entire names no next page\)/,
+  );
+  assert.throws(() => closeRound(store, k, o), /the round is not closed .*more findings than could be read/);
+  fs.rmSync(path.join(tmp, 'nocursor'));
+  fs.writeFileSync(path.join(tmp, 'nolist'), '');
+  // closing it by hand meets the same gate
+  assert.throws(
+    () => closeRound(store, k, o),
+    /the round is not closed and the review is still due: .*\(.*the server did not answer.*\)/,
+  );
+  assert.deepEqual(roundsOf(data()), []);
+  // once Entire lists them, closing the round reads them first, every page: the round is closed on what was found
+  fs.rmSync(path.join(tmp, 'nolist'));
+  fs.writeFileSync(path.join(tmp, 'paged'), '');
+  fs.writeFileSync(callsFile, '');
+  const closed = closeRound(store, k, o);
+  fs.rmSync(path.join(tmp, 'paged'));
+  assert.equal(closed.round?.round, 'full');
+  assert.equal(reviewers(), 0, 'the reviewers are not run again');
+  assert.deepEqual(
+    calls()
+      .filter((c) => c[2] === 'list')
+      .map((c) => (c.includes('--cursor') ? c[c.indexOf('--cursor') + 1] : '')),
+    ['', '1'],
+  );
+  assert.equal(findingsOf(data()).filter((f) => f.by === 'entire' && f.state === 'open' && holdsMerge(f)).length, 2);
+  assert.equal(closed.loop.state, 'fixing');
+  // the re-review of the fix meets the same gate: handed to Entire and left unread, its round stays open
+  findingsOf(data()).forEach((f, i) => holdsMerge(f) && settleFinding(store, k, i + 1, 'resolved', 'fixed', o));
+  assert.equal(reviewLoop(store, k).state, 'recheck');
+  fs.writeFileSync(path.join(tmp, 'nolist'), '');
+  // (through the command: the reviewers ran, the round was due and is not closed, and the status says so)
+  fs.writeFileSync(callsFile, '');
+  assert.equal(status('review', k, '--run'), 1);
+  assert.equal(reviewers(), 1);
+  assert.equal(lensesAsked(data()).find((a) => a.lens === 'fix')?.by, 'entire');
+  assert.equal(reviewLoop(store, k).state, 'recheck');
+  assert.throws(() => closeRound(store, k, o), /the round is not closed and the review is still due/);
+  assert.deepEqual(
+    roundsOf(data()).map((r) => r.round),
+    ['full'],
+  );
+  // the way out where Entire never lists it: the lens handed to a reviewer of the session's own takes Entire's place
+  handLens(store, k, 'fix', o);
+  assert.deepEqual(
+    lensesAsked(data())
+      .filter((a) => a.lens === 'fix')
+      .map((a) => a.by === 'entire'),
+    [false],
+  );
+  assert.equal(closeRound(store, k, o).round?.round, 'fix');
+  fs.rmSync(path.join(tmp, 'nolist'));
+  // a review run beside the loop, with nothing due, is a review made: status 0
+  assert.equal(status('review', k, '--run'), 0);
+  // a Trail that is merged is listed no more: the reviewers are not started on it
+  fs.writeFileSync(path.join(tmp, 'merged'), '');
+  reconcileTrail(store, k, o);
+  fs.writeFileSync(callsFile, '');
+  const gone = runReview(store, k, o);
+  assert.equal(gone.ran, false);
+  assert.match(
+    gone.pending[0],
+    /^Trail #2 is merged: Entire no longer lists its findings, so nothing its review found could be read and it was not run$/,
+  );
+  assert.equal(reviewers(), 0);
+  // where a review is due on such a Trail, the refusal names the way on: the session's own reviewers
+  set(store, k, ['status=review'], {});
+  step(store, 'change:coupon', 'add', undefined, { text: 'one more thing' });
+  g('switch', '-q', 'coupon');
+  fs.writeFileSync(path.join(dir, 'coupon.ts'), 'export const off = (total) => total - 1;\n');
+  g('commit', '-q', '-am', 'fix: the coupon takes one off (change:coupon)');
+  g('switch', '-q', 'main');
+  step(store, 'change:coupon', 'done', 2, {});
+  assert.equal(reviewLoop(store, k).state, 'due');
+  const dueGone = runReview(store, k, o);
+  assert.equal(dueGone.ran, false);
+  assert.match(
+    dueGone.pending[0],
+    /^Trail #2 is merged: .* it was not run; the review is still due: hand the round to reviewers of the session's own, .*--lens <intent\|drift\|correctness>.*--reviewed/,
+  );
 });

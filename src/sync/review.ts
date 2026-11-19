@@ -141,7 +141,21 @@ interface LoopRead {
   entire: boolean;
   /** Where what does not hold the merge goes. */
   followUp: string;
+  /** The round to close was handed to Entire's reviewers. */
+  entireOut: boolean;
 }
+
+/** Whether the round to close was handed to Entire's reviewers: what they found is on the Trail and nowhere else, so
+ *  the round is closed only once the Trail was read. */
+function entireHanded(data: Record<string, unknown>, loop: Loop): boolean {
+  const want: readonly string[] = loop.state === 'recheck' ? ['fix'] : loop.state === 'due' ? REVIEW_LENSES : [];
+  return lensesAsked(data).some((a) => (a.pass ?? 1) === loop.pass && a.by === 'entire' && want.includes(a.lens));
+}
+
+/** What is said of a round left open because the Trail could not be read: what reads it, and the way out where it
+ *  never can be. */
+const unread = (k: string, why?: string): string =>
+  `${k}: the round is not closed and the review is still due: Entire's reviewers post what they find on the Trail, and it could not be read${why ? ` (${why})` : ''}. \`pjman review ${k} --reviewed\` reads it and closes the round once Entire lists it; where it never will, hand the round to reviewers of the session's own (\`pjman review ${k} --lens <lens>\`, one fresh reviewer each), whose record takes the place of Entire's`;
 
 function loopRead(store: Store, key: string): LoopRead {
   const loaded = loadStore(store);
@@ -157,6 +171,7 @@ function loopRead(store: Store, key: string): LoopRead {
     findings: findingsOf(rec.data),
     entire: entireOn(loaded, store.project),
     followUp: followUpKeyOf(loaded, rec.key, closedPass(rec.data)),
+    entireOut: entireHanded(rec.data, loop),
   };
 }
 
@@ -493,6 +508,25 @@ export function fileFindings(
   return out;
 }
 
+/** The pages of a Trail's findings read in one go (a hundred findings each). */
+const MAX_PAGES = 50;
+
+const goneWords = (n: number | undefined, how: string): string =>
+  `Trail${n ? ` #${n}` : ''} is ${how}: Entire no longer lists its findings`;
+
+/** The branch a change's Trail is read by, where it can be read: with no Trail there is none, and Entire lists a
+ *  Trail's findings only while its branch is open (they are read before the merge, by pjman merge and by each sync
+ *  while the change is in review; what was read then is what the change keeps). */
+function readableTrail(loaded: Loaded, rec: Rec, dir: string): { branch?: string; number?: number; gone?: string } {
+  const trail = trailOf(loaded, rec);
+  const branch = trail?.state?.branch ?? branchIn(loaded, rec, dir).branch;
+  if (!trail?.state || !branch) return {};
+  const status = trail.state.change?.status;
+  if (status === 'merged' || status === 'closed')
+    return { number: trail.state.number, gone: goneWords(trail.state.number, status) };
+  return { branch, number: trail.state.number };
+}
+
 /** What the findings on the change's Trail read as on the change: Entire's own review posts there, and so may a person.
  *  A finding the change does not hold is added, with its id on Entire; one it holds follows Entire's state where it was
  *  not settled here since. The Trail is read whole each time; nothing is asked of a project that did not opt in. */
@@ -500,7 +534,16 @@ export function readFindings(
   store: Store,
   key: string,
   opts: ReviewOpts = {},
-): { change: string; findings: Finding[]; read: string[]; pending: string[]; commit: string | null } {
+): {
+  change: string;
+  findings: Finding[];
+  read: string[];
+  pending: string[];
+  commit: string | null;
+  /** Entire listed the Trail's findings: what is on the change is what the Trail held. False where nothing could be
+   *  read (no Trail, a Trail no longer listed, Entire not answering) and for a project that did not opt in. */
+  listed: boolean;
+} {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
   const out = {
@@ -509,33 +552,69 @@ export function readFindings(
     read: [] as string[],
     pending: [] as string[],
     commit: null as string | null,
+    listed: false,
   };
   const dir = store.projectDir;
   if (!dir || !entireOn(loaded, store.project)) return out;
-  const trail = trailOf(loaded, rec);
-  const branch = trail?.state?.branch ?? branchIn(loaded, rec, dir).branch;
-  if (!trail?.state || !branch) {
-    out.pending.push(`${rec.key} has no Trail yet: there are no findings on Entire to read`);
+  const trail = readableTrail(loaded, rec, dir);
+  if (!trail.branch) {
+    out.pending.push(
+      trail.gone
+        ? `${trail.gone}; the change keeps what was read before`
+        : `${rec.key} has no Trail yet: there are no findings on Entire to read`,
+    );
     return out;
   }
-  // Entire lists a Trail's findings only while its branch is open: they are read before the merge (pjman merge, and
-  // each sync while the change is in review), and what was read then is what the change keeps
-  const gone = `Trail #${trail.state.number} is ${trail.state.change?.status === 'closed' ? 'closed' : 'merged'}: Entire no longer lists its findings; the change keeps what was read before`;
-  if (trail.state.change?.status === 'merged' || trail.state.change?.status === 'closed') {
-    out.pending.push(gone);
-    return out;
+  // the Trail is read whole, page by page: a page not read is findings not read, and says so. The time given bounds
+  // the whole read, however many pages there are (a sync hands it what is left of its own)
+  const listed: unknown[] = [];
+  let cursor: string | undefined;
+  const until = Date.now() + (opts.timeout ?? 30_000);
+  for (let page = 0; ; page++) {
+    const left = until - Date.now();
+    if (page && left <= 0) {
+      out.pending.push(
+        `the Trail's findings were read in part (${listed.length} listed when the time given ran out): none is taken until all are read`,
+      );
+      return out;
+    }
+    const r = runEntire<Record<string, unknown>>(
+      [
+        'trail',
+        'finding',
+        'list',
+        '--branch',
+        trail.branch,
+        '--status',
+        'any',
+        '--freshness',
+        'any',
+        ...(cursor ? ['--cursor', cursor] : []),
+      ],
+      { ...opts.entire, cwd: dir, timeout: Math.max(1_000, left) },
+    );
+    if (!r.ok) {
+      out.pending.push(
+        /has no open changes|no discoverable project trail/i.test(r.reason)
+          ? `${goneWords(trail.number, 'merged')}; the change keeps what was read before`
+          : page
+            ? `the Trail's findings were read in part (${r.reason}): none is taken until all are read`
+            : r.reason,
+      );
+      return out;
+    }
+    if (Array.isArray(r.data.findings)) listed.push(...(r.data.findings as unknown[]));
+    if (r.data.has_more !== true) break;
+    const next = typeof r.data.next_cursor === 'string' && r.data.next_cursor ? r.data.next_cursor : undefined;
+    if (!next || next === cursor || page + 1 >= MAX_PAGES) {
+      out.pending.push(
+        `the Trail holds more findings than could be read (${listed.length} listed, and Entire ${next && next !== cursor ? 'has more pages' : 'names no next page'}): none is taken until all are read`,
+      );
+      return out;
+    }
+    cursor = next;
   }
-  const r = runEntire<Record<string, unknown>>(
-    ['trail', 'finding', 'list', '--branch', branch, '--status', 'any', '--freshness', 'any'],
-    { ...opts.entire, cwd: dir, timeout: opts.timeout ?? 30_000 },
-  );
-  if (!r.ok) {
-    out.pending.push(/has no open changes|no discoverable project trail/i.test(r.reason) ? gone : r.reason);
-    return out;
-  }
-  const listed = Array.isArray(r.data.findings) ? (r.data.findings as unknown[]) : [];
-  if (r.data.has_more === true)
-    out.pending.push('the Trail holds more findings than one page: the rest are read next time');
+  out.listed = true;
   // the record as it stands now: Entire was asked in between
   const now = changeOf(loadStore(store), key);
   const findings = findingsOf(now.data);
@@ -650,6 +729,8 @@ export function runReview(
   said: string[];
   /** The round this review closed, and where the loop then stands. */
   round?: RoundResult;
+  /** The review was due and its round is not closed: what the reviewers found was not read. */
+  open?: boolean;
 } {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
@@ -719,11 +800,36 @@ export function runReview(
     );
     return none;
   }
-  if (known.output[profile] !== 'trail')
-    none.pending.push(
-      `the review profile ${profile} keeps its verdict local: only findings posted to the Trail are read back (entire review --configure --set-output trail)`,
-    );
   const b = reviewBrief(store, key);
+  // Entire's reviewers read through every lens, and a review that is due closes its round: only when what they found
+  // can be read back. Where it cannot, nothing is run (the reviewers take minutes, and their findings would be lost)
+  const due = b.loop.state === 'due' || b.loop.state === 'recheck';
+  if (known.output[profile] !== 'trail') {
+    // (a listing that does not say is not taken for the Trail: Entire's own default is local)
+    const where = known.output[profile]
+      ? `the review profile ${profile} keeps its verdict local`
+      : `Entire does not say where the review profile ${profile} sends its verdict`;
+    if (due) {
+      none.pending.push(
+        `${where}: only findings posted to the Trail can be read back, so it was not run and the review is still due (entire review --configure --set-output trail)`,
+      );
+      return none;
+    }
+    none.pending.push(
+      `${where}: only findings posted to the Trail are read back (entire review --configure --set-output trail)`,
+    );
+  } else {
+    const readable = readableTrail(loaded, rec, dir);
+    if (!readable.branch) {
+      const still = due ? '; the review is still due' : '';
+      none.pending.push(
+        readable.gone
+          ? `${readable.gone}, so nothing its review found could be read and it was not run${still}${due ? `: hand the round to reviewers of the session's own, one fresh reviewer a lens (\`pjman review ${rec.key} --lens <${b.loop.state === 'recheck' ? 'fix' : REVIEW_LENSES.join('|')}>\`), then close it (\`pjman review ${rec.key} --reviewed\`)` : ''}`
+          : `${rec.key} has no Trail yet: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}. \`pjman sync entire --start ${rec.key}\` starts the Trail (it publishes ${branch} on origin, which is the person's to ask for)`,
+      );
+      return none;
+    }
+  }
   const brief = formatReviewBrief(b);
   // the one re-review reads the fix alone: what came after the full review's head
   const fixOf = b.loop.state === 'recheck' ? b.loop.full?.head : undefined;
@@ -734,11 +840,8 @@ export function runReview(
     '',
     brief,
   ].join('\n');
-  // Entire's reviewers read through every lens: recorded before they run, so what they post is told from what stood
-  const due = b.loop.state === 'due' || b.loop.state === 'recheck';
-  const handed = due
-    ? recordLenses(store, key, b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES], 'entire', opts, b.loop.pass)
-    : [];
+  // when the reviewers went out: what they post is told from what stood by this time
+  const wentOut = nowIso();
   const ran = runEntire<string>(
     [
       'review',
@@ -752,25 +855,41 @@ export function runReview(
     { ...opts.entire, cwd: at, timeout: opts.timeout ?? 45 * 60_000, text: true },
   );
   if (!ran.ok) {
-    // no reviewer read anything: the lenses recorded for this run are taken back
-    if (handed.length) unrecordLenses(store, key, handed, opts, b.loop.pass);
     none.pending.push(ran.reason);
     return none;
   }
+  // Entire's reviewers read through every lens: recorded once they are back, never before, so a run cut short (killed,
+  // or still under way) leaves no lens that says a reviewer read the branch
+  if (due)
+    recordLenses(
+      store,
+      key,
+      b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES],
+      'entire',
+      opts,
+      b.loop.pass,
+      wentOut,
+    );
   const back = readFindings(store, key, opts);
-  // a review that was due closes its round; one asked for beside the loop (before the change reaches review, while
-  // fixing, or after its end) only files
-  const round = due ? closeRound(store, key, opts) : undefined;
+  // a review that was due closes its round, once what it found was read; one asked for beside the loop (before the
+  // change reaches review, while fixing, or after its end) only files
+  const round = due && back.listed ? closeRound(store, key, { ...opts, listed: true }) : undefined;
   return {
     change: rec.key,
     ran: true,
     findings: round ? findingsOf(changeOf(loadStore(store), key).data) : back.findings,
     read: back.read,
-    pending: [...none.pending, ...back.pending, ...(round?.pending ?? [])],
+    pending: [
+      ...none.pending,
+      ...back.pending,
+      ...(due && !back.listed ? [unread(rec.key)] : []),
+      ...(round?.pending ?? []),
+    ],
     commit: back.commit,
     profile,
     said: none.said,
     round,
+    open: due && !round,
   };
 }
 
@@ -854,6 +973,9 @@ function nextOf(b: LoopRead, k: string): string | undefined {
   const entire = b.entire
     ? `Run \`pjman review ${k} --run\` (Entire's own review: several agents and a judge, minutes long; it closes the round itself). Where it answers that no review profile is set up, `
     : '';
+  // Entire's reviewers were handed the round and it is not closed: what they found was not read then
+  if (b.entireOut)
+    return `Entire's reviewers were back from this round, and what they posted on the Trail was not read. \`pjman review ${k} --reviewed\` reads it and closes the round; where Entire no longer lists it, hand the round to reviewers of the session's own (\`pjman review ${k} --lens <lens>\`), whose record takes the place of Entire's.`;
   switch (b.loop.state) {
     case 'due':
       return `The session that wrote the change does not review it. ${entire ? `${entire}${own(REVIEW_LENSES)}` : own(REVIEW_LENSES).replace(/^s/, 'S')}; when they are back, close the round: \`pjman review ${k} --reviewed\`.`;
@@ -925,7 +1047,8 @@ function followUpTarget(loaded: Loaded, rec: Rec, pass: number): { key: string; 
   return { key, there: there && there.type === 'change' ? there : undefined };
 }
 
-/** Record that these lenses went out to reviewers, once each. */
+/** Record that these lenses went out to reviewers, once each. A lens handed to a reviewer of the session's own takes
+ *  the place of Entire's record of it: the way out of a round whose Trail cannot be read. */
 function recordLenses(
   store: Store,
   key: string,
@@ -933,17 +1056,23 @@ function recordLenses(
   by: string | undefined,
   opts: ReviewOpts,
   pass = 1,
+  at = nowIso(),
 ): string[] {
   const rec = changeOf(loadStore(store), key);
+  const lensOf = (raw: unknown): Record<string, unknown> | undefined => {
+    const r = raw as Record<string, unknown> | null;
+    return r && r.round === 'lens' && passOf(r) === pass ? r : undefined;
+  };
+  // (to a reviewer of the session's own, a lens Entire holds is not yet handed out)
+  const counts = (raw: unknown): boolean => !!lensOf(raw) && (by === 'entire' || lensOf(raw)!.by !== 'entire');
   const had = new Set(
-    lensesAsked(rec.data)
-      .filter((a) => (a.pass ?? 1) === pass)
-      .map((a) => a.lens),
+    reviewsOf(rec.data)
+      .filter(counts)
+      .map((raw) => String(lensOf(raw)!.lens)),
   );
   const fresh = lenses.filter((l) => !had.has(l));
   if (!fresh.length) return [];
   const env = envelope(opts);
-  const at = nowIso();
   const who = by ?? env.writer;
   const entries = fresh.map((lens) => ({
     round: 'lens',
@@ -952,8 +1081,11 @@ function recordLenses(
     ...(who ? { by: who } : {}),
     ...(pass > 1 ? { pass } : {}),
   }));
+  const kept = reviewsOf(rec.data).filter(
+    (raw) => !lensOf(raw) || counts(raw) || !fresh.includes(String(lensOf(raw)!.lens)),
+  );
   const prior = snapshot(store, [rec.path]);
-  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...reviewsOf(rec.data), ...entries] }, rec.body));
+  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: [...kept, ...entries] }, rec.body));
   validateOrUndo(store, [rec.path], [], prior);
   finishWrite(store, `pjman: review ${rec.key} lens ${fresh.join(', ')} handed out`, env.session, [
     {
@@ -966,30 +1098,6 @@ function recordLenses(
     },
   ]);
   return fresh;
-}
-
-/** Take back lenses recorded for a review that then did not run. */
-function unrecordLenses(store: Store, key: string, lenses: string[], opts: ReviewOpts, pass = 1): void {
-  const rec = changeOf(loadStore(store), key);
-  const kept = reviewsOf(rec.data).filter((raw) => {
-    const r = raw as Record<string, unknown> | null;
-    return !(r && r.round === 'lens' && r.by === 'entire' && passOf(r) === pass && lenses.includes(String(r.lens)));
-  });
-  if (kept.length === reviewsOf(rec.data).length) return;
-  const env = envelope(opts);
-  const prior = snapshot(store, [rec.path]);
-  fs.writeFileSync(rec.abs, render('change', { ...rec.data, reviews: kept.length ? kept : undefined }, rec.body));
-  validateOrUndo(store, [rec.path], [], prior);
-  finishWrite(store, `pjman: review ${rec.key} lens ${lenses.join(', ')} taken back`, env.session, [
-    {
-      op: 'set',
-      key: rec.key,
-      type: 'change',
-      path: rec.path,
-      fields: ['reviews', `lens ${lenses.join(', ')} taken back`],
-      writer: env.writer,
-    },
-  ]);
 }
 
 /** Hand a reviewer its lens: the brief with the one question, and the record that it went out (a round is closed only
@@ -1024,8 +1132,15 @@ export function handLens(
 /** Close the round the reviewers just made: the full review when none is recorded, the re-review of the fix after it.
  *  Refused while findings hold the merge with no fix to read, and once the loop has ended. Where closing it ends the
  *  loop, what does not hold the merge goes to the follow-up change in the same call. */
-export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): RoundResult {
-  const b = reviewBrief(store, key);
+export function closeRound(store: Store, key: string, opts: ReviewOpts & { listed?: boolean } = {}): RoundResult {
+  let b = reviewBrief(store, key);
+  // Entire's reviewers post what they find on the Trail: their round is closed only once that was read (`listed`: the
+  // caller just did). Where it cannot be read the round stays open and the review due
+  if (b.entire && !opts.listed && entireHanded(changeOf(loadStore(store), key).data, b.loop)) {
+    const back = readFindings(store, key, opts);
+    if (!back.listed) throw new CliError(unread(b.change, back.pending[0]));
+    if (back.commit) b = reviewBrief(store, key);
+  }
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
   const state = b.loop.state;
