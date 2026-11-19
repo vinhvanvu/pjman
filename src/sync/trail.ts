@@ -116,8 +116,17 @@ export function readTrail(data: Record<string, unknown>, branch?: string): Trail
 export function trailMoves(before: TrailState | undefined, after: TrailState): string[] {
   const out: string[] = [];
   if (!before) return out;
-  if (after.change?.status === 'merged' && before.change?.status !== 'merged') out.push('its branch was merged');
-  else if (after.status === 'closed' && before.status !== 'closed') out.push('the Trail was closed');
+  if (after.change?.status === 'merged' && before.change?.status !== 'merged') {
+    // a merge made on GitHub does not wait for the Trail's gates (change:entire-gates-skipped: Entire's check on the
+    // pull request stays pending and is closed as not applying once the branch is merged): the gates that had not
+    // passed when they were last read are named, so a merge that went past them is on the record
+    const past = before.gates.filter((g) => g.blocking && g.status !== 'passed').map((g) => g.key);
+    out.push(
+      past.length
+        ? `its branch was merged past the ${past.join(', ')} gate${past.length === 1 ? '' : 's'}, not passed when last read (a merge made on GitHub does not wait for the Trail's gates)`
+        : 'its branch was merged',
+    );
+  } else if (after.status === 'closed' && before.status !== 'closed') out.push('the Trail was closed');
   const was = new Map(before.gates.map((g) => [g.key, g.status]));
   for (const g of after.gates) {
     const prior = was.get(g.key);
