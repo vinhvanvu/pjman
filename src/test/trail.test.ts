@@ -17,6 +17,7 @@ import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { readEvents } from '../store/events.js';
 import { git } from '../store/git.js';
+import { repoOf } from '../model/refs.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
 import { reconcileTrail, trailLines, trailMoves, trailOf } from '../sync/trail.js';
@@ -530,15 +531,8 @@ test('with a full page of open Trails, the half-made one is looked for through t
   fs.writeFileSync(path.join(tmp, 'fullpage'), '');
   const from = calls().length;
   try {
-    // the project is not known to list by: nothing is made on a guess
-    const web = loadStore(store).byKey.get('project:web')![0];
-    const blind = reconcileTrail(store, 'change:web/paged', { entire: { bin } })!;
-    assert.deepEqual(blind.acts, []);
-    assert.match(blind.pending[0], /^100 or more of your Trails are open and project:web records no repository/);
-    fs.writeFileSync(
-      web.abs,
-      render('project', { ...web.data, ext: { ...(web.data.ext as object), github: { repo: 'acme/web' } } }, web.body),
-    );
+    // (the project records no repository here: its own list is asked for by the project its earlier Trails are in)
+    assert.equal(repoOf(loadStore(store), store.project), undefined);
     const r = reconcileTrail(store, 'change:web/paged', { entire: { bin } })!;
     assert.deepEqual(r.acts.slice(0, 1), ['linked']);
     assert.equal(trails().find((t) => t.id === 'PAGED')!.branch, 'paged');
@@ -570,7 +564,7 @@ test('a mark that cannot be written is said: the next run would not look for the
     assert.match(r.pending[0], /^entire trail create .* failed: trails are not enabled/);
     assert.match(
       r.pending[1],
-      /^change:web\/refused-two could not be marked as having asked Entire for a Trail \(.+\): Entire may have made one without its branch, and the next run would make another\. Look first \(entire trail list --mine --status open\) and link it \(entire trail link <n> --branch refused-two --base main\)$/s,
+      /^the mark that change:web\/refused-two asked Entire for a Trail may not have been kept \(.+\): Entire may have made one without its branch, and a run that finds no mark would make another\. Look first \(entire trail list --mine --status open\) and link it \(entire trail link <n> --branch refused-two --base main\)$/s,
     );
   } finally {
     fs.rmSync(held, { force: true });

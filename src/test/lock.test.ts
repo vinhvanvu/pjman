@@ -99,13 +99,15 @@ test('a lock that cannot be read is reclaimed, and a reclaim left half-done by a
   const reclaim = `${file}.reclaim`;
   const dead = JSON.stringify({ pid: 2 ** 22 - 7, at: new Date().toISOString() });
   // an empty file, and one that holds something other than a holder: nobody's lock
-  for (const text of ['', 'not json', '3']) {
+  // (nor is one with no time on it, even under a process that lives: it could never be read as hung)
+  for (const text of ['', 'not json', '3', JSON.stringify({ pid: process.pid })]) {
     fs.writeFileSync(file, text);
     const t = Date.now();
     withStoreLock(store.root, () => {
       assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).pid, process.pid, 'the lock taken is this writer’s own');
     });
-    assert.ok(Date.now() - t < 200, `'${text}' is reclaimed at once`);
+    // (at once: without the wait a reclaim marker takes to grow old)
+    assert.ok(Date.now() - t < 1500, `'${text}' is reclaimed at once`);
     assert.ok(!fs.existsSync(file));
   }
   // a writer died while reclaiming: its marker is old, and is cleared on sight
@@ -115,7 +117,7 @@ test('a lock that cannot be read is reclaimed, and a reclaim left half-done by a
   fs.utimesSync(reclaim, old, old);
   let t = Date.now();
   withStoreLock(store.root, () => {});
-  assert.ok(Date.now() - t < 500, 'an old marker does not hold the lock');
+  assert.ok(Date.now() - t < 1500, 'an old marker does not hold the lock');
   assert.ok(!fs.existsSync(reclaim) && !fs.existsSync(file));
   // a marker just made may be a writer at work: it is waited for, and cleared once it is old
   fs.writeFileSync(file, dead);
@@ -125,6 +127,13 @@ test('a lock that cannot be read is reclaimed, and a reclaim left half-done by a
   const took = Date.now() - t;
   assert.ok(took >= 1500 && took < 4000, `waited for the marker to grow old (${took} ms)`);
   assert.ok(!fs.existsSync(reclaim) && !fs.existsSync(file));
+  // a lock moved aside by a waiter that read it as dead is released from where it was moved: put back after its
+  // holder let go, it would stand under a process that lives on, held by nobody
+  lockStore(store.root);
+  const aside = `${file}.dead.${2 ** 22 - 7}`;
+  fs.renameSync(file, aside);
+  unlockStore(store.root);
+  assert.ok(!fs.existsSync(aside) && !fs.existsSync(file));
   // nothing is left beside the lock: no writer's own file, no lock moved aside
   assert.deepEqual(
     fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(path.basename(file))),

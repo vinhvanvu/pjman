@@ -250,7 +250,8 @@ export function reconcileTrail(
       // the person's own open Trails for one that carries this change's key and has no branch yet, and links the
       // branch to it. Entire's own word: "retry with trail link rather than creating another"
       (() => {
-        if (!unanswered) return false;
+        const onto = branch;
+        if (!unanswered || !onto) return false;
         // whatever may hide that Trail holds the create: none is made on a guess, and the next run asks again
         const hold = (reason: string): true => {
           if (!result.pending.includes(reason)) result.pending.push(reason);
@@ -286,16 +287,57 @@ export function reconcileTrail(
             `entire trail list --mine did not reach every region${regions.length ? ` (${regions.join(', ')})` : ''}: the Trail made for ${rec.key} may be in one`,
           );
         }
+        // each one found is shown, and the branch linked to the first that is the half-made one: true once that is
+        // settled (linked, or held on a call that failed), false when none of them is it
+        const settle = (): boolean => {
+          for (const t of [...found.values()].toSorted((a, b) => b.number - a.number)) {
+            const n = String(t.number);
+            const where = t.project ? ['--project', t.project] : [];
+            const whole = call(['trail', 'show', n, ...where], false, true);
+            if (!whole.ok) return hold(whole.reason);
+            // only one with no change at all is the half-made one: a Trail of this change that holds a branch, or held
+            // one that was merged (Entire empties a merged change's branch), is left. And what was shown is the Trail
+            // that was listed only if it carries the key too
+            if (!carries(whole.data) || arr(whole.data.changes).length) continue;
+            const linked = call(['trail', 'link', n, '--branch', onto, '--base', base, ...where], false, true);
+            if (!linked.ok) {
+              // a link that did not answer may have landed all the same (the next run finds the Trail on the branch):
+              // only one Entire refused has a way out to say, since the link takes a branch that is on origin, and the
+              // Trail can be closed instead
+              return hold(
+                linked.kind === 'failed'
+                  ? `Trail #${n} was made for ${rec.key} without its branch, and linking ${branch} to it failed (${linked.reason}): push the branch (git push origin ${branch}) and run pjman sync entire --start ${rec.key}, or close that Trail (entire trail update ${[n, ...where].join(' ')} --status closed) and a new one is created`
+                  : linked.reason,
+              );
+            }
+            const shownNow = call(['trail', 'show', '--branch', onto], false, true);
+            const taken = (shownNow.ok ? readTrail(shownNow.data, branch) : null) ?? readTrail(linked.data, branch);
+            if (!taken) return hold(`Trail #${n} was linked to ${branch} and could not be read back`);
+            state = taken;
+            result.acts.push('linked');
+            return true;
+          }
+          found.clear();
+          return false;
+        };
         take(listed.data.items);
+        // (one on the first page is linked before anything more is asked)
+        if (settle()) return true;
         if (arr(listed.data.items).length >= TRAIL_PAGE) {
           // a full page of the person's own Trails has no next one (--mine takes no page token): the project's list
           // has, and is read to its end
+          // (the create named no project, so Entire made the Trail in the repository's own: the one this project's
+          // earlier Trails are keyed by, or the repository's owner on GitHub)
+          const known = loaded.records
+            .filter((r) => r.type === 'change' && r.data.project === store.project)
+            .map((r) => /^([a-z]+\/[^/]+)\/\d+$/.exec(trailOf(loaded, r)?.key.slice(TRAIL_KIND.length + 1) ?? '')?.[1])
+            .find(Boolean);
           const repo = repoOf(loaded, store.project);
-          if (!repo)
+          const project = known ?? (repo ? `gh/${repo.split('/')[0]}` : undefined);
+          if (!project)
             return hold(
               `${TRAIL_PAGE} or more of your Trails are open and ${store.project} records no repository to list its own by: the Trail made for ${rec.key} may be past them`,
             );
-          const project = `gh/${repo.split('/')[0]}`;
           let token: string | undefined;
           for (let page = 0; page === 0 || token; page++) {
             if (page >= TRAIL_PAGES)
@@ -311,33 +353,7 @@ export function reconcileTrail(
             take(more.data.items, project);
             token = str(more.data.nextPageToken);
           }
-        }
-        for (const t of [...found.values()].toSorted((a, b) => b.number - a.number)) {
-          const n = String(t.number);
-          const where = t.project ? ['--project', t.project] : [];
-          const whole = call(['trail', 'show', n, ...where], false, true);
-          if (!whole.ok) return hold(whole.reason);
-          // only one with no change at all is the half-made one: a Trail of this change that holds a branch, or held
-          // one that was merged (Entire empties a merged change's branch), is left. And what was shown is the Trail
-          // that was listed only if it carries the key too
-          if (!carries(whole.data) || arr(whole.data.changes).length) continue;
-          const linked = call(['trail', 'link', n, '--branch', branch, '--base', base, ...where], false, true);
-          if (!linked.ok) {
-            // a link that did not answer may have landed all the same (the next run finds the Trail on the branch):
-            // only one Entire refused has a way out to say, since the link takes a branch that is on origin, and the
-            // Trail can be closed instead
-            return hold(
-              linked.kind === 'failed'
-                ? `Trail #${n} was made for ${rec.key} without its branch, and linking ${branch} to it failed (${linked.reason}): push the branch (git push origin ${branch}) and run pjman sync entire --start ${rec.key}, or close that Trail (entire trail update ${[n, ...where].join(' ')} --status closed) and a new one is created`
-                : linked.reason,
-            );
-          }
-          const shownNow = call(['trail', 'show', '--branch', branch], false, true);
-          const taken = (shownNow.ok ? readTrail(shownNow.data, branch) : null) ?? readTrail(linked.data, branch);
-          if (!taken) return hold(`Trail #${n} was linked to ${branch} and could not be read back`);
-          state = taken;
-          result.acts.push('linked');
-          return true;
+          if (settle()) return true;
         }
         return false;
       })()
@@ -370,10 +386,11 @@ export function reconcileTrail(
               because: 'entire trail create did not answer',
             });
           } catch (e) {
-            // the change stands without the mark, and the next run looks for that Trail only where the mark is set:
-            // it would make a second one, so the failure is said with what to look for first
+            // the mark may not have been kept (a write that failed at its commit can leave it in the file all the
+            // same), and the next run looks for that Trail only where the mark is set: without it a second one would
+            // be made, so the failure is said with what to look for first
             result.pending.push(
-              `${rec.key} could not be marked as having asked Entire for a Trail (${e instanceof Error ? e.message : String(e)}): Entire may have made one without its branch, and the next run would make another. Look first (entire trail list --mine --status open) and link it (entire trail link <n> --branch ${branch} --base ${base})`,
+              `the mark that ${rec.key} asked Entire for a Trail may not have been kept (${e instanceof Error ? e.message : String(e)}): Entire may have made one without its branch, and a run that finds no mark would make another. Look first (entire trail list --mine --status open) and link it (entire trail link <n> --branch ${branch} --base ${base})`,
             );
           }
         }

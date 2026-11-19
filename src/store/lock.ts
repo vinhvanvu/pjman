@@ -49,7 +49,8 @@ function readHolder(file: string): Holder | null | undefined {
   }
   try {
     const h = JSON.parse(text) as Holder | null;
-    return h && typeof h.pid === 'number' ? h : null;
+    // (a holder names its process and when it took the lock: without the time it could never be read as hung)
+    return h && typeof h.pid === 'number' && Number.isFinite(Date.parse(h.at)) ? h : null;
   } catch {
     return null;
   }
@@ -110,7 +111,13 @@ export function lockStore(root: string): void {
     const other = readHolder(file);
     // released since the link was refused: there is nothing to reclaim, and the link is tried again. Taken for a dead
     // lock, each release under contention would send the waiters to remove whatever lock came next
-    if (other === undefined) continue;
+    if (other === undefined) {
+      // (a path that refuses the link and still reads as nothing there, a dangling link, is not waited on forever)
+      if (Date.now() - started >= waitMs())
+        throw new CliError(`the store is busy: its lock could not be taken (${file}); try again in a moment`);
+      sleep(1);
+      continue;
+    }
     if (!other || isStale(other)) {
       // reclaimed by one writer at a time, and only if it is still the dead lock that was read: two waiters removing
       // "the stale lock" one after the other would have the second remove the first one's fresh lock
@@ -144,6 +151,27 @@ export function lockStore(root: string): void {
   }
 }
 
+/** Remove this process's lock. A waiter that read it as dead may have moved it aside (removeDead) and be about to
+ *  put it back: not found in its place, it is removed from where it was moved, and looked for in its place once
+ *  more, so a lock nobody holds is never put back to stand under a process that lives on. */
+function release(file: string): void {
+  const mine = (f: string): boolean => {
+    if (readHolder(f)?.pid !== process.pid) return false;
+    fs.rmSync(f, { force: true });
+    return true;
+  };
+  if (mine(file)) return;
+  const dir = path.dirname(file);
+  let beside: string[] = [];
+  try {
+    beside = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  for (const f of beside) if (f.startsWith(`${path.basename(file)}.dead.`)) mine(path.join(dir, f));
+  mine(file);
+}
+
 /** Release the lock this process holds on the store, once the outermost holder lets go. */
 export function unlockStore(root: string): void {
   const file = lockPath(root);
@@ -153,8 +181,7 @@ export function unlockStore(root: string): void {
     return;
   }
   held.delete(file);
-  const other = readHolder(file);
-  if (other && other.pid === process.pid) fs.rmSync(file, { force: true });
+  release(file);
 }
 
 /** Run `fn` holding the store's lock. */
@@ -171,8 +198,5 @@ export function withStoreLock<T>(root: string, fn: () => T): T {
 export const holdsLock = (root: string): boolean => (held.get(lockPath(root)) ?? 0) > 0;
 
 process.on('exit', () => {
-  for (const file of held.keys()) {
-    const other = readHolder(file);
-    if (other && other.pid === process.pid) fs.rmSync(file, { force: true });
-  }
+  for (const file of held.keys()) release(file);
 });
