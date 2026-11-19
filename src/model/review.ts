@@ -118,7 +118,8 @@ export interface Loop {
 
 /** Where a change's review loop stands, from its rounds and findings. `reviewable` says there is a branch with work on
  *  it to review; without one a change is never due. `newWork` answers, for the head a round was closed at, whether
- *  the branch holds commits since that the base lacks; it is the repository's to say, so a caller with no repository
+ *  the branch holds commits since that the base lacks (for a round with no head: any the base lacks); it is the
+ *  repository's to say, so a caller with no repository
  *  leaves it out.
  *
  *  The loop has an end, and a change can be worked on again after it: its plan reopened or added to and run to its end
@@ -126,7 +127,7 @@ export interface Loop {
  *  the pass before stay on the record and are not read again. */
 export function loopOf(
   data: Record<string, unknown>,
-  opts: { reviewable: boolean; newWork?: (since: string) => boolean },
+  opts: { reviewable: boolean; newWork?: (since?: string) => boolean },
 ): Loop {
   const all = [...roundsOf(data), ...lensesAsked(data)];
   const pass = Math.max(1, ...all.map((e) => e.pass ?? 1));
@@ -140,7 +141,8 @@ export function loopOf(
   // alone changes nothing)
   const moved = steps.some((s) => (s.at ?? '') > last.at);
   if (!moved) return now;
-  if (!opts.newWork || !last.head) return { ...now, maybeAgain: true };
+  if (!opts.newWork) return { ...now, maybeAgain: true };
+  // (a round closed with no head recorded is told from nothing: the repository says whether the branch holds work)
   if (!opts.newWork(last.head)) return now;
   // the plan is being worked, not at its end: the review comes when it is
   const atEnd = steps.every((s) => s.state === 'done' || s.state === 'dropped');
@@ -208,11 +210,15 @@ function loopOfPass(data: Record<string, unknown>, opts: { reviewable: boolean }
   return { ...base, state: left.length ? 'closing' : 'ended', because };
 }
 
-/** The loop in a few words, for a view: `full review due`, `2 findings hold the merge`, `ended: …`. */
+/** The loop in a few words, for a view: `full review due`, `2 findings hold the merge`, `ended: …`; nothing when
+ *  there is nothing to review and no pass before it. */
 export function loopWords(l: Loop): string | undefined {
   switch (l.state) {
     case 'none':
-      return undefined;
+      // a new pass under way: worked on after the review ended, its plan not at its end yet
+      return l.pass > 1
+        ? 'worked on since its review ended: the full review is due again once its plan has run to its end'
+        : undefined;
     case 'due':
       return l.pass > 1
         ? 'the full review is due again: the change was worked on after its review ended'

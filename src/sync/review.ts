@@ -36,7 +36,7 @@ import {
 import { newChange } from '../ops/new.js';
 import { step } from '../ops/step.js';
 import { live } from '../model/tree.js';
-import { observedBranches } from '../model/view.js';
+import { MOVED_SINCE, observedBranches } from '../model/view.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
@@ -81,6 +81,85 @@ function branchIn(loaded: Loaded, rec: Rec, dir: string | undefined): { branch?:
   return { base, branch: branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.includes(b)) };
 }
 
+/** A round's head as shown: the full hash is what is stored and resolved. */
+export const shortHead = (head: string): string => head.slice(0, 7);
+/** Whether two heads name one commit, either of them perhaps short (a round closed before heads were stored in full). */
+const sameHead = (a?: string, b?: string): boolean => !!a && !!b && (a.startsWith(b) || b.startsWith(a));
+
+/** Where the change's review loop stands, given its branch in this repository. `reviewable` says the branch holds
+ *  commits the base lacks; read here when the caller has not already. */
+function loopIn(rec: Rec, dir: string | undefined, branch?: string, base?: string, reviewable?: boolean): Loop {
+  const at = dir && branch && base ? { dir, branch, base } : undefined;
+  return loopOf(rec.data, {
+    reviewable:
+      reviewable ?? (!!at && Number(tryGit(at.dir, ['rev-list', '--count', `${at.base}..${at.branch}`]) || 0) > 0),
+    // (a caller with no repository cannot say: the loop says the plan moved, and who can)
+    newWork: dir
+      ? (since) => {
+          if (!at) return false;
+          // a round closed with no head saw nothing it can be told from: what the branch holds that the base lacks
+          if (!since) return Number(tryGit(at.dir, ['rev-list', '--count', `${at.base}..${at.branch}`]) || 0) > 0;
+          // a head that no longer resolves (a rebase with the old commit pruned, another clone, a short hash grown
+          // ambiguous) tells nothing of what came after it: what the branch holds is unreviewed
+          if (!tryGit(at.dir, ['rev-parse', '--verify', '--quiet', `${since}^{commit}`])) return true;
+          // commits on the branch since that head which the base does not have (the base merged in is not new work)
+          return (
+            Number(
+              tryGit(at.dir, ['rev-list', '--count', '--no-merges', `${since}..${at.branch}`, '--not', at.base]) || 0,
+            ) > 0
+          );
+        }
+      : undefined,
+  });
+}
+
+/** Whether a follow-up change is over: done or dropped. */
+const over = (r: Rec): boolean => ['done', 'dropped'].includes(String(r.data.status));
+
+/** The change that what does not hold the merge goes to: `<change>-follow-ups` while it is not over; once it is, a later
+ *  pass files to one of its own, `<change>-follow-ups-<pass>` (decision review-reads-ended-follow-ups/later-pass-follow-up),
+ *  and when that one is over too, the next number free. A change that is over is never added to, and never refuses. */
+function followUpKeyOf(loaded: Loaded, key: string, pass: number): string {
+  const first = followUpKey(key);
+  const open = (k: string): boolean => {
+    const there = live(loaded, k);
+    return !there || !over(there);
+  };
+  if (open(first)) return first;
+  for (let n = Math.max(2, pass); ; n++) if (open(`${first}-${n}`)) return `${first}-${n}`;
+}
+
+/** The pass the rounds closed so far belong to: what is left on the change was found there, whatever pass is under way. */
+const closedPass = (data: Record<string, unknown>): number => Math.max(1, ...roundsOf(data).map((r) => r.pass ?? 1));
+
+/** What every view of the loop reads: where it stands and what says so, without the brief's decisions, log and diff. */
+interface LoopRead {
+  change: string;
+  mode: ReviewMode;
+  loop: Loop;
+  findings: Finding[];
+  entire: boolean;
+  /** Where what does not hold the merge goes. */
+  followUp: string;
+}
+
+function loopRead(store: Store, key: string): LoopRead {
+  const loaded = loadStore(store);
+  const rec = changeOf(loaded, key);
+  const mode = reviewed(loaded, store);
+  const dir = store.projectDir;
+  const { branch, base } = branchIn(loaded, rec, dir);
+  const loop = loopIn(rec, dir, branch, base);
+  return {
+    change: rec.key,
+    mode,
+    loop,
+    findings: findingsOf(rec.data),
+    entire: entireOn(loaded, store.project),
+    followUp: followUpKeyOf(loaded, rec.key, closedPass(rec.data)),
+  };
+}
+
 export interface ReviewBrief {
   change: string;
   name?: string;
@@ -102,8 +181,10 @@ export interface ReviewBrief {
   /** How the project's changes are reviewed, and where this change's review stands. */
   mode: ReviewMode;
   loop: Loop;
-  /** The branch's head now. */
+  /** The branch's head now, in full. */
   head?: string;
+  /** Where what does not hold the merge goes. */
+  followUp: string;
 }
 
 /** What a reviewer needs to judge the change's branch: what it must do, what was decided, and what it changed. */
@@ -128,7 +209,8 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     });
   }
   const range = branch && base ? `${base}...${branch}` : undefined;
-  const head = (dir && branch && tryGit(dir, ['rev-parse', '--short', branch])) || undefined;
+  // (in full: a short hash can grow ambiguous, and the round's head is resolved again to tell new work from old)
+  const head = (dir && branch && tryGit(dir, ['rev-parse', '--verify', '--quiet', `${branch}^{commit}`])) || undefined;
   // work to review: the commits on the branch that the base does not have
   const commits =
     dir && branch && base
@@ -136,6 +218,7 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
           .split('\n')
           .filter(Boolean)
       : [];
+  const loop = loopIn(rec, dir, branch, base, commits.length > 0);
   return {
     change: rec.key,
     name: typeof rec.data.name === 'string' ? rec.data.name : undefined,
@@ -151,16 +234,9 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     findings: findingsOf(rec.data),
     entire: entireOn(loaded, store.project),
     mode: reviewMode(loaded, store.project),
-    loop: loopOf(rec.data, {
-      reviewable: commits.length > 0,
-      // commits on the branch since that head which the base does not have (the base merged in is not new work)
-      newWork: (since) =>
-        !!dir &&
-        !!branch &&
-        !!base &&
-        Number(tryGit(dir, ['rev-list', '--count', '--no-merges', `${since}..${branch}`, '--not', base]) || 0) > 0,
-    }),
+    loop,
     head,
+    followUp: followUpKeyOf(loaded, rec.key, closedPass(rec.data)),
   };
 }
 
@@ -653,7 +729,7 @@ export function runReview(
   const fixOf = b.loop.state === 'recheck' ? b.loop.full?.head : undefined;
   const prompt = [
     fixOf
-      ? `This branch had one full review at ${fixOf}; the findings listed below as resolved held its merge and were fixed since. Judge only the fix: whether each of them is fixed, and whether the fix broke something. The rest of the branch is not yours to judge again.`
+      ? `This branch had one full review at ${shortHead(fixOf)}; the findings listed below as resolved held its merge and were fixed since. Judge only the fix: whether each of them is fixed, and whether the fix broke something. The rest of the branch is not yours to judge again.`
       : 'Judge the branch also against what the change was meant to do, given below. Report as findings of their own, marked [intent], where the code does not meet the Done when, and marked [drift] where it contradicts an accepted decision or does more than the change covers. Give each finding a severity: high only for what is wrong in normal use or loses data.',
     '',
     brief,
@@ -732,11 +808,16 @@ export function lensBrief(
   if (!full) throw new CliError(`${b.change} has had no full review: the fix is re-reviewed after one`);
   const fixed = b.loop.fixed.map((n) => formatFinding(n, b.findings[n - 1]));
   // (a fix committed before the round was closed is in the branch's diff, not after the round's head)
-  const since = full.head && b.branch && full.head !== b.head ? `git diff ${full.head}..${b.branch}` : b.diff;
+  // (a head pruned since, after a rebase, names no commit: the branch's whole diff is what there is to read)
+  const resolves =
+    !!full.head &&
+    !!store.projectDir &&
+    !!tryGit(store.projectDir, ['rev-parse', '--verify', '--quiet', `${full.head}^{commit}`]);
+  const since = resolves && b.branch && !sameHead(full.head, b.head) ? `git diff ${full.head}..${b.branch}` : b.diff;
   return [
     head,
     '',
-    `Your one question: do the fixes hold? ${k} had one full review${full.head ? ` at ${full.head}` : ''}; the findings below held its merge and were fixed since. Read only what changed since that review: ${since}`,
+    `Your one question: do the fixes hold? ${k} had one full review${full.head ? ` at ${shortHead(full.head)}` : ''}; the findings below held its merge and were fixed since. Read only what changed since that review: ${since}`,
     `For each finding, find the change that fixes it. One that is not fixed is reopened (pjman review ${k} --reopen <n> --note "<what is still wrong>"). Something the fix itself broke is a new finding. The rest of the branch was reviewed and is not yours to judge again.`,
     '',
     '## Fixed since the full review',
@@ -765,7 +846,7 @@ export interface LoopReport {
 /** The change the findings that do not hold the merge go to. */
 const followUpKey = (key: string): string => `${key}-follow-ups`;
 
-function nextOf(b: ReviewBrief, k: string): string | undefined {
+function nextOf(b: LoopRead, k: string): string | undefined {
   const own = (lenses: readonly string[]): string =>
     lenses.length === 1
       ? `start one fresh agent that has no part of this conversation, told only to run \`pjman review ${k} --lens ${lenses[0]}\` and do what it says`
@@ -784,19 +865,19 @@ function nextOf(b: ReviewBrief, k: string): string | undefined {
     case 'recheck':
       return `The fix is re-reviewed once, and only the fix. ${entire ? `${entire}${own(['fix'])}` : own(['fix']).replace(/^s/, 'S')}; then close the round: \`pjman review ${k} --reviewed\`.`;
     case 'closing':
-      return `Move what does not hold the merge to ${followUpKey(k)}: \`pjman review ${k} --follow-up\`.`;
+      return `Move what does not hold the merge to ${followUpKey(k)}${b.followUp.slice(followUpKey(b.change).length)}: \`pjman review ${k} --follow-up\`.`;
     default:
       return undefined;
   }
 }
 
-function reportOf(b: ReviewBrief, printed: (key: string) => string = (k) => k): LoopReport {
+function reportOf(b: LoopRead, printed: (key: string) => string = (k) => k): LoopReport {
   const state = b.loop.state;
   return {
     change: b.change,
     mode: b.mode,
     state,
-    words: loopWords(b.loop),
+    words: ((w) => (w && b.loop.maybeAgain ? `${w}${MOVED_SINCE}` : w))(loopWords(b.loop)),
     next: nextOf(b, printed(b.change)),
     rounds: [b.loop.full, b.loop.fix].filter((r): r is Round => !!r),
     holding: b.loop.holding,
@@ -812,7 +893,7 @@ export function reviewLoop(store: Store, key: string, printed?: (key: string) =>
   const mode = reviewMode(loaded, store.project);
   if (mode === 'off')
     return { change: rec.key, mode, state: 'none', rounds: roundsOf(rec.data), holding: [], left: [], due: false };
-  return reportOf(reviewBrief(store, key), printed);
+  return reportOf(loopRead(store, key), printed);
 }
 
 /** The loop as lines: where it stands, then what moves it on. */
@@ -837,14 +918,11 @@ export interface RoundResult {
 /** The change's `reviews` as written: rounds, and the lenses handed out. */
 const reviewsOf = (data: Record<string, unknown>): unknown[] => (Array.isArray(data.reviews) ? data.reviews : []);
 
-/** The follow-up change as it stands, when there is one; refused when it is over. */
-function followUpTarget(loaded: Loaded, rec: Rec): Rec | undefined {
-  const there = live(loaded, followUpKey(rec.key));
-  if (there && ['done', 'dropped'].includes(String(there.data.status)))
-    throw new CliError(
-      `${there.key} is ${String(there.data.status)}: the findings left on ${rec.key} are not added to a change that is over; settle them here (pjman review ${rec.key} --resolve|--dismiss <n>)`,
-    );
-  return there && there.type === 'change' ? there : undefined;
+/** The follow-up change for this pass, and its record when there is one (never one that is over). */
+function followUpTarget(loaded: Loaded, rec: Rec, pass: number): { key: string; there?: Rec } {
+  const key = followUpKeyOf(loaded, rec.key, pass);
+  const there = live(loaded, key);
+  return { key, there: there && there.type === 'change' ? there : undefined };
 }
 
 /** Record that these lenses went out to reviewers, once each. */
@@ -969,9 +1047,6 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): Ro
     throw new CliError(
       `${rec.key}: no reviewer was handed ${b.loop.missing.map((l) => `--lens ${l}`).join(', ')}. ${state === 'recheck' ? 'The fix is re-reviewed' : 'A full review is made'} by reviewers that did not write the change, each told only to run \`pjman review ${rec.key} --lens <lens>\`; the round is closed when they are back`,
     );
-  // where closing it ends the loop in a project that reviews every change, what is left moves to the follow-up change:
-  // refused before the round is written when that change is over
-  if (b.mode === 'auto' && b.loop.left.length) followUpTarget(loaded, rec);
   const env = envelope(opts);
   const round: Round = {
     round: state === 'recheck' ? 'fix' : 'full',
@@ -1028,8 +1103,8 @@ export function followUp(store: Store, key: string, opts: ReviewOpts = {}): Roun
     pending: [],
   });
   if (!moved.length) return none();
-  const target = followUpKey(rec.key);
-  const there = followUpTarget(loaded, rec);
+  const pass = closedPass(rec.data);
+  const { key: target, there } = followUpTarget(loaded, rec, pass);
   const texts = moved.map((n) => {
     const f = findings[n - 1];
     const where = f.file ? ` (${f.file}${f.line ? `:${f.line}` : ''})` : '';
@@ -1043,12 +1118,15 @@ export function followUp(store: Store, key: string, opts: ReviewOpts = {}): Roun
     if (fresh.length) step(store, there.key, 'add', undefined, { texts: fresh, ...who });
   } else {
     const name = typeof rec.data.name === 'string' ? rec.data.name : rec.changeSlug!;
-    const named = `${name} follow-ups`;
+    // (a later pass files here only once the first pass's follow-up change is over)
+    const nth = target === followUpKey(rec.key) ? '' : ` ${target.slice(followUpKey(rec.key).length + 1)}`;
+    const named = `${name} follow-ups${nth}`;
+    const review = nth ? `pass ${pass} of the review` : 'the review';
     newChange(store, target, {
-      name: nameProblem(named) ? 'Review follow-ups' : named,
-      gist: `What the review of ${name} found that did not hold its merge`,
+      name: nameProblem(named) ? `Review follow-ups${nth}` : named,
+      gist: `What ${review} of ${name} found that did not hold its merge`,
       origin: rec.key,
-      intent: `The review of ${rec.key} found things that are wrong but did not hold its merge: none of high severity, none saying the done-when is not met (decision review-loop/stop-rule). Each is a step here.`,
+      intent: `${review[0].toUpperCase()}${review.slice(1)} of ${rec.key} found things that are wrong but did not hold its merge: none of high severity, none saying the done-when is not met (decision review-loop/stop-rule). Each is a step here.`,
       doneWhen: 'Each step is fixed, or dropped with the reason',
       features: Array.isArray(rec.data.features) ? (rec.data.features as string[]) : undefined,
       project: typeof rec.data.project === 'string' ? rec.data.project : undefined,
