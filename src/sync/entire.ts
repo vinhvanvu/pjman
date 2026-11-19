@@ -9,7 +9,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
-import { findReferences } from '../model/graph.js';
+import { findReferences, resolveArg } from '../model/graph.js';
 import { repoOf } from '../model/refs.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
 import type { Store } from '../store/config.js';
@@ -190,10 +190,12 @@ export interface EntireSyncOpts {
  *  for, is refused here with the reason, before anything is read or written. */
 function startChange(store: Store, loaded: Loaded, project: string, raw: string): Rec {
   if (!raw.trim()) throw new CliError('--start takes the change whose Trail to start: it was given no name');
-  const res = resolve(loaded, raw.trim());
-  if (res.status === 'ambiguous') throw unresolvedError(res, raw.trim());
+  // a slug goes through the one resolver, as every command's argument does; a key is resolved here
+  const name = resolveArg(loaded, raw, { kinds: ['change'] });
+  const res = resolve(loaded, name);
+  if (res.status === 'ambiguous') throw unresolvedError(res, name);
   const rec = res.status === 'ok' || res.status === 'alias' || res.status === 'invalid' ? res.rec : undefined;
-  if (!rec) throw new CliError(`${raw.trim()} is not a change: --start takes the change whose Trail to start`);
+  if (!rec) throw new CliError(`${name} is not a change: --start takes the change whose Trail to start`);
   if (rec.type !== 'change') throw new CliError(`${rec.key} is a ${rec.type}; --start takes a change`);
   const status = typeof rec.data.status === 'string' ? rec.data.status : 'open';
   const why = !rec.valid
@@ -207,7 +209,7 @@ function startChange(store: Store, loaded: Loaded, project: string, raw: string)
           : status === 'done' || status === 'dropped'
             ? `the change has ended (status ${status})`
             : // a Trail closed when last read is read again by the sweep (it may have been reopened on Entire)
-              status !== 'active' && status !== 'review' && !trailOf(loaded, rec)
+              status !== 'active' && status !== 'review' && !trailOf(loaded, rec)?.state
               ? `work has not started on it (status ${status}): a Trail starts with the first step (pjman step ${rec.key} start <n>)`
               : null;
   if (why) throw new CliError(`${rec.key} gets no Trail from --start: ${why}`);
@@ -411,8 +413,10 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
       (rec) => rec.key !== start && (!opts.wake || (rec.data.status !== 'active' && !!trailOf(after, rec))),
     ),
   ];
-  // whether the change named to start was answered for: by its reconcile, or by a reason already said
+  // whether the change named to start was answered for: by its reconcile, or by a reason already said; and where its
+  // reconcile had nothing to say, why
   let startSaid = false;
+  let startWhyNot: string | undefined;
   // one clock for the whole run, and nothing more asked once Entire has not come back: a hanging Entire holds the
   // command for one call, never one per change, and the follower ends well inside the time it is given
   const end = Date.now() + 120_000;
@@ -432,6 +436,7 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         // the sweep only follows: a Trail is started, and its branch pushed, by a command run on the change, or here
         // for the one change named (decision entire-follow-ups/unasked-push)
         create: start === rec.key,
+        whyNot: start === rec.key ? (reason) => (startWhyNot = reason) : undefined,
       });
       // the session waiting on the Trail is woken in the same step as the move is recorded
       if (t && opts.wake && t.moved.length && t.state)
@@ -445,10 +450,18 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     if (!t) continue;
     if (rec.key === start) {
       startSaid = true;
-      // its own Trail, read again and still closed: nothing was started, and the way on is said
-      if (t.state?.status === 'closed' && !t.acts.length)
+      // its own Trail, read again just now and still closed: nothing was started, and the way on is said. Not where
+      // the read did not come back (the state is then the last one stored), nor where the Trail closed with its merge
+      if (
+        t.state?.status === 'closed' &&
+        !t.acts.length &&
+        !t.down &&
+        !t.pending.length &&
+        !t.done &&
+        t.state.change?.status !== 'merged'
+      )
         t.pending.push(
-          `${rec.key} was not started: its Trail #${t.state.number} is closed; reopen it on Entire (entire trail update ${t.state.number} --status open) and run this again, or work on a new branch`,
+          `${rec.key} was not started: its Trail #${t.state.number} is closed; reopen it on Entire (entire trail update ${t.state.number} --status open) and run this again`,
         );
     }
     result.trails.push(t);
@@ -479,10 +492,8 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
     if (t.down) break;
   }
-  // the change named to start, where its reconcile had nothing to say of it: it found no branch to make the Trail with
+  // the change named to start, where its reconcile had nothing to say of it: the reason it gave
   if (start && !startSaid)
-    result.pending.push(
-      `${start} was not started: no branch of its own was found in this repository; create a branch named for it and run this again`,
-    );
+    result.pending.push(`${start} was not started: ${startWhyNot ?? 'no Trail could be made for it'}`);
   return result;
 }

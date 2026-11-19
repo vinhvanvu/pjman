@@ -1461,9 +1461,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (pos[1] === 'entire') {
         if (v.start !== undefined && !v.start.trim())
           throw usageError('usage: pjman sync entire --start <change>   (--start was given no change)');
-        const startOn =
-          v.start !== undefined ? resolveArg(loadStore(store), v.start, { kinds: ['change'] }) : undefined;
-        const r = syncEntire(store, { session: v.session, wake: v.wake, start: startOn });
+        // the name goes on as it was typed: the sync says the opt-in first, then resolves it as any command's argument
+        const r = syncEntire(store, { session: v.session, wake: v.wake, start: v.start });
         if (v.json) json(r);
         else {
           out(

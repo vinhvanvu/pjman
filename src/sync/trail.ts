@@ -175,7 +175,16 @@ export function reconcileTrail(
   /** `budget`: the milliseconds Entire may take in all; past it, and after a call that did not come back, no more is asked. */
   /** `create: false`: a Trail that does not exist is not started, since starting one pushes the branch; the branch is
    *  named as `unstarted` (decision entire-follow-ups/unasked-push: the sweep only follows). */
-  opts: { session?: string; writer?: string; entire?: EntireOpts; budget?: number; create?: boolean } = {},
+  /** `whyNot`: told why a change at work got no Trail and no answer (no branch of its own, or git did not list the
+   *  branches), for the caller that named the change and owes the person the reason. */
+  opts: {
+    session?: string;
+    writer?: string;
+    entire?: EntireOpts;
+    budget?: number;
+    create?: boolean;
+    whyNot?: (reason: string) => void;
+  } = {},
 ): TrailReconcile | null {
   let loaded = loadStore(store);
   const rec = loaded.byKey.get(changeKey)?.[0];
@@ -217,11 +226,19 @@ export function reconcileTrail(
     let local: string[] = [];
     try {
       local = git(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n');
-    } catch {
+    } catch (e) {
+      opts.whyNot?.(
+        `git did not list this repository's branches (${(e as Error).message.split('\n')[0].slice(0, 200)}), so its branch was not looked for`,
+      );
       return null;
     }
     branch = branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.includes(b));
-    if (!branch) return null;
+    if (!branch) {
+      opts.whyNot?.(
+        'no branch of its own was found in this repository; create a branch named for it and run this again',
+      );
+      return null;
+    }
     // a Trail already on the branch (made by hand, or by a run whose answer was lost) is adopted, never doubled
     const shown = call(['trail', 'show', '--branch', branch], false, true);
     const adopted = shown.ok ? readTrail(shown.data, branch) : null;

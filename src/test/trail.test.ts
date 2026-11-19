@@ -17,7 +17,6 @@ import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { readEvents } from '../store/events.js';
 import { git } from '../store/git.js';
-import { resolveArg } from '../model/graph.js';
 import { repoOf } from '../model/refs.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
@@ -63,6 +62,22 @@ const calls = (): string[][] =>
 const verbs = () => calls().map((c) => c.slice(0, c[1] === 'finding' ? 3 : 2).join(' '));
 const g = (...args: string[]) => execFileSync('git', args, { cwd: dir, encoding: 'utf8' }).trim();
 const rec = (slug: string) => loadStore(store).byKey.get(`change:web/${slug}`)![0];
+
+/** The command itself, as a person runs it in the project's folder. */
+const cli = (...args: string[]) => {
+  try {
+    const out = execFileSync(process.execPath, [path.join(import.meta.dirname, '../../bin/pjman.js'), ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PJMAN_ENTIRE_BIN: bin },
+    });
+    return { code: 0, out };
+  } catch (e) {
+    const err = e as { status: number; stdout: string; stderr: string };
+    return { code: err.status, out: err.stdout + err.stderr };
+  }
+};
 
 /** The fake: `trail show|create|update|ready` and `trail finding list`, over the state file. */
 function fake(): string {
@@ -199,6 +214,9 @@ test('off: a project that has not opted in gets no Trail, and nothing of Entire 
   assert.deepEqual(calls(), []);
   // the opt-in is said first, before anything about the change named to start
   assert.throws(() => syncEntire(store, { entire: { bin }, start: 'change:nowhere' }), /has not opted in to Entire/);
+  const off = cli('sync', 'entire', '--start', 'nowhere');
+  assert.equal(off.code, 1);
+  assert.match(off.out, /has not opted in to Entire/);
 });
 
 test('work starting creates the Trail from the change and binds it', () => {
@@ -379,11 +397,10 @@ test('the sweep starts no Trail: it names the branch and the command, and --star
 });
 
 test('--start takes a change by any form that names it: the slug, the short key, the full key', () => {
-  // the three forms as the command hands them on: a slug goes through the one resolver, a key passes as it was typed
   const forms: [string, (slug: string) => string][] = [
-    ['by-slug', (slug) => resolveArg(loadStore(store), slug, { kinds: ['change'] })],
-    ['by-short', (slug) => resolveArg(loadStore(store), `change:${slug}`, { kinds: ['change'] })],
-    ['by-full', (slug) => resolveArg(loadStore(store), `change:web/${slug}`, { kinds: ['change'] })],
+    ['by-slug', (slug) => slug],
+    ['by-short', (slug) => `change:${slug}`],
+    ['by-full', (slug) => `change:web/${slug}`],
   ];
   for (const [slug, named] of forms) {
     g('branch', slug);
@@ -398,27 +415,13 @@ test('--start takes a change by any form that names it: the slug, the short key,
   }
 });
 
-/** The command itself, as a person runs it in the project's folder. */
-const cli = (...args: string[]) => {
-  try {
-    const out = execFileSync(process.execPath, [path.join(import.meta.dirname, '../../bin/pjman.js'), ...args], {
-      cwd: dir,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, PJMAN_ENTIRE_BIN: bin },
-    });
-    return { code: 0, out };
-  } catch (e) {
-    const err = e as { status: number; stdout: string; stderr: string };
-    return { code: err.status, out: err.stdout + err.stderr };
-  }
-};
-
 test('the command starts a Trail by the short key its own hint prints, and refuses an empty or unknown name', () => {
   g('branch', 'by-command');
   change(store, 'by-command', { name: 'By command', project: 'project:web', next: 'build it' });
   step(store, 'change:by-command', 'start', 1, {});
-  const hint = cli('sync', 'entire').out.split('\n').find((l) => l.includes('by-command has no Trail'))!;
+  const hint = cli('sync', 'entire')
+    .out.split('\n')
+    .find((l) => l.includes('by-command has no Trail'))!;
   assert.match(hint, /\(pjman sync entire --start change:by-command\)$/);
   const started = cli('sync', 'entire', '--start', 'change:by-command');
   assert.equal(started.code, 0, started.out);
@@ -445,6 +448,26 @@ test('--start refuses a name that reaches no change, and a change that gets no T
     assert.throws(() => syncEntire(store, { entire: { bin }, start }), why, start);
   refused('change:nowhere', /change:nowhere is not a change: --start takes the change whose Trail to start/);
   refused(' ', /--start takes the change whose Trail to start: it was given no name/);
+  refused('nowhere', /nowhere resolves to no change/);
+  // a name two changes answer to is refused naming both; a store with no kind for a Trail says that
+  for (const twin of ['twin-a', 'twin-b']) {
+    change(store, twin, { name: twin, project: 'project:web', next: 'build it' });
+    const at = rec(twin);
+    fs.writeFileSync(at.abs, fs.readFileSync(at.abs, 'utf8').replace(/^name: /m, 'aliases:\n  - twin\nname: '));
+  }
+  refused('change:twin', /change:web\/twin-a.*change:web\/twin-b/);
+  for (const twin of ['twin-a', 'twin-b']) {
+    const at = rec(twin);
+    fs.writeFileSync(at.abs, fs.readFileSync(at.abs, 'utf8').replace('aliases:\n  - twin\n', ''));
+  }
+  const kindless = {
+    ...store,
+    config: { ...store.config, source_kinds: store.config.source_kinds.filter((k) => k !== 'entire-trail') },
+  };
+  assert.throws(
+    () => syncEntire(kindless, { entire: { bin }, start: 'change:unnamed' }),
+    /change:web\/unnamed gets no Trail from --start: the store has no entire-trail source kind/,
+  );
   refused('project:web', /project:web is a project; --start takes a change/);
   // work not started, a milestone, a change that has ended, another project's, a record that does not validate
   change(store, 'idle', { name: 'Idle', project: 'project:web', next: 'build it' });
@@ -457,7 +480,10 @@ test('--start refuses a name that reaches no change, and a change that gets no T
   const idle = rec('idle');
   const text = fs.readFileSync(idle.abs, 'utf8');
   fs.writeFileSync(idle.abs, text.replace('project: project:web', 'project: project:elsewhere'));
-  refused('change:idle', /change:web\/idle gets no Trail from --start: it belongs to project:elsewhere, not project:web/);
+  refused(
+    'change:idle',
+    /change:web\/idle gets no Trail from --start: it belongs to project:elsewhere, not project:web/,
+  );
   fs.writeFileSync(idle.abs, text.replace(/^name: .*$/m, 'name: [unclosed'));
   assert.equal(rec('idle').valid, false);
   refused('change:idle', /change:web\/idle gets no Trail from --start: its record does not validate/);
@@ -473,6 +499,12 @@ test('--start refuses a name that reaches no change, and a change that gets no T
       'change:web/branchless was not started: no branch of its own was found in this repository; create a branch named for it and run this again',
     ],
   );
+  // git not listing the branches is said as that, never as a branch to create
+  const gitless = { ...store, projectDir: path.join(tmp, 'not-a-repo') };
+  fs.mkdirSync(gitless.projectDir, { recursive: true });
+  let why = '';
+  assert.equal(reconcileTrail(gitless, 'change:web/branchless', { entire: { bin }, whyNot: (r) => (why = r) }), null);
+  assert.match(why, /^git did not list this repository's branches \(.+\), so its branch was not looked for$/);
   set(store, 'change:branchless', ['status=dropped'], {});
   // with --wake the change named is still read, and it is read first: nothing ahead of it uses up the run's time
   const at = calls().length;
@@ -491,14 +523,17 @@ test('--start on a change whose own Trail was closed reads it again: still close
   const closed = syncEntire(store, { entire: { bin }, start: 'change:unnamed' });
   assert.ok(
     closed.pending.includes(
-      `change:web/unnamed was not started: its Trail #${n} is closed; reopen it on Entire (entire trail update ${n} --status open) and run this again, or work on a new branch`,
+      `change:web/unnamed was not started: its Trail #${n} is closed; reopen it on Entire (entire trail update ${n} --status open) and run this again`,
     ),
     closed.pending.join('\n'),
   );
   // reopened on Entire, it is taken up again by the same command
   edit(n, (t) => (t.status = 'open'));
   const reopened = syncEntire(store, { entire: { bin }, start: 'change:unnamed' });
-  assert.deepEqual(reopened.pending.filter((p) => p.includes('unnamed')), []);
+  assert.deepEqual(
+    reopened.pending.filter((p) => p.includes('unnamed')),
+    [],
+  );
   assert.equal(trailOf(loadStore(store), rec('unnamed'))!.state!.status, 'open');
   set(store, 'change:unnamed', ['status=dropped'], {});
 });
