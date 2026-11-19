@@ -2,7 +2,7 @@
 // kept as data on the change, and, in a project that opted in to Entire, each finding filed onto the change's Trail
 // and settled there when it is settled here. With no Entire the review is local.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -42,6 +42,13 @@ let bin: string;
 
 const g = (...args: string[]) =>
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { cwd: dir, encoding: 'utf8' });
+/** The command's exit status, run as a process against the stand-in. */
+const status = (...args: string[]): number | null =>
+  spawnSync(process.execPath, [path.resolve(import.meta.dirname, '..', '..', 'bin', 'pjman.js'), ...args], {
+    cwd: dir,
+    env: { ...process.env, PJMAN_ENTIRE_BIN: bin },
+    encoding: 'utf8',
+  }).status;
 const calls = (): string[][] =>
   fs.existsSync(callsFile)
     ? fs
@@ -528,6 +535,9 @@ test('a round whose findings could not be read is not closed: with no Trail noth
     /^change:web\/coupon has no Trail yet: .* it was not run; the review is still due\. `pjman sync entire --start change:web\/coupon` starts the Trail \(it publishes coupon on origin/,
   );
   assert.equal(reviewers(), 0);
+  // the command says so by its status too: a review that did not run is not a review made
+  assert.equal(status('review', k, '--run'), 1);
+  assert.equal(reviewers(), 0);
   assert.deepEqual(lensesAsked(data()), []);
   assert.deepEqual(roundsOf(data()), []);
   assert.equal(reviewLoop(store, k).state, 'due');
@@ -609,8 +619,10 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   findingsOf(data()).forEach((f, i) => holdsMerge(f) && settleFinding(store, k, i + 1, 'resolved', 'fixed', o));
   assert.equal(reviewLoop(store, k).state, 'recheck');
   fs.writeFileSync(path.join(tmp, 'nolist'), '');
-  const again = runReview(store, k, o);
-  assert.deepEqual([again.ran, again.open, again.round], [true, true, undefined]);
+  // (through the command: the reviewers ran, the round was due and is not closed, and the status says so)
+  fs.writeFileSync(callsFile, '');
+  assert.equal(status('review', k, '--run'), 1);
+  assert.equal(reviewers(), 1);
   assert.equal(lensesAsked(data()).find((a) => a.lens === 'fix')?.by, 'entire');
   assert.equal(reviewLoop(store, k).state, 'recheck');
   assert.throws(() => closeRound(store, k, o), /the round is not closed and the review is still due/);
@@ -628,6 +640,8 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   );
   assert.equal(closeRound(store, k, o).round?.round, 'fix');
   fs.rmSync(path.join(tmp, 'nolist'));
+  // a review run beside the loop, with nothing due, is a review made: status 0
+  assert.equal(status('review', k, '--run'), 0);
   // a Trail that is merged is listed no more: the reviewers are not started on it
   fs.writeFileSync(path.join(tmp, 'merged'), '');
   reconcileTrail(store, k, o);
@@ -639,4 +653,19 @@ test('a round whose findings could not be read is not closed: with no Trail noth
     /^Trail #2 is merged: Entire no longer lists its findings, so nothing its review found could be read and it was not run$/,
   );
   assert.equal(reviewers(), 0);
+  // where a review is due on such a Trail, the refusal names the way on: the session's own reviewers
+  set(store, k, ['status=review'], {});
+  step(store, 'change:coupon', 'add', undefined, { text: 'one more thing' });
+  g('switch', '-q', 'coupon');
+  fs.writeFileSync(path.join(dir, 'coupon.ts'), 'export const off = (total) => total - 1;\n');
+  g('commit', '-q', '-am', 'fix: the coupon takes one off (change:coupon)');
+  g('switch', '-q', 'main');
+  step(store, 'change:coupon', 'done', 2, {});
+  assert.equal(reviewLoop(store, k).state, 'due');
+  const dueGone = runReview(store, k, o);
+  assert.equal(dueGone.ran, false);
+  assert.match(
+    dueGone.pending[0],
+    /^Trail #2 is merged: .* it was not run; the review is still due: hand the round to reviewers of the session's own, .*--lens <intent\|drift\|correctness>.*--reviewed/,
+  );
 });

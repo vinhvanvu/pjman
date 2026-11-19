@@ -565,10 +565,19 @@ export function readFindings(
     );
     return out;
   }
-  // the Trail is read whole, page by page: a page not read is findings not read, and says so
+  // the Trail is read whole, page by page: a page not read is findings not read, and says so. The time given bounds
+  // the whole read, however many pages there are (a sync hands it what is left of its own)
   const listed: unknown[] = [];
   let cursor: string | undefined;
+  const until = Date.now() + (opts.timeout ?? 30_000);
   for (let page = 0; ; page++) {
+    const left = until - Date.now();
+    if (page && left <= 0) {
+      out.pending.push(
+        `the Trail's findings were read in part (${listed.length} listed when the time given ran out): none is taken until all are read`,
+      );
+      return out;
+    }
     const r = runEntire<Record<string, unknown>>(
       [
         'trail',
@@ -582,7 +591,7 @@ export function readFindings(
         'any',
         ...(cursor ? ['--cursor', cursor] : []),
       ],
-      { ...opts.entire, cwd: dir, timeout: opts.timeout ?? 30_000 },
+      { ...opts.entire, cwd: dir, timeout: Math.max(1_000, left) },
     );
     if (!r.ok) {
       out.pending.push(
@@ -815,7 +824,7 @@ export function runReview(
       const still = due ? '; the review is still due' : '';
       none.pending.push(
         readable.gone
-          ? `${readable.gone}, so nothing its review found could be read and it was not run${still}`
+          ? `${readable.gone}, so nothing its review found could be read and it was not run${still}${due ? `: hand the round to reviewers of the session's own, one fresh reviewer a lens (\`pjman review ${rec.key} --lens <${b.loop.state === 'recheck' ? 'fix' : REVIEW_LENSES.join('|')}>\`), then close it (\`pjman review ${rec.key} --reviewed\`)` : ''}`
           : `${rec.key} has no Trail yet: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}. \`pjman sync entire --start ${rec.key}\` starts the Trail (it publishes ${branch} on origin, which is the person's to ask for)`,
       );
       return none;
