@@ -1459,7 +1459,10 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         return 0;
       }
       if (pos[1] === 'entire') {
-        const startOn = v.start ? resolveArg(loadStore(store), v.start, { kinds: ['change'] }) : undefined;
+        if (v.start !== undefined && !v.start.trim())
+          throw usageError('usage: pjman sync entire --start <change>   (--start was given no change)');
+        const startOn =
+          v.start !== undefined ? resolveArg(loadStore(store), v.start, { kinds: ['change'] }) : undefined;
         const r = syncEntire(store, { session: v.session, wake: v.wake, start: startOn });
         if (v.json) json(r);
         else {

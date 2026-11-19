@@ -197,6 +197,8 @@ test('off: a project that has not opted in gets no Trail, and nothing of Entire 
   step(store, 'change:cart', 'start', 1, {});
   assert.equal(reconcileTrail(store, 'change:web/cart', { entire: { bin } }), null);
   assert.deepEqual(calls(), []);
+  // the opt-in is said first, before anything about the change named to start
+  assert.throws(() => syncEntire(store, { entire: { bin }, start: 'change:nowhere' }), /has not opted in to Entire/);
 });
 
 test('work starting creates the Trail from the change and binds it', () => {
@@ -396,46 +398,108 @@ test('--start takes a change by any form that names it: the slug, the short key,
   }
 });
 
-test('--start refuses a name that reaches no change, and nothing is started', () => {
+/** The command itself, as a person runs it in the project's folder. */
+const cli = (...args: string[]) => {
+  try {
+    const out = execFileSync(process.execPath, [path.join(import.meta.dirname, '../../bin/pjman.js'), ...args], {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PJMAN_ENTIRE_BIN: bin },
+    });
+    return { code: 0, out };
+  } catch (e) {
+    const err = e as { status: number; stdout: string; stderr: string };
+    return { code: err.status, out: err.stdout + err.stderr };
+  }
+};
+
+test('the command starts a Trail by the short key its own hint prints, and refuses an empty or unknown name', () => {
+  g('branch', 'by-command');
+  change(store, 'by-command', { name: 'By command', project: 'project:web', next: 'build it' });
+  step(store, 'change:by-command', 'start', 1, {});
+  const hint = cli('sync', 'entire').out.split('\n').find((l) => l.includes('by-command has no Trail'))!;
+  assert.match(hint, /\(pjman sync entire --start change:by-command\)$/);
+  const started = cli('sync', 'entire', '--start', 'change:by-command');
+  assert.equal(started.code, 0, started.out);
+  assert.match(started.out, /entire: change:by-command created · /);
+  assert.match(started.out, /entire: pushed by-command to origin/);
+  assert.ok(trailOf(loadStore(store), rec('by-command')));
+  const made = calls().filter((c) => c[1] === 'create').length;
+  const empty = cli('sync', 'entire', '--start=');
+  assert.equal(empty.code, 2, empty.out);
+  assert.match(empty.out, /--start was given no change/);
+  const unknown = cli('sync', 'entire', '--start', 'nowhere');
+  assert.equal(unknown.code, 1, unknown.out);
+  assert.match(unknown.out, /nowhere resolves to no change/);
+  assert.equal(calls().filter((c) => c[1] === 'create').length, made);
+});
+
+test('--start refuses a name that reaches no change, and a change that gets no Trail, each with its reason', () => {
   g('branch', 'unnamed');
   change(store, 'unnamed', { name: 'Unnamed', project: 'project:web', next: 'build it' });
   step(store, 'change:unnamed', 'start', 1, {});
   const made = () => calls().filter((c) => c[1] === 'create').length;
   const before = made();
-  assert.throws(
-    () => syncEntire(store, { entire: { bin }, start: 'change:nowhere' }),
-    /change:nowhere is not a change: --start takes the change whose Trail to start/,
-  );
-  assert.throws(
-    () => syncEntire(store, { entire: { bin }, start: 'project:web' }),
-    /project:web is a project; --start takes a change/,
-  );
-  assert.throws(() => resolveArg(loadStore(store), 'nowhere', { kinds: ['change'] }), /nowhere resolves to no change/);
-  // a change the sweep never reaches is refused with the reason: work not started, a milestone
+  const refused = (start: string, why: RegExp) =>
+    assert.throws(() => syncEntire(store, { entire: { bin }, start }), why, start);
+  refused('change:nowhere', /change:nowhere is not a change: --start takes the change whose Trail to start/);
+  refused(' ', /--start takes the change whose Trail to start: it was given no name/);
+  refused('project:web', /project:web is a project; --start takes a change/);
+  // work not started, a milestone, a change that has ended, another project's, a record that does not validate
   change(store, 'idle', { name: 'Idle', project: 'project:web', next: 'build it' });
-  assert.throws(
-    () => syncEntire(store, { entire: { bin }, start: 'change:idle' }),
-    /change:web\/idle gets no Trail from --start: work has not started on it/,
-  );
+  refused('change:idle', /change:web\/idle gets no Trail from --start: work has not started on it \(status planning\)/);
   change(store, 'goal', { name: 'Goal', project: 'project:web', kind: 'milestone' });
-  assert.throws(
-    () => syncEntire(store, { entire: { bin }, start: 'change:goal' }),
-    /change:web\/goal gets no Trail from --start: it is a milestone/,
-  );
+  refused('change:goal', /change:web\/goal gets no Trail from --start: it is a milestone/);
+  change(store, 'over', { name: 'Over', project: 'project:web', next: 'build it' });
+  set(store, 'change:over', ['status=done'], {});
+  refused('change:over', /change:web\/over gets no Trail from --start: the change has ended \(status done\)$/);
+  const idle = rec('idle');
+  const text = fs.readFileSync(idle.abs, 'utf8');
+  fs.writeFileSync(idle.abs, text.replace('project: project:web', 'project: project:elsewhere'));
+  refused('change:idle', /change:web\/idle gets no Trail from --start: it belongs to project:elsewhere, not project:web/);
+  fs.writeFileSync(idle.abs, text.replace(/^name: .*$/m, 'name: [unclosed'));
+  assert.equal(rec('idle').valid, false);
+  refused('change:idle', /change:web\/idle gets no Trail from --start: its record does not validate/);
+  fs.writeFileSync(idle.abs, text);
+  assert.equal(made(), before);
+  assert.equal(trailOf(loadStore(store), rec('unnamed')), undefined);
   // one at work with no branch of its own is said, where the sweep alone would pass it over
   change(store, 'branchless', { name: 'Branchless', project: 'project:web', next: 'build it' });
   step(store, 'change:branchless', 'start', 1, {});
   assert.deepEqual(
     syncEntire(store, { entire: { bin }, start: 'change:branchless' }).pending.filter((p) => p.includes('branchless')),
     [
-      'change:web/branchless was not started: no Trail was made for it, since it has no branch of its own in this repository or Entire was not asked in time; create its branch, or run the command again',
+      'change:web/branchless was not started: no branch of its own was found in this repository; create a branch named for it and run this again',
     ],
   );
   set(store, 'change:branchless', ['status=dropped'], {});
-  // with --wake the change named is still read
+  // with --wake the change named is still read, and it is read first: nothing ahead of it uses up the run's time
+  const at = calls().length;
   const woken = syncEntire(store, { entire: { bin }, start: 'change:unnamed', wake: true });
-  assert.deepEqual(woken.trails.find((t) => t.change === 'change:web/unnamed')?.acts, ['created']);
+  assert.deepEqual(woken.trails[0].change, 'change:web/unnamed');
+  assert.deepEqual(woken.trails[0].acts, ['created']);
+  assert.deepEqual(calls()[at].slice(0, 4), ['trail', 'show', '--branch', 'unnamed']);
   assert.equal(made(), before + 1);
+});
+
+test('--start on a change whose own Trail was closed reads it again: still closed is said with the way on', () => {
+  const n = trailOf(loadStore(store), rec('unnamed'))!.state!.number;
+  edit(n, (t) => (t.status = 'closed'));
+  reconcileTrail(store, 'change:web/unnamed', { entire: { bin } });
+  assert.equal(trailOf(loadStore(store), rec('unnamed'))!.state!.status, 'closed');
+  const closed = syncEntire(store, { entire: { bin }, start: 'change:unnamed' });
+  assert.ok(
+    closed.pending.includes(
+      `change:web/unnamed was not started: its Trail #${n} is closed; reopen it on Entire (entire trail update ${n} --status open) and run this again, or work on a new branch`,
+    ),
+    closed.pending.join('\n'),
+  );
+  // reopened on Entire, it is taken up again by the same command
+  edit(n, (t) => (t.status = 'open'));
+  const reopened = syncEntire(store, { entire: { bin }, start: 'change:unnamed' });
+  assert.deepEqual(reopened.pending.filter((p) => p.includes('unnamed')), []);
+  assert.equal(trailOf(loadStore(store), rec('unnamed'))!.state!.status, 'open');
   set(store, 'change:unnamed', ['status=dropped'], {});
 });
 
