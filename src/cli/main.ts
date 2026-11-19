@@ -1071,8 +1071,14 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         const r = ran ?? readFindings(store, key, o);
         if (v.json) json(r);
         else {
-          if (ran)
-            out(ran.ran ? `${printed(r.change)} reviewed by Entire's review` : `${printed(r.change)} not reviewed`);
+          if (ran) {
+            for (const line of ran.said) out(line);
+            out(
+              ran.ran
+                ? `${printed(r.change)} reviewed by Entire's review (profile ${ran.profile})`
+                : `${printed(r.change)} not reviewed`,
+            );
+          }
           out(
             r.read.length
               ? `${plural(r.read.length, 'finding')} read from the Trail${r.commit ? ` (committed ${r.commit})` : ''}`
