@@ -11,6 +11,7 @@ import path from 'node:path';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
 import { findReferences } from '../model/graph.js';
 import { repoOf } from '../model/refs.js';
+import { live } from '../model/tree.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
@@ -192,6 +193,16 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
   if (!project || !loaded.byKey.has(project))
     throw new CliError('sync entire reads a project: run it inside a registered project');
   if (!dir) throw new CliError(`sync entire reads ${project}'s repository: run it inside the project's folder`);
+  // the change to start, by whatever form names it (the slug's short key, the full key, an alias): the sweep below
+  // knows a change by its full key, so a name that reaches no change is refused here, before anything is read or written
+  const startRec = opts.start === undefined ? undefined : live(loaded, opts.start);
+  if (opts.start !== undefined && startRec?.type !== 'change')
+    throw new CliError(
+      startRec
+        ? `${startRec.key} is a ${startRec.type}; --start takes a change`
+        : `${opts.start} is not a change: --start takes the change whose Trail to start`,
+    );
+  const start = startRec?.key;
   if (!entireOn(loaded, project))
     throw new CliError(
       `${project} has not opted in to Entire: pjman set ${project} ext.entire.enabled=true (then pjman doctor says what Entire still needs)`,
@@ -392,7 +403,7 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         budget: Math.min(opts.wake ? 30_000 : 90_000, left),
         // the sweep only follows: a Trail is started, and its branch pushed, by a command run on the change, or here
         // for the one change named (decision entire-follow-ups/unasked-push)
-        create: opts.start === rec.key,
+        create: start === rec.key,
       });
       // the session waiting on the Trail is woken in the same step as the move is recorded
       if (t && opts.wake && t.moved.length && t.state)

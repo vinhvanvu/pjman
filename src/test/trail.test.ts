@@ -17,6 +17,7 @@ import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { readEvents } from '../store/events.js';
 import { git } from '../store/git.js';
+import { resolveArg } from '../model/graph.js';
 import { repoOf } from '../model/refs.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
@@ -373,6 +374,46 @@ test('the sweep starts no Trail: it names the branch and the command, and --star
   assert.ok(trailLines(started).includes('entire: pushed search to origin (a Trail is created with its branch)'));
   assert.equal(made(), 1);
   assert.equal(reconcileTrail(store, 'change:web/search', { entire: { bin } })!.pushed, undefined, 'said once');
+});
+
+test('--start takes a change by any form that names it: the slug, the short key, the full key', () => {
+  // the three forms as the command hands them on: a slug goes through the one resolver, a key passes as it was typed
+  const forms: [string, (slug: string) => string][] = [
+    ['by-slug', (slug) => resolveArg(loadStore(store), slug, { kinds: ['change'] })],
+    ['by-short', (slug) => resolveArg(loadStore(store), `change:${slug}`, { kinds: ['change'] })],
+    ['by-full', (slug) => resolveArg(loadStore(store), `change:web/${slug}`, { kinds: ['change'] })],
+  ];
+  for (const [slug, named] of forms) {
+    g('branch', slug);
+    change(store, slug, { name: slug, project: 'project:web', next: 'build it' });
+    step(store, `change:${slug}`, 'start', 1, {});
+    const started = syncEntire(store, { entire: { bin }, start: named(slug) }).trails.find(
+      (t) => t.change === `change:web/${slug}`,
+    )!;
+    assert.deepEqual(started.acts, ['created'], slug);
+    assert.equal(started.pushed, slug);
+    assert.ok(trailOf(loadStore(store), rec(slug)), slug);
+  }
+});
+
+test('--start refuses a name that reaches no change, and nothing is started', () => {
+  g('branch', 'unnamed');
+  change(store, 'unnamed', { name: 'Unnamed', project: 'project:web', next: 'build it' });
+  step(store, 'change:unnamed', 'start', 1, {});
+  const made = () => calls().filter((c) => c[1] === 'create').length;
+  const before = made();
+  assert.throws(
+    () => syncEntire(store, { entire: { bin }, start: 'change:nowhere' }),
+    /change:nowhere is not a change: --start takes the change whose Trail to start/,
+  );
+  assert.throws(
+    () => syncEntire(store, { entire: { bin }, start: 'project:web' }),
+    /project:web is a project; --start takes a change/,
+  );
+  assert.throws(() => resolveArg(loadStore(store), 'nowhere', { kinds: ['change'] }), /nowhere resolves to no change/);
+  assert.equal(made(), before);
+  assert.equal(trailOf(loadStore(store), rec('unnamed')), undefined);
+  set(store, 'change:unnamed', ['status=dropped'], {});
 });
 
 test('back at work the ready mark is taken back, and the next review marks the Trail again', () => {
