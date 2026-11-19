@@ -30,7 +30,7 @@ import {
 } from './aspects.js';
 import { urlOf } from './refs.js';
 import { findingsLine, findingsOf, formatFinding, type Finding } from './findings.js';
-import { loopOf, loopWords, reviewMode } from './review.js';
+import { loopOf, loopWords, reviewMode, roundsOf } from './review.js';
 import { TRAIL_KIND, trailLine, trailStateOf } from '../entire/trail.js';
 import { CliError, usageError, notFound } from '../store/util.js';
 import {
@@ -561,6 +561,10 @@ function contextIndex(loaded: Loaded): ContextIndex {
   });
 }
 
+/** The view's word on a change worked on after its review ended, where it cannot read the repository; a caller that can
+ *  says instead whether the review is due again. */
+export const MOVED_SINCE = '; its plan moved since (pjman review says whether it is due again)';
+
 export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
   const raw = key.startsWith('change:') ? key : `change:${key}`;
   const res = resolve(loaded, raw);
@@ -649,9 +653,12 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
       // (whether there is a branch to review is the repository's to say: pjman review reads it)
       const loop = loopOf(rec.data, { reviewable: true });
       if (mode === 'off') return 'off for this project';
-      if (!loop.full) return mode === 'auto' ? 'auto (reviewed without being asked when it reaches review)' : undefined;
+      // (never reviewed: on request nothing is said until it is asked for. A later pass with no full round of its own
+      // has been reviewed, and says where it stands)
+      if (!roundsOf(rec.data).length)
+        return mode === 'auto' ? 'auto (reviewed without being asked when it reaches review)' : undefined;
       // (worked on since its review ended: whether the branch holds new work is the repository's to say)
-      const since = loop.maybeAgain ? '; its plan moved since (pjman review says whether it is due again)' : '';
+      const since = loop.maybeAgain ? MOVED_SINCE : '';
       return `${mode === 'auto' ? 'auto' : 'on request'} · ${loopWords(loop)}${since}`;
     })(),
     trail: (() => {

@@ -14,7 +14,7 @@ import { set } from '../ops/set.js';
 import { step } from '../ops/step.js';
 import { findingsLine, findingsOf, formatFinding } from '../model/findings.js';
 import { formatRest, heldByReview, restOf } from '../model/rest.js';
-import { lensesAsked, reviewMode, roundsOf } from '../model/review.js';
+import { lensesAsked, loopOf, reviewMode, roundsOf } from '../model/review.js';
 import { stepsOf } from '../model/foundation.js';
 import { validate } from '../model/validate.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
@@ -164,7 +164,7 @@ test('a finding says whether it holds the merge: high severity, or the done-when
 });
 
 test('the full review is closed once; what holds the merge is fixed before the fix is re-reviewed', () => {
-  const head = g('rev-parse', '--short', 'cart').trim();
+  const head = g('rev-parse', 'cart').trim();
   const r = closeRound(store, KEY);
   assert.equal(r.round?.round, 'full');
   assert.equal(r.round?.head, head);
@@ -434,4 +434,135 @@ test('a change worked on again after its review ended is due again, and each pas
     validate(loadStore(store)).filter((p) => p.level === 'error'),
     [],
   );
+});
+
+// change:review-reads-ended-follow-ups
+
+const bin = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'bin', 'pjman.js');
+/** What `pjman context` prints for a change: the command, which reads the repository where the view alone cannot. */
+const context = (slug: string) =>
+  execFileSync(process.execPath, [bin, 'context', `change:${slug}`], { cwd: dir, env: process.env, encoding: 'utf8' });
+/** A commit on a branch, from main and back. */
+const on = (branch: string, file: string, text: string, message: string) => {
+  g('switch', '-q', branch);
+  fs.writeFileSync(path.join(dir, file), text);
+  g('add', '-A');
+  g('commit', '-q', '-m', message);
+  g('switch', '-q', 'main');
+};
+
+test('a later pass files what does not hold the merge to its own follow-up change once the first is over, and context says where it stands', () => {
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
+  g('branch', 'wrap', 'main');
+  on('wrap', 'wrap.ts', 'export const wrap = 1;\n', 'feat: gift wrap (change:wrap)');
+  change(store, 'wrap', { name: 'Gift wrap', gist: 'Wrap a gift', project: 'project:web', next: 'build it' });
+  const W = 'change:web/wrap';
+  step(store, W, 'done', 1, {});
+  handed(W);
+  addFinding(store, W, { text: 'The wrap colour is fixed', severity: 'low' });
+  assert.equal(closeRound(store, W).followUp, 'change:web/wrap-follow-ups');
+  set(store, 'change:web/wrap-follow-ups', ['status=dropped'], {});
+  // worked on again: the plan added to, a commit the round did not see, the plan not at its end
+  step(store, W, 'add', undefined, { text: 'a choice of colour' });
+  on('wrap', 'wrap.ts', 'export const wrap = 2;\n', 'feat: colours (change:wrap)');
+  const working = 'worked on since its review ended: the full review is due again once its plan has run to its end';
+  assert.deepEqual([reviewLoop(store, W).state, reviewLoop(store, W).words], ['none', working]);
+  // the command answers what the view could not: one line, the same as pjman review's, with no word that the plan moved
+  const said = context('wrap');
+  assert.ok(said.includes(`\nreview: auto · ${working}\n`), said);
+  assert.doesNotMatch(said, /its plan moved since/);
+  // once a lens of the new pass is out, the review is still due, and context still says so
+  step(store, W, 'done', 2, {});
+  handLens(store, W, 'intent');
+  assert.match(
+    context('wrap'),
+    /\nreview: auto · the full review is due again: the change was worked on after its review ended\n/,
+  );
+  assert.match(
+    formatChangeContext(changeContext(store, W)),
+    /\nreview: auto · the full review is due again: the change was worked on after its review ended/,
+  );
+  handLens(store, W, 'drift');
+  handLens(store, W, 'correctness');
+  addFinding(store, W, { text: 'No colour for a birthday', severity: 'low' });
+  // the first follow-up change is over: the pass closes all the same, into one of its own
+  const second = closeRound(store, W);
+  assert.deepEqual(
+    [second.round?.pass, second.loop.state, second.followUp, second.moved],
+    [2, 'ended', 'change:web/wrap-follow-ups-2', [2]],
+  );
+  assert.deepEqual(
+    stepsOf(data('change:web/wrap-follow-ups-2')).map((s) => s.text),
+    ['No colour for a birthday'],
+  );
+  assert.match(String(data('change:web/wrap-follow-ups-2').gist), /^What pass 2 of the review of Gift wrap found/);
+  assert.equal(data('change:web/wrap-follow-ups').status, 'dropped');
+  assert.deepEqual(
+    stepsOf(data('change:web/wrap-follow-ups')).map((s) => s.text),
+    ['The wrap colour is fixed'],
+  );
+  assert.deepEqual(
+    validate(loadStore(store)).filter((p) => p.level === 'error'),
+    [],
+  );
+});
+
+test('a later pass adds to the first follow-up change while it is open', () => {
+  const W = 'change:web/wrap';
+  set(store, 'change:web/wrap-follow-ups-2', ['status=dropped'], {});
+  set(store, 'change:web/wrap-follow-ups', ['status=planning'], {});
+  step(store, W, 'add', undefined, { text: 'a ribbon' });
+  on('wrap', 'ribbon.ts', 'export const ribbon = 1;\n', 'feat: a ribbon (change:wrap)');
+  step(store, W, 'done', 3, {});
+  handed(W);
+  addFinding(store, W, { text: 'The ribbon has one width', severity: 'low' });
+  const third = closeRound(store, W);
+  assert.deepEqual([third.round?.pass, third.followUp], [3, 'change:web/wrap-follow-ups']);
+  assert.deepEqual(
+    stepsOf(data('change:web/wrap-follow-ups')).map((s) => s.text),
+    ['The wrap colour is fixed', 'The ribbon has one width'],
+  );
+});
+
+test('a round with no head, or one that no longer resolves, saw nothing of what the branch holds now', () => {
+  // (the loop alone: the repository is the caller's)
+  const at = '2026-01-01T00:00:00.000Z';
+  const rec = {
+    status: 'review',
+    plan: [
+      { text: 'build it', state: 'done', at },
+      { text: 'again', state: 'done', at: '2026-02-01T00:00:00.000Z' },
+    ],
+    reviews: [{ round: 'full', at }],
+  };
+  const none = () => false;
+  const read = loopOf(rec, { reviewable: true, newWork: none });
+  assert.deepEqual(
+    [read.state, read.pass],
+    ['due', 2],
+    'with a repository, the headless round counts as having seen nothing',
+  );
+  assert.equal(loopOf(rec, { reviewable: true }).maybeAgain, true, 'with none, it says the plan moved');
+  // rebased, the old commits pruned: the round's head resolves to nothing, and the branch's commits are new work
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
+  g('branch', 'tag', 'main');
+  on('tag', 'tag.ts', 'export const tag = 1;\n', 'feat: tags (change:tag)');
+  change(store, 'tag', { name: 'Tags', gist: 'A tag', project: 'project:web', next: 'build it' });
+  const T = 'change:web/tag';
+  step(store, T, 'done', 1, {});
+  handed(T);
+  const closed = closeRound(store, T);
+  assert.equal(closed.round?.head, g('rev-parse', 'tag').trim(), 'the head is stored in full');
+  step(store, T, 'add', undefined, { text: 'print it' });
+  step(store, T, 'done', 2, {});
+  assert.equal(reviewLoop(store, T).state, 'ended', 'no commit since the round');
+  g('commit', '-q', '--allow-empty', '-m', 'chore: main moves');
+  g('switch', '-q', 'tag');
+  g('rebase', '-q', 'main');
+  g('switch', '-q', 'main');
+  assert.equal(reviewLoop(store, T).state, 'due', 'rebased: the commits on the branch are not the ones reviewed');
+  g('reflog', 'expire', '--expire=now', '--all');
+  g('gc', '-q', '--prune=now');
+  assert.throws(() => g('cat-file', '-e', `${closed.round!.head}^{commit}`), 'the reviewed commit is gone');
+  assert.equal(reviewLoop(store, T).state, 'due', 'pruned: a head that resolves to nothing is new work');
 });

@@ -140,8 +140,9 @@ export function loopOf(
   // alone changes nothing)
   const moved = steps.some((s) => (s.at ?? '') > last.at);
   if (!moved) return now;
-  if (!opts.newWork || !last.head) return { ...now, maybeAgain: true };
-  if (!opts.newWork(last.head)) return now;
+  if (!opts.newWork) return { ...now, maybeAgain: true };
+  // a round closed with no head recorded saw nothing it can be told from: what the branch holds is unreviewed
+  if (last.head && !opts.newWork(last.head)) return now;
   // the plan is being worked, not at its end: the review comes when it is
   const atEnd = steps.every((s) => s.state === 'done' || s.state === 'dropped');
   return {
@@ -208,11 +209,15 @@ function loopOfPass(data: Record<string, unknown>, opts: { reviewable: boolean }
   return { ...base, state: left.length ? 'closing' : 'ended', because };
 }
 
-/** The loop in a few words, for a view: `full review due`, `2 findings hold the merge`, `ended: …`. */
+/** The loop in a few words, for a view: `full review due`, `2 findings hold the merge`, `ended: …`; nothing when
+ *  there is nothing to review and no pass before it. */
 export function loopWords(l: Loop): string | undefined {
   switch (l.state) {
     case 'none':
-      return undefined;
+      // a new pass under way: worked on after the review ended, its plan not at its end yet
+      return l.pass > 1
+        ? 'worked on since its review ended: the full review is due again once its plan has run to its end'
+        : undefined;
     case 'due':
       return l.pass > 1
         ? 'the full review is due again: the change was worked on after its review ended'

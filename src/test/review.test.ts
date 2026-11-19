@@ -429,7 +429,7 @@ test('opted in, the re-review is handed the fix alone, and what does not hold th
   assert.deepEqual(first.round?.moved, []);
   const full = rounds()[0];
   assert.equal(full.round, 'full');
-  assert.equal(full.head, g('rev-parse', '--short', 'cart').trim());
+  assert.equal(full.head, g('rev-parse', 'cart').trim());
   findings().forEach((f, i) => holdsMerge(f) && settleFinding(store, 'change:web/cart', i + 1, 'resolved', 'fixed', o));
   assert.equal(reviewLoop(store, 'change:web/cart').state, 'recheck');
   assert.match(reviewLoop(store, 'change:web/cart').next!, /^The fix is re-reviewed once.*Run `pjman review .* --run`/);

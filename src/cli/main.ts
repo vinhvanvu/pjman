@@ -38,6 +38,7 @@ import {
   reviewBrief,
   reviewLoop,
   runReview,
+  shortHead,
   settleFinding,
   type LoopReport,
   type RoundResult,
@@ -93,6 +94,7 @@ import {
   show,
   storeContext,
   mapState,
+  MOVED_SINCE,
   type MapState,
 } from '../model/view.js';
 import { describeMigration, formatMismatch, migrate, pendingMigration } from '../ops/migrate.js';
@@ -123,7 +125,7 @@ function roundLines(r: RoundResult, printed: (key: string) => string): string[] 
   const lines: string[] = [];
   if (r.round)
     lines.push(
-      `${printed(r.change)}: the ${r.round.round === 'fix' ? 're-review of the fix' : 'full review'} is closed${r.round.head ? ` at ${r.round.head}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+      `${printed(r.change)}: the ${r.round.round === 'fix' ? 're-review of the fix' : 'full review'} is closed${r.round.head ? ` at ${shortHead(r.round.head)}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
     );
   if (r.moved.length)
     lines.push(
@@ -786,11 +788,14 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (pos[1] && !pos[1].startsWith('project:')) {
         const c = changeContext(store, pos[1]);
         // where the review stands is the repository's to say (a branch with work on it, commits since the last
-        // round): the command reads it, where the view alone could only say the plan moved
+        // round): the command reads it, where the view alone could only say the plan moved. Once it has, the view's
+        // word that the plan moved is answered, so it goes whatever the loop says
         if (c.review && !c.review.startsWith('off')) {
           try {
             const loop = reviewLoop(store, c.change.key, printed);
-            if (loop.words) c.review = `${loop.mode === 'auto' ? 'auto' : 'on request'} · ${loop.words}`;
+            c.review = loop.words
+              ? `${loop.mode === 'auto' ? 'auto' : 'on request'} · ${loop.words}`
+              : c.review.replace(MOVED_SINCE, '');
           } catch {
             // a change that is not reviewed keeps the view's line
           }
