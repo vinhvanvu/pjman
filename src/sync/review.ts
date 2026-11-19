@@ -6,6 +6,7 @@
 // is local and the findings stand on the change alone. Filing may be left pending: the next review or sync files it.
 import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
 import {
   FINDING_KINDS,
@@ -530,6 +531,28 @@ function checkoutOf(dir: string, branch: string): string | undefined {
   return undefined;
 }
 
+/** What `entire review --list` names: each profile with where its verdict goes, and the one marked default. */
+export function profilesOf(listing: string): { names: string[]; fallback?: string; output: Record<string, string> } {
+  const names: string[] = [];
+  const output: Record<string, string> = {};
+  let fallback: string | undefined;
+  for (const line of listing.split('\n')) {
+    // a profile is a name indented by two; its settings sit under it, indented further, as `key: value`
+    const name = /^ {2}(\S+)(\s+\(default\))?\s*$/.exec(line);
+    if (name) {
+      names.push(name[1]);
+      if (name[2]) fallback = name[1];
+      continue;
+    }
+    const out = /^\s{3,}output:\s+(\S+)/i.exec(line);
+    if (out && names.length) output[names.at(-1)!] = out[1].toLowerCase();
+  }
+  return { names, fallback, output };
+}
+
+/** The file Entire keeps a person's own settings in, for one clone only: never committed, so a worktree has none. */
+const PERSONAL = path.join('.entire', 'settings.local.json');
+
 /** Hand the review to Entire's own (decision pjman-review/who-reviews): several agents and a judge read the branch,
  *  with the brief only pjman holds added to their task, and post what they find onto the Trail; the findings are then
  *  read back onto the change. The review profile is the person's to set up (`entire review --configure`); with none,
@@ -545,6 +568,10 @@ export function runReview(
   read: string[];
   pending: string[];
   commit: string | null;
+  /** The profile the review ran with. */
+  profile?: string;
+  /** What pjman did to make the review run, said so it is not done unseen. */
+  said: string[];
   /** The round this review closed, and where the loop then stands. */
   round?: RoundResult;
 } {
@@ -558,6 +585,7 @@ export function runReview(
     read: [],
     pending: [] as string[],
     commit: null,
+    said: [] as string[],
   };
   const dir = store.projectDir;
   if (!dir || !entireOn(loaded, store.project)) {
@@ -574,20 +602,50 @@ export function runReview(
   // where the branch is checked out, Entire reviews it there; else it is asked to check the branch out itself
   const checkout = checkoutOf(dir, branch);
   const at = checkout ?? dir;
-  const profiles = runEntire<string>(['review', '--list'], { ...opts.entire, cwd: at, timeout: 20_000, text: true });
-  if (!profiles.ok) {
-    none.pending.push(profiles.reason);
+  const list = () => runEntire<string>(['review', '--list'], { ...opts.entire, cwd: at, timeout: 20_000, text: true });
+  const first = list();
+  if (!first.ok) {
+    none.pending.push(first.reason);
     return none;
   }
-  if (/no review profiles? configured/i.test(profiles.data)) {
+  let known = profilesOf(first.data);
+  // a profile saved for the person alone (entire review --configure --local) is in the main checkout's own settings
+  // file, which is never committed: a worktree, where a change is worked, has none. It is copied in, and never over
+  // a file the worktree already has
+  const mine = path.join(dir, PERSONAL);
+  const here = path.join(at, PERSONAL);
+  if (!known.names.length && at !== dir && fs.existsSync(mine) && !fs.existsSync(here)) {
+    fs.mkdirSync(path.dirname(here), { recursive: true });
+    fs.copyFileSync(mine, here);
+    const again = list();
+    known = again.ok ? profilesOf(again.data) : known;
+    if (known.names.length) none.said.push(`your own review profile was copied into the worktree (${mine} to ${here})`);
+    else fs.rmSync(here); // it brought no profile: the worktree is left as it was
+    if (!again.ok) {
+      none.pending.push(again.reason);
+      return none;
+    }
+  }
+  if (!known.names.length) {
     none.pending.push(
-      `no review profile in ${at}: set one up, which is yours to run (entire review --configure --set-output trail)`,
+      `no review profile in ${at}${at !== dir && fs.existsSync(here) ? ` (${here} is the worktree's own and was left as it is)` : ''}: set one up, which is yours to run (entire review --configure --set-output trail)`,
     );
     return none;
   }
-  if (!/output:\s+trail/i.test(profiles.data))
+  // Entire runs no review without a profile named ("Specify a profile to review"): the one asked for, else the one
+  // Entire marks default, else the only one there is
+  const profile = opts.profile ?? known.fallback ?? (known.names.length === 1 ? known.names[0] : undefined);
+  if (!profile || !known.names.includes(profile)) {
     none.pending.push(
-      'the review profile keeps its verdict local: only findings posted to the Trail are read back (entire review --configure --set-output trail)',
+      profile
+        ? `no review profile named ${profile} in ${at}: there ${known.names.length === 1 ? 'is' : 'are'} ${known.names.join(', ')}`
+        : `${known.names.length} review profiles in ${at} and none is the default (${known.names.join(', ')}): name one with --profile`,
+    );
+    return none;
+  }
+  if (known.output[profile] !== 'trail')
+    none.pending.push(
+      `the review profile ${profile} keeps its verdict local: only findings posted to the Trail are read back (entire review --configure --set-output trail)`,
     );
   const b = reviewBrief(store, key);
   const brief = formatReviewBrief(b);
@@ -608,7 +666,7 @@ export function runReview(
   const ran = runEntire<string>(
     [
       'review',
-      ...(opts.profile ? [opts.profile] : []),
+      profile,
       ...(checkout ? [] : ['--target', branch, '--cleanup-worktree']),
       '--base',
       fixOf ?? base ?? 'main',
@@ -634,6 +692,8 @@ export function runReview(
     read: back.read,
     pending: [...none.pending, ...back.pending, ...(round?.pending ?? [])],
     commit: back.commit,
+    profile,
+    said: none.said,
     round,
   };
 }

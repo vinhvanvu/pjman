@@ -24,6 +24,7 @@ import {
   readFindings,
   reviewBrief,
   reviewLoop,
+  profilesOf,
   runReview,
   settleFinding,
 } from '../sync/review.js';
@@ -68,7 +69,13 @@ const fail = (m) => { process.stderr.write(m + '\\n'); process.exit(1); };
 const show = () => ({ id: '01T', number: 1, url: 'https://entire.com/gh/acme/-/trails/1', status: state.trail.status, phase: 'building',
   changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: fs.existsSync(${JSON.stringify(path.join(tmp, 'merged'))}) ? 'merged' : 'open', mergeability: { mergeable: true, gates: [] } }] });
 if (args[0] === 'review') {
-  if (args.includes('--list')) console.log(fs.existsSync(${JSON.stringify(path.join(tmp, 'profile'))}) ? 'Profiles:\\n  general  (default)\\n    output:     trail' : 'No review profiles configured. Create one with entire review --configure.');
+  // the profiles: a listing written to the 'profile' file, the usual one where that file is empty; with 'personal'
+  // there, only a checkout that has its own settings file lists any (the file's text is the listing)
+  const own = require('node:path').join(process.cwd(), '.entire', 'settings.local.json');
+  const listing = fs.existsSync(${JSON.stringify(path.join(tmp, 'personal'))})
+    ? (fs.existsSync(own) ? fs.readFileSync(own, 'utf8') : '')
+    : fs.existsSync(${JSON.stringify(path.join(tmp, 'profile'))}) ? fs.readFileSync(${JSON.stringify(path.join(tmp, 'profile'))}, 'utf8') || 'Profiles:\\n  general  (default)\\n    reviewers: claude-code\\n    output:     trail\\n\\nRun one with entire review <name>.' : '';
+  if (args.includes('--list')) console.log(listing || 'No review profiles configured. Create one with entire review --configure.');
   else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'noreview'))})) fail('the review agents did not start');
   else { state.findings.push({ id: 'R' + (state.findings.length + 1), body: '[intent] the total ignores discounts, which the done-when asks for', severity: 'high', file: 'cart.ts', line: '1', status: 'open' }); save(); console.log('Review complete.'); }
 }
@@ -268,6 +275,9 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
   const run = calls().find((c) => c[0] === 'review' && c.includes('--prompt'))!;
   assert.match(run[run.indexOf('--prompt') + 1], /Done when[\s\S]*discounts applied/);
   assert.equal(run[run.indexOf('--base') + 1], 'main');
+  // Entire runs no review unnamed: the default profile is named
+  assert.equal(run[1], 'general');
+  assert.equal(r.profile, 'general');
   const got = findings();
   assert.equal(got.length, held + 1);
   assert.deepEqual(
@@ -292,6 +302,92 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
   const back = readFindings(store, 'change:web/cart', { entire: { bin } });
   assert.deepEqual(back.read, [`resolved #${got.length}`]);
   assert.equal(findings().at(-1)!.state, 'resolved');
+});
+
+test('the profile is named to Entire: the one asked for, the default, or the only one; several with no default are not guessed', () => {
+  assert.deepEqual(
+    profilesOf(
+      'Profiles:\n  general  (default)\n    reviewers: claude-code · default\n    judge:      Claude Code\n    output:     trail\n  deep\n    reviewers: claude-code\n    output:     local\n\nRun one with `entire review <name>`.',
+    ),
+    { names: ['general', 'deep'], fallback: 'general', output: { general: 'trail', deep: 'local' } },
+  );
+  assert.deepEqual(profilesOf('No review profiles configured. Create one with `entire review --configure`.').names, []);
+  // nothing below reaches the reviewers: the fake's review fails once the profile is chosen
+  fs.writeFileSync(path.join(tmp, 'noreview'), '');
+  const ran = (profile?: string) => {
+    fs.writeFileSync(callsFile, '');
+    const r = runReview(store, 'change:web/cart', { entire: { bin }, profile });
+    return { pending: r.pending, named: calls().find((c) => c[0] === 'review' && c.includes('--prompt'))?.[1] };
+  };
+  fs.writeFileSync(
+    path.join(tmp, 'profile'),
+    'Profiles:\n  quick\n    output:     trail\n  deep\n    output:     local',
+  );
+  const two = ran();
+  assert.equal(two.named, undefined);
+  assert.match(
+    two.pending[0],
+    /^2 review profiles in .* and none is the default \(quick, deep\): name one with --profile$/,
+  );
+  assert.equal(ran('quick').named, 'quick');
+  // where its verdict goes is read from the profile that runs, not from any profile listed
+  const deep = ran('deep');
+  assert.equal(deep.named, 'deep');
+  assert.match(deep.pending[0], /^the review profile deep keeps its verdict local/);
+  const wrong = ran('nope');
+  assert.equal(wrong.named, undefined);
+  assert.match(wrong.pending[0], /^no review profile named nope in .*: there are quick, deep$/);
+  // the only one there is needs no default mark
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  solo\n    output:     trail');
+  assert.equal(ran().named, 'solo');
+  fs.writeFileSync(path.join(tmp, 'profile'), '');
+  fs.rmSync(path.join(tmp, 'noreview'));
+});
+
+test("a profile saved for the person alone is found from a worktree: copied in from the main checkout, never over the worktree's own", () => {
+  const wt = path.join(tmp, 'wt-cart');
+  g('worktree', 'add', '-q', wt, 'cart');
+  const mine = path.join(dir, '.entire', 'settings.local.json');
+  const here = path.join(wt, '.entire', 'settings.local.json');
+  fs.writeFileSync(path.join(tmp, 'personal'), '');
+  fs.writeFileSync(path.join(tmp, 'noreview'), '');
+  const run = () => {
+    fs.writeFileSync(callsFile, '');
+    const r = runReview(store, 'change:web/cart', { entire: { bin } });
+    return { ...r, named: calls().find((c) => c[0] === 'review' && c.includes('--prompt'))?.[1] };
+  };
+  try {
+    // no profile anywhere: nothing is copied, and the worktree is named as the place without one
+    const none = run();
+    assert.match(none.pending[0], new RegExp(`^no review profile in ${wt}: set one up`));
+    assert.equal(fs.existsSync(here), false);
+    // the main checkout's own file names none: the copy is taken back
+    fs.mkdirSync(path.dirname(mine), { recursive: true });
+    fs.writeFileSync(mine, '');
+    assert.match(run().pending[0], /^no review profile in /);
+    assert.equal(fs.existsSync(here), false);
+    // it names one: copied in, said, and the review is run with it, in the worktree
+    fs.writeFileSync(mine, 'Profiles:\n  general  (default)\n    output:     trail');
+    const found = run();
+    assert.deepEqual(found.said, [`your own review profile was copied into the worktree (${mine} to ${here})`]);
+    assert.equal(found.named, 'general');
+    assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
+    // there already: used as it is, with nothing said
+    const again = run();
+    assert.deepEqual(again.said, []);
+    assert.equal(again.named, 'general');
+    // the worktree's own file is never written over, even where it names no profile
+    fs.writeFileSync(here, '');
+    const kept = run();
+    assert.equal(kept.named, undefined);
+    assert.match(kept.pending[0], /settings\.local\.json is the worktree's own and was left as it is\): set one up/);
+    assert.equal(fs.readFileSync(here, 'utf8'), '');
+  } finally {
+    fs.rmSync(path.join(tmp, 'personal'), { force: true });
+    fs.rmSync(path.join(tmp, 'noreview'), { force: true });
+    fs.rmSync(mine, { force: true });
+    g('worktree', 'remove', '--force', wt);
+  }
 });
 
 test('settling a finding again after Entire did not answer tells Entire then', () => {
