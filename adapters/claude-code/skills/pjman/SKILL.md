@@ -166,7 +166,9 @@ working it.
    merges: Entire lists a Trail's findings only while its branch is open. A round handed to Entire's review
    (`pjman review <change> --run`) is closed only once what it posted was read: with no Trail the review is not run
    and the command names what starts one, which is the person's to ask for; where the read fails the round stays open,
-   the review stays due, and `pjman review <change> --reviewed` reads the Trail and closes it.
+   the review stays due, the command exits 1, and `pjman review <change> --reviewed` reads the Trail and closes it.
+   Where Entire will never list it (the Trail closed or merged), hand the round to reviewers of your own (`--lens`),
+   whose record takes the place of Entire's.
 
 ## Tickets
 

@@ -1093,7 +1093,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           for (const reason of r.pending) out(pendingLine({ reason }));
           if (ran?.round) for (const line of roundLines(ran.round, printed)) out(line);
         }
-        return 0;
+        // a review that did not run, or one that was due and closed no round, is not a review made
+        return ran && (!ran.ran || ran.open) ? 1 : 0;
       }
       if (v.finding === undefined && !settle) {
         const b = reviewBrief(store, key);

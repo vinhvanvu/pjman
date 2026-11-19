@@ -22,6 +22,7 @@ import {
   addFinding,
   closeRound,
   formatReviewBrief,
+  handLens,
   readFindings,
   reviewBrief,
   reviewLoop,
@@ -55,7 +56,8 @@ const onEntire = (): { id: string; body: string; severity: string; file?: string
   (JSON.parse(fs.readFileSync(stateFile, 'utf8')) as { findings: never[] }).findings;
 
 /** The fake: one Trail per branch, and its findings. A `down` file makes every finding write fail, a `nolist` file
- *  the listing of them; a `number` file holds the Trail's number where it is not 1. */
+ *  the listing of them; a `paged` file lists them one a page, and a `nocursor` file says there are more and names no
+ *  next page; a `number` file holds the Trail's number where it is not 1. */
 function fake(): string {
   const file = path.join(tmp, 'entire');
   fs.writeFileSync(
@@ -87,7 +89,10 @@ else if (args[1] === 'create') { state.trail = { branch: flag('--branch'), statu
 else if (args[1] === 'update') { if (flag('--status')) state.trail.status = flag('--status'); save(); console.log(JSON.stringify(show())); }
 else if (args[1] === 'ready') console.log('Marked ready');
 else if (args[1] === 'finding') {
-  if (args[2] === 'list') { if (fs.existsSync(${JSON.stringify(path.join(tmp, 'nolist'))})) fail('the server did not answer (503)'); const open = state.findings.filter((f) => f.status === 'open').length; console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 }, findings: state.findings.map((f) => ({ id: f.id, body: f.body, severity: f.severity, status: f.status, location: f.file ? { filePath: f.file, startLine: f.line ? Number(f.line) : null } : {} })) })); }
+  if (args[2] === 'list') { if (fs.existsSync(${JSON.stringify(path.join(tmp, 'nolist'))})) fail('the server did not answer (503)'); const open = state.findings.filter((f) => f.status === 'open').length;
+    const paged = fs.existsSync(${JSON.stringify(path.join(tmp, 'paged'))}); const nocursor = fs.existsSync(${JSON.stringify(path.join(tmp, 'nocursor'))});
+    const from = Number(flag('--cursor') || 0); const some = paged || nocursor ? state.findings.slice(from, from + 1) : state.findings; const more = (paged || nocursor) && from + 1 < state.findings.length;
+    console.log(JSON.stringify({ counts: { Open: open, OpenHigh: 0, OpenMedium: open, OpenLow: 0 }, ...(more ? { has_more: true } : {}), ...(more && paged ? { next_cursor: String(from + 1) } : {}), findings: some.map((f) => ({ id: f.id, body: f.body, severity: f.severity, status: f.status, location: f.file ? { filePath: f.file, startLine: f.line ? Number(f.line) : null } : {} })) })); }
   else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'down'))})) fail('the server did not answer (503)');
   else if (args[2] === 'add') {
     const known = state.findings.find((f) => f.clientId === flag('--client-id'));
@@ -530,7 +535,16 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  deep\n    output:     local');
   const local = runReview(store, k, o);
   assert.equal(local.ran, false);
-  assert.match(local.pending[0], /^the review profile deep keeps its verdict local: nothing it finds can be read back/);
+  assert.match(
+    local.pending[0],
+    /^the review profile deep keeps its verdict local: only findings posted to the Trail can be read back, so it was not run and the review is still due/,
+  );
+  // one whose listing does not say where its verdict goes is not taken for the Trail, and is not called local
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  bare\n    reviewers: claude-code');
+  assert.match(
+    runReview(store, k, o).pending[0],
+    /^Entire does not say where the review profile bare sends its verdict: .* it was not run/,
+  );
   assert.equal(reviewers(), 0);
   fs.writeFileSync(path.join(tmp, 'profile'), '');
   // with its Trail, the reviewers run; Entire then does not list what they posted: the round stays open
@@ -543,6 +557,12 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   assert.equal(unread.ran, true);
   assert.equal(reviewers(), 1);
   assert.equal(unread.round, undefined);
+  assert.equal(unread.open, true);
+  // the reviewers are back, so their lenses are on the record, by the time they went out
+  assert.deepEqual(
+    lensesAsked(data()).map((a) => `${a.lens} ${a.by}`),
+    ['intent entire', 'drift entire', 'correctness entire'],
+  );
   assert.deepEqual(unread.read, []);
   assert.match(unread.pending[0], /the server did not answer/);
   assert.match(unread.pending.at(-1)!, /the round is not closed and the review is still due/);
@@ -550,17 +570,73 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   const loop = reviewLoop(store, k);
   assert.equal(loop.state, 'due');
   assert.match(loop.next!, /what they posted on the Trail was not read\. `pjman review .* --reviewed` reads it/);
+  // a listing that says there is more and names no next page is not a Trail read: nothing is taken from it
+  execFileSync(bin, ['review']);
+  fs.rmSync(path.join(tmp, 'nolist'));
+  fs.writeFileSync(path.join(tmp, 'nocursor'), '');
+  const part = readFindings(store, k, o);
+  assert.deepEqual([part.listed, part.read, part.commit], [false, [], null]);
+  assert.match(
+    part.pending[0],
+    /^the Trail holds more findings than could be read \(1 listed, and Entire names no next page\)/,
+  );
+  assert.throws(() => closeRound(store, k, o), /the round is not closed .*more findings than could be read/);
+  fs.rmSync(path.join(tmp, 'nocursor'));
+  fs.writeFileSync(path.join(tmp, 'nolist'), '');
   // closing it by hand meets the same gate
   assert.throws(
     () => closeRound(store, k, o),
     /the round is not closed and the review is still due: .*\(.*the server did not answer.*\)/,
   );
   assert.deepEqual(roundsOf(data()), []);
-  // once Entire lists them, closing the round reads them first: the round is closed on what was found
+  // once Entire lists them, closing the round reads them first, every page: the round is closed on what was found
   fs.rmSync(path.join(tmp, 'nolist'));
+  fs.writeFileSync(path.join(tmp, 'paged'), '');
+  fs.writeFileSync(callsFile, '');
   const closed = closeRound(store, k, o);
+  fs.rmSync(path.join(tmp, 'paged'));
   assert.equal(closed.round?.round, 'full');
-  assert.equal(reviewers(), 1, 'the reviewers are not run again');
-  assert.ok(findingsOf(data()).some((f) => f.by === 'entire' && f.state === 'open' && holdsMerge(f)));
+  assert.equal(reviewers(), 0, 'the reviewers are not run again');
+  assert.deepEqual(
+    calls()
+      .filter((c) => c[2] === 'list')
+      .map((c) => (c.includes('--cursor') ? c[c.indexOf('--cursor') + 1] : '')),
+    ['', '1'],
+  );
+  assert.equal(findingsOf(data()).filter((f) => f.by === 'entire' && f.state === 'open' && holdsMerge(f)).length, 2);
   assert.equal(closed.loop.state, 'fixing');
+  // the re-review of the fix meets the same gate: handed to Entire and left unread, its round stays open
+  findingsOf(data()).forEach((f, i) => holdsMerge(f) && settleFinding(store, k, i + 1, 'resolved', 'fixed', o));
+  assert.equal(reviewLoop(store, k).state, 'recheck');
+  fs.writeFileSync(path.join(tmp, 'nolist'), '');
+  const again = runReview(store, k, o);
+  assert.deepEqual([again.ran, again.open, again.round], [true, true, undefined]);
+  assert.equal(lensesAsked(data()).find((a) => a.lens === 'fix')?.by, 'entire');
+  assert.equal(reviewLoop(store, k).state, 'recheck');
+  assert.throws(() => closeRound(store, k, o), /the round is not closed and the review is still due/);
+  assert.deepEqual(
+    roundsOf(data()).map((r) => r.round),
+    ['full'],
+  );
+  // the way out where Entire never lists it: the lens handed to a reviewer of the session's own takes Entire's place
+  handLens(store, k, 'fix', o);
+  assert.deepEqual(
+    lensesAsked(data())
+      .filter((a) => a.lens === 'fix')
+      .map((a) => a.by === 'entire'),
+    [false],
+  );
+  assert.equal(closeRound(store, k, o).round?.round, 'fix');
+  fs.rmSync(path.join(tmp, 'nolist'));
+  // a Trail that is merged is listed no more: the reviewers are not started on it
+  fs.writeFileSync(path.join(tmp, 'merged'), '');
+  reconcileTrail(store, k, o);
+  fs.writeFileSync(callsFile, '');
+  const gone = runReview(store, k, o);
+  assert.equal(gone.ran, false);
+  assert.match(
+    gone.pending[0],
+    /^Trail #2 is merged: Entire no longer lists its findings, so nothing its review found could be read and it was not run$/,
+  );
+  assert.equal(reviewers(), 0);
 });
