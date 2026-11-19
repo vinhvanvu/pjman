@@ -15,6 +15,9 @@ import { set } from '../ops/set.js';
 import { step } from '../ops/step.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
+import { readEvents } from '../store/events.js';
+import { git } from '../store/git.js';
+import { repoOf } from '../model/refs.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
 import { reconcileTrail, trailLines, trailMoves, trailOf } from '../sync/trail.js';
@@ -83,6 +86,7 @@ const show = (t, gates) => ({
 const pick = () => {
   const b = flag('--branch');
   const n = args.slice(2).find((a) => /^\\d+$/.test(a));
+  if (!b && flag('--project') && flag('--project') !== 'gh/acme') return undefined;
   return state.find((t) => (b ? t.branch === b : String(t.number) === n));
 };
 if (args[0] !== 'trail') fail('unknown command');
@@ -91,24 +95,40 @@ if (args[1] === 'show') {
   if (!t) fail('branch "' + flag('--branch') + '" has no discoverable project trail; pass a project trail ID with --project');
   console.log(JSON.stringify(show(t, true)));
 } else if (args[1] === 'list') {
-  if (!args.includes('--mine')) fail('--project is required');
+  if (!args.includes('--mine') && !flag('--project')) fail('--project is required');
   if (fs.existsSync(${JSON.stringify(path.join(tmp, 'nolist'))})) fail('the server did not answer (503)');
-  console.log(JSON.stringify({ items: state.map((t) => ({ id: t.id, number: t.number, title: t.title, body: t.body, status: t.status })) }));
+  const item = (t) => ({ id: t.id, number: t.number, title: t.title, body: t.body, status: t.status });
+  const asked = state.filter((t) => !flag('--status') || t.status === flag('--status'));
+  if (args.includes('--mine')) {
+    if (flag('--page-token')) fail('--mine takes no --page-token');
+    // (a person with a full page of open Trails elsewhere: this project's are past it)
+    const full = fs.existsSync(${JSON.stringify(path.join(tmp, 'fullpage'))});
+    const items = full
+      ? Array.from({ length: Number(flag('--limit')) }, (_, i) => ({ id: 'ELSE' + i, number: 1000 + i, title: 'Elsewhere', body: '', status: 'open',
+          project: { reference: { forge: 'gh', project: 'other' } } }))
+      : asked.map((t) => ({ ...item(t), project: { reference: { forge: 'gh', project: 'acme' } } }));
+    console.log(JSON.stringify({ items, partial: fs.existsSync(${JSON.stringify(path.join(tmp, 'partial'))}) ? ['eu'] : [] }));
+  } else {
+    // the project's own list, a page of two at a time
+    const at = Number(flag('--page-token') ?? 0);
+    console.log(JSON.stringify({ items: asked.slice(at, at + 2).map(item), nextPageToken: at + 2 < asked.length ? String(at + 2) : null }));
+  }
 } else if (args[1] === 'link') {
   const t = state.find((x) => String(x.number) === args[2]);
   if (!t) fail('no trail ' + args[2]);
   if (fs.existsSync(${JSON.stringify(path.join(tmp, 'nolink'))})) fail('branch "' + flag('--branch') + '" is not on the remote');
+  if (fs.existsSync(${JSON.stringify(path.join(tmp, 'badlink'))})) { console.log('linked, perhaps'); process.exit(0); }
   t.branch = flag('--branch'); save();
   console.log(JSON.stringify(show(t, false)));
 } else if (args[1] === 'create') {
-  if (flag('--branch') === 'refused') fail('trails are not enabled for gh/acme/web; an admin can turn them on');
+  if (flag('--branch').startsWith('refused')) fail('trails are not enabled for gh/acme/web; an admin can turn them on');
   if (flag('--branch') === 'half' && !state.some((t) => t.title === flag('--title'))) {
     // the Trail is made, its branch is not linked, and the answer never comes
     state.push({ number: state.length + 1, id: '01TRAIL' + (state.length + 1), title: flag('--title'), body: flag('--body'),
       status: 'open', phase: 'planning', branch: '', change: 'draft', ready: false, gates: [], open: 0 });
     save();
     // (held past the caller's patience: the caller gives up, as it did on the real Entire)
-    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 4000);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 60000);
     process.exit(0);
   }
   const t = { number: state.length + 1, id: '01TRAIL' + (state.length + 1), title: flag('--title'), body: flag('--body'),
@@ -389,7 +409,9 @@ test('a create that made the Trail and never answered is not followed by a secon
   const half = () => trails().filter((t) => t.title === 'Half made');
   const mark = () => (rec('half').data.ext as { entire?: { create_unanswered?: string } } | undefined)?.entire;
   // Entire makes the Trail and does not answer in time: the change remembers that it asked
-  const first = reconcileTrail(store, 'change:web/half', { entire: { bin }, budget: 1500 })!;
+  // (the budget is spent in full, waiting on the create: wide enough that a loaded machine has sent it, and the
+  // stand-in has saved the Trail, well before it runs out)
+  const first = reconcileTrail(store, 'change:web/half', { entire: { bin }, budget: 4000 })!;
   assert.match(first.pending[0], /did not answer in time/);
   assert.deepEqual([first.acts, first.trail, first.down], [[], undefined, undefined]);
   assert.deepEqual([half().length, half()[0].branch], [1, '']);
@@ -400,6 +422,14 @@ test('a create that made the Trail and never answered is not followed by a secon
   assert.deepEqual([blind.acts, blind.trail], [[], undefined]);
   assert.match(blind.pending[0], /the server did not answer/);
   fs.rmSync(path.join(tmp, 'nolist'));
+  // nor while a region was not reached: the Trail may be in it
+  fs.writeFileSync(path.join(tmp, 'partial'), '');
+  const partial = reconcileTrail(store, 'change:web/half', { entire: { bin } })!;
+  assert.deepEqual([partial.acts, partial.trail], [[], undefined]);
+  assert.deepEqual(partial.pending, [
+    'entire trail list --mine did not reach every region (eu): the Trail made for change:web/half may be in one',
+  ]);
+  fs.rmSync(path.join(tmp, 'partial'));
   // a link that is refused says the way out, and still creates no second Trail
   fs.writeFileSync(path.join(tmp, 'nolink'), '');
   const refused = reconcileTrail(store, 'change:web/half', { entire: { bin } })!;
@@ -407,8 +437,27 @@ test('a create that made the Trail and never answered is not followed by a secon
     refused.pending[0],
     /^Trail #\d+ was made for change:web\/half without its branch, and linking half to it failed \(.*not on the remote\): push the branch \(git push origin half\) .* or close that Trail/,
   );
+  assert.match(refused.pending[0], /entire trail update \d+ --project gh\/acme --status closed/);
   fs.rmSync(path.join(tmp, 'nolink'));
+  // a link whose answer cannot be read may have landed: what Entire said is passed on, with no advice to push or close
+  fs.writeFileSync(path.join(tmp, 'badlink'), '');
+  const unread = reconcileTrail(store, 'change:web/half', { entire: { bin } })!;
+  assert.deepEqual(unread.pending, [
+    `entire trail link ${half()[0].number} --branch half --base main --project gh/acme answered something that is not JSON`,
+  ]);
+  fs.rmSync(path.join(tmp, 'badlink'));
   assert.equal(half().length, 1);
+  // only open Trails are asked for, and the Trail is shown and linked in the project it was listed in
+  const asked = calls().slice(-3);
+  assert.deepEqual(asked[0], ['trail', 'list', '--mine', '--status', 'open', '--limit', '100', '--json']);
+  assert.deepEqual(asked[1].slice(0, 2).concat(asked[1].slice(-3)), [
+    'trail',
+    'show',
+    '--project',
+    'gh/acme',
+    '--json',
+  ]);
+  assert.deepEqual(asked[2].slice(-3), ['--project', 'gh/acme', '--json']);
   // the next run finds the Trail by the change's key, sees it has no branch, and links this one to it
   const r = reconcileTrail(store, 'change:web/half', { entire: { bin } })!;
   assert.deepEqual(r.acts.slice(0, 1), ['linked']);
@@ -418,6 +467,13 @@ test('a create that made the Trail and never answered is not followed by a secon
   // one create was ever asked for this change, and the mark has done its work
   assert.equal(calls().filter((c) => c[1] === 'create' && c.includes('Half made')).length, 1);
   assert.equal(mark(), undefined);
+  // (taken off in the write that bound the Trail, and said so: the event names both fields)
+  assert.deepEqual(
+    readEvents(store)
+      .filter((e) => e.key === 'change:web/half' && e.fields?.includes('binds'))
+      .map((e) => e.fields),
+    [['binds', 'ext']],
+  );
   // a Trail of the change that already holds another branch is not the half-made one: it is left alone
   g('branch', 'half-two');
   change(store, 'half-two', { title: 'Half two', summary: 's', project: 'project:web', next: 'build it' });
@@ -434,10 +490,85 @@ test('a create that made the Trail and never answered is not followed by a secon
     change: 'open',
     status: 'open',
   });
+  // nor is one whose branch was merged, though Entire shows its change with no branch
+  other.push({
+    ...other[0],
+    number: other.length + 1,
+    id: 'MERGED',
+    title: 'Merged before',
+    body: 'x\n\npjman: change:web/half-two',
+    branch: 'before',
+    change: 'merged',
+    status: 'open',
+  });
   fs.writeFileSync(stateFile, JSON.stringify(other));
   const two = reconcileTrail(store, 'change:web/half-two', { entire: { bin } })!;
   assert.deepEqual(two.acts.slice(0, 1), ['created']);
   assert.equal(trails().find((t) => t.id === 'OTHER')!.branch, 'elsewhere');
+  assert.equal(trails().find((t) => t.id === 'MERGED')!.branch, 'before');
+  assert.ok(!calls().some((c) => c[1] === 'link' && c.includes('half-two')), 'nothing was linked');
+});
+
+test('with a full page of open Trails, the half-made one is looked for through the project’s own list to its end', () => {
+  g('branch', 'paged');
+  change(store, 'paged', { name: 'Paged', project: 'project:web', next: 'build it' });
+  step(store, 'change:paged', 'start', 1, {});
+  set(store, 'change:paged', [`ext.entire.create_unanswered=${new Date().toISOString()}`], {});
+  const all = trails();
+  const n = all.length + 1;
+  all.push({
+    ...all[0],
+    number: n,
+    id: 'PAGED',
+    title: 'Paged',
+    body: 'x\n\npjman: change:web/paged',
+    branch: '',
+    change: 'draft',
+    status: 'open',
+    phase: 'planning',
+  });
+  fs.writeFileSync(stateFile, JSON.stringify(all));
+  fs.writeFileSync(path.join(tmp, 'fullpage'), '');
+  const from = calls().length;
+  try {
+    // (the project records no repository here: its own list is asked for by the project its earlier Trails are in)
+    assert.equal(repoOf(loadStore(store), store.project), undefined);
+    const r = reconcileTrail(store, 'change:web/paged', { entire: { bin } })!;
+    assert.deepEqual(r.acts.slice(0, 1), ['linked']);
+    assert.equal(trails().find((t) => t.id === 'PAGED')!.branch, 'paged');
+    assert.equal(calls().filter((c) => c[1] === 'create' && c.includes('Paged')).length, 0);
+    const lists = calls()
+      .slice(from)
+      .filter((c) => c[1] === 'list' && c.includes('--project'));
+    assert.ok(lists.length > 1, 'more than one page was read');
+    assert.ok(lists.every((c) => c[c.indexOf('--project') + 1] === 'gh/acme' && c.includes('open')));
+    assert.deepEqual(
+      lists.map((c) => (c.includes('--page-token') ? c[c.indexOf('--page-token') + 1] : null)).slice(0, 2),
+      [null, '2'],
+    );
+  } finally {
+    fs.rmSync(path.join(tmp, 'fullpage'));
+  }
+});
+
+test('a mark that cannot be written is said: the next run would not look for the Trail a create may have made', () => {
+  g('branch', 'refused-two');
+  change(store, 'refused-two', { name: 'Refused', project: 'project:web', next: 'build it' });
+  step(store, 'change:refused-two', 'start', 1, {});
+  // the store cannot be committed to while the create is refused: the write of the mark fails
+  const held = path.join(git(store.root, ['rev-parse', '--absolute-git-dir']), 'index.lock');
+  fs.writeFileSync(held, '');
+  try {
+    const r = reconcileTrail(store, 'change:web/refused-two', { entire: { bin } })!;
+    assert.equal(r.pending.length, 2, r.pending.join('\n'));
+    assert.match(r.pending[0], /^entire trail create .* failed: trails are not enabled/);
+    assert.match(
+      r.pending[1],
+      /^the mark that change:web\/refused-two asked Entire for a Trail may not have been kept \(.+\): Entire may have made one without its branch, and a run that finds no mark would make another\. Look first \(entire trail list --mine --status open\) and link it \(entire trail link <n> --branch refused-two --base main\)$/s,
+    );
+  } finally {
+    fs.rmSync(held, { force: true });
+  }
 });
 
 test('a merge that went past a gate is said as that: a merge made on GitHub does not wait for the Trail', () => {

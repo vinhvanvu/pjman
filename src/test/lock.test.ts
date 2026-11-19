@@ -94,6 +94,53 @@ test('a lock left by a dead process is reclaimed at once', () => {
   assert.ok(!fs.existsSync(file));
 });
 
+test('a lock that cannot be read is reclaimed, and a reclaim left half-done by a dead writer does not hold the next', () => {
+  const file = lockPath(store.root);
+  const reclaim = `${file}.reclaim`;
+  const dead = JSON.stringify({ pid: 2 ** 22 - 7, at: new Date().toISOString() });
+  // an empty file, and one that holds something other than a holder: nobody's lock
+  // (nor is one with no time on it, even under a process that lives: it could never be read as hung)
+  for (const text of ['', 'not json', '3', JSON.stringify({ pid: process.pid })]) {
+    fs.writeFileSync(file, text);
+    const t = Date.now();
+    withStoreLock(store.root, () => {
+      assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).pid, process.pid, 'the lock taken is this writer’s own');
+    });
+    // (at once: without the wait a reclaim marker takes to grow old)
+    assert.ok(Date.now() - t < 1500, `'${text}' is reclaimed at once`);
+    assert.ok(!fs.existsSync(file));
+  }
+  // a writer died while reclaiming: its marker is old, and is cleared on sight
+  fs.writeFileSync(file, dead);
+  fs.mkdirSync(reclaim);
+  const old = new Date(Date.now() - 5000);
+  fs.utimesSync(reclaim, old, old);
+  let t = Date.now();
+  withStoreLock(store.root, () => {});
+  assert.ok(Date.now() - t < 1500, 'an old marker does not hold the lock');
+  assert.ok(!fs.existsSync(reclaim) && !fs.existsSync(file));
+  // a marker just made may be a writer at work: it is waited for, and cleared once it is old
+  fs.writeFileSync(file, dead);
+  fs.mkdirSync(reclaim);
+  t = Date.now();
+  withStoreLock(store.root, () => {});
+  const took = Date.now() - t;
+  assert.ok(took >= 1500 && took < 4000, `waited for the marker to grow old (${took} ms)`);
+  assert.ok(!fs.existsSync(reclaim) && !fs.existsSync(file));
+  // a lock moved aside by a waiter that read it as dead is released from where it was moved: put back after its
+  // holder let go, it would stand under a process that lives on, held by nobody
+  lockStore(store.root);
+  const aside = `${file}.dead.${2 ** 22 - 7}`;
+  fs.renameSync(file, aside);
+  unlockStore(store.root);
+  assert.ok(!fs.existsSync(aside) && !fs.existsSync(file));
+  // nothing is left beside the lock: no writer's own file, no lock moved aside
+  assert.deepEqual(
+    fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(path.basename(file))),
+    [],
+  );
+});
+
 test('two commands writing the store at once each land in their own commit', async () => {
   const run = (args: string[]) =>
     new Promise<string>((res, rej) =>
@@ -155,31 +202,35 @@ test('two commands writing the store at once each land in their own commit', asy
 
 test('the lock appears whole: many writers starting at once never see one half-written, and each takes its turn', async () => {
   process.env.PJMAN_LOCK_WAIT_MS = '5000';
-  const lockJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'store', 'lock.js');
-  const log = path.join(tmp, 'turns.log');
-  // each writer takes the lock, notes that it is in, waits, notes that it is out: two in at once would interleave
-  const writer = (n: number) =>
-    new Promise<number | null>((res) =>
-      spawn(
-        process.execPath,
-        [
-          '--input-type=module',
-          '-e',
-          `import fs from 'node:fs'; import { lockStore, unlockStore } from ${JSON.stringify(lockJs)};
+  try {
+    const lockJs = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'store', 'lock.js');
+    const log = path.join(tmp, 'turns.log');
+    // each writer takes the lock, notes that it is in, waits, notes that it is out: two in at once would interleave
+    const writer = (n: number) =>
+      new Promise<number | null>((res) =>
+        spawn(
+          process.execPath,
+          [
+            '--input-type=module',
+            '-e',
+            `import fs from 'node:fs'; import { lockStore, unlockStore } from ${JSON.stringify(lockJs)};
            lockStore(${JSON.stringify(store.root)}); fs.appendFileSync(${JSON.stringify(log)}, 'in ${n}\\n');
            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30);
            fs.appendFileSync(${JSON.stringify(log)}, 'out ${n}\\n'); unlockStore(${JSON.stringify(store.root)});`,
-        ],
-        { env: process.env, stdio: 'ignore' },
-      ).on('close', res),
+          ],
+          { env: process.env, stdio: 'ignore' },
+        ).on('close', res),
+      );
+    const codes = await Promise.all(Array.from({ length: 8 }, (_, n) => writer(n)));
+    assert.deepEqual(
+      codes,
+      Array.from({ length: 8 }, () => 0),
     );
-  const codes = await Promise.all(Array.from({ length: 8 }, (_, n) => writer(n)));
-  assert.deepEqual(
-    codes,
-    Array.from({ length: 8 }, () => 0),
-  );
-  const turns = fs.readFileSync(log, 'utf8').trim().split('\n');
-  assert.equal(turns.length, 16);
-  for (let i = 0; i < turns.length; i += 2) assert.equal(turns[i + 1], turns[i].replace('in', 'out'), turns.join(' '));
-  process.env.PJMAN_LOCK_WAIT_MS = '400';
+    const turns = fs.readFileSync(log, 'utf8').trim().split('\n');
+    assert.equal(turns.length, 16);
+    for (let i = 0; i < turns.length; i += 2)
+      assert.equal(turns[i + 1], turns[i].replace('in', 'out'), turns.join(' '));
+  } finally {
+    process.env.PJMAN_LOCK_WAIT_MS = '400';
+  }
 });
