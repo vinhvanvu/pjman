@@ -411,8 +411,31 @@ test('--start refuses a name that reaches no change, and nothing is started', ()
     /project:web is a project; --start takes a change/,
   );
   assert.throws(() => resolveArg(loadStore(store), 'nowhere', { kinds: ['change'] }), /nowhere resolves to no change/);
-  assert.equal(made(), before);
-  assert.equal(trailOf(loadStore(store), rec('unnamed')), undefined);
+  // a change the sweep never reaches is refused with the reason: work not started, a milestone
+  change(store, 'idle', { name: 'Idle', project: 'project:web', next: 'build it' });
+  assert.throws(
+    () => syncEntire(store, { entire: { bin }, start: 'change:idle' }),
+    /change:web\/idle gets no Trail from --start: work has not started on it/,
+  );
+  change(store, 'goal', { name: 'Goal', project: 'project:web', kind: 'milestone' });
+  assert.throws(
+    () => syncEntire(store, { entire: { bin }, start: 'change:goal' }),
+    /change:web\/goal gets no Trail from --start: it is a milestone/,
+  );
+  // one at work with no branch of its own is said, where the sweep alone would pass it over
+  change(store, 'branchless', { name: 'Branchless', project: 'project:web', next: 'build it' });
+  step(store, 'change:branchless', 'start', 1, {});
+  assert.deepEqual(
+    syncEntire(store, { entire: { bin }, start: 'change:branchless' }).pending.filter((p) => p.includes('branchless')),
+    [
+      'change:web/branchless was not started: no Trail was made for it, since it has no branch of its own in this repository or Entire was not asked in time; create its branch, or run the command again',
+    ],
+  );
+  set(store, 'change:branchless', ['status=dropped'], {});
+  // with --wake the change named is still read
+  const woken = syncEntire(store, { entire: { bin }, start: 'change:unnamed', wake: true });
+  assert.deepEqual(woken.trails.find((t) => t.change === 'change:web/unnamed')?.acts, ['created']);
+  assert.equal(made(), before + 1);
   set(store, 'change:unnamed', ['status=dropped'], {});
 });
 
