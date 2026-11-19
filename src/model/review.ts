@@ -118,7 +118,8 @@ export interface Loop {
 
 /** Where a change's review loop stands, from its rounds and findings. `reviewable` says there is a branch with work on
  *  it to review; without one a change is never due. `newWork` answers, for the head a round was closed at, whether
- *  the branch holds commits since that the base lacks; it is the repository's to say, so a caller with no repository
+ *  the branch holds commits since that the base lacks (for a round with no head: any the base lacks); it is the
+ *  repository's to say, so a caller with no repository
  *  leaves it out.
  *
  *  The loop has an end, and a change can be worked on again after it: its plan reopened or added to and run to its end
@@ -126,7 +127,7 @@ export interface Loop {
  *  the pass before stay on the record and are not read again. */
 export function loopOf(
   data: Record<string, unknown>,
-  opts: { reviewable: boolean; newWork?: (since: string) => boolean },
+  opts: { reviewable: boolean; newWork?: (since?: string) => boolean },
 ): Loop {
   const all = [...roundsOf(data), ...lensesAsked(data)];
   const pass = Math.max(1, ...all.map((e) => e.pass ?? 1));
@@ -141,8 +142,8 @@ export function loopOf(
   const moved = steps.some((s) => (s.at ?? '') > last.at);
   if (!moved) return now;
   if (!opts.newWork) return { ...now, maybeAgain: true };
-  // a round closed with no head recorded saw nothing it can be told from: what the branch holds is unreviewed
-  if (last.head && !opts.newWork(last.head)) return now;
+  // (a round closed with no head recorded is told from nothing: the repository says whether the branch holds work)
+  if (!opts.newWork(last.head)) return now;
   // the plan is being worked, not at its end: the review comes when it is
   const atEnd = steps.every((s) => s.state === 'done' || s.state === 'dropped');
   return {

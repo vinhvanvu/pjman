@@ -152,7 +152,8 @@ working it.
    command records that the lens went out, and a round is not closed without its lenses); then `pjman review <change>
    --reviewed` closes the round. Fix what holds the merge, commit, and settle each finding.
    Then one re-review of the fix alone (`--lens fix`, one fresh agent; `--reviewed` again), and the review has ended:
-   what does not hold the merge is moved to `<change>-follow-ups`, a step each, and a finding that still holds after
+   what does not hold the merge is moved to `<change>-follow-ups`, a step each (once that change is done or dropped, a
+   later pass files to `<change>-follow-ups-<pass>`), and a finding that still holds after
    the re-review is the person's to settle. Never start a third round. A change worked on again after its review ended, its plan run to its end
    once more with new commits, is due again: that is a new pass with its own two rounds, and the tool says so. How a project is reviewed is a line on its
    record, the person's to set: `ext.review.mode` is `off`, `request` (the default: review when asked) or `auto`,

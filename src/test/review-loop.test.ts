@@ -535,14 +535,13 @@ test('a round with no head, or one that no longer resolves, saw nothing of what 
     ],
     reviews: [{ round: 'full', at }],
   };
-  const none = () => false;
-  const read = loopOf(rec, { reviewable: true, newWork: none });
-  assert.deepEqual(
-    [read.state, read.pass],
-    ['due', 2],
-    'with a repository, the headless round counts as having seen nothing',
-  );
-  assert.equal(loopOf(rec, { reviewable: true }).maybeAgain, true, 'with none, it says the plan moved');
+  // the repository answers for a headless round too: whatever the branch holds that the base lacks is unreviewed
+  const asked: (string | undefined)[] = [];
+  const holds = (since?: string) => (asked.push(since), true);
+  const read = loopOf(rec, { reviewable: true, newWork: holds });
+  assert.deepEqual([read.state, read.pass, asked], ['due', 2, [undefined]], 'a branch with work: a new pass');
+  assert.equal(loopOf(rec, { reviewable: true, newWork: () => false }).state, 'ended', 'no branch: no new pass');
+  assert.equal(loopOf(rec, { reviewable: true }).maybeAgain, true, 'with no repository, it says the plan moved');
   // rebased, the old commits pruned: the round's head resolves to nothing, and the branch's commits are new work
   set(store, 'project:web', ['ext.review.mode=auto'], {});
   g('branch', 'tag', 'main');
@@ -565,4 +564,39 @@ test('a round with no head, or one that no longer resolves, saw nothing of what 
   g('gc', '-q', '--prune=now');
   assert.throws(() => g('cat-file', '-e', `${closed.round!.head}^{commit}`), 'the reviewed commit is gone');
   assert.equal(reviewLoop(store, T).state, 'due', 'pruned: a head that resolves to nothing is new work');
+});
+
+test('a later follow-up change is the next one not over, and what is left is filed under the pass it was found in', () => {
+  const W = 'change:web/wrap';
+  // every follow-up change so far is over: a fourth pass files to its own, never refused
+  set(store, 'change:web/wrap-follow-ups', ['status=dropped'], {});
+  step(store, W, 'add', undefined, { text: 'a card' });
+  on('wrap', 'card.ts', 'export const card = 1;\n', 'feat: a card (change:wrap)');
+  step(store, W, 'done', 4, {});
+  handed(W);
+  addFinding(store, W, { text: 'The card has no envelope', severity: 'low' });
+  assert.deepEqual((({ round, followUp }) => [round?.pass, followUp])(closeRound(store, W)), [
+    4,
+    'change:web/wrap-follow-ups-4',
+  ]);
+  // on request, what is left after a pass is moved when asked, even once the next pass is under way: it goes where
+  // the pass it was found in files, and says that pass
+  set(store, 'project:web', ['ext.review.mode=request'], {});
+  g('branch', 'bow', 'main');
+  on('bow', 'bow.ts', 'export const bow = 1;\n', 'feat: a bow (change:bow)');
+  change(store, 'bow', { name: 'Bows', gist: 'A bow', project: 'project:web', next: 'build it' });
+  change(store, 'bow-follow-ups', { name: 'Bow follow-ups', gist: 'Earlier', project: 'project:web', next: 'tidy' });
+  set(store, 'change:web/bow-follow-ups', ['status=dropped'], {});
+  const B = 'change:web/bow';
+  step(store, B, 'done', 1, {});
+  handed(B);
+  addFinding(store, B, { text: 'The bow is one colour', severity: 'low' });
+  assert.equal(closeRound(store, B).loop.state, 'closing');
+  step(store, B, 'add', undefined, { text: 'a second colour' });
+  on('bow', 'bow.ts', 'export const bow = 2;\n', 'feat: colours (change:bow)');
+  assert.equal(reviewLoop(store, B).words?.startsWith('worked on since its review ended'), true);
+  const moved = followUp(store, B);
+  assert.deepEqual([moved.followUp, moved.moved], ['change:web/bow-follow-ups-2', [1]]);
+  assert.match(String(data('change:web/bow-follow-ups-2').gist), /^What pass 1 of the review of Bows found/);
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
 });

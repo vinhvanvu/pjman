@@ -36,7 +36,7 @@ import {
 import { newChange } from '../ops/new.js';
 import { step } from '../ops/step.js';
 import { live } from '../model/tree.js';
-import { observedBranches } from '../model/view.js';
+import { MOVED_SINCE, observedBranches } from '../model/view.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
@@ -97,6 +97,8 @@ function loopIn(rec: Rec, dir: string | undefined, branch?: string, base?: strin
     newWork: dir
       ? (since) => {
           if (!at) return false;
+          // a round closed with no head saw nothing it can be told from: what the branch holds that the base lacks
+          if (!since) return Number(tryGit(at.dir, ['rev-list', '--count', `${at.base}..${at.branch}`]) || 0) > 0;
           // a head that no longer resolves (a rebase with the old commit pruned, another clone, a short hash grown
           // ambiguous) tells nothing of what came after it: what the branch holds is unreviewed
           if (!tryGit(at.dir, ['rev-parse', '--verify', '--quiet', `${since}^{commit}`])) return true;
@@ -115,13 +117,20 @@ function loopIn(rec: Rec, dir: string | undefined, branch?: string, base?: strin
 const over = (r: Rec): boolean => ['done', 'dropped'].includes(String(r.data.status));
 
 /** The change that what does not hold the merge goes to: `<change>-follow-ups` while it is not over; once it is, a later
- *  pass files to one of its own, `<change>-follow-ups-<pass>` (decision review-reads-ended-follow-ups/later-pass-follow-up). */
+ *  pass files to one of its own, `<change>-follow-ups-<pass>` (decision review-reads-ended-follow-ups/later-pass-follow-up),
+ *  and when that one is over too, the next number free. A change that is over is never added to, and never refuses. */
 function followUpKeyOf(loaded: Loaded, key: string, pass: number): string {
   const first = followUpKey(key);
-  if (pass === 1) return first;
-  const there = live(loaded, first);
-  return there && over(there) ? `${first}-${pass}` : first;
+  const open = (k: string): boolean => {
+    const there = live(loaded, k);
+    return !there || !over(there);
+  };
+  if (open(first)) return first;
+  for (let n = Math.max(2, pass); ; n++) if (open(`${first}-${n}`)) return `${first}-${n}`;
 }
+
+/** The pass the rounds closed so far belong to: what is left on the change was found there, whatever pass is under way. */
+const closedPass = (data: Record<string, unknown>): number => Math.max(1, ...roundsOf(data).map((r) => r.pass ?? 1));
 
 /** What every view of the loop reads: where it stands and what says so, without the brief's decisions, log and diff. */
 interface LoopRead {
@@ -147,7 +156,7 @@ function loopRead(store: Store, key: string): LoopRead {
     loop,
     findings: findingsOf(rec.data),
     entire: entireOn(loaded, store.project),
-    followUp: followUpKeyOf(loaded, rec.key, loop.pass),
+    followUp: followUpKeyOf(loaded, rec.key, closedPass(rec.data)),
   };
 }
 
@@ -227,7 +236,7 @@ export function reviewBrief(store: Store, key: string): ReviewBrief {
     mode: reviewMode(loaded, store.project),
     loop,
     head,
-    followUp: followUpKeyOf(loaded, rec.key, loop.pass),
+    followUp: followUpKeyOf(loaded, rec.key, closedPass(rec.data)),
   };
 }
 
@@ -799,7 +808,12 @@ export function lensBrief(
   if (!full) throw new CliError(`${b.change} has had no full review: the fix is re-reviewed after one`);
   const fixed = b.loop.fixed.map((n) => formatFinding(n, b.findings[n - 1]));
   // (a fix committed before the round was closed is in the branch's diff, not after the round's head)
-  const since = full.head && b.branch && !sameHead(full.head, b.head) ? `git diff ${full.head}..${b.branch}` : b.diff;
+  // (a head pruned since, after a rebase, names no commit: the branch's whole diff is what there is to read)
+  const resolves =
+    !!full.head &&
+    !!store.projectDir &&
+    !!tryGit(store.projectDir, ['rev-parse', '--verify', '--quiet', `${full.head}^{commit}`]);
+  const since = resolves && b.branch && !sameHead(full.head, b.head) ? `git diff ${full.head}..${b.branch}` : b.diff;
   return [
     head,
     '',
@@ -863,7 +877,7 @@ function reportOf(b: LoopRead, printed: (key: string) => string = (k) => k): Loo
     change: b.change,
     mode: b.mode,
     state,
-    words: loopWords(b.loop),
+    words: ((w) => (w && b.loop.maybeAgain ? `${w}${MOVED_SINCE}` : w))(loopWords(b.loop)),
     next: nextOf(b, printed(b.change)),
     rounds: [b.loop.full, b.loop.fix].filter((r): r is Round => !!r),
     holding: b.loop.holding,
@@ -904,15 +918,10 @@ export interface RoundResult {
 /** The change's `reviews` as written: rounds, and the lenses handed out. */
 const reviewsOf = (data: Record<string, unknown>): unknown[] => (Array.isArray(data.reviews) ? data.reviews : []);
 
-/** The follow-up change for this pass, and its record when there is one; refused when it is over (the first pass's, or
- *  a later pass's own). */
+/** The follow-up change for this pass, and its record when there is one (never one that is over). */
 function followUpTarget(loaded: Loaded, rec: Rec, pass: number): { key: string; there?: Rec } {
   const key = followUpKeyOf(loaded, rec.key, pass);
   const there = live(loaded, key);
-  if (there && over(there))
-    throw new CliError(
-      `${there.key} is ${String(there.data.status)}: the findings left on ${rec.key} are not added to a change that is over; settle them here (pjman review ${rec.key} --resolve|--dismiss <n>)`,
-    );
   return { key, there: there && there.type === 'change' ? there : undefined };
 }
 
@@ -1038,9 +1047,6 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts = {}): Ro
     throw new CliError(
       `${rec.key}: no reviewer was handed ${b.loop.missing.map((l) => `--lens ${l}`).join(', ')}. ${state === 'recheck' ? 'The fix is re-reviewed' : 'A full review is made'} by reviewers that did not write the change, each told only to run \`pjman review ${rec.key} --lens <lens>\`; the round is closed when they are back`,
     );
-  // where closing it ends the loop in a project that reviews every change, what is left moves to the follow-up change:
-  // refused before the round is written when that change is over
-  if (b.mode === 'auto' && b.loop.left.length) followUpTarget(loaded, rec, b.loop.pass);
   const env = envelope(opts);
   const round: Round = {
     round: state === 'recheck' ? 'fix' : 'full',
@@ -1097,7 +1103,7 @@ export function followUp(store: Store, key: string, opts: ReviewOpts = {}): Roun
     pending: [],
   });
   if (!moved.length) return none();
-  const pass = loopRead(store, key).loop.pass;
+  const pass = closedPass(rec.data);
   const { key: target, there } = followUpTarget(loaded, rec, pass);
   const texts = moved.map((n) => {
     const f = findings[n - 1];
@@ -1113,7 +1119,7 @@ export function followUp(store: Store, key: string, opts: ReviewOpts = {}): Roun
   } else {
     const name = typeof rec.data.name === 'string' ? rec.data.name : rec.changeSlug!;
     // (a later pass files here only once the first pass's follow-up change is over)
-    const nth = target === followUpKey(rec.key) ? '' : ` ${pass}`;
+    const nth = target === followUpKey(rec.key) ? '' : ` ${target.slice(followUpKey(rec.key).length + 1)}`;
     const named = `${name} follow-ups${nth}`;
     const review = nth ? `pass ${pass} of the review` : 'the review';
     newChange(store, target, {
