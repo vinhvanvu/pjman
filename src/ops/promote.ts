@@ -15,7 +15,7 @@ import { TRAIL_KIND } from '../entire/trail.js';
 import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { sections as parseSections } from '../store/frontmatter.js';
 import { foundationHash, foundationOf, stepIsOpen, stepsOf } from '../model/foundation.js';
-import { branchOf, observedBranches } from '../model/view.js';
+import { branchOf, namedBranches, observedBranches } from '../model/view.js';
 import { baseBranch, mergedInto } from '../store/merged.js';
 import { render } from './write.js';
 
@@ -62,7 +62,9 @@ export function branchAt(
   try {
     const base = baseBranch(dir);
     const local = git(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n');
-    const name = [...new Set([seen.name, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])].find(
+    // its own among the repository's branches, by its name, before a name to look for (change:branch-line-own-branch)
+    const own = branchOf(rec, observedBranches(loaded), undefined, namedBranches(loaded, rec, local)).name;
+    const name = [...new Set([own, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])].find(
       (b) => b !== base && local.includes(b),
     );
     if (!name) return undefined;

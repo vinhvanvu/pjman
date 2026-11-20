@@ -106,7 +106,7 @@ export const trailWords = (trail: string): string => trail.replace(/ \(https?:[^
 export function sourcesView(
   ctx: Pick<ChangeContext, 'sources' | 'branch'> & Partial<Pick<ChangeContext, 'findings'>>,
 ): {
-  branch?: { name: string; observed: boolean };
+  branch?: { name: string; observed: boolean; exists?: boolean };
   links: Source[];
   files: Source[];
   /** What a review found (pjman review), the ones still standing first. */

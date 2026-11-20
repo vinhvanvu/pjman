@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import type { Store } from '../store/config.js';
 import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SEVERITIES } from '../store/config.js';
-import { branchNameFor, worktreeNameFor } from './branch.js';
+import { branchNameFor, slugsOfBranch, worktreeNameFor } from './branch.js';
+import { localHeads } from '../store/merged.js';
 import {
   loadStore,
   memo,
@@ -102,21 +103,53 @@ export function row(r: Rec): Row {
   };
 }
 
-/** A change's branch and worktree, as views say them: the branch a session was last seen on (observed), else one the
- *  change links, else the recommended name derived from the key (decision branch-names/derived-not-stored). */
+/** A change's branch and worktree, as views say them (change:branch-line-own-branch): the branch that is its own, one
+ *  whose last segment resolves to the change, seen by a session, linked from the change or found in the project's
+ *  repository, in that order; else the latest a session was seen on that names no change, else one the change links;
+ *  else the recommended name derived from the key (decision branch-names/derived-not-stored). A branch a session was
+ *  seen on that is named for another change never stands for this one (decision
+ *  branch-line-own-branch/foreign-fallback). */
 export interface ChangeBranch {
   name: string;
+  /** The worktree the branch is checked out in when the repository says so, else the recommended name. */
   worktree: string;
+  /** A session was seen on it, or the change links it. */
   observed: boolean;
+  /** Not observed, yet in the project's repository under a name that resolves to the change. */
+  exists?: boolean;
+  /** With `exists`: a worktree other than the project's own folder has it checked out. */
+  checkedOut?: boolean;
 }
 
-/** The latest branch a session was observed on, per change key, from every session's observed edges in one pass. */
-export function observedBranches(loaded: Loaded): Map<string, { to: string; at: string }> {
-  return memo(loaded, 'observed-branches', () => observedBranchesOnce(loaded));
+/** The change a branch name was cut for, by the rule that binds a session from its branch (branch.ts, graph.ts): its
+ *  last segment read as a change slug, inside `scope` (a product's slug) first. */
+export function changeOfBranch(loaded: Loaded, branch: string, scope?: string | null): string | undefined {
+  for (const slug of slugsOfBranch(branch)) {
+    const r = resolve(loaded, `change:${slug}`, scope);
+    if ((r.status === 'ok' || r.status === 'alias') && r.rec.type === 'change') return r.rec.key;
+  }
+  return undefined;
 }
 
-function observedBranchesOnce(loaded: Loaded): Map<string, { to: string; at: string }> {
-  const latest = new Map<string, { to: string; at: string }>();
+/** Whose a branch is, as one change reads it: its own, another change's, or no change's. */
+function standing(loaded: Loaded, rec: Rec, branch: string): 'own' | 'other' | 'none' {
+  const owner = changeOfBranch(loaded, branch, rec.productSlug ?? loaded.scope);
+  return !owner ? 'none' : owner === rec.key ? 'own' : 'other';
+}
+
+/** What sessions observed, per change key: the branch that stands for the change, its own before one that names no
+ *  change, the latest of each; one named for another change is left out. */
+export interface ObservedBranches {
+  on: Map<string, { to: string; at: string; own: boolean }>;
+  loaded: Loaded;
+}
+
+export function observedBranches(loaded: Loaded): ObservedBranches {
+  return memo(loaded, 'observed-branches', () => ({ on: observedBranchesOnce(loaded), loaded }));
+}
+
+function observedBranchesOnce(loaded: Loaded): ObservedBranches['on'] {
+  const latest: ObservedBranches['on'] = new Map();
   for (const s of ofType(loaded, 'session')) {
     if (!s.valid || !Array.isArray(s.data.observed)) continue;
     for (const o of s.data.observed as unknown[]) {
@@ -125,26 +158,94 @@ function observedBranchesOnce(loaded: Loaded): Map<string, { to: string; at: str
       if (typeof e.from !== 'string' || typeof e.to !== 'string' || !e.to.startsWith('branch:')) continue;
       const from = resolve(loaded, e.from);
       if (!(from.status === 'ok' || from.status === 'alias')) continue;
+      const whose = standing(loaded, from.rec, e.to.slice('branch:'.length));
+      if (whose === 'other') continue;
+      const own = whose === 'own';
       const at = typeof e.at === 'string' ? e.at : '';
       const prior = latest.get(from.rec.key);
-      if (!prior || prior.at.localeCompare(at) <= 0) latest.set(from.rec.key, { to: e.to, at });
+      if (!prior || (prior.own === own ? prior.at.localeCompare(at) <= 0 : own))
+        latest.set(from.rec.key, { to: e.to, at, own });
     }
   }
   return latest;
 }
 
+/** A branch of the project's repository: the worktree that has it checked out (its folder's name), when one other
+ *  than the project's own folder does, and the change its name resolves to. */
+export interface LocalBranch {
+  name: string;
+  worktree?: string;
+  change?: string;
+}
+
+/** The project's local branches, newest commit first, read from its repository once per load; none outside a
+ *  registered project. */
+export function localBranches(store: Store, loaded: Loaded): LocalBranch[] {
+  return memo(loaded, 'local-branches', () => {
+    const dir = store.projectDir;
+    if (!dir || !fs.existsSync(dir)) return [];
+    return localHeads(dir).map((h) => ({ ...h, change: changeOfBranch(loaded, h.name) }));
+  });
+}
+
+/** Branch names of a repository as branchOf reads them: each with the change its name resolves to, as `rec` reads it. */
+export function namedBranches(loaded: Loaded, rec: Rec, names: Iterable<string>): () => LocalBranch[] {
+  return () =>
+    [...names]
+      .filter(Boolean)
+      .map((name) => ({ name, change: changeOfBranch(loaded, name, rec.productSlug ?? loaded.scope) }));
+}
+
+/** The local branches that may stand for a change: the project's, for a change of the project the store was opened
+ *  in; elsewhere the repository is not the change's to read. */
+export function localBranchesFor(store: Store, loaded: Loaded, rec: Rec): () => LocalBranch[] {
+  return () => (store.project && rec.data.project === store.project ? localBranches(store, loaded) : []);
+}
+
 export function branchOf(
   rec: Rec,
-  observed: Map<string, { to: string; at: string }>,
+  observed: ObservedBranches,
   prefix: string | undefined = readUserConfig().branch_prefix,
+  local: () => LocalBranch[] = () => [],
 ): ChangeBranch {
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  const seenOn =
-    observed.get(rec.key)?.to ??
-    [...list(rec.data.binds), ...list(rec.data.links)].find((k) => k.startsWith('branch:'));
-  return seenOn
-    ? { name: seenOn.slice('branch:'.length), worktree: worktreeNameFor(rec.key), observed: true }
+  const seen = (name: string): ChangeBranch => ({ name, worktree: worktreeNameFor(rec.key), observed: true });
+  const on = observed.on.get(rec.key);
+  const onName = on?.to.slice('branch:'.length);
+  if (on?.own) return seen(onName!);
+  const linked = [...list(rec.data.binds), ...list(rec.data.links)]
+    .filter((k) => k.startsWith('branch:'))
+    .map((k) => ({
+      name: k.slice('branch:'.length),
+      whose: standing(observed.loaded, rec, k.slice('branch:'.length)),
+    }));
+  const ownLinked = linked.find((l) => l.whose === 'own');
+  if (ownLinked) return seen(ownLinked.name);
+  const mine = local().filter((l) => l.change === rec.key);
+  const found = mine.find((l) => l.worktree) ?? mine[0];
+  if (found)
+    return {
+      name: found.name,
+      worktree: found.worktree ?? worktreeNameFor(rec.key),
+      observed: false,
+      exists: true,
+      checkedOut: !!found.worktree,
+    };
+  // a link is the change's own word, whatever the branch is named: a milestone's child carries on its parent's branch
+  // (decision work-on-the-branch). Only what a session observed is doubted by its name
+  const fallback = onName ?? linked[0]?.name;
+  return fallback
+    ? seen(fallback)
     : { name: branchNameFor(rec.key, prefix), worktree: worktreeNameFor(rec.key), observed: false };
+}
+
+/** The branch line's words after the name: nothing for one a session was seen on. */
+export function branchNote(b: ChangeBranch): string {
+  if (b.observed) return '';
+  if (!b.exists) return ` (recommended; worktree ${b.worktree})`;
+  return b.checkedOut
+    ? ` (exists; worktree ${b.worktree})`
+    : ` (exists, no worktree; recommended worktree ${b.worktree})`;
 }
 
 const TYPE_ALIASES: Record<string, RecordType> = {
@@ -325,7 +426,7 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
   const prefix = readUserConfig().branch_prefix;
   const withBranch = (r: Rec): Row =>
     r.type === 'change' && r.valid && observed
-      ? { ...row(r), branch: branchOf(r, observed, prefix) }
+      ? { ...row(r), branch: branchOf(r, observed, prefix, localBranchesFor(store, loaded, r)) }
       : r.type === 'feature'
         ? { ...row(r), status: statusOf(r) }
         : row(r);
@@ -447,8 +548,8 @@ export interface ChangeContext {
   /** The change's Trail on Entire, as last read (pjman sync entire): its phase, the branch's state, the gates and the
    *  open findings, in one line with its address. */
   trail?: string;
-  /** The change's branch: one a session was seen on (observed), else the recommended name derived from the key. */
-  branch?: { name: string; worktree: string; observed: boolean };
+  /** The change's branch: its own as a session saw it or the repository holds it, else the recommended name. */
+  branch?: ChangeBranch;
   sessions: (Row & { last?: string })[];
   /** The parent change, resolved, and the changes whose parent this is. */
   parent?: Row;
@@ -681,8 +782,8 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     .filter((r): r is Rec => !!r)
     .map(row);
   const neededBy = (cx.neededBy.get(rec.key) ?? []).map(row);
-  // the branch: one seen by a session (the latest) or linked from the change, else the recommended name
-  const branch = branchOf(rec, observedBranches(loaded));
+  // the branch: the change's own (seen, linked or found in the repository), else the recommended name
+  const branch = branchOf(rec, observedBranches(loaded), undefined, localBranchesFor(store, loaded, rec));
   const features = effectsOf(rec)
     .map((e) => liveKey(e.key))
     .map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined))
@@ -817,7 +918,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const d = c.change.data;
   out.push(heading('#', c.change));
   out.push(
-    `status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.review ? `\nreview: ${c.review}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${c.branch.observed ? '' : ` (recommended; worktree ${c.branch.worktree})`}` : ''}`,
+    `status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.review ? `\nreview: ${c.review}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${branchNote(c.branch)}` : ''}`,
   );
   out.push(...readinessLines(c, 'change'));
   // the foundation in order of depth; the plan sits after Scope, where the work's shape ends and its steps begin

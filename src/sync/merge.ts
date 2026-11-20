@@ -50,7 +50,7 @@ export function mergeChange(
     throw new CliError(`${rec.key} is a milestone: its children merge, each on its own`);
   const base = baseBranch(dir);
   const local = new Set((tryGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']) ?? '').split('\n'));
-  const branch = branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.has(b));
+  const branch = branchesOf(rec, observedBranches(loaded), local).find((b) => b !== base && local.has(b));
   if (!branch) throw new CliError(`${rec.key} has no branch in this repository to merge`);
   const named = `change:${rec.changeSlug}`;
   const notes: string[] = [];

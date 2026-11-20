@@ -631,7 +631,12 @@ export function Sources({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: L
         <SourceRow label="branch">
           <KeyText className="text-ink">{v.branch.name}</KeyText>
           <span className="text-meta text-ink-faint">
-            · {v.branch.observed ? 'a session was seen on it' : 'recommended, not seen yet'}
+            ·{' '}
+            {v.branch.observed
+              ? 'a session was seen on it'
+              : v.branch.exists
+                ? 'in the repository, not seen yet'
+                : 'recommended, not seen yet'}
           </span>
         </SourceRow>
       )}

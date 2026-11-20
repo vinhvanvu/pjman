@@ -12,16 +12,22 @@ import type { Store } from '../store/config.js';
 import { baseBranch, mergedInto, tryGit, type MergedHow } from '../store/merged.js';
 import { loadStore, type Rec } from '../store/records.js';
 import { CliError } from '../store/util.js';
-import { branchOf, observedBranches } from '../model/view.js';
+import { branchOf, namedBranches, observedBranches } from '../model/view.js';
 import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { set } from '../ops/set.js';
 
 export { baseBranch, baseRefs, mergedBranch, mergedInto, type Merged, type MergedHow } from '../store/merged.js';
 
-/** The branch names a change's work may be on, most likely first: the one a session was seen on, the recommended
- *  name, the worktree's. */
-export function branchesOf(rec: Rec, observed: ReturnType<typeof observedBranches>): string[] {
-  return [...new Set([branchOf(rec, observed).name, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])];
+/** The branch names a change's work may be on, most likely first: its own as the views name it (seen by a session,
+ *  linked, or among the repository's `local` branches by its name; change:branch-line-own-branch), the recommended
+ *  name, the worktree's. A branch named for another change is never among them. */
+export function branchesOf(
+  rec: Rec,
+  observed: ReturnType<typeof observedBranches>,
+  local: Iterable<string> = [],
+): string[] {
+  const own = branchOf(rec, observed, undefined, namedBranches(observed.loaded, rec, local)).name;
+  return [...new Set([own, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])];
 }
 
 export interface GitSyncResult {
@@ -51,7 +57,7 @@ export function syncGit(store: Store, opts: { session?: string; write?: boolean 
     const status = rec.data.status;
     if (status !== 'review' && status !== 'done') continue;
     if (rec.data.kind === 'milestone') continue;
-    const branch = branchesOf(rec, observed).find((b) => b !== base && local.has(b));
+    const branch = branchesOf(rec, observed, local).find((b) => b !== base && local.has(b));
     if (!branch) continue;
     const m = mergedInto(dir, branch, { base, named: `change:${rec.changeSlug}` });
     if (!m) continue;

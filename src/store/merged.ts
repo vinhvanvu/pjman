@@ -1,5 +1,7 @@
 // What the repository says of a branch, read from git alone: the base branch, and whether a branch's work has reached
 // it and how. Below the store's operations, so a write can ask it (ops/promote) as the syncs do (sync/git).
+import fs from 'node:fs';
+import path from 'node:path';
 import { git } from './git.js';
 
 export const tryGit = (cwd: string, args: string[]): string => {
@@ -25,6 +27,30 @@ export function baseBranch(dir: string): string {
   for (const b of ['main', 'master'])
     if (tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/heads/${b}`])) return b;
   return tryGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) || 'main';
+}
+
+/** The repository's local branches, newest commit first, each with the name of the worktree that has it checked out
+ *  when one other than the repository's own folder does (a linked worktree's `.git` is a file). */
+export function localHeads(dir: string): { name: string; worktree?: string }[] {
+  const out = tryGit(dir, [
+    'for-each-ref',
+    '--sort=-committerdate',
+    '--format=%(refname:short)%09%(worktreepath)',
+    'refs/heads',
+  ]);
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [name, at] = line.split('\t');
+      let linked = false;
+      try {
+        linked = !!at && fs.statSync(path.join(at, '.git')).isFile();
+      } catch {
+        // the worktree's folder is gone: the branch is checked out nowhere to be found
+      }
+      return linked ? { name, worktree: path.basename(at) } : { name };
+    });
 }
 
 /** The branch a merge commit's subject names: git's own (`Merge branch 'x'`) or GitHub's (`Merge pull request #n from

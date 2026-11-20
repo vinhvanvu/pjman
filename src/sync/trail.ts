@@ -255,7 +255,7 @@ export function reconcileTrail(
       );
       return null;
     }
-    branch = branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.includes(b));
+    branch = branchesOf(rec, observedBranches(loaded), local).find((b) => b !== base && local.includes(b));
     if (!branch) {
       opts.whyNot?.(
         'no branch of its own was found in this repository; create a branch named for it and run this again',

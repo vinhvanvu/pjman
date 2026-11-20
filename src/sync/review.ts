@@ -78,7 +78,10 @@ function branchIn(loaded: Loaded, rec: Rec, dir: string | undefined): { branch?:
   if (!dir) return {};
   const base = baseBranch(dir);
   const local = tryGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n');
-  return { base, branch: branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.includes(b)) };
+  return {
+    base,
+    branch: branchesOf(rec, observedBranches(loaded), local).find((b) => b !== base && local.includes(b)),
+  };
 }
 
 /** A round's head as shown: the full hash is what is stored and resolved. */
