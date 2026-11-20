@@ -8,6 +8,7 @@ import { branchNameFor, slugOfBranch, slugsOfBranch, worktreeNameFor } from '../
 import { init } from '../cli/init.js';
 import { newRecord } from '../ops/new.js';
 import { sessionObserve } from '../ops/session.js';
+import { set } from '../ops/set.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { findStore, readUserConfig, writeUserConfig, type Store } from '../store/config.js';
 import { findReferences } from '../model/graph.js';
@@ -82,4 +83,21 @@ test('the context shows the recommended branch until a session is seen on one', 
   ctx = changeContext(store, 'change:app/card-export');
   assert.deepEqual(ctx.branch, { name: 'vinh/card-export', worktree: 'card-export', observed: true });
   assert.match(formatChangeContext(ctx), /^branch: vinh\/card-export$/m);
+});
+
+test('whose branch: a written link, then the name, then an observed edge (decision observed-branch-belongs/whose-branch)', () => {
+  const opts = { cwd: project, projectDir: project, project: store.project };
+  const whose = (branch: string) => findReferences(loadStore(store), `branch:${branch}`, opts)[0]?.change;
+  change(store, 'stack-a', { title: 'Stack a', summary: 'A.' });
+  change(store, 'stack-b', { title: 'Stack b', summary: 'B.' });
+  // a session bound to a stood in b's worktree: the wrong edge does not make b's branch a's
+  sessionObserve(store, 'sess-1', 'links', 'change:app/stack-a', 'branch:TICK-2/stack-b');
+  assert.equal(whose('TICK-2/stack-b'), 'change:app/stack-b');
+  // a branch named for no change leads to the change it was observed on
+  sessionObserve(store, 'sess-1', 'links', 'change:app/stack-a', 'branch:feat/login');
+  assert.equal(whose('feat/login'), 'change:app/stack-a');
+  assert.equal(findReferences(loadStore(store), 'branch:feat/login', opts)[0]?.relation, 'observed');
+  // a link someone wrote outranks the name
+  set(store, 'change:app/stack-a', ['links+=branch:TICK-2/stack-b'], {});
+  assert.equal(whose('TICK-2/stack-b'), 'change:app/stack-a');
 });

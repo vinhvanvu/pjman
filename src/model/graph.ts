@@ -552,20 +552,28 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
     let change: string | undefined;
     let relation: Relation | undefined;
     if (key.startsWith('change:')) change = key;
-    else {
+    else if (kind === 'branch') {
+      // whose branch it is (decision observed-branch-belongs/whose-branch): a link someone wrote, then the name, then an
+      // edge a session observed. A wrong observation never proves itself, and a branch not named for its change, once
+      // observed on it, still leads to it while no name says otherwise
+      const n = get(loaded, key, opts);
+      const reached = n.changes.map((c) => c.change.key);
+      change = reached.find((c) => n.relation[c] !== 'observed');
+      if (!change) {
+        for (const slug of slugsOfBranch(key.slice('branch:'.length))) {
+          const r = resolveRef(loaded, `change:${slug}`, opts);
+          if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) {
+            change = r.key;
+            break;
+          }
+        }
+      }
+      change ??= reached[0];
+      if (change) relation = n.relation[change];
+    } else {
       const n = get(loaded, key, opts);
       change = (ticket ? n.changes.filter((c) => n.relation[c.change.key] === 'binds') : n.changes)[0]?.change.key;
       if (change) relation = n.relation[change];
-    }
-    if (!change && kind === 'branch') {
-      // no record links the branch yet: the name itself says which change it was cut for
-      for (const slug of slugsOfBranch(key.slice('branch:'.length))) {
-        const r = resolveRef(loaded, `change:${slug}`, opts);
-        if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) {
-          change = r.key;
-          break;
-        }
-      }
     }
     const weak = !!m.weak;
     out.push({
