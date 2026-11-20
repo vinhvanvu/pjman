@@ -50,7 +50,8 @@ export function typedRef(value: string, kind: string): string {
 /** The kind of record a field names, by the record it is on: what a slug alone written into it means. */
 export function fieldKind(type: string, field: string): string | null {
   if (field === 'links' || field === 'binds') return 'source';
-  if (field === 'depends_on' || field === 'ships' || field === 'sequence') return 'change';
+  if (field === 'depends_on') return type === 'decision' ? 'decision' : 'change';
+  if (field === 'ships' || field === 'sequence') return 'change';
   if (field === 'project') return 'project';
   if (field === 'product') return 'product';
   if (field === 'supersedes') return 'decision';

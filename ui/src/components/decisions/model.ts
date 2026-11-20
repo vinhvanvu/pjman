@@ -1,7 +1,7 @@
 // The decision card's model (decision detail-pages/decision-card): one shape for a decision wherever it is drawn, read
 // from what each surface has (a waiting decision beneath a node, a decision row on a change), and the words the card
 // says at each depth: a decided row reads its answer, and the decided list folds to a count. Pure: data in, words out.
-import type { ChangeContext, DecisionState, WaitingDecision } from '@/data/contract';
+import type { ChangeContext, DecisionState, Keyed, WaitingDecision } from '@/data/contract';
 import { agoWords, plural } from '@/lib/format';
 import { changeOfDecision, short } from '@/lib/keys';
 
@@ -23,6 +23,8 @@ export interface CardDecision {
   stale: boolean;
   migrated?: string;
   supersededBy?: string;
+  /** Set on its change's key decision (change:key-decisions): how it was found and why. */
+  keyed?: Keyed;
 }
 
 /** The card's three depths: a row (name, when, how many options), the ladder (name, gist, meta, the one action), the
@@ -40,6 +42,7 @@ export function fromWaiting(d: WaitingDecision): CardDecision {
     state: d.state,
     needs: d.needs,
     stale: d.stale,
+    ...(d.keyed ? { keyed: d.keyed } : {}),
   };
 }
 
@@ -60,6 +63,7 @@ export function fromRow(d: DecisionRow, change?: string): CardDecision {
     stale: d.stale,
     migrated: d.migrated,
     supersededBy: d.supersededBy,
+    ...(d.keyed ? { keyed: d.keyed } : {}),
   };
 }
 
@@ -110,19 +114,24 @@ export function chosenOf(
 }
 
 /** The decisions a group draws, in reading order: proposed oldest first (the first asked is usually the one the others
- *  wait on), decided newest first, and the superseded and reverted folded under one history line. */
+ *  wait on), decided newest first, and the superseded and reverted folded under one history line. The change's key
+ *  decision comes first (change:key-decisions): waiting, at the head of what waits; decided, lifted out of the fold as
+ *  `key`, so it is never folded away. */
 export function grouped(list: readonly CardDecision[]): {
   waiting: CardDecision[];
+  key?: CardDecision;
   decided: CardDecision[];
   history: CardDecision[];
 } {
   const by = (a: CardDecision, b: CardDecision) => (a.created ?? '').localeCompare(b.created ?? '');
-  const waiting = list.filter((d) => d.status === 'proposed').toSorted(by);
+  const keyFirst = (a: CardDecision, b: CardDecision) => Number(!!b.keyed) - Number(!!a.keyed);
+  const waiting = list.filter((d) => d.status === 'proposed').toSorted((a, b) => keyFirst(a, b) || by(a, b));
+  const key = list.find((d) => d.status === 'decided' && d.keyed);
   const decided = list
-    .filter((d) => d.status === 'decided')
+    .filter((d) => d.status === 'decided' && d !== key)
     .toSorted((a, b) => (b.decidedOn ?? '').localeCompare(a.decidedOn ?? '') || by(b, a));
   const history = list.filter((d) => d.status !== 'proposed' && d.status !== 'decided');
-  return { waiting, decided, history };
+  return { waiting, ...(key ? { key } : {}), decided, history };
 }
 
 /** The group's head: what waits, and where the decided are. On the session page the decided are on the rail; on the

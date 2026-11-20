@@ -138,7 +138,7 @@ What was chosen and why: an append-only thread a person decides.
 | create | `pjman decision <change>/<slug> --name … --gist … --question … --option <id>=… --recommend <id>=…` |
 | read | `pjman show <decision> · pjman context <change>   (its decisions in full)` |
 | list | `pjman ls decision [--status proposed\|decided\|superseded\|reverted] [--parent <change>]   (--status proposed: what waits on a person)` |
-| update | `pjman decision <key> --option\|--comment\|--reject\|--recommend … · --accept <id> --by person:<handle> · --reopen · pjman set <decision> name\|gist\|links\|supersedes` |
+| update | `pjman decision <key> --option\|--comment\|--reject\|--recommend … · --accept <id> --by person:<handle> · --reopen · --depends-on <decision> · --mark-key\|--unmark-key "why" · pjman set <decision> name\|gist\|links\|supersedes\|depends_on` |
 | rename | `pjman mv decision:<change>/<old> decision:<change>/<new>` |
 | delete | `pjman rm <decision>` |
 | bulk | `pjman decision <key> --from -   (entries as JSON)` |
@@ -297,8 +297,10 @@ pjman decision <change>/<slug> --name <one to four words> --gist <one line> --qu
 pjman decision <ref> [--question <reframed>] [--option <id>=<text>]... [--comment <words> [--on <option id>] [--by person:<handle>]] [--reject <id>[=<why>]]... [--recommend <id>[=<why>]] [--name …] [--gist …]   (a comment without --by is the writer's own)
 pjman decision <key> --accept <id>[=<their words>] --by person:<handle> [--revisit <when to look again>]   (the person decides; an agent never does)
 pjman decision <key> --reopen [--comment <why>]
+pjman decision <key> --depends-on <decision>...   (the decisions it rests on; pjman set <decision> depends_on-=<decision> takes one off)
+pjman decision <key> --mark-key "<why it is key>" | --unmark-key "<why not>"   (a lone decision that plainly decides its change; the tree of depends_on decides otherwise)
 pjman decision <key> --from -   (entries as JSON on stdin)
-    write a decision at any size, one commit: created when it does not exist (then --name, --gist, --question and one --option are required), added to otherwise. Its foundation is a thread of entries: the question, criteria, options with their case, the recommendation with its reasoning, the person's comments in their words (--on <id> when about one option), rejections, the acceptance (a person's, with their words and when to revisit), a reopening. Status, decider and date follow the thread. --from - takes {name, gist, entries:[{type, text, id, case, option, by, revisit}]} as JSON on stdin
+    write a decision at any size, one commit: created when it does not exist (then --name, --gist, --question and one --option are required), added to otherwise. Its foundation is a thread of entries: the question, criteria, options with their case, the recommendation with its reasoning, the person's comments in their words (--on <id> when about one option), rejections, the acceptance (a person's, with their words and when to revisit), a reopening, the key mark and its removal. Status, decider and date follow the thread. A change's key decision is derived: the one the most others on the change rest on (--depends-on), the earliest on a tie; a decision standing alone that plainly decides its change is marked key by hand (--mark-key "why"), one per change, and marking another moves the mark. --from - takes {name, gist, entries:[{type, text, id, case, option, by, revisit}]} as JSON on stdin
 
 pjman step <change> add <text>... [--before <n>|--after <n>|--first|--last] [--note <text>]   (each quoted text a step)
 pjman step <change> add --from - [--before <n>|…]   (one step per line on stdin)

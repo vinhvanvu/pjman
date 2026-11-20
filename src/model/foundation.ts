@@ -103,6 +103,9 @@ export const ENTRY_TYPES = [
   'reject',
   'accept',
   'reopen',
+  // a hand mark of the change's key decision and its removal, each with the reason (change:key-decisions)
+  'key',
+  'unkey',
 ] as const;
 export type EntryType = (typeof ENTRY_TYPES)[number];
 
@@ -169,6 +172,9 @@ export interface DecisionState {
   /** The comments in order; one about an option names it, and the views draw it beneath that option. */
   comments: { by?: string; at: string; text: string; option?: string }[];
   accepted?: { option: string; by?: string; at: string; text?: string; revisit?: string };
+  /** The hand mark of the change's key decision in force: its reason against the bar (none after an unkey). Whether
+   *  the decision is the change's key one is derived (model/key-decision). */
+  keyMark?: { by?: string; at: string; why?: string };
 }
 
 export function decisionState(entries: Entry[]): DecisionState {
@@ -223,6 +229,12 @@ export function decisionState(entries: Entry[]): DecisionState {
         s.accepted = undefined;
         break;
       }
+      case 'key':
+        s.keyMark = { by: e.by, at: e.at, ...(e.text ? { why: e.text } : {}) };
+        break;
+      case 'unkey':
+        s.keyMark = undefined;
+        break;
     }
   }
   return s;

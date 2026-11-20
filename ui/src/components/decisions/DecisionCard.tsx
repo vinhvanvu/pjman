@@ -7,12 +7,13 @@
 // with who decided and when; its thread, opening read-only with Reopen as its only action, holds the name and the gist
 // (decided decided-decisions-fold/fold-by-default). One component serves every surface that shows a decision.
 import { cn } from 'cn';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, KeyRound } from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
 import type { DecideAction, Lens, OptionState } from '@/data/contract';
 import { short } from '@/lib/keys';
 import { Wash } from '@/lib/motion';
 import { TONE } from '@/lib/tones';
+import { Chip } from '@/components/chips/Chip';
 import { CopyKey } from '@/components/links/CopyKey';
 import { NodeLink } from '@/components/links/NodeLink';
 import { Readiness } from '@/components/record/Foundation';
@@ -64,6 +65,17 @@ export function DecisionCard(props: DecisionCardProps) {
   return <WaitingCard {...props} />;
 }
 
+/** The change's key decision, marked the same at every depth (change:key-decisions); the line says why it is key. */
+export function KeyChip({ d, className }: { d: Pick<CardDecision, 'keyed'>; className?: string }) {
+  if (!d.keyed) return null;
+  return (
+    <Chip tone="accent" title={`Key decision: ${d.keyed.line}`} className={className}>
+      <KeyRound className="size-3" aria-hidden="true" />
+      Key
+    </Chip>
+  );
+}
+
 /** The row: the name, when it was proposed, how many options; a tap opens the ladder. */
 function WaitingRow({ d, onOpen, showChange, arrival, className }: DecisionCardProps) {
   return (
@@ -79,6 +91,7 @@ function WaitingRow({ d, onOpen, showChange, arrival, className }: DecisionCardP
     >
       <Wash arrival={arrival} className={TONE.waits.wash} />
       <span className="min-w-0 flex-1 truncate font-medium">{nameOf(d)}</span>
+      <KeyChip d={d} />
       {showChange && <span className="shrink-0 text-meta text-ink-faint">{short(d.change)}</span>}
       <span className="shrink-0 text-meta font-medium text-ink-faint">{proposedMeta(d)}</span>
       <ChevronDown className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
@@ -125,7 +138,10 @@ function WaitingCard({
           />
         </button>
       </div>
-      <div className="text-[13.5px] font-semibold leading-[1.35]">{nameOf(d)}</div>
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1 text-[13.5px] font-semibold leading-[1.35]">{nameOf(d)}</div>
+        <KeyChip d={d} />
+      </div>
       {d.name && d.gist && <div className="text-body leading-normal text-ink-muted">{d.gist}</div>}
       <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />
       <AnimatePresence initial={false}>
@@ -201,6 +217,11 @@ function Thread({
   const general = s.comments.filter((c) => !c.option || !s.options.some((o) => o.id === c.option));
   return (
     <div className={cn('flex flex-col gap-3 border-t pt-3', LINE)}>
+      {d.keyed && (
+        <p className="text-body leading-normal">
+          <span className="font-semibold">Key decision</span> · {d.keyed.line}
+        </p>
+      )}
       {s.question && (
         <p className="text-body leading-normal">
           <span className="font-semibold">Question</span> · {s.question}
@@ -374,6 +395,7 @@ function DecidedRow({ d, depth, lens, actor, onToggleThread, onReopen, showChang
         ) : (
           <span className="min-w-0 flex-1 truncate">{nameOf(d)}</span>
         )}
+        <KeyChip d={d} />
         {showChange && <span className="shrink-0 text-meta text-ink-faint">{short(d.change)}</span>}
         <span className="shrink-0 text-meta text-ink-faint">{decidedMeta(d)}</span>
         <ChevronDown

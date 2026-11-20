@@ -43,7 +43,7 @@ const SETTABLE: Record<RecordType, string[]> = {
     ...Object.keys(SECTION_FIELDS),
   ],
   // a decision's rungs and links; its thread, status and decider are written with pjman decision
-  decision: ['name', 'gist', 'supersedes', 'links'],
+  decision: ['name', 'gist', 'supersedes', 'depends_on', 'links'],
   // a release's version, tag, level, instant, commit and what it ships are facts of the release; its URL and links may follow
   release: ['url', 'links'],
   source: ['title', 'url', 'links'],
