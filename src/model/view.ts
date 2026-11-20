@@ -389,6 +389,20 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
       const at = aspect && feature ? aspectAt(loaded, aspect, feature) : undefined;
       if (at) text += '\n## Read here\n\n' + formatAspectAt(at) + '\n';
     }
+    // the key decision is derived, never in the file (change:key-decisions): a change names it, a decision says it is it
+    if (res.status !== 'invalid' && (res.rec.type === 'change' || res.rec.type === 'decision')) {
+      const k =
+        res.rec.type === 'change'
+          ? keyDecisionOf(loaded, res.rec.key)
+          : res.rec.changeKey
+            ? keyDecisionOf(loaded, res.rec.changeKey)
+            : undefined;
+      if (k && res.rec.type === 'change') text += `\n## Key decision\n\n${k.key}\n${keyLine(k)}\n`;
+      else if (k && k.key === res.rec.key)
+        text += `\n## Key decision\n\nthe key decision of ${res.rec.changeKey}: ${keyLine(k)}\n`;
+      const conflict = k && conflictLine(k);
+      if (conflict && (res.rec.type === 'change' || k.conflict?.key === res.rec.key)) text += `note: ${conflict}\n`;
+    }
     return { rec: res.rec, text };
   }
   if (res.status === 'malformed') throw new CliError(`'${key}' is not a key`);

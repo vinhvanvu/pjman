@@ -116,17 +116,22 @@ export function chosenOf(
 /** The decisions a group draws, in reading order: proposed oldest first (the first asked is usually the one the others
  *  wait on), decided newest first, and the superseded and reverted folded under one history line. The change's key
  *  decision comes first (change:key-decisions): waiting, at the head of what waits; decided, lifted out of the fold as
- *  `key`, so it is never folded away. */
-export function grouped(list: readonly CardDecision[]): {
+ *  `key`, so it is never folded away. Only the key decision of `change`, the change the group stands on: a decision
+ *  beneath it, key for its own change, keeps its chip and its place. */
+export function grouped(
+  list: readonly CardDecision[],
+  change?: string,
+): {
   waiting: CardDecision[];
   key?: CardDecision;
   decided: CardDecision[];
   history: CardDecision[];
 } {
   const by = (a: CardDecision, b: CardDecision) => (a.created ?? '').localeCompare(b.created ?? '');
-  const keyFirst = (a: CardDecision, b: CardDecision) => Number(!!b.keyed) - Number(!!a.keyed);
+  const own = (d: CardDecision) => !!change && !!d.keyed && d.change === change;
+  const keyFirst = (a: CardDecision, b: CardDecision) => Number(own(b)) - Number(own(a));
   const waiting = list.filter((d) => d.status === 'proposed').toSorted((a, b) => keyFirst(a, b) || by(a, b));
-  const key = list.find((d) => d.status === 'decided' && d.keyed);
+  const key = list.find((d) => d.status === 'decided' && own(d));
   const decided = list
     .filter((d) => d.status === 'decided' && d !== key)
     .toSorted((a, b) => (b.decidedOn ?? '').localeCompare(a.decidedOn ?? '') || by(b, a));

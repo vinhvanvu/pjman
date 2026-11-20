@@ -131,10 +131,7 @@ export const EDGES: Record<string, [string[], string[]]> = {
     ['session', 'change', 'feature', 'aspect', 'project'],
     ['session', 'change', 'feature', 'aspect', 'project'],
   ],
-  depends_on: [
-    ['change', 'decision'],
-    ['change', 'decision'],
-  ], // a change on changes; a decision on decisions
+  depends_on: [['change'], ['change']], // observed between changes; a decision's depends_on is checked on the decision
   sequence: [['product'], ['change']],
   changes: [['session'], ['change']],
   project: [['change', 'session'], ['project']],

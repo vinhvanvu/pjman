@@ -10,7 +10,7 @@ import { before, test } from 'node:test';
 import { init } from '../cli/init.js';
 import { decision } from '../ops/decision.js';
 import { set } from '../ops/set.js';
-import { changeContext, formatChangeContext } from '../model/view.js';
+import { changeContext, formatChangeContext, show } from '../model/view.js';
 import { keyDecisionOf } from '../model/key-decision.js';
 import { proposedDecisions } from '../model/scope.js';
 import { findStore, type Store } from '../store/config.js';
@@ -138,4 +138,49 @@ test('a superseded decision is never key', () => {
   open('none/replacement', { supersedes: 'decision:none/minor' });
   open('none/after', { dependsOn: ['decision:none/minor'] });
   assert.equal(key('none'), undefined);
+});
+
+test('a decision that supersedes the hand-marked one takes the mark in one write; the superseded is left as superseded', () => {
+  change(store, 'swap', { title: 'Swap' });
+  open('swap/first');
+  decision(store, 'swap/first', { entries: [{ type: 'key', text: 'pivotal' }] });
+  decision(store, 'swap/second', {
+    name: 'Second',
+    gist: 'What replaces the first',
+    entries: [
+      { type: 'question', text: 'Which?' },
+      { type: 'option', id: 'a', text: 'A' },
+      { type: 'key', text: 'it replaces the pivotal one' },
+    ],
+    supersedes: 'decision:swap/first',
+  });
+  const loaded = loadStore(store);
+  assert.equal(loaded.byKey.get('decision:project/swap/first')![0].data.status, 'superseded');
+  assert.equal(thread('decision:project/swap/first').at(-1)!.type, 'key');
+  assert.equal(key('swap')!.key, 'decision:project/swap/second');
+  assert.equal(errors(store).length, 0);
+});
+
+test('a mark given and taken back in one call moves nothing', () => {
+  change(store, 'both', { title: 'Both' });
+  open('both/one');
+  open('both/two');
+  decision(store, 'both/one', { entries: [{ type: 'key', text: 'pivotal' }] });
+  decision(store, 'both/two', {
+    entries: [
+      { type: 'key', text: 'maybe' },
+      { type: 'unkey', text: 'no' },
+    ],
+  });
+  assert.equal(key('both')!.key, 'decision:project/both/one');
+  assert.equal(thread('decision:project/both/one').at(-1)!.type, 'key');
+});
+
+test('show names the key decision on its change and on the decision itself', () => {
+  assert.match(
+    show(store, 'change:ids').text,
+    /## Key decision\n\ndecision:project\/ids\/uid-type\n2 decisions on the change rest on it/,
+  );
+  assert.match(show(store, 'decision:ids/uid-type').text, /the key decision of change:project\/ids/);
+  assert.doesNotMatch(show(store, 'decision:ids/naming').text, /Key decision/);
 });

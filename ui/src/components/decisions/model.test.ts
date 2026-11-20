@@ -91,15 +91,27 @@ describe('the group', () => {
   });
   it('puts the key decision first: at the head of what waits, or lifted out of the decided fold', () => {
     const keyed = { how: 'tree' as const, dependents: 2, line: '2 decisions on the change rest on it' };
-    const waitingKey = grouped([card('a', { created: '2026-11-01' }), card('b', { created: '2026-11-02', keyed })]);
+    const waitingKey = grouped(
+      [card('a', { created: '2026-11-01' }), card('b', { created: '2026-11-02', keyed })],
+      'change:p/c',
+    );
     expect(waitingKey.waiting.map((d) => d.key)).toEqual(['decision:p/c/b', 'decision:p/c/a']);
     expect(waitingKey.key).toBeUndefined();
-    const decidedKey = grouped([
-      card('x', { status: 'decided', decidedOn: '2026-11-03' }),
-      card('y', { status: 'decided', decidedOn: '2026-11-01', keyed }),
-    ]);
+    const decidedKey = grouped(
+      [
+        card('x', { status: 'decided', decidedOn: '2026-11-03' }),
+        card('y', { status: 'decided', decidedOn: '2026-11-01', keyed }),
+      ],
+      'change:p/c',
+    );
     expect(decidedKey.key?.key).toBe('decision:p/c/y');
     expect(decidedKey.decided.map((d) => d.key)).toEqual(['decision:p/c/x']);
+    // a decision beneath, key for its own change, keeps its place
+    const beneath = grouped(
+      [card('a', { created: '2026-11-01' }), card('z', { created: '2026-11-02', keyed, change: 'change:p/child' })],
+      'change:p/c',
+    );
+    expect(beneath.waiting.map((d) => d.key)).toEqual(['decision:p/c/a', 'decision:p/c/z']);
   });
   it('heads the group by what waits and where the decided are', () => {
     expect(groupHead(0, 3, 'session')).toBe('nothing waits · the decided are on the rail');

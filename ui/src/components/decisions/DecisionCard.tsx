@@ -65,14 +65,29 @@ export function DecisionCard(props: DecisionCardProps) {
   return <WaitingCard {...props} />;
 }
 
-/** The change's key decision, marked the same at every depth (change:key-decisions); the line says why it is key. */
-export function KeyChip({ d, className }: { d: Pick<CardDecision, 'keyed'>; className?: string }) {
+/** The change's key decision, marked the same at every depth (change:key-decisions); the line says why it is key. On
+ *  a row the whole row opens the thread, which starts on that line; on the ladder the chip itself opens it. */
+export function KeyChip({
+  d,
+  onOpen,
+  className,
+}: {
+  d: Pick<CardDecision, 'keyed'>;
+  onOpen?: () => void;
+  className?: string;
+}) {
   if (!d.keyed) return null;
-  return (
+  const chip = (
     <Chip tone="accent" title={`Key decision: ${d.keyed.line}`} className={className}>
       <KeyRound className="size-3" aria-hidden="true" />
       Key
     </Chip>
+  );
+  if (!onOpen) return chip;
+  return (
+    <button type="button" onClick={onOpen} aria-label={`Why it is key: ${d.keyed.line}`} className="shrink-0">
+      {chip}
+    </button>
   );
 }
 
@@ -140,7 +155,7 @@ function WaitingCard({
       </div>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1 text-[13.5px] font-semibold leading-[1.35]">{nameOf(d)}</div>
-        <KeyChip d={d} />
+        <KeyChip d={d} onOpen={thread ? undefined : onToggleThread} />
       </div>
       {d.name && d.gist && <div className="text-body leading-normal text-ink-muted">{d.gist}</div>}
       <Readiness needs={d.needs} stale={d.stale} migrated={d.migrated} what="decision" />

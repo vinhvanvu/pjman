@@ -235,7 +235,7 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     const add: string[] = [];
     for (const raw of opts.dependsOn) {
       const target = raw.includes(':') ? raw : `decision:${raw}`;
-      const res = resolve(loaded, target, product ? `product:${product}` : undefined);
+      const res = resolve(loaded, target, product);
       if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`--depends-on: ${unresolved(res, target)}`);
       if (res.rec.type !== 'decision')
         throw new CliError(`--depends-on: ${res.rec.key} is a ${res.rec.type}, not a decision`);
@@ -405,13 +405,14 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
       changed.push('supersedes');
     }
   }
-  // a hand mark moves: another decision on the change marked key by hand is unmarked in this same commit
-  if (keyFrom) {
+  // a hand mark moves: another decision on the change marked key by hand is unmarked in this same commit; only when
+  // this one ends the call marked, and never one this call already rewrote (a decision it supersedes leaves the tree)
+  if (keyFrom && state.keyMark) {
     const why = opts.entries.find((e) => e.type === 'key')?.text;
     for (const other of loaded.records) {
       if (other.type !== 'decision' || other.key === key || other.changeKey !== keyFrom || !other.valid) continue;
       if (other.data.status !== 'proposed' && other.data.status !== 'decided') continue;
-      if (!decisionState(threadOf(other.data)).keyMark) continue;
+      if (!decisionState(threadOf(other.data)).keyMark || prior.has(other.path)) continue;
       const text = fs.readFileSync(other.abs, 'utf8');
       prior.set(other.path, text);
       const odata = { ...other.data };

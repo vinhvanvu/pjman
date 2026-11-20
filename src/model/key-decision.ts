@@ -72,7 +72,7 @@ function derive(loaded: Loaded, changeKey: string): KeyDecision | undefined {
   for (const d of decisions) {
     const to: string[] = [];
     for (const raw of dependsOnOf(d.data)) {
-      const res = resolve(loaded, raw);
+      const res = resolve(loaded, raw, d.productSlug ?? null);
       if ((res.status === 'ok' || res.status === 'alias') && on.has(res.rec.key) && res.rec.key !== d.key)
         to.push(res.rec.key);
     }
