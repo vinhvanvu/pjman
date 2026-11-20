@@ -23,7 +23,7 @@ function load(store: Store, id: string) {
   return { loaded, rec };
 }
 
-type SaveOp = 'log' | 'bind' | 'observe' | 'unbind' | 'focus' | 'briefed' | 'project' | 'name';
+type SaveOp = 'log' | 'bind' | 'observe' | 'unobserve' | 'unbind' | 'focus' | 'briefed' | 'project' | 'name';
 
 /** `value`: on a bind or a focus, the key of the change, so the event says where the session went. */
 function save(
@@ -42,13 +42,17 @@ function save(
     log: ['log'],
     bind: ['changes'],
     observe: ['observed'],
+    unobserve: ['observed', 'log'],
     unbind: ['changes', 'observed', 'log'],
     focus: ['focus'],
     briefed: ['briefed'],
     project: ['project', 'log'],
     name: ['name', 'kind', 'log'],
   }[op];
-  const evOp = op === 'unbind' || op === 'focus' || op === 'briefed' || op === 'project' || op === 'name' ? 'set' : op;
+  const evOp =
+    op === 'unbind' || op === 'unobserve' || op === 'focus' || op === 'briefed' || op === 'project' || op === 'name'
+      ? 'set'
+      : op;
   return finishWrite(store, message, rec.key, [
     { op: evOp, key: rec.key, type: 'session', path: rec.path, fields, value, writer: envelope({}).writer },
   ]);
@@ -436,6 +440,48 @@ export function sessionUnbind(
   const dropped = observed.length - kept.length;
   const line = `unbound ${key}${dropped ? `; dropped ${dropped} edge${dropped === 1 ? '' : 's'} observed on it` : ''}`;
   const commit = save(store, rec, data, withLogLine(rec, line), `pjman: session unbind ${rec.key} ${key}`, 'unbind');
+  return { path: rec.path, commit, dropped };
+}
+
+/** Take back one observed edge: every `{edge, from, to}` entry of that kind between those two records leaves
+ *  `observed`, and the taking back is a line in `## Log`. The session's bindings and its other edges stay. The
+ *  reverse of `sessionObserve`; one commit, which `pjman undo` reverts. */
+export function sessionUnobserve(
+  store: Store,
+  id: string,
+  edge: string,
+  from: string,
+  to: string,
+): { path: string; commit: string | null; dropped: number } {
+  if (!EDGES[edge]) throw new CliError(`'${edge}' is not an edge (${Object.keys(EDGES).join(', ')})`);
+  const { loaded, rec } = load(store, id);
+  // an end is matched as the record it leads to (a renamed change by its old key too), else as the key written
+  const end = (raw: string): string => fullKey(loaded, raw);
+  // a slug alone names a change, as it does for unbind
+  const [fromKey, toKey] = [from, to].map((raw) => end(raw.includes(':') ? raw : `change:${raw}`));
+  type Seen = { edge?: string; from?: string; to?: string };
+  const observed = Array.isArray(rec.data.observed) ? (rec.data.observed as Seen[]) : [];
+  const ends = (o: Seen) => typeof o?.from === 'string' && typeof o.to === 'string';
+  const hit = (o: Seen) => ends(o) && o.edge === edge && end(o.from!) === fromKey && end(o.to!) === toKey;
+  const kept = observed.filter((o) => !hit(o));
+  const dropped = observed.length - kept.length;
+  if (!dropped) {
+    const near = observed.filter((o) => ends(o) && end(o.from!) === fromKey).map((o) => `${o.edge} ${o.to}`);
+    throw new CliError(
+      `${rec.key} observed no ${edge} edge from ${fromKey} to ${toKey}` +
+        (near.length ? ` (from ${fromKey} it observed: ${[...new Set(near)].join(', ')})` : ''),
+    );
+  }
+  const data: Record<string, unknown> = { ...rec.data, observed: kept };
+  if (!kept.length) delete data.observed;
+  const commit = save(
+    store,
+    rec,
+    data,
+    withLogLine(rec, `took back ${edge} ${fromKey} → ${toKey}, observed in error`),
+    `pjman: session unobserve ${rec.key} ${edge} ${from} ${to}`,
+    'unobserve',
+  );
   return { path: rec.path, commit, dropped };
 }
 

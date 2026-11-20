@@ -62,6 +62,7 @@ import {
   sessionObserve,
   sessionStart,
   sessionUnbind,
+  sessionUnobserve,
   sessionProject,
   sessionName,
 } from '../ops/session.js';
@@ -638,6 +639,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (!id || rest.length < 3) throw usageError('usage: pjman session observe <id> <edge> <from> <to>');
         const r = sessionObserve(store, id, rest[0], rest[1], rest[2]);
         out(`observed in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
+      } else if (sub === 'unobserve') {
+        if (!id || rest.length < 3) throw usageError('usage: pjman session unobserve <id> <edge> <from> <to>');
+        const r = sessionUnobserve(store, id, rest[0], rest[1], rest[2]);
+        out(
+          `took back ${r.dropped} observed edge${r.dropped === 1 ? '' : 's'} in ${r.path}${r.commit ? ` (committed ${r.commit}; pjman undo ${r.commit} puts it back)` : ''}`,
+        );
       } else if (sub === 'focus') {
         if (!id || !rest[0]) throw usageError('usage: pjman session focus <id> <change>');
         const r = sessionFocus(store, id, rest[0]);
@@ -672,7 +679,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           );
       } else
         throw usageError(
-          'usage: pjman session start|log|bind|unbind|observe|focus|project|name <id> … (pjman help session)',
+          'usage: pjman session start|log|bind|unbind|observe|unobserve|focus|project|name <id> … (pjman help session)',
         );
       return 0;
     }
