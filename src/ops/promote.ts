@@ -157,8 +157,7 @@ export function promote(
       else delete data.binds;
     }
   }
-  // (with no step it never had a plan to follow: that status is a person's, or a ticket's, and stays)
-  if (!opts.statusGiven && steps.length && FOLLOWS_PLAN.has(String(data.status))) {
+  if (!opts.statusGiven && FOLLOWS_PLAN.has(String(data.status))) {
     notes.push(`status back to open from ${String(data.status)}: it followed a plan the milestone no longer has`);
     data.status = 'open';
   }

@@ -6,7 +6,7 @@ import type { Store } from '../store/config.js';
 import { loadStore, resolve, unresolvedError, type Rec } from '../store/records.js';
 import { CliError, nowIso, usageError } from '../store/util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from './write.js';
-import { formatStep, nextStep, planProgress, stepsOf, type Step } from '../model/foundation.js';
+import { formatStep, nextStep, planProgress, stepIsOpen, stepsOf, type Step } from '../model/foundation.js';
 
 export const STEP_VERBS = ['add', 'start', 'done', 'drop', 'note', 'edit', 'move', 'reopen'] as const;
 export type StepVerb = (typeof STEP_VERBS)[number];
@@ -146,6 +146,11 @@ export function step(store: Store, ref: string, verb: string, n: number | undefi
       for (const i of idx) {
         const s = steps[i];
         if (s.state === next) throw new CliError(`step ${i + 1} is already ${next}`);
+        // on a milestone only a step still open is settled: the ones it finished or dropped are its history, kept as written
+        if (rec.data.kind === 'milestone' && !stepIsOpen(s))
+          throw new CliError(
+            `step ${i + 1} of ${rec.key} is ${s.state}: a milestone's earlier steps are its history and stay as they are`,
+          );
         if (verb === 'reopen' && s.state !== 'done' && s.state !== 'dropped')
           throw new CliError(`step ${i + 1} is ${s.state}; reopen takes a done or dropped step`);
         s.state = next;

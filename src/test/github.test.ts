@@ -221,7 +221,7 @@ test('a parent that has had a plan is promoted once no step of its own is open (
     {
       id: 'acme/app#31',
       reason:
-        'parent acme/app#30 (change:app/app-30) carries open steps of its own: pjman set change:app/app-30 kind=milestone files each as a child change and makes it a milestone, then sync again',
+        'parent acme/app#30 (change:app/app-30) carries open steps of its own: pjman set change:app/app-30 kind=milestone files each as a child change and makes it a milestone; then pjman set change:app/app-31 parent=change:app/app-30',
     },
   ]);
   assert.deepEqual(
@@ -257,7 +257,7 @@ test('a sync leaves a parent whose finished work is still on its branch: a miles
     {
       id: 'acme/app#41',
       reason:
-        'parent acme/app#40 (change:app/app-40) holds work on its branch app-40 that is not merged, and a milestone merges nothing: pjman merge change:app/app-40 first, then sync again',
+        'parent acme/app#40 (change:app/app-40) holds work on its branch app-40 that is not merged, and a milestone merges nothing: pjman merge change:app/app-40 first, then pjman set change:app/app-40 kind=milestone and pjman set change:app/app-41 parent=change:app/app-40',
     },
   ]);
 });

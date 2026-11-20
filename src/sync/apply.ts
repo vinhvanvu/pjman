@@ -219,7 +219,7 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
           reason:
             parentRec.data.kind === 'bug'
               ? `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone`
-              : `parent ${t.parent} (${parentKey}) ${why}: pjman set ${parentKey} kind=milestone files each as a child change and makes it a milestone, then sync again`,
+              : `parent ${t.parent} (${parentKey}) ${why}: pjman set ${parentKey} kind=milestone files each as a child change and makes it a milestone; then pjman set ${key} parent=${parentKey}`,
         });
         continue;
       }
@@ -230,11 +230,11 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       if (at?.unmerged) {
         result.skipped.push({
           id: t.id,
-          reason: `parent ${t.parent} (${parentKey}) holds work on its branch ${at.name} that is not merged, and a milestone merges nothing: pjman merge ${parentKey} first, then sync again`,
+          reason: `parent ${t.parent} (${parentKey}) holds work on its branch ${at.name} that is not merged, and a milestone merges nothing: pjman merge ${parentKey} first, then pjman set ${parentKey} kind=milestone and pjman set ${key} parent=${parentKey}`,
         });
         continue;
       }
-      // (a status with no plan beneath it came from the ticket or a person, and stays)
+      // (here a status with no plan beneath it is kept: on a change a sync made it is the ticket's, mapped at filing)
       const back = stepsOf(parentRec.data).length > 0 && FOLLOWS_PLAN.has(String(parentRec.data.status));
       writeFile(
         store,

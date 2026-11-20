@@ -127,6 +127,11 @@ test('a status the person set stays, and one given with the kind is the one writ
   set(store, 'change:app/held', ['status=blocked'], {});
   set(store, 'change:app/held', ['kind=milestone'], {});
   assert.equal(rec('change:app/held')!.data.status, 'blocked');
+  // a status that followed no step (a session's file write lifts a change to active) goes back to open as well
+  change(store, 'stepless', { title: 'Stepless', summary: 's' });
+  set(store, 'change:app/stepless', ['status=active'], {});
+  set(store, 'change:app/stepless', ['kind=milestone'], {});
+  assert.equal(rec('change:app/stepless')!.data.status, 'open');
   change(store, 'said', { title: 'Said', summary: 's', steps: ['another thing'] });
   step(store, 'change:app/said', 'start', 1, {});
   set(store, 'change:app/said', ['kind=milestone', 'status=active'], {});
@@ -237,4 +242,9 @@ test('the refusal that remains names an act that clears it: a milestone is filed
   assert.throws(() => step(store, 'change:app/edited', 'add', undefined, { text: 'no' }), /is a milestone/);
   step(store, 'change:app/edited', 'drop', 1, { more: [2] });
   assert.deepEqual(errors(), []);
+  // only a step still open is settled: what a milestone finished or dropped is its history
+  assert.throws(
+    () => step(store, 'change:app/edited', 'done', 1, {}),
+    /step 1 of change:app\/edited is dropped: a milestone's earlier steps are its history/,
+  );
 });
