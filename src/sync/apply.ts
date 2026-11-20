@@ -214,7 +214,11 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       if (why) {
         result.skipped.push({
           id: t.id,
-          reason: `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone`,
+          // a sync files no change from a step by itself (decision promote-to-milestone/sync-promotion): it names the act
+          reason:
+            parentRec.data.kind === 'bug'
+              ? `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone`
+              : `parent ${t.parent} (${parentKey}) ${why}: pjman set ${parentKey} kind=milestone files each as a child change and makes it a milestone, then sync again`,
         });
         continue;
       }

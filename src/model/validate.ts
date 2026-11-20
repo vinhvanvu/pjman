@@ -498,7 +498,7 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           if (own)
             err(
               r,
-              `a milestone's plan is its children; this one carries ${own} open step${own === 1 ? '' : 's'} of its own: finish or drop each (pjman step <change> done|drop <n>) before setting kind=milestone`,
+              `a milestone's plan is its children; this one carries ${own} open step${own === 1 ? '' : 's'} of its own: pjman set <change> kind=milestone files each as a child change, or finish or drop each first (pjman step <change> done|drop <n>)`,
             );
         } else {
           // the other direction: a change other changes name as parent cannot stop being a milestone

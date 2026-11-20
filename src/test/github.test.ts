@@ -219,7 +219,8 @@ test('a parent that has had a plan is promoted once no step of its own is open (
   assert.deepEqual(r.skipped, [
     {
       id: 'acme/app#31',
-      reason: 'parent acme/app#30 (change:app/app-30) carries open steps of its own, so it cannot be a milestone',
+      reason:
+        'parent acme/app#30 (change:app/app-30) carries open steps of its own: pjman set change:app/app-30 kind=milestone files each as a child change and makes it a milestone, then sync again',
     },
   ]);
   assert.deepEqual(

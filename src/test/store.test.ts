@@ -978,7 +978,7 @@ test('depends_on, kind, severity, target and the sequence: validated, refused wh
   );
   assert.throws(
     () => change(store, 'stepped', { title: 'Stepped', summary: 's', project, kind: 'milestone', steps: ['own step'] }),
-    /a milestone's plan is its children; this one carries 1 open step of its own: finish or drop each/,
+    /a milestone's plan is its children; this one carries 1 open step of its own: pjman set <change> kind=milestone files each as a child change, or finish or drop each first/,
   );
   assert.equal(loadStore(store).byKey.get('change:project/stepped'), undefined, 'refused whole');
   set(store, 'change:project/base', ['kind=milestone'], {}); // base has no steps: promoted
@@ -987,16 +987,10 @@ test('depends_on, kind, severity, target and the sequence: validated, refused wh
   // a change that has had a plan becomes a milestone once no step is open (decision promote-to-milestone/steps-on-a-milestone)
   change(store, 'grown', { title: 'Grown', summary: 'g', project, steps: ['first', 'second', 'third'] });
   step(store, 'change:project/grown', 'done', 1, { note: 'landed' });
-  assert.throws(
-    () => set(store, 'change:project/grown', ['kind=milestone'], {}),
-    /this one carries 2 open steps of its own: finish or drop each \(pjman step <change> done\|drop <n>\)/,
-  );
-  step(store, 'change:project/grown', 'start', 2, {});
-  step(store, 'change:project/grown', 'drop', 3, {});
-  assert.throws(() => set(store, 'change:project/grown', ['kind=milestone'], {}), /carries 1 open step of its own/); // a step in work is open
   step(store, 'change:project/grown', 'drop', 2, {});
+  step(store, 'change:project/grown', 'drop', 3, {});
   const planBefore = loadStore(store).byKey.get('change:project/grown')![0].data.plan;
-  set(store, 'change:project/grown', ['kind=milestone'], {}); // the drop the refusal names clears it
+  set(store, 'change:project/grown', ['kind=milestone'], {}); // no step open: nothing to file, only the kind is written
   const grown = loadStore(store).byKey.get('change:project/grown')![0];
   assert.equal(grown.data.kind, 'milestone');
   assert.deepEqual(grown.data.plan, planBefore, 'its steps are kept as they were');
