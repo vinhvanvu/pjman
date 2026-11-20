@@ -168,7 +168,7 @@ pjman's own store is the default and needs nothing else. A project can opt in to
 
 - a change's Trail is created when work starts on it, carries the change's intent, done-when and accepted decisions, is marked ready when the plan has run to its end, and closes when the change is done or dropped;
 - `pjman review <change>` files what it finds onto the Trail, whose Findings gate holds the merge until each is resolved;
-- `pjman merge <change>` merges through the Trail's gates, and a merge made on Entire sets the change done. A merge made on GitHub does not wait for those gates unless the base branch is protected with the "Entire Gates" check required; pjman says when a branch was merged past a gate;
+- `pjman merge <change>` merges through the Trail's gates, and a merge made on Entire sets the change done. A merge made on GitHub does not wait for those gates unless the base branch is protected with the "Entire Gates" check required; pjman says, and notes on the change, when a branch was merged while a gate still held it at the last read;
 - a change and its sessions link the checkpoints behind their commits, and `pjman why <file>:<line>` reads a line back to its commit, session, change, intent and decisions.
 
 Opted out, none of Entire's commands run, and review, merge and `pjman why` work locally.

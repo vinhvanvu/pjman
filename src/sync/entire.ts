@@ -6,24 +6,44 @@
 // was cut for, and the checkpoint becomes a source (`entire-checkpoint:<id>`, opening on entire.com at its commit) in
 // the change's links, observed by each session of the store that contributed to it. Only for a project that opted in;
 // what Entire does not answer is left pending and read again by the next sync.
-import { execFileSync } from 'node:child_process';
-import path from 'node:path';
-import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
-import { findReferences, resolveArg } from '../model/graph.js';
-import { repoOf } from '../model/refs.js';
-import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
-import type { Store } from '../store/config.js';
-import type { EventInput } from '../store/events.js';
-import { git } from '../store/git.js';
-import { sourceFileSlug } from '../store/keys.js';
-import { findSession, loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../store/records.js';
-import { CliError, localDate, nowIso } from '../store/util.js';
-import { baseBranch, mergedBranch } from './git.js';
-import { note } from '../ops/note.js';
-import { fileFindings, readFindings } from './review.js';
-import { reconcileTrail, TRAIL_KIND, trailCandidates, trailOf, type TrailReconcile } from './trail.js';
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { entireOn, runEntire, type EntireOpts } from "../entire/entire.js";
+import { findReferences, resolveArg } from "../model/graph.js";
+import { repoOf } from "../model/refs.js";
+import {
+  envelope,
+  finishWrite,
+  render,
+  snapshot,
+  validateOrUndo,
+  writeFile,
+} from "../ops/write.js";
+import type { Store } from "../store/config.js";
+import type { EventInput } from "../store/events.js";
+import { git } from "../store/git.js";
+import { sourceFileSlug } from "../store/keys.js";
+import {
+  findSession,
+  loadStore,
+  resolve,
+  unresolvedError,
+  type Loaded,
+  type Rec,
+} from "../store/records.js";
+import { CliError, localDate, nowIso } from "../store/util.js";
+import { baseBranch, mergedBranch } from "./git.js";
+import { note } from "../ops/note.js";
+import { fileFindings, readFindings } from "./review.js";
+import {
+  reconcileTrail,
+  TRAIL_KIND,
+  trailCandidates,
+  trailOf,
+  type TrailReconcile,
+} from "./trail.js";
 
-export const CHECKPOINT_KIND = 'entire-checkpoint';
+export const CHECKPOINT_KIND = "entire-checkpoint";
 
 export interface CheckpointCommit {
   sha: string;
@@ -52,27 +72,33 @@ export interface EntireSyncResult {
 }
 
 const obj = (v: unknown): Record<string, unknown> | undefined =>
-  v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
-const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  v && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined;
+const list = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 const tryGit = (cwd: string, args: string[]): string => {
   try {
     return git(cwd, args);
   } catch {
-    return '';
+    return "";
   }
 };
 
 /** git for a read that may be long: the whole answer, or a throw; never an answer cut short and taken for empty. */
 const longGit = (cwd: string, args: string[]): string =>
-  execFileSync('git', args, {
+  execFileSync("git", args, {
     cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 512 * 1024 * 1024,
   }).trim();
 const isAncestor = (dir: string, a: string, b: string): boolean => {
   try {
-    execFileSync('git', ['merge-base', '--is-ancestor', a, b], { cwd: dir, stdio: 'ignore' });
+    execFileSync("git", ["merge-base", "--is-ancestor", a, b], {
+      cwd: dir,
+      stdio: "ignore",
+    });
     return true;
   } catch {
     return false;
@@ -82,29 +108,38 @@ const isAncestor = (dir: string, a: string, b: string): boolean => {
 /** The base as a ref git can read here: the local branch, else what was fetched of it. */
 function baseRefOf(dir: string): string {
   const base = baseBranch(dir);
-  return tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/heads/${base}`]) ? base : `origin/${base}`;
+  return tryGit(dir, ["rev-parse", "--verify", "--quiet", `refs/heads/${base}`])
+    ? base
+    : `origin/${base}`;
 }
 
 /** Every commit of the repository's local branches that carries an `Entire-Checkpoint` trailer, oldest first, with no
  *  branch yet. One git call, over the commits that carry the trailer only; a log that fails throws. */
 export function trailerCommits(dir: string): CheckpointCommit[] {
-  const SEP = '\x1f';
-  const END = '\x1e';
+  const SEP = "\x1f";
+  const END = "\x1e";
   const raw = longGit(dir, [
-    'log',
-    '--reverse',
-    '--branches',
-    '--grep=^Entire-Checkpoint:',
+    "log",
+    "--reverse",
+    "--branches",
+    "--grep=^Entire-Checkpoint:",
     `--format=%H${SEP}%s${SEP}%b${SEP}%(trailers:key=Entire-Checkpoint,valueonly,separator=%x2c)${END}`,
   ]);
   const commits: CheckpointCommit[] = [];
   for (const entry of raw.split(END)) {
-    const [sha, subject, body, trailers] = entry.replace(/^\s+/, '').split(SEP);
-    const checkpoints = (trailers ?? '')
-      .split(',')
+    const [sha, subject, body, trailers] = entry.replace(/^\s+/, "").split(SEP);
+    const checkpoints = (trailers ?? "")
+      .split(",")
       .map((t) => t.trim())
       .filter((t) => /^[0-9A-Za-z]{20,40}$/.test(t));
-    if (sha && checkpoints.length) commits.push({ sha, subject, body: body ?? '', checkpoints, branches: [] });
+    if (sha && checkpoints.length)
+      commits.push({
+        sha,
+        subject,
+        body: body ?? "",
+        checkpoints,
+        branches: [],
+      });
   }
   return commits;
 }
@@ -119,28 +154,43 @@ export function attribute(dir: string, commits: CheckpointCommit[]): void {
   for (const c of commits) {
     if (!isAncestor(dir, c.sha, baseRef)) {
       const holding = tryGit(dir, [
-        'for-each-ref',
-        '--format=%(refname:short) %(objectname)',
-        '--contains',
+        "for-each-ref",
+        "--format=%(refname:short) %(objectname)",
+        "--contains",
         c.sha,
-        'refs/heads',
+        "refs/heads",
       ])
-        .split('\n')
-        .map((l) => l.split(' '))
+        .split("\n")
+        .map((l) => l.split(" "))
         .filter(([b]) => b && b !== base);
       c.branches = holding
-        .filter(([, tip]) => !holding.some(([, lower]) => lower !== tip && isAncestor(dir, lower, tip)))
+        .filter(
+          ([, tip]) =>
+            !holding.some(
+              ([, lower]) => lower !== tip && isAncestor(dir, lower, tip),
+            ),
+        )
         .map(([b]) => b);
       continue;
     }
     // on the base: the oldest commit of the base's own line that descends from it is the merge that brought it in
-    const own = new Set(tryGit(dir, ['rev-list', '--first-parent', `${c.sha}..${baseRef}`]).split('\n'));
-    const merge = tryGit(dir, ['rev-list', '--ancestry-path', `${c.sha}..${baseRef}`])
-      .split('\n')
+    const own = new Set(
+      tryGit(dir, ["rev-list", "--first-parent", `${c.sha}..${baseRef}`]).split(
+        "\n",
+      ),
+    );
+    const merge = tryGit(dir, [
+      "rev-list",
+      "--ancestry-path",
+      `${c.sha}..${baseRef}`,
+    ])
+      .split("\n")
       .toReversed()
       .find((sha) => sha && own.has(sha));
     if (!merge || !isAncestor(dir, c.sha, `${merge}^2`)) continue;
-    const branch = mergedBranch(tryGit(dir, ['log', '-1', '--format=%s', merge]));
+    const branch = mergedBranch(
+      tryGit(dir, ["log", "-1", "--format=%s", merge]),
+    );
     c.branches = branch ? [branch] : [];
   }
 }
@@ -158,9 +208,13 @@ export function checkpointCommits(dir: string): CheckpointCommit[] {
 }
 
 /** The changes a commit belongs to: those its message names by key, else those its branches were cut for. */
-function changesOf(loaded: Loaded, c: CheckpointCommit, opts: { project?: string; projectDir?: string }): string[] {
+function changesOf(
+  loaded: Loaded,
+  c: CheckpointCommit,
+  opts: { project?: string; projectDir?: string },
+): string[] {
   const named = findReferences(loaded, `${c.subject}\n${c.body}`, opts)
-    .filter((r) => r.change && r.text.startsWith('change:'))
+    .filter((r) => r.change && r.text.startsWith("change:"))
     .map((r) => r.change!);
   if (named.length) return [...new Set(named)];
   if (opts.projectDir && !c.branches.length) attribute(opts.projectDir, [c]);
@@ -188,41 +242,66 @@ export interface EntireSyncOpts {
 /** The change `--start` names, by whatever form names it (the slug's short key, the full key, an alias): the sweep
  *  knows a change by its full key. A name that reaches no change, and a change the sweep would never start a Trail
  *  for, is refused here with the reason, before anything is read or written. */
-function startChange(store: Store, loaded: Loaded, project: string, raw: string): Rec {
-  if (!raw.trim()) throw new CliError('--start takes the change whose Trail to start: it was given no name');
+function startChange(
+  store: Store,
+  loaded: Loaded,
+  project: string,
+  raw: string,
+): Rec {
+  if (!raw.trim())
+    throw new CliError(
+      "--start takes the change whose Trail to start: it was given no name",
+    );
   // a slug goes through the one resolver, as every command's argument does; a key is resolved here
-  const name = resolveArg(loaded, raw, { kinds: ['change'] });
+  const name = resolveArg(loaded, raw, { kinds: ["change"] });
   const res = resolve(loaded, name);
-  if (res.status === 'ambiguous') throw unresolvedError(res, name);
-  const rec = res.status === 'ok' || res.status === 'alias' || res.status === 'invalid' ? res.rec : undefined;
-  if (!rec) throw new CliError(`${name} is not a change: --start takes the change whose Trail to start`);
-  if (rec.type !== 'change') throw new CliError(`${rec.key} is a ${rec.type}; --start takes a change`);
-  const status = typeof rec.data.status === 'string' ? rec.data.status : 'open';
+  if (res.status === "ambiguous") throw unresolvedError(res, name);
+  const rec =
+    res.status === "ok" || res.status === "alias" || res.status === "invalid"
+      ? res.rec
+      : undefined;
+  if (!rec)
+    throw new CliError(
+      `${name} is not a change: --start takes the change whose Trail to start`,
+    );
+  if (rec.type !== "change")
+    throw new CliError(`${rec.key} is a ${rec.type}; --start takes a change`);
+  const status = typeof rec.data.status === "string" ? rec.data.status : "open";
   const why = !rec.valid
-    ? 'its record does not validate (pjman validate says why)'
+    ? "its record does not validate (pjman validate says why)"
     : rec.data.project !== project
-      ? `it belongs to ${typeof rec.data.project === 'string' ? rec.data.project : 'no project'}, not ${project}`
-      : rec.data.kind === 'milestone'
-        ? 'it is a milestone: its children have Trails, each its own'
+      ? `it belongs to ${typeof rec.data.project === "string" ? rec.data.project : "no project"}, not ${project}`
+      : rec.data.kind === "milestone"
+        ? "it is a milestone: its children have Trails, each its own"
         : !store.config.source_kinds.includes(TRAIL_KIND)
           ? `the store has no ${TRAIL_KIND} source kind: run pjman migrate, or, where the store lists its own kinds, add it to source_kinds in pjman.yaml`
-          : status === 'done' || status === 'dropped'
+          : status === "done" || status === "dropped"
             ? `the change has ended (status ${status})`
             : // a Trail closed when last read is read again by the sweep (it may have been reopened on Entire)
-              status !== 'active' && status !== 'review' && !trailOf(loaded, rec)?.state
+              status !== "active" &&
+                status !== "review" &&
+                !trailOf(loaded, rec)?.state
               ? `work has not started on it (status ${status}): a Trail starts with the first step (pjman step ${rec.key} start <n>)`
               : null;
   if (why) throw new CliError(`${rec.key} gets no Trail from --start: ${why}`);
   return rec;
 }
 
-export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncResult {
+export function syncEntire(
+  store: Store,
+  opts: EntireSyncOpts = {},
+): EntireSyncResult {
   const loaded = loadStore(store);
   const project = opts.project ?? store.project;
   const dir = store.projectDir;
   if (!project || !loaded.byKey.has(project))
-    throw new CliError('sync entire reads a project: run it inside a registered project');
-  if (!dir) throw new CliError(`sync entire reads ${project}'s repository: run it inside the project's folder`);
+    throw new CliError(
+      "sync entire reads a project: run it inside a registered project",
+    );
+  if (!dir)
+    throw new CliError(
+      `sync entire reads ${project}'s repository: run it inside the project's folder`,
+    );
   if (!entireOn(loaded, project))
     throw new CliError(
       `${project} has not opted in to Entire: pjman set ${project} ext.entire.enabled=true (then pjman doctor says what Entire still needs)`,
@@ -231,7 +310,10 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     throw new CliError(
       `the store has no ${CHECKPOINT_KIND} source kind: run pjman migrate, or, where the store lists its own kinds, add it to source_kinds in pjman.yaml`,
     );
-  const startRec = opts.start === undefined ? undefined : startChange(store, loaded, project, opts.start);
+  const startRec =
+    opts.start === undefined
+      ? undefined
+      : startChange(store, loaded, project, opts.start);
   const start = startRec?.key;
   const result: EntireSyncResult = {
     project,
@@ -249,25 +331,36 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
   } catch (e) {
     // the history could not be read: said, never taken for a repository with no checkpoints
     // (the Trails below are still followed)
-    result.pending.push(`git log failed in ${dir}: ${(e as Error).message.split('\n')[0].slice(0, 200)}`);
+    result.pending.push(
+      `git log failed in ${dir}: ${(e as Error).message.split("\n")[0].slice(0, 200)}`,
+    );
     commits = [];
   }
   // a checkpoint on several commits (a cherry-pick, a rebase whose old copy is still a branch) is one checkpoint: the
   // commit on the base speaks for it, else the newest
   const carriers = new Map<string, CheckpointCommit[]>();
-  for (const c of commits) for (const id of c.checkpoints) carriers.set(id, [...(carriers.get(id) ?? []), c]);
+  for (const c of commits)
+    for (const id of c.checkpoints)
+      carriers.set(id, [...(carriers.get(id) ?? []), c]);
   const canonical = new Map<string, string>();
   const baseRef = baseRefOf(dir);
   for (const [id, cs] of carriers)
     canonical.set(
       id,
-      (cs.length > 1 ? cs.find((c) => isAncestor(dir, c.sha, baseRef)) : undefined)?.sha ?? cs.at(-1)!.sha,
+      (cs.length > 1
+        ? cs.find((c) => isAncestor(dir, c.sha, baseRef))
+        : undefined
+      )?.sha ?? cs.at(-1)!.sha,
     );
   // Entire is asked for a bounded number of checkpoints a run, and no more once it has failed to answer one
   let asks = 25;
   const repo = repoOf(loaded, project);
   const env = envelope({ session: opts.session, writer: opts.writer });
-  const stamp = { writer: env.writer, session: env.session, created: localDate() };
+  const stamp = {
+    writer: env.writer,
+    session: env.session,
+    created: localDate(),
+  };
   const events: EventInput[] = [];
   const writes = new Map<string, string>();
   const created: string[] = [];
@@ -301,46 +394,74 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
       // asked once it has answered, even with no session; not asked again this run once a call has failed
       if (!sessions.length && known?.explained !== true && asks > 0) {
         asks--;
-        const r = runEntire(['checkpoint', 'explain', id], { ...opts.entire, cwd: dir });
+        const r = runEntire(["checkpoint", "explain", id], {
+          ...opts.entire,
+          cwd: dir,
+        });
         const answer = r.ok ? obj(r.data) : undefined;
         if (answer) {
           asked = true;
           sessions = (Array.isArray(answer.sessions) ? answer.sessions : [])
             .map((s) => obj(s)?.session_id)
-            .filter((s): s is string => typeof s === 'string');
+            .filter((s): s is string => typeof s === "string");
         } else {
           asks = 0;
-          const reason = r.ok ? `entire checkpoint explain ${id} answered nothing readable` : r.reason;
+          const reason = r.ok
+            ? `entire checkpoint explain ${id} answered nothing readable`
+            : r.reason;
           if (!result.pending.includes(reason)) result.pending.push(reason);
         }
       }
       // written when new, when Entire has just answered, and when the trailer now sits on another commit (a rebase,
       // an amend, a squash): the link opens on the commit that exists
       if (!src || asked || known?.commit !== c.sha) {
-        const rel = src?.path ?? path.join('sources', CHECKPOINT_KIND, `${sourceFileSlug(CHECKPOINT_KIND, id)}.md`);
+        const rel =
+          src?.path ??
+          path.join(
+            "sources",
+            CHECKPOINT_KIND,
+            `${sourceFileSlug(CHECKPOINT_KIND, id)}.md`,
+          );
         const srcData: Record<string, unknown> = {
           ...src?.data,
           kind: CHECKPOINT_KIND,
           key: id,
           title: c.subject.slice(0, 200),
-          url: repo ? `https://entire.com/gh/${repo}/commit/${c.sha}` : src?.data.url,
+          url: repo
+            ? `https://entire.com/gh/${repo}/commit/${c.sha}`
+            : src?.data.url,
           ...(src ? {} : stamp),
           ext: {
             ...obj(src?.data.ext),
             entire: {
               commit: c.sha,
               ...(sessions.length ? { sessions } : {}),
-              ...(asked || known?.explained === true ? { explained: true } : {}),
+              ...(asked || known?.explained === true
+                ? { explained: true }
+                : {}),
               synced_at: nowIso(),
             },
           },
         };
-        writes.set(rel, render('source', srcData, src?.body ?? ''));
+        writes.set(rel, render("source", srcData, src?.body ?? ""));
         if (!src) created.push(rel);
         events.push(
           src
-            ? { op: 'set', key, type: 'source', path: rel, fields: ['ext'], writer: env.writer }
-            : { op: 'created', key, type: 'source', path: rel, writer: env.writer },
+            ? {
+                op: "set",
+                key,
+                type: "source",
+                path: rel,
+                fields: ["ext"],
+                writer: env.writer,
+              }
+            : {
+                op: "created",
+                key,
+                type: "source",
+                path: rel,
+                writer: env.writer,
+              },
         );
       }
       for (const change of changes) {
@@ -352,22 +473,30 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         let wrote = false;
         if (!links.includes(key)) {
           d.links = [...links, key];
-          mark(rec, 'links');
+          mark(rec, "links");
           wrote = true;
         }
         for (const sid of sessions) {
           const s = findSession(loaded, sid);
           if (!s) continue;
           const sd = dataOf(s);
-          const edges = Array.isArray(sd.observed) ? [...(sd.observed as Record<string, unknown>[])] : [];
-          if (edges.some((o) => o.edge === 'links' && o.from === change && o.to === key)) continue;
-          edges.push({ edge: 'links', from: change, to: key, at: nowIso() });
+          const edges = Array.isArray(sd.observed)
+            ? [...(sd.observed as Record<string, unknown>[])]
+            : [];
+          if (
+            edges.some(
+              (o) => o.edge === "links" && o.from === change && o.to === key,
+            )
+          )
+            continue;
+          edges.push({ edge: "links", from: change, to: key, at: nowIso() });
           sd.observed = edges;
-          mark(s, 'observed');
+          mark(s, "observed");
           seenBy.push(s.key);
           wrote = true;
         }
-        if (wrote) result.linked.push({ checkpoint: key, change, sessions: seenBy });
+        if (wrote)
+          result.linked.push({ checkpoint: key, change, sessions: seenBy });
       }
     }
   }
@@ -375,7 +504,7 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     const { rec, data: d } = data.get(rel)!;
     writes.set(rel, render(rec.type, d, rec.body));
     events.push({
-      op: fields.has('observed') ? 'observe' : 'set',
+      op: fields.has("observed") ? "observe" : "set",
       key: rec.key,
       type: rec.type,
       path: rel,
@@ -393,7 +522,7 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     validateOrUndo(store, touched, created, prior);
     result.commit = finishWrite(
       store,
-      `pjman: sync entire ${project} (${result.linked.length} checkpoint link${result.linked.length === 1 ? '' : 's'})`,
+      `pjman: sync entire ${project} (${result.linked.length} checkpoint link${result.linked.length === 1 ? "" : "s"})`,
       env.session,
       events,
     );
@@ -410,7 +539,9 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
   const candidates = [
     ...(named ? [named] : []),
     ...trailCandidates(after, project).filter(
-      (rec) => rec.key !== start && (!opts.wake || (rec.data.status !== 'active' && !!trailOf(after, rec))),
+      (rec) =>
+        rec.key !== start &&
+        (!opts.wake || (rec.data.status !== "active" && !!trailOf(after, rec))),
     ),
   ];
   // whether the change named to start was answered for: by its reconcile, or by a reason already said; and where its
@@ -423,7 +554,9 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
   for (const rec of candidates) {
     const left = end - Date.now();
     if (left <= 0) {
-      result.pending.push('Entire was not asked for every Trail: the run reached its time');
+      result.pending.push(
+        "Entire was not asked for every Trail: the run reached its time",
+      );
       break;
     }
     let t: TrailReconcile | null;
@@ -436,13 +569,21 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         // the sweep only follows: a Trail is started, and its branch pushed, by a command run on the change, or here
         // for the one change named (decision entire-follow-ups/unasked-push)
         create: start === rec.key,
-        whyNot: start === rec.key ? (reason) => (startWhyNot = reason) : undefined,
+        whyNot:
+          start === rec.key ? (reason) => (startWhyNot = reason) : undefined,
       });
       // the session waiting on the Trail is woken in the same step as the move is recorded
-      if (t && opts.wake && t.moved.length && t.state)
-        note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });
+      // (a merge that may have gone past gates is already a note, written by the reconcile whoever ran it)
+      const moved = t ? t.moved.filter((m) => m !== t!.noted) : [];
+      if (t && opts.wake && moved.length && t.state)
+        note(
+          store,
+          rec.key,
+          `Entire, Trail #${t.state.number}: ${moved.join("; ")}`,
+          { writer: opts.writer },
+        );
     } catch (e) {
-      const reason = `${rec.key}: ${(e as Error).message.split('\n')[0]}`;
+      const reason = `${rec.key}: ${(e as Error).message.split("\n")[0]}`;
       if (!result.pending.includes(reason)) result.pending.push(reason);
       if (rec.key === start) startSaid = true;
       continue;
@@ -453,12 +594,12 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
       // its own Trail, read again just now and still closed: nothing was started, and the way on is said. Not where
       // the read did not come back (the state is then the last one stored), nor where the Trail closed with its merge
       if (
-        t.state?.status === 'closed' &&
+        t.state?.status === "closed" &&
         !t.acts.length &&
         !t.down &&
         !t.pending.length &&
         !t.done &&
-        t.state.change?.status !== 'merged'
+        t.state.change?.status !== "merged"
       )
         t.pending.push(
           `${rec.key} was not started: its Trail #${t.state.number} is closed; reopen it on Entire (entire trail update ${t.state.number} --status open) and run this again`,
@@ -467,15 +608,22 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
     result.trails.push(t);
     // findings not yet on the Trail (filed while Entire did not answer, or before the Trail existed) are filed now
     try {
-      for (const p of fileFindings(store, rec.key, { session: opts.session, writer: opts.writer, entire: opts.entire })
-        .pending)
+      for (const p of fileFindings(store, rec.key, {
+        session: opts.session,
+        writer: opts.writer,
+        entire: opts.entire,
+      }).pending)
         if (!t.pending.includes(p)) t.pending.push(p);
     } catch (e) {
-      t.pending.push(`${rec.key}: ${(e as Error).message.split('\n')[0]}`);
+      t.pending.push(`${rec.key}: ${(e as Error).message.split("\n")[0]}`);
     }
     // and what Entire's review or a person posted there is read onto the change while the branch is open: a merged
     // Trail lists none
-    if (!t.down && (t.state?.change?.status === 'open' || t.state?.change?.status === 'draft')) {
+    if (
+      !t.down &&
+      (t.state?.change?.status === "open" ||
+        t.state?.change?.status === "draft")
+    ) {
       try {
         const read = readFindings(store, rec.key, {
           session: opts.session,
@@ -483,17 +631,22 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
           entire: opts.entire,
           timeout: Math.max(1_000, Math.min(30_000, end - Date.now())),
         });
-        if (read.read.length) result.read.push({ change: rec.key, read: read.read });
-        for (const p of read.pending) if (!t.pending.includes(p)) t.pending.push(p);
+        if (read.read.length)
+          result.read.push({ change: rec.key, read: read.read });
+        for (const p of read.pending)
+          if (!t.pending.includes(p)) t.pending.push(p);
       } catch (e) {
-        t.pending.push(`${rec.key}: ${(e as Error).message.split('\n')[0]}`);
+        t.pending.push(`${rec.key}: ${(e as Error).message.split("\n")[0]}`);
       }
     }
-    for (const p of t.pending) if (!result.pending.includes(p)) result.pending.push(p);
+    for (const p of t.pending)
+      if (!result.pending.includes(p)) result.pending.push(p);
     if (t.down) break;
   }
   // the change named to start, where its reconcile had nothing to say of it: the reason it gave
   if (start && !startSaid)
-    result.pending.push(`${start} was not started: ${startWhyNot ?? 'no Trail could be made for it'}`);
+    result.pending.push(
+      `${start} was not started: ${startWhyNot ?? "no Trail could be made for it"}`,
+    );
   return result;
 }
