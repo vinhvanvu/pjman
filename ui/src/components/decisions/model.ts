@@ -128,7 +128,10 @@ export function grouped(
   history: CardDecision[];
 } {
   const by = (a: CardDecision, b: CardDecision) => (a.created ?? '').localeCompare(b.created ?? '');
-  const own = (d: CardDecision) => !!change && !!d.keyed && d.change === change;
+  // a group with no change named stands on one when every card shares it
+  const first = list[0]?.change;
+  const on = change ?? (first && list.every((d) => d.change === first) ? first : undefined);
+  const own = (d: CardDecision) => !!on && !!d.keyed && d.change === on;
   const keyFirst = (a: CardDecision, b: CardDecision) => Number(own(b)) - Number(own(a));
   const waiting = list.filter((d) => d.status === 'proposed').toSorted((a, b) => keyFirst(a, b) || by(a, b));
   const key = list.find((d) => d.status === 'decided' && own(d));

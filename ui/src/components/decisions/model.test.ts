@@ -112,6 +112,10 @@ describe('the group', () => {
       'change:p/c',
     );
     expect(beneath.waiting.map((d) => d.key)).toEqual(['decision:p/c/a', 'decision:p/c/z']);
+    // a group on one change, its change unnamed, still leads with its key decision
+    expect(
+      grouped([card('a', { created: '2026-11-01' }), card('b', { created: '2026-11-02', keyed })]).waiting[0]?.key,
+    ).toBe('decision:p/c/b');
   });
   it('heads the group by what waits and where the decided are', () => {
     expect(groupHead(0, 3, 'session')).toBe('nothing waits · the decided are on the rail');

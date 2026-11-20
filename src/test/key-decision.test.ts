@@ -183,4 +183,6 @@ test('show names the key decision on its change and on the decision itself', () 
   );
   assert.match(show(store, 'decision:ids/uid-type').text, /the key decision of change:project\/ids/);
   assert.doesNotMatch(show(store, 'decision:ids/naming').text, /Key decision/);
+  assert.equal(show(store, 'change:ids').keyDecision?.key, 'decision:project/ids/uid-type');
+  assert.equal(show(store, 'decision:ids/naming').keyDecision, undefined);
 });

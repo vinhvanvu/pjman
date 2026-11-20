@@ -174,7 +174,13 @@ export function ChangeTree({
         <section className="flex flex-col gap-2.5">
           <Head
             label={beneath.length ? 'Decisions beneath' : 'Decisions'}
-            sum={decisions.length || onSession ? groupHead(waiting, decided, where) : 'none yet'}
+            sum={
+              decisions.length || onSession
+                ? groupHead(waiting, decided, where)
+                : keyDecided
+                  ? 'the key decision is under the Intent'
+                  : 'none yet'
+            }
           />
           {(onSession ? waiting > 0 : decisions.length > 0) && (
             <DecisionGroup
@@ -364,6 +370,12 @@ function KeyDecisionPart({
   onReopen?: DecideAction;
 }) {
   const [open, setOpen] = useState(linked === d.key);
+  // a link to it followed while the record is open opens it, as the group does for its own
+  const [seen, setSeen] = useState(linked);
+  if (linked !== seen) {
+    setSeen(linked);
+    if (linked === d.key) setOpen(true);
+  }
   return (
     <section className="flex flex-col gap-2.5">
       <Head label="Key decision" sum={d.keyed?.line} />
@@ -373,7 +385,8 @@ function KeyDecisionPart({
         lens={lens}
         actor={actor}
         onToggleThread={() => {
-          onLink?.(open ? undefined : d.key);
+          if (!open) onLink?.(d.key);
+          else if (linked === d.key) onLink?.(undefined);
           setOpen((v) => !v);
         }}
         onReopen={onReopen}

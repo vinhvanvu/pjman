@@ -892,7 +892,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         store,
         resolveArg(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project }),
       );
-      v.json ? json({ ...row(r.rec), body: r.rec.body }) : out(`# ${r.rec.path}\n${r.text}`);
+      v.json
+        ? json({ ...row(r.rec), body: r.rec.body, ...(r.keyDecision ? { keyDecision: r.keyDecision } : {}) })
+        : out(`# ${r.rec.path}\n${r.text}`);
       return 0;
     }
     case 'set': {

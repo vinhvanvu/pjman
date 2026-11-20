@@ -375,7 +375,7 @@ export function formatLs(rows: Row[]): string {
     .join('\n');
 }
 
-export function show(store: Store, key: string): { rec: Rec; text: string } {
+export function show(store: Store, key: string): { rec: Rec; text: string; keyDecision?: KeyDecision } {
   const loaded = loadStore(store);
   const res = resolve(loaded, key);
   if (res.status === 'ok' || res.status === 'alias' || res.status === 'invalid') {
@@ -402,6 +402,9 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
         text += `\n## Key decision\n\nthe key decision of ${res.rec.changeKey}: ${keyLine(k)}\n`;
       const conflict = k && conflictLine(k);
       if (conflict && (res.rec.type === 'change' || k.conflict?.key === res.rec.key)) text += `note: ${conflict}\n`;
+      // the JSON carries it too: a change's key decision, or the decision's own when it is the key one
+      if (k && (res.rec.type === 'change' || k.key === res.rec.key || k.conflict?.key === res.rec.key))
+        return { rec: res.rec, text, keyDecision: k };
     }
     return { rec: res.rec, text };
   }
