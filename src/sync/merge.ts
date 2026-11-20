@@ -9,7 +9,7 @@ import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
 import { loadStore } from '../store/records.js';
 import { live } from '../model/tree.js';
-import { CliError } from '../store/util.js';
+import { CliError, nowIso } from '../store/util.js';
 import { findingsOf, formatFinding, holdsMerge } from '../model/findings.js';
 import { observedBranches } from '../model/view.js';
 import { baseBranch, branchesOf, mergedInto } from './git.js';
@@ -113,6 +113,17 @@ export function mergeChange(
       throw new CliError(
         `not merged: ${r.reason}\n${rec.key} merges through its Trail on Entire, whose gates decide; nothing was merged locally (entire trail merge --branch ${branch} --dry-run names what blocks)`,
       );
+    // the merge went through the Trail's gates: kept on the change, so whichever command reads the merge later (this
+    // one, or a sync after a fetch or after Entire was slow to answer) does not say it went past a gate kept from an
+    // earlier read
+    try {
+      set(store, rec.key, [`ext.entire.merged_through=${nowIso()}`], {
+        session: opts.session,
+        because: `${branch} merged through its Trail on Entire`,
+      });
+    } catch (e) {
+      notes.push(`that the merge went through the Trail was not kept (${(e as Error).message.split('\n')[0]})`);
+    }
     // the merge happened on the remote: bring the base here, when that is safe to do
     if (tryGit(dir, ['fetch', '--quiet', 'origin', base]) === null)
       notes.push(`origin was not fetched; run git pull on ${base}`);

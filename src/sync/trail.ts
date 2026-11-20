@@ -490,8 +490,10 @@ export function reconcileTrail(
   if (state.change?.status === 'merged' && (status === 'done' || before?.ended)) state.ended = true;
   result.state = state;
   result.down = down;
-  result.moved = trailMoves(before, state, opts.through);
-  const past = gatesPast(before, state, opts.through);
+  // (a merge pjman merge made through the Trail is marked on the change, for a read that comes after that command)
+  const through = opts.through || !!obj(obj(rec.data.ext)?.entire)?.merged_through;
+  result.moved = trailMoves(before, state, through);
+  const past = gatesPast(before, state, through);
 
   // the record: the Trail's source, bound by the change
   const repo = repoOf(loaded, store.project);

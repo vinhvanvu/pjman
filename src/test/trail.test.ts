@@ -811,6 +811,16 @@ test('a merge read with a gate still held is noted on the change by whoever read
   assert.deepEqual(through.moved, ['its branch was merged']);
   assert.equal(through.noted, undefined);
   assert.ok(!notes('stale').includes('not passed when last read'));
+
+  // the same where the read comes after pjman merge (the merge was not fetched yet, or Entire was slow to answer):
+  // the change keeps that its merge went through the Trail, and a later sync says nothing of a gate
+  const l = start('later');
+  set(store, 'change:web/later', ['ext.entire.merged_through=2026-01-01T00:00:00.000Z'], {});
+  edit(l, (t) => (t.change = 'merged'));
+  const later = syncEntire(store, { entire: { bin }, wake: true }).trails.find((t) => t.change === 'change:web/later')!;
+  assert.deepEqual(later.moved, ['its branch was merged']);
+  assert.equal(later.noted, undefined);
+  assert.ok(!notes('later').includes('not passed when last read'));
 });
 
 test('pjman sync git prints what the Trail of a change it ended says, and carries it in its JSON', () => {
