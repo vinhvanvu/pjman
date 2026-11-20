@@ -44,6 +44,7 @@ import { localDate, today } from '../store/util.js';
 import { validate } from '../model/validate.js';
 import { change, decisionRec, next } from './shape.js';
 import { step } from '../ops/step.js';
+import { liftsOfStore } from '../ops/lift.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-test-'));
 const home = path.join(tmp, 'home');
@@ -977,12 +978,61 @@ test('depends_on, kind, severity, target and the sequence: validated, refused wh
   );
   assert.throws(
     () => change(store, 'stepped', { title: 'Stepped', summary: 's', project, kind: 'milestone', steps: ['own step'] }),
-    /a milestone's plan is its children; this one carries 1 step of its own/,
+    /a milestone's plan is its children; this one carries 1 open step of its own: file a milestone without steps/,
   );
   assert.equal(loadStore(store).byKey.get('change:project/stepped'), undefined, 'refused whole');
   set(store, 'change:project/base', ['kind=milestone'], {}); // base has no steps: promoted
   assert.equal(loadStore(store).byKey.get('change:project/base')![0].data.kind, 'milestone');
   set(store, 'change:project/base', ['kind=work'], {}); // and back, while nothing names it as parent
+  // a change that has had a plan becomes a milestone once no step is open (decision promote-to-milestone/steps-on-a-milestone)
+  change(store, 'grown', { title: 'Grown', summary: 'g', project, steps: ['first', 'second', 'third'] });
+  step(store, 'change:project/grown', 'done', 1, { note: 'landed' });
+  step(store, 'change:project/grown', 'drop', 2, {});
+  step(store, 'change:project/grown', 'drop', 3, {});
+  const planBefore = loadStore(store).byKey.get('change:project/grown')![0].data.plan;
+  set(store, 'change:project/grown', ['kind=milestone'], {}); // no step open: nothing to file, only the kind is written
+  const grown = loadStore(store).byKey.get('change:project/grown')![0];
+  assert.equal(grown.data.kind, 'milestone');
+  assert.deepEqual(grown.data.plan, planBefore, 'its steps are kept as they were');
+  assert.deepEqual(errors(store), []);
+  // history, never its plan or progress: no plan, no count, no next step, and its status does not follow them
+  const asMilestone = changeContext(store, 'change:project/grown');
+  assert.deepEqual(asMilestone.plan, []);
+  assert.equal(asMilestone.planProgress, undefined);
+  assert.equal(asMilestone.next, undefined);
+  assert.deepEqual(
+    asMilestone.earlier?.map((s) => s.state),
+    ['done', 'dropped', 'dropped'],
+  );
+  const text = formatChangeContext(asMilestone);
+  assert.match(
+    text,
+    /## Earlier steps \(from before it was a milestone; its children are its plan\)\n\n1\. \[x\] first — landed/,
+  );
+  assert.doesNotMatch(text, /## Plan/);
+  assert.match(renderView(store, { ref: 'change:project/grown' }).markdown, /### Earlier steps/);
+  assert.equal(
+    liftsOfStore(loadStore(store)).find((l) => l.key === 'change:project/grown'),
+    undefined,
+    'its earlier steps lift nothing: a milestone has no plan of its own to follow',
+  );
+  assert.throws(() => step(store, 'change:project/grown', 'add', undefined, { text: 'no' }), /is a milestone/);
+  set(store, 'change:project/grown', ['kind=work'], {}); // demoted, the plan is back as it was
+  assert.deepEqual(loadStore(store).byKey.get('change:project/grown')![0].data.plan, planBefore);
+  assert.equal(changeContext(store, 'change:project/grown').plan.length, 3);
+  // the drops and the set as one batch
+  change(store, 'grown-at-once', { title: 'Grown at once', summary: 'g', project, steps: ['only'] });
+  apply(
+    store,
+    'step change:grown-at-once drop 1\nset change:grown-at-once kind=milestone',
+    (argv) => {
+      if (argv[0] === 'step') step(store, argv[1], 'drop', Number(argv[3]), {});
+      else set(store, argv[1], argv.slice(2), {});
+    },
+    {},
+  );
+  assert.equal(loadStore(store).byKey.get('change:project/grown-at-once')![0].data.kind, 'milestone');
+  set(store, 'change:project/grown-at-once', ['kind=work'], {});
   assert.deepEqual(
     ls(store, { type: 'change', kind: 'milestone' }).map((r) => r.key),
     ['change:project/goal'],

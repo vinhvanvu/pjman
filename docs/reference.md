@@ -111,6 +111,7 @@ A unit of work: name, gist, sections, a plan of steps; a milestone is a change o
 | read | `pjman context <change> (to work it) · pjman show <change> (as stored) · pjman get <ref> (with its neighbourhood) · pjman view <change>` |
 | list | `pjman ls change [--status …] [--kind bug\|milestone] [--parent <milestone>] [--feature <node>] [--project <p>] · pjman context (the board)` |
 | update | `pjman set <change>... <field>=… \| <list>+=<item> \| <list>-=<item>   (sections by name: origin, intent, done-when, scope, …)` |
+| promote | `pjman set <change> kind=milestone   (each open step is filed as a child change, the finished ones stay as its earlier steps; pjman undo reverts it)` |
 | plan | `pjman step <change> add\|start\|done\|drop\|reopen\|note\|edit\|move …   (see step)` |
 | order | `pjman order <change> --before <change> \| --after <change> \| --first \| --last \| --later` |
 | note | `pjman note <change> <text>   (to whoever works it)` |

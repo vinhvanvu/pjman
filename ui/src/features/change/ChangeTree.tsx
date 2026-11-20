@@ -29,7 +29,16 @@ import { agoWords } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { Wash } from '@/lib/motion';
 import { statusTone, TONE } from '@/lib/tones';
-import { effectsOf, identityLabel, planFold, planView, shippedWords, sourcesView, trailWords } from './model';
+import {
+  earlierSum,
+  effectsOf,
+  identityLabel,
+  planFold,
+  planView,
+  shippedWords,
+  sourcesView,
+  trailWords,
+} from './model';
 
 /** The body rises in: 4 px and a fade, 180 ms ease-out; reduced motion keeps the fade. */
 export const RISE = {
@@ -170,6 +179,7 @@ export function ChangeTree({
 
       <div className={cn('flex flex-col', wide ? 'max-w-[760px] gap-8' : 'gap-3')}>
         {milestone ? milestoneSlot : <PlanPart ctx={ctx} wide={wide} working={working} />}
+        {milestone && ctx.earlier?.length ? <EarlierPart steps={ctx.earlier} /> : null}
 
         <section className="flex flex-col gap-2.5">
           <Head
@@ -348,6 +358,25 @@ function PlanPart({ ctx, wide, working }: { ctx: ChangeContext; wide: boolean; w
           <PlanRow key={`${i}-${s.text}`} step={s} on={s === plan.row && s.state !== 'done'} />
         ))}
       </div>
+    </section>
+  );
+}
+
+/** A milestone's earlier steps (decision promote-to-milestone/steps-on-a-milestone): what it carried before it became
+ *  one, folded to its head at either width and opening in place. History: no bar and no count toward the milestone,
+ *  whose plan is the children above. */
+function EarlierPart({ steps }: { steps: Step[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <section className="flex flex-col gap-2.5">
+      <Head label="Earlier steps" sum={earlierSum(steps)} open={open} onToggle={() => setOpen((v) => !v)} />
+      {open && (
+        <div className="flex flex-col">
+          {steps.map((s, i) => (
+            <PlanRow key={`${i}-${s.text}`} step={s} on={false} />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

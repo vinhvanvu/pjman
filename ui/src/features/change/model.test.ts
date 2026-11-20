@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeContext } from '@/data/contract';
-import { changeBar, effectsOf, identityLabel, planFold, planView, shippedWords, sourcesView, workingOn } from './model';
+import {
+  changeBar,
+  earlierSum,
+  effectsOf,
+  identityLabel,
+  planFold,
+  planView,
+  shippedWords,
+  sourcesView,
+  workingOn,
+} from './model';
 
 describe('the plan and the children', () => {
   const step = (state: ChangeContext['plan'][number]['state'], text: string = state) => ({ text, state });
@@ -125,4 +135,10 @@ describe('shipped in', () => {
     expect(shippedWords(ctx('done', ['0.2.0', '0.3.0']))).toBe('shipped in v0.3.0');
     expect(shippedWords(ctx('active', []))).toBeUndefined();
   });
+});
+
+it("reads a milestone's earlier steps as a count of what it finished and what it dropped", () => {
+  const s = (state: 'done' | 'dropped') => ({ text: 't', state });
+  expect(earlierSum([s('done'), s('done'), s('dropped')])).toBe('2 done · 1 dropped');
+  expect(earlierSum([s('dropped')])).toBe('1 dropped');
 });

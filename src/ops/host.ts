@@ -2,7 +2,7 @@
 // change and where the work stands onto the session's workspace; `send` types text into it; `open` brings it to the
 // front; with no verb, the host this machine runs, its version and whether the adapter validated it.
 import type { Store } from '../store/config.js';
-import { nextStep, stepsOf } from '../model/foundation.js';
+import { nextStep, planOf } from '../model/foundation.js';
 import { hostOfRecord, hostPresent, inRange, type HostId, type HostStatus, type SessionHost } from '../hosts/host.js';
 import { worktreeNameFor } from '../model/branch.js';
 import { resolve, findSession, loadStore, type Loaded, type Rec } from '../store/records.js';
@@ -40,7 +40,7 @@ export function labelText(loaded: Loaded, rec: Rec): string {
   const waiting = proposedDecisions(loaded, (d) => changeOfDecision(d.key) === c.key);
   if (waiting.length)
     return `${name} · waits: ${waiting[0].name ?? waiting[0].key.slice(waiting[0].key.lastIndexOf('/') + 1)}`;
-  const steps = stepsOf(c.data);
+  const steps = planOf(c.data);
   const counted = steps.filter((s) => s.state !== 'dropped');
   const next = nextStep(steps);
   if (!counted.length) return name;

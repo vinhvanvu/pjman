@@ -18,13 +18,14 @@ import {
   decisionLine,
   lineOfRow,
   nextLine,
+  planText,
   readinessLines,
   storeContext,
   type ChangeContext,
   type Row,
   type StoreContext,
 } from '../model/view.js';
-import { formatStep, nextStep, stepsOf } from '../model/foundation.js';
+import { nextStep, stepsOf } from '../model/foundation.js';
 import { ownSources } from './session-kinds.js';
 import { urlOf } from '../model/refs.js';
 
@@ -194,10 +195,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
     if (k === 'Notes') continue;
     out.push(`\n### ${k}\n\n${v}`);
   }
-  if (c.plan.length)
-    out.push(
-      `\n### Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`,
-    );
+  out.push(...planText(c, '###'));
   if (c.decisions.length) {
     out.push('\n### Decisions');
     for (const dec of c.decisions) {

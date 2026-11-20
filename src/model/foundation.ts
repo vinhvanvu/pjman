@@ -74,6 +74,21 @@ export function stepsOf(data: Record<string, unknown>): Step[] {
   return out;
 }
 
+/** A step still to be done: open, or in work. */
+export const stepIsOpen = (s: Step): boolean => s.state === 'open' || s.state === 'active';
+
+/** The plan a change is worked by. A milestone's plan is its children (decision milestone-kind/kind-not-children), so
+ *  it has none of its own: the steps it carried before it became one are its earlier steps (decision
+ *  promote-to-milestone/steps-on-a-milestone), history and never its plan or progress. */
+export function planOf(data: Record<string, unknown>): Step[] {
+  return data.kind === 'milestone' ? [] : stepsOf(data);
+}
+
+/** The steps a milestone carried before it became one, as written; none on a change of another kind. */
+export function earlierStepsOf(data: Record<string, unknown>): Step[] {
+  return data.kind === 'milestone' ? stepsOf(data) : [];
+}
+
 /** The plan's progress: steps done over steps not dropped; undefined without steps. */
 export function planProgress(steps: Step[]): { done: number; total: number } | undefined {
   const counted = steps.filter((s) => s.state !== 'dropped');

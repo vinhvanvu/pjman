@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type { Store } from '../store/config.js';
 import { replaceSection, sections as parseSections } from '../store/frontmatter.js';
 import { loadStore, resolve, unresolvedError, type RecordType } from '../store/records.js';
@@ -16,7 +17,10 @@ import {
   nameProblem,
   SECTION_FIELDS,
 } from '../model/foundation.js';
-import { envelope, finishWrite, fullKeys, render, validateOrUndo } from './write.js';
+import { envelope, finishWrite, fullKeys, render, settleIndex, validateOrUndo, writeFile } from './write.js';
+import { promote, type Promotion } from './promote.js';
+
+const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
 /** Authored fields a person may set through the tool, per record type. Body sections are set by their heading, lower-cased. */
 const SETTABLE: Record<RecordType, string[]> = {
@@ -223,6 +227,16 @@ export function set(
     changed.push(field);
   }
   if (!changed.length) return { key: rec.key, path: rec.path, changed, commit: null, notes };
+  // a change made a milestone settles the plan it carries in the same write (ops/promote): a child per open step
+  let promoted: Promotion | undefined;
+  if (rec.type === 'change' && changed.includes('kind') && data.kind === 'milestone' && rec.data.kind !== 'milestone') {
+    const status = data.status;
+    promoted = promote(store, loaded, rec, data, env, { statusGiven: changed.includes('status') });
+    if (promoted.children.length) changed.push('plan');
+    if (data.status !== status) changed.push('status');
+    if (list(data.binds).length !== list(rec.data.binds).length && !changed.includes('binds')) changed.push('binds');
+    notes.push(...promoted.notes);
+  }
   if (rec.type === 'change' || rec.type === 'decision') {
     // the rungs record the foundation they were written from (decision projections-stay-fresh): rewritten, they are
     // written from the foundation as it stands now; a foundation written without them leaves them stale, and says so.
@@ -242,10 +256,30 @@ export function set(
   const text = render(rec.type, data, body);
   const before = fs.readFileSync(rec.abs, 'utf8');
   fs.writeFileSync(rec.abs, text);
+  const filed = promoted?.children ?? [];
+  const wrote: string[] = [];
   try {
-    validateOrUndo(store, [rec.path, ...(marked?.touched ?? [])], [], marked?.prior);
+    for (const c of filed) {
+      if (fs.existsSync(path.join(store.root, c.rel))) throw new CliError(`refused: ${c.rel} already exists`);
+      writeFile(store, c.rel, c.text);
+      wrote.push(c.rel);
+    }
+    validateOrUndo(
+      store,
+      [rec.path, ...filed.map((c) => c.rel), ...(marked?.touched ?? [])],
+      filed.map((c) => c.rel),
+      marked?.prior,
+    );
   } catch (e) {
     fs.writeFileSync(rec.abs, before);
+    // a child written before the refusal goes with it, and the index is brought back to the files
+    for (const rel of wrote) {
+      const abs = path.join(store.root, rel);
+      fs.rmSync(abs, { force: true });
+      if (fs.existsSync(path.dirname(abs)) && !fs.readdirSync(path.dirname(abs)).length)
+        fs.rmdirSync(path.dirname(abs));
+    }
+    if (wrote.length) settleIndex(store, [rec.path, ...wrote]);
     if (marked) unmark(store, marked);
     throw e;
   }
@@ -258,6 +292,13 @@ export function set(
     env.session,
     [
       { op: 'set', key: rec.key, type: rec.type, path: rec.path, fields: changed, value, writer: env.writer },
+      ...filed.map((c) => ({
+        op: 'created' as const,
+        key: c.key,
+        type: 'change' as const,
+        path: c.rel,
+        writer: env.writer,
+      })),
       ...(marked?.also ?? []),
     ],
   );

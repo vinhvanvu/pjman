@@ -45,9 +45,9 @@ import {
   decisionState,
   needsOf,
   nextStep,
+  planOf,
   planProgress,
   rungsOf,
-  stepsOf,
   threadOf,
   type DecisionState,
   type StepState,
@@ -596,7 +596,7 @@ class Index {
   row(c: Rec): ChangeRow {
     const kids = this.childrenOf.get(c.key) ?? [];
     const sessions = (this.base.sessionsOn.get(c.key) ?? []).filter((s) => this.liveSessions.has(s.key));
-    const steps = stepsOf(c.data);
+    const steps = planOf(c.data); // a milestone's earlier steps are no plan: its bar and step are its children's
     const next = nextStep(steps);
     const blockedOn = c.sections.get('Blocked on')?.trim();
     return {

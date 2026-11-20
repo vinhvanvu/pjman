@@ -12,7 +12,8 @@ import { productOfProject, newSession, originText } from '../ops/new.js';
 import { localDate, nowIso } from '../store/util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../ops/write.js';
 import { sessionLog } from '../ops/session.js';
-import { foundationHash, foundationOf, stepsOf } from '../model/foundation.js';
+import { branchAt, FOLLOWS_PLAN } from '../ops/promote.js';
+import { foundationHash, foundationOf, stepIsOpen, stepsOf } from '../model/foundation.js';
 import { sections as parseSections } from '../store/frontmatter.js';
 
 /** One observed ticket, already translated to pjman's terms by the tracker's module. */
@@ -201,26 +202,53 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       continue;
     }
     // a parent is a milestone by its kind (decision milestone-kind/kind-not-children): the parent change the ticket
-    // names becomes one, unless it is a bug or carries steps of its own, in which case the parent is not written
+    // names becomes one, unless it is a bug or carries a step still open, in which case the parent is not written (the
+    // steps it finished or dropped are history: decision promote-to-milestone/steps-on-a-milestone)
     const parentRec = loaded.byKey.get(parentKey)?.[0];
     if (parentRec && parentRec.type === 'change' && parentRec.data.kind !== 'milestone') {
       const why =
-        parentRec.data.kind === 'bug' ? 'is a bug' : stepsOf(parentRec.data).length ? 'carries steps of its own' : null;
+        parentRec.data.kind === 'bug'
+          ? 'is a bug'
+          : stepsOf(parentRec.data).some(stepIsOpen)
+            ? 'carries open steps of its own'
+            : null;
       if (why) {
         result.skipped.push({
           id: t.id,
-          reason: `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone`,
+          // a sync files no change from a step by itself (decision promote-to-milestone/sync-promotion): it names the act
+          reason:
+            parentRec.data.kind === 'bug'
+              ? `parent ${t.parent} (${parentKey}) ${why}, so it cannot be a milestone`
+              : `parent ${t.parent} (${parentKey}) ${why}: pjman set ${parentKey} kind=milestone files each as a child change and makes it a milestone; then pjman set ${key} parent=${parentKey}`,
         });
         continue;
       }
-      writeFile(store, parentRec.path, render('change', { ...parentRec.data, kind: 'milestone' }, parentRec.body));
+      // the rules of a promotion hold here as on pjman set (ops/promote): unmerged work on its branch is not left on
+      // a record that merges nothing (decision work-on-the-branch), and a status that followed its plan goes back to
+      // open (decision status-at-promotion)
+      const at = branchAt(store, loaded, parentRec);
+      if (at?.unmerged) {
+        result.skipped.push({
+          id: t.id,
+          reason: `parent ${t.parent} (${parentKey}) holds work on its branch ${at.name} that is not merged, and a milestone merges nothing: pjman merge ${parentKey} first, then pjman set ${parentKey} kind=milestone and pjman set ${key} parent=${parentKey}`,
+        });
+        continue;
+      }
+      // (here a status with no plan beneath it is kept: on a change a sync made it is the ticket's, mapped at filing)
+      const back = stepsOf(parentRec.data).length > 0 && FOLLOWS_PLAN.has(String(parentRec.data.status));
+      writeFile(
+        store,
+        parentRec.path,
+        render('change', { ...parentRec.data, kind: 'milestone', ...(back ? { status: 'open' } : {}) }, parentRec.body),
+      );
       touched.push(parentRec.path);
       events.push({
         op: 'set',
         key: parentKey,
         type: 'change',
         path: parentRec.path,
-        fields: ['kind'],
+        fields: back ? ['kind', 'status'] : ['kind'],
+        value: back ? 'open' : undefined,
         writer,
         session,
       });

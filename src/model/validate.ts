@@ -31,6 +31,7 @@ import {
   gistProblem,
   nameProblem,
   STEP_STATES,
+  stepIsOpen,
   stepsOf,
   threadOf,
   decisionState,
@@ -491,11 +492,13 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           }
         }
         if (d.kind === 'milestone') {
-          const own = stepsOf(d).length;
+          // the steps it finished or dropped before it became one are history (decision
+          // promote-to-milestone/steps-on-a-milestone); a step still to be done is a plan of its own, which it has none of
+          const own = stepsOf(d).filter(stepIsOpen).length;
           if (own)
             err(
               r,
-              `a milestone's plan is its children; this one carries ${own} step${own === 1 ? '' : 's'} of its own: drop them (pjman step <change> drop <n>) before setting kind=milestone`,
+              `a milestone's plan is its children; this one carries ${own} open step${own === 1 ? '' : 's'} of its own: file a milestone without steps and each piece of work as a child (pjman new change <slug> --parent <milestone>); on a record that already is one, finish or drop them all in one command (pjman step <change> done|drop <n>...)`,
             );
         } else {
           // the other direction: a change other changes name as parent cannot stop being a milestone
