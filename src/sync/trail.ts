@@ -16,6 +16,7 @@ import { decisionState, threadOf } from '../model/foundation.js';
 import { repoOf } from '../model/refs.js';
 import { observedBranches } from '../model/view.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
+import { note } from '../ops/note.js';
 import { set } from '../ops/set.js';
 import type { Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
@@ -116,20 +117,36 @@ export function readTrail(data: Record<string, unknown>, branch?: string): Trail
   };
 }
 
-/** What moved on a Trail between two reads, in a person's words: what a waiting session is woken for. */
-export function trailMoves(before: TrailState | undefined, after: TrailState): string[] {
+/** The statuses of a gate that are known to hold a merge. Any other (passed; skipped, where the gate does not apply;
+ *  the `?` of a status that could not be read; one Entire adds later) is not said to have been gone past. */
+const HOLDS = new Set(['pending', 'failed', 'error']);
+
+/** The blocking gates a merge just read may have gone past: those that held it when they were last read. None where
+ *  the merge is not new, or was made `through` the Trail by this run (`pjman merge`: `entire trail merge` checked the
+ *  gates as they stood then, whatever an earlier read kept). */
+export function gatesPast(before: TrailState | undefined, after: TrailState, through = false): string[] {
+  if (!before || through) return [];
+  if (after.change?.status !== 'merged' || before.change?.status === 'merged') return [];
+  return before.gates.filter((g) => g.blocking && HOLDS.has(g.status)).map((g) => g.key);
+}
+
+/** The line for a merge that may have gone past gates. It says what is known: the gates held when last read. Where
+ *  the merge was made is not known (on Entire the gates were waited for and passed after that read; on GitHub they
+ *  were not), so neither is claimed. */
+export const pastLine = (past: string[]): string =>
+  `its branch was merged, and the ${past.join(', ')} gate${past.length === 1 ? ' was' : 's were'} not passed when last read: a merge made on GitHub does not wait for the Trail's gates, one made on Entire does`;
+
+/** What moved on a Trail between two reads, in a person's words: what a waiting session is woken for. `through`: the
+ *  merge was made through the Trail by the command that reads it now. */
+export function trailMoves(before: TrailState | undefined, after: TrailState, through = false): string[] {
   const out: string[] = [];
   if (!before) return out;
   if (after.change?.status === 'merged' && before.change?.status !== 'merged') {
     // a merge made on GitHub does not wait for the Trail's gates (change:entire-gates-skipped: Entire's check on the
-    // pull request stays pending and is closed as not applying once the branch is merged): the gates that had not
-    // passed when they were last read are named, so a merge that went past them is on the record
-    const past = before.gates.filter((g) => g.blocking && g.status !== 'passed').map((g) => g.key);
-    out.push(
-      past.length
-        ? `its branch was merged past the ${past.join(', ')} gate${past.length === 1 ? '' : 's'}, not passed when last read (a merge made on GitHub does not wait for the Trail's gates)`
-        : 'its branch was merged',
-    );
+    // pull request stays pending and is closed as not applying once the branch is merged): the gates that held when
+    // they were last read are named, and the reconcile writes that onto the change as a note
+    const past = gatesPast(before, after, through);
+    out.push(past.length ? pastLine(past) : 'its branch was merged');
   } else if (after.status === 'closed' && before.status !== 'closed') out.push('the Trail was closed');
   const was = new Map(before.gates.map((g) => [g.key, g.status]));
   for (const g of after.gates) {
@@ -165,6 +182,9 @@ export interface TrailReconcile {
   pushed?: string;
   /** The branch that has no Trail and was not given one: the caller did not ask for it to be started (the sweep). */
   unstarted?: string;
+  /** The line of `moved` this run wrote onto the change as a note (a merge that may have gone past gates): a caller
+   *  that notes what moved leaves it out. */
+  noted?: string;
 }
 
 /** Bring one change's Trail to where the change stands, and read it back. Nothing is done for a project that has not
@@ -184,6 +204,9 @@ export function reconcileTrail(
     budget?: number;
     create?: boolean;
     whyNot?: (reason: string) => void;
+    /** The caller has just merged the branch through the Trail (`entire trail merge`, which checked the gates): the
+     *  merge read here is not said to have gone past any. */
+    through?: boolean;
   } = {},
 ): TrailReconcile | null {
   let loaded = loadStore(store);
@@ -467,7 +490,10 @@ export function reconcileTrail(
   if (state.change?.status === 'merged' && (status === 'done' || before?.ended)) state.ended = true;
   result.state = state;
   result.down = down;
-  result.moved = trailMoves(before, state);
+  // (a merge pjman merge made through the Trail is marked on the change, for a read that comes after that command)
+  const through = opts.through || !!obj(obj(rec.data.ext)?.entire)?.merged_through;
+  result.moved = trailMoves(before, state, through);
+  const past = gatesPast(before, state, through);
 
   // the record: the Trail's source, bound by the change
   const repo = repoOf(loaded, store.project);
@@ -557,6 +583,19 @@ export function reconcileTrail(
       env.session,
       events,
     );
+  }
+  // a merge that may have gone past gates is put on the change's record, whichever command read it: the stored state
+  // reads merged from here on, so the line is never produced again (the follower's note is not the only one)
+  if (past.length) {
+    const line = pastLine(past);
+    try {
+      note(store, rec.key, `Entire, Trail #${state.number}: ${line}`, { writer: opts.writer, session: opts.session });
+      result.noted = line;
+    } catch (e) {
+      result.pending.push(
+        `the note that ${rec.key} may have been merged past the ${past.join(', ')} gate${past.length === 1 ? '' : 's'} was not written (${(e as Error).message.split('\n')[0]})`,
+      );
+    }
   }
   // merged on Entire: the person's merge, wherever they made it, ends the change
   // (a merge read in this run and not known before: a change reopened after its merge is not ended a second time by

@@ -20,7 +20,7 @@ import { git } from '../store/git.js';
 import { repoOf } from '../model/refs.js';
 import { loadStore } from '../store/records.js';
 import { syncEntire } from '../sync/entire.js';
-import { reconcileTrail, trailLines, trailMoves, trailOf } from '../sync/trail.js';
+import { gatesPast, reconcileTrail, trailLines, trailMoves, trailOf } from '../sync/trail.js';
 import { render } from '../ops/write.js';
 import { change } from './shape.js';
 
@@ -748,11 +748,111 @@ test('a merge that went past a gate is said as that: a merge made on GitHub does
     ],
   };
   const merged = { ...open, change: { number: 9, status: 'merged' }, gates: [] };
-  assert.deepEqual(trailMoves(open, merged), [
-    "its branch was merged past the approvals, findings gates, not passed when last read (a merge made on GitHub does not wait for the Trail's gates)",
-  ]);
+  const said =
+    "its branch was merged, and the approvals, findings gates were not passed when last read: a merge made on GitHub does not wait for the Trail's gates, one made on Entire does";
+  assert.deepEqual(trailMoves(open, merged), [said]);
   const passed = { ...open, gates: open.gates.map((g) => ({ ...g, status: 'passed' })) };
   assert.deepEqual(trailMoves(passed, merged), ['its branch was merged']);
   // said once: a Trail already read as merged does not say it again
   assert.deepEqual(trailMoves(merged, merged), []);
+  // only a status known to hold a merge is named: not one skipped (the gate did not apply), nor one that could not
+  // be read, nor one pjman does not know
+  const other = {
+    ...open,
+    gates: [
+      { key: 'checks', status: 'skipped', blocking: true },
+      { key: 'base_checks', status: '?', blocking: true },
+      { key: 'later', status: 'not_applicable', blocking: true },
+    ],
+  };
+  assert.deepEqual(trailMoves(other, merged), ['its branch was merged']);
+  const one = { ...open, gates: [...other.gates, { key: 'findings', status: 'error', blocking: true }] };
+  assert.deepEqual(gatesPast(one, merged), ['findings']);
+  // a merge the command itself made through the Trail went past no gate, whatever an earlier read kept
+  assert.deepEqual(trailMoves(open, merged, true), ['its branch was merged']);
+  assert.deepEqual(gatesPast(open, merged, true), []);
+});
+
+test('a merge read with a gate still held is noted on the change by whoever read it; pjman merge through the Trail is not', () => {
+  const notes = (slug: string) => rec(slug).sections.get('Notes') ?? '';
+  const start = (slug: string) => {
+    g('branch', slug);
+    change(store, slug, { name: slug, project: 'project:web', next: 'build it' });
+    step(store, `change:${slug}`, 'start', 1, {});
+    const r = reconcileTrail(store, `change:web/${slug}`, { entire: { bin } })!;
+    assert.deepEqual(r.acts, ['created']);
+    step(store, `change:${slug}`, 'done', 1, {});
+    reconcileTrail(store, `change:web/${slug}`, { entire: { bin } });
+    return r.state!.number;
+  };
+  // merged on GitHub while approvals was pending: a plain reconcile (pjman set, pjman step, pjman sync entire) notes it
+  const n = start('past');
+  edit(n, (t) => (t.change = 'merged'));
+  const r = reconcileTrail(store, 'change:web/past', { entire: { bin } })!;
+  const line =
+    "its branch was merged, and the approvals gate was not passed when last read: a merge made on GitHub does not wait for the Trail's gates, one made on Entire does";
+  assert.deepEqual(r.moved, [line]);
+  assert.equal(r.noted, line);
+  assert.ok(notes('past').includes(`Entire, Trail #${n}: ${line}`), 'on the record');
+  assert.equal(reconcileTrail(store, 'change:web/past', { entire: { bin } })!.noted, undefined, 'noted once');
+  assert.equal(notes('past').split(line).length, 2);
+
+  // the follower notes what else moved and does not write that line twice
+  const w = start('woken');
+  edit(w, (t) => (t.change = 'merged'));
+  const swept = syncEntire(store, { entire: { bin }, wake: true }).trails.find((t) => t.change === 'change:web/woken')!;
+  assert.equal(swept.noted, line);
+  assert.equal(notes('woken').split(line).length, 2, 'one note, not two');
+
+  // a stale read: the gate passed after it and pjman merge went through the Trail, so nothing is said to be past
+  const s = start('stale');
+  edit(s, (t) => (t.change = 'merged'));
+  const through = reconcileTrail(store, 'change:web/stale', { entire: { bin }, through: true })!;
+  assert.deepEqual(through.moved, ['its branch was merged']);
+  assert.equal(through.noted, undefined);
+  assert.ok(!notes('stale').includes('not passed when last read'));
+
+  // the same where the read comes after pjman merge (the merge was not fetched yet, or Entire was slow to answer):
+  // the change keeps that its merge went through the Trail, and a later sync says nothing of a gate
+  const l = start('later');
+  set(store, 'change:web/later', ['ext.entire.merged_through=2026-01-01T00:00:00.000Z'], {});
+  edit(l, (t) => (t.change = 'merged'));
+  const later = syncEntire(store, { entire: { bin }, wake: true }).trails.find((t) => t.change === 'change:web/later')!;
+  assert.deepEqual(later.moved, ['its branch was merged']);
+  assert.equal(later.noted, undefined);
+  assert.ok(!notes('later').includes('not passed when last read'));
+});
+
+test('pjman sync git prints what the Trail of a change it ended says, and carries it in its JSON', () => {
+  const start = (slug: string) => {
+    g('switch', '-q', '-c', slug, 'main');
+    g('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', `feat: ${slug}`);
+    g('switch', '-q', 'main');
+    change(store, slug, { name: slug, project: 'project:web', next: 'build it' });
+    step(store, `change:${slug}`, 'start', 1, {});
+    const number = reconcileTrail(store, `change:web/${slug}`, { entire: { bin } })!.state!.number;
+    step(store, `change:${slug}`, 'done', 1, {});
+    reconcileTrail(store, `change:web/${slug}`, { entire: { bin } });
+    // the pull request is merged on GitHub, which does not wait for the Trail
+    g('-c', 'user.name=t', '-c', 'user.email=t@example.com', 'merge', '-q', '--no-ff', slug, '-m', `Merge ${slug}`);
+    edit(number, (t) => (t.change = 'merged'));
+    return number;
+  };
+  const n = start('forge');
+  const r = cli('sync', 'git');
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /1 change merged into main and set done/);
+  assert.match(
+    r.out,
+    new RegExp(
+      `entire: change:forge closed · Trail #${n} closed[^\\n]*\\nentire: its branch was merged, and the approvals gate was not passed when last read`,
+    ),
+  );
+  assert.ok((rec('forge').sections.get('Notes') ?? '').includes('the approvals gate was not passed when last read'));
+  const m = start('forge-json');
+  const j = JSON.parse(cli('sync', 'git', '--json').out) as { trails: { change: string; noted?: string }[] };
+  assert.equal(j.trails.length, 1);
+  assert.equal(j.trails[0].change, 'change:web/forge-json');
+  assert.match(j.trails[0].noted ?? '', /the approvals gate was not passed when last read/);
+  assert.equal(trails().find((t) => t.number === m)!.status, 'closed');
 });
