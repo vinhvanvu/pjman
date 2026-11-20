@@ -12,7 +12,7 @@ import { productOfProject, newSession, originText } from '../ops/new.js';
 import { localDate, nowIso } from '../store/util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../ops/write.js';
 import { sessionLog } from '../ops/session.js';
-import { foundationHash, foundationOf, stepsOf } from '../model/foundation.js';
+import { foundationHash, foundationOf, stepIsOpen, stepsOf } from '../model/foundation.js';
 import { sections as parseSections } from '../store/frontmatter.js';
 
 /** One observed ticket, already translated to pjman's terms by the tracker's module. */
@@ -201,11 +201,16 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
       continue;
     }
     // a parent is a milestone by its kind (decision milestone-kind/kind-not-children): the parent change the ticket
-    // names becomes one, unless it is a bug or carries steps of its own, in which case the parent is not written
+    // names becomes one, unless it is a bug or carries a step still open, in which case the parent is not written (the
+    // steps it finished or dropped are history: decision promote-to-milestone/steps-on-a-milestone)
     const parentRec = loaded.byKey.get(parentKey)?.[0];
     if (parentRec && parentRec.type === 'change' && parentRec.data.kind !== 'milestone') {
       const why =
-        parentRec.data.kind === 'bug' ? 'is a bug' : stepsOf(parentRec.data).length ? 'carries steps of its own' : null;
+        parentRec.data.kind === 'bug'
+          ? 'is a bug'
+          : stepsOf(parentRec.data).some(stepIsOpen)
+            ? 'carries open steps of its own'
+            : null;
       if (why) {
         result.skipped.push({
           id: t.id,

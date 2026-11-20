@@ -43,6 +43,13 @@ export function planView(plan: readonly Step[]): { sum: string; segments: Segmen
   return { sum: dropped ? `${sum} · ${dropped} dropped` : sum, segments, row: next ?? counted.at(-1) };
 }
 
+/** The head of a milestone's earlier steps: how many it finished and how many it dropped before it became one. */
+export function earlierSum(steps: readonly Step[]): string {
+  const done = steps.filter((s) => s.state === 'done').length;
+  const dropped = steps.filter((s) => s.state === 'dropped').length;
+  return [done && `${done} done`, dropped && `${dropped} dropped`].filter(Boolean).join(' · ');
+}
+
 /** The wide plan's fold (decision mirror-the-session-page): what is behind the work folds to one line above it, the
  *  steps done and dropped, so the step the work is on leads; the last done step stays out as the way in. A short plan
  *  folds nothing. */

@@ -36,11 +36,13 @@ import { CliError, usageError, notFound } from '../store/util.js';
 import {
   CHANGE_SECTIONS,
   decisionState,
+  earlierStepsOf,
   formatDecisionState,
   formatStep,
   labelOf,
   needsOf,
   nextStep,
+  planOf,
   planProgress,
   rungsOf,
   stepsOf,
@@ -404,6 +406,9 @@ export interface ChangeContext {
   /** The plan: steps as data, their progress, and the next step (the active one, else the first open). */
   plan: Step[];
   planProgress?: { done: number; total: number };
+  /** On a milestone: the steps it carried before it became one, as history (decision
+   *  promote-to-milestone/steps-on-a-milestone). Its plan is its children, so `plan` is empty and these count for nothing. */
+  earlier?: Step[];
   next?: { n: number; step: Step };
   /** What the record still needs before it is worked (an ingested or migrated one): name, gist, intent, done when. */
   needs: string[];
@@ -563,6 +568,19 @@ function contextIndex(loaded: Loaded): ContextIndex {
 
 /** The view's word on a change worked on after its review ended, where it cannot read the repository; a caller that can
  *  says instead whether the review is due again. */
+/** The plan as text under a heading of the given depth; on a milestone, the steps it carried before it became one,
+ *  said as history with no count (its progress is its children). Nothing when there is neither. */
+export function planText(c: Pick<ChangeContext, 'plan' | 'planProgress' | 'earlier'>, h: string): string[] {
+  const lines = (steps: Step[]) => steps.map((s, i) => formatStep(i + 1, s)).join('\n');
+  if (c.plan.length)
+    return [
+      `\n${h} Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${lines(c.plan)}`,
+    ];
+  if (c.earlier?.length)
+    return [`\n${h} Earlier steps (from before it was a milestone; its children are its plan)\n\n${lines(c.earlier)}`];
+  return [];
+}
+
 export const MOVED_SINCE = '; its plan moved since (pjman review says whether it is due again)';
 
 export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
@@ -574,7 +592,8 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const sections: Record<string, string> = {};
   for (const k of CHANGE_SECTIONS) if (rec.sections.get(k)?.trim()) sections[k] = rec.sections.get(k)!;
   for (const [k, v] of rec.sections) if (k && !(k in sections) && v.trim()) sections[k] = v;
-  const plan = stepsOf(rec.data);
+  const plan = planOf(rec.data);
+  const earlier = earlierStepsOf(rec.data);
   const rungs = rungsOf(rec);
 
   const cx = contextIndex(loaded);
@@ -641,6 +660,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     sections,
     plan,
     planProgress: planProgress(plan),
+    earlier: earlier.length ? earlier : undefined,
     next: nextStep(plan),
     needs: needsOf(rec),
     stale: rungs.stale,
@@ -746,16 +766,10 @@ export function formatChangeContext(c: ChangeContext): string {
   out.push(...readinessLines(c, 'change'));
   // the foundation in order of depth; the plan sits after Scope, where the work's shape ends and its steps begin
   for (const [k, v] of Object.entries(c.sections)) {
-    if (k === 'Open questions' && c.plan.length)
-      out.push(
-        `\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`,
-      );
+    if (k === 'Open questions') out.push(...planText(c, '##'));
     out.push(`\n## ${k}\n\n${v}`);
   }
-  if (c.plan.length && !('Open questions' in c.sections))
-    out.push(
-      `\n## Plan${c.planProgress ? ` (${c.planProgress.done}/${c.planProgress.total} done)` : ''}\n\n${c.plan.map((s, i) => formatStep(i + 1, s)).join('\n')}`,
-    );
+  if (!('Open questions' in c.sections)) out.push(...planText(c, '##'));
   if (c.decisions.length) {
     out.push('\n## Decisions');
     for (const dec of c.decisions) {

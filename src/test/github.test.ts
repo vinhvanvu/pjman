@@ -12,6 +12,7 @@ import { ghIssuesIn, ghReadCommand, mapGhStatus, syncGithub, toGhIssue } from '.
 import { validate } from '../model/validate.js';
 import { stepsOf } from '../model/foundation.js';
 import { next } from './shape.js';
+import { step } from '../ops/step.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-github-'));
 const project = path.join(tmp, 'app');
@@ -190,4 +191,39 @@ test('a sync applies the repository from the project link: sources, changes, par
     from: [{ number: 7, title: 'x', state: 'OPEN', url: 'https://github.com/other/repo/issues/7', labels: [] }],
   });
   assert.deepEqual(other.skipped, [{ id: 'other/repo#7', reason: 'repository other/repo is not acme/app' }]);
+});
+
+test('a parent that has had a plan is promoted once no step of its own is open (decision promote-to-milestone/steps-on-a-milestone)', () => {
+  const issue = (number: number, parent?: number) => ({
+    number,
+    title: `Issue ${number}`,
+    state: 'OPEN',
+    stateReason: '',
+    url: `https://github.com/acme/app/issues/${number}`,
+    labels: [],
+    ...(parent ? { parent: { number: parent } } : {}),
+  });
+  syncGithub(store, { from: [issue(20), issue(30)] });
+  step(store, 'change:app/app-20', 'add', undefined, { texts: ['built', 'given up'] });
+  step(store, 'change:app/app-20', 'done', 1, {});
+  step(store, 'change:app/app-20', 'drop', 2, {});
+  step(store, 'change:app/app-30', 'add', undefined, { texts: ['still to do'] });
+  const r = syncGithub(store, { from: [issue(20), issue(21, 20), issue(30), issue(31, 30)] });
+  const loaded = loadStore(store);
+  const finished = loaded.byKey.get('change:app/app-20')![0];
+  assert.equal(finished.data.kind, 'milestone', 'finished and dropped steps are history');
+  assert.equal(stepsOf(finished.data).length, 2, 'and are kept');
+  assert.equal(loaded.byKey.get('change:app/app-21')![0].data.parent, 'change:app/app-20');
+  assert.equal(loaded.byKey.get('change:app/app-30')![0].data.kind, undefined);
+  assert.equal(loaded.byKey.get('change:app/app-31')![0].data.parent, undefined);
+  assert.deepEqual(r.skipped, [
+    {
+      id: 'acme/app#31',
+      reason: 'parent acme/app#30 (change:app/app-30) carries open steps of its own, so it cannot be a milestone',
+    },
+  ]);
+  assert.deepEqual(
+    validate(loaded).filter((p) => p.level === 'error'),
+    [],
+  );
 });

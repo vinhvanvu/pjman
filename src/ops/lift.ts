@@ -6,7 +6,7 @@
 // `pjman undo <commit>` reverses it.
 import type { Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
-import { stepsOf } from '../model/foundation.js';
+import { planOf } from '../model/foundation.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
 import { set } from './set.js';
 import { live } from '../model/tree.js';
@@ -26,7 +26,7 @@ const statusOf = (rec: Rec): string => (typeof rec.data.status === 'string' ? re
 /** What the plan alone says: planning once it has a step, active once a step has started, review once every step
  *  is done or dropped with at least one done. */
 function fromPlan(rec: Rec): Lift['to'] | undefined {
-  const steps = stepsOf(rec.data);
+  const steps = planOf(rec.data); // a milestone's earlier steps move nothing
   const counted = steps.filter((s) => s.state !== 'dropped');
   if (counted.length && counted.every((s) => s.state === 'done')) return 'review';
   if (steps.some((s) => s.state === 'active' || s.state === 'done')) return 'active';
