@@ -978,7 +978,7 @@ test('depends_on, kind, severity, target and the sequence: validated, refused wh
   );
   assert.throws(
     () => change(store, 'stepped', { title: 'Stepped', summary: 's', project, kind: 'milestone', steps: ['own step'] }),
-    /a milestone's plan is its children; this one carries 1 open step of its own: pjman set <change> kind=milestone files each as a child change, or finish or drop each first/,
+    /a milestone's plan is its children; this one carries 1 open step of its own: file a milestone without steps/,
   );
   assert.equal(loadStore(store).byKey.get('change:project/stepped'), undefined, 'refused whole');
   set(store, 'change:project/base', ['kind=milestone'], {}); // base has no steps: promoted

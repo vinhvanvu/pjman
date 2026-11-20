@@ -44,7 +44,7 @@ export interface StepResult {
   commit: string | null;
 }
 
-function change(store: Store, ref: string): Rec {
+function change(store: Store, ref: string, verb?: StepVerb): Rec {
   const loaded = loadStore(store);
   const raw = ref.startsWith('change:') ? ref : `change:${ref}`;
   const res = resolve(loaded, raw);
@@ -52,7 +52,8 @@ function change(store: Store, ref: string): Rec {
   if (res.rec.type !== 'change') throw new CliError(`${res.rec.key} is not a change`);
   if (!res.rec.valid) throw new CliError(`${res.rec.path} is invalid; fix it before writing its plan`);
   // a milestone's plan is its children (decision milestone-kind/kind-not-children): no step of its own
-  if (res.rec.data.kind === 'milestone')
+  // (a step it should not hold, left open by a write outside the tool, is settled as validate says: done or dropped)
+  if (res.rec.data.kind === 'milestone' && verb !== 'done' && verb !== 'drop')
     throw new CliError(
       `${res.rec.key} is a milestone: its children are its plan, so it takes no steps of its own (pjman new change <slug> --parent ${res.rec.key} adds one)`,
     );
@@ -85,7 +86,7 @@ export function step(store: Store, ref: string, verb: string, n: number | undefi
     throw usageError(
       `usage: pjman step <change> add "<text>"... | start|done|drop|reopen <n> [--note "…"] | note <n> "<text>" | edit <n> "<text>" | move <n> --before <m>|--after <m>|--first|--last`,
     );
-  const rec = change(store, ref);
+  const rec = change(store, ref, verb as StepVerb);
   const steps = stepsOf(rec.data);
   const at = nowIso();
   let touched: number;

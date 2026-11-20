@@ -83,6 +83,7 @@ test('kind=milestone files a child per open step; the steps it finished stay as 
   assert.equal(importer.data.gist, 'Build the importer, tickets first');
   assert.equal(importer.data.status, 'open');
   assert.equal(importer.data.project, 'project:app');
+  assert.equal(importer.data.features, undefined, 'the features stay on the milestone: a child names its own');
   assert.match(
     importer.sections.get('Origin')!,
     /^from change:app\/goal, step 2 of its plan when it became a milestone/,
@@ -201,4 +202,39 @@ test('the Trail on the branch goes with the child that takes the branch', () => 
   assert.deepEqual(errors(), []);
   undo(store, { commit: r.commit! });
   assert.deepEqual(rec('change:app/trailed')!.data.binds, ['entire-trail:gh/acme/7']);
+});
+
+test('a branch whose work is already merged is not carried: no child links it and the Trail stays', () => {
+  change(store, 'landed', { title: 'Landed', summary: 'l', steps: ['Landed part', 'What is left'] });
+  step(store, 'change:app/landed', 'done', 1, {});
+  set(store, 'change:app/landed', ['binds+=entire-trail:gh/acme/8'], {});
+  branchWithWork('landed');
+  git('merge', '-q', '--no-ff', 'landed', '-m', "Merge branch 'landed'");
+  set(store, 'change:app/landed', ['kind=milestone'], {});
+  assert.equal(rec('change:app/what-is-left')!.data.links, undefined);
+  assert.equal(rec('change:app/what-is-left')!.data.binds, undefined);
+  assert.deepEqual(rec('change:app/landed')!.data.binds, ['entire-trail:gh/acme/8']);
+  assert.deepEqual(errors(), []);
+});
+
+test('the refusal that remains names an act that clears it: a milestone is filed without steps, and one holding an open step has them finished or dropped in one command', () => {
+  assert.throws(
+    () => change(store, 'born', { title: 'Born', summary: 'b', kind: 'milestone', steps: ['a step'] }),
+    /file a milestone without steps and each piece of work as a child \(pjman new change <slug> --parent <milestone>\)/,
+  );
+  // a milestone left holding open steps by a write outside the tool
+  change(store, 'edited', { title: 'Edited', summary: 'e', steps: ['one', 'two'] });
+  const file = rec('change:app/edited')!.abs;
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^status: /m, 'kind: milestone\nstatus: '));
+  execFileSync('git', ['commit', '-q', '-am', 'by hand'], { cwd: store.root });
+  assert.match(
+    errors()
+      .map((p) => p.message)
+      .join('\n'),
+    /carries 2 open steps of its own.*finish or drop them all in one command \(pjman step <change> done\|drop <n>\.\.\.\)/,
+  );
+  assert.throws(() => step(store, 'change:app/edited', 'drop', 1, {}), /carries 1 open step of its own/);
+  assert.throws(() => step(store, 'change:app/edited', 'add', undefined, { text: 'no' }), /is a milestone/);
+  step(store, 'change:app/edited', 'drop', 1, { more: [2] });
+  assert.deepEqual(errors(), []);
 });

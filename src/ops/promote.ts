@@ -20,7 +20,7 @@ import { baseBranch, mergedInto } from '../store/merged.js';
 import { render } from './write.js';
 
 /** The statuses that follow a plan by themselves (ops/lift): on a milestone they would follow a plan it has not. */
-const FOLLOWS_PLAN = new Set(['planning', 'active', 'review']);
+export const FOLLOWS_PLAN = new Set(['planning', 'active', 'review']);
 
 export interface Promotion {
   /** The child changes to write, one per open step, in the plan's order. */
@@ -48,7 +48,11 @@ function childSlug(text: string, taken: (slug: string) => boolean, fallback: str
 /** The branch the change's work is on, and whether it holds commits not yet merged. Inside the project's repository
  *  the repository says; elsewhere only a branch a session was seen on, or one the change links, is known, and what it
  *  holds is not. */
-function branchAt(store: Store, loaded: Loaded, rec: Rec): { name: string; unmerged: boolean | undefined } | undefined {
+export function branchAt(
+  store: Store,
+  loaded: Loaded,
+  rec: Rec,
+): { name: string; unmerged: boolean | undefined } | undefined {
   const seen = branchOf(rec, observedBranches(loaded));
   const dir = store.projectDir;
   if (!dir || rec.data.project !== store.project) {
@@ -110,7 +114,8 @@ export function promote(
     const slug = childSlug(step.text, taken, `${rec.changeSlug}-step-${n}`);
     used.add(slug);
     const key = `change:${product}/${slug}`;
-    const takes = carrier?.n === n && !!branch;
+    // a branch whose work is already merged has nothing to carry on: it is left where it is, with its Trail
+    const takes = carrier?.n === n && !!branch && branch.unmerged !== false;
     const who = [env.session, created].filter(Boolean).join(', ');
     const body =
       `## Origin\n\nfrom ${rec.key}, step ${n} of its plan when it became a milestone\n\n— ${who}\n` +
@@ -122,7 +127,6 @@ export function promote(
       status: 'open',
       project: data.project,
       parent: rec.key,
-      features: list(data.features).length ? list(data.features) : undefined,
       binds: takes && trails.length ? trails : undefined,
       links: takes ? [`branch:${branch.name}`] : undefined,
       rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))),
@@ -147,13 +151,14 @@ export function promote(
   }
   if (open.length) {
     data.plan = plan;
-    if (trails.length && carrier && branch) {
+    if (trails.length && carrier && branch && branch.unmerged !== false) {
       const rest = list(data.binds).filter((k) => !trails.includes(k));
       if (rest.length) data.binds = rest;
       else delete data.binds;
     }
   }
-  if (!opts.statusGiven && FOLLOWS_PLAN.has(String(data.status))) {
+  // (with no step it never had a plan to follow: that status is a person's, or a ticket's, and stays)
+  if (!opts.statusGiven && steps.length && FOLLOWS_PLAN.has(String(data.status))) {
     notes.push(`status back to open from ${String(data.status)}: it followed a plan the milestone no longer has`);
     data.status = 'open';
   }

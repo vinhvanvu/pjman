@@ -12,6 +12,7 @@ import { productOfProject, newSession, originText } from '../ops/new.js';
 import { localDate, nowIso } from '../store/util.js';
 import { finishWrite, render, validateOrUndo, writeFile } from '../ops/write.js';
 import { sessionLog } from '../ops/session.js';
+import { branchAt, FOLLOWS_PLAN } from '../ops/promote.js';
 import { foundationHash, foundationOf, stepIsOpen, stepsOf } from '../model/foundation.js';
 import { sections as parseSections } from '../store/frontmatter.js';
 
@@ -222,14 +223,32 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
         });
         continue;
       }
-      writeFile(store, parentRec.path, render('change', { ...parentRec.data, kind: 'milestone' }, parentRec.body));
+      // the rules of a promotion hold here as on pjman set (ops/promote): unmerged work on its branch is not left on
+      // a record that merges nothing (decision work-on-the-branch), and a status that followed its plan goes back to
+      // open (decision status-at-promotion)
+      const at = branchAt(store, loaded, parentRec);
+      if (at?.unmerged) {
+        result.skipped.push({
+          id: t.id,
+          reason: `parent ${t.parent} (${parentKey}) holds work on its branch ${at.name} that is not merged, and a milestone merges nothing: pjman merge ${parentKey} first, then sync again`,
+        });
+        continue;
+      }
+      // (a status with no plan beneath it came from the ticket or a person, and stays)
+      const back = stepsOf(parentRec.data).length > 0 && FOLLOWS_PLAN.has(String(parentRec.data.status));
+      writeFile(
+        store,
+        parentRec.path,
+        render('change', { ...parentRec.data, kind: 'milestone', ...(back ? { status: 'open' } : {}) }, parentRec.body),
+      );
       touched.push(parentRec.path);
       events.push({
         op: 'set',
         key: parentKey,
         type: 'change',
         path: parentRec.path,
-        fields: ['kind'],
+        fields: back ? ['kind', 'status'] : ['kind'],
+        value: back ? 'open' : undefined,
         writer,
         session,
       });

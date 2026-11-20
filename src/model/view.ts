@@ -568,6 +568,8 @@ function contextIndex(loaded: Loaded): ContextIndex {
 
 /** The view's word on a change worked on after its review ended, where it cannot read the repository; a caller that can
  *  says instead whether the review is due again. */
+export const MOVED_SINCE = '; its plan moved since (pjman review says whether it is due again)';
+
 /** The plan as text under a heading of the given depth; on a milestone, the steps it carried before it became one,
  *  said as history with no count (its progress is its children). Nothing when there is neither. */
 export function planText(c: Pick<ChangeContext, 'plan' | 'planProgress' | 'earlier'>, h: string): string[] {
@@ -580,8 +582,6 @@ export function planText(c: Pick<ChangeContext, 'plan' | 'planProgress' | 'earli
     return [`\n${h} Earlier steps (from before it was a milestone; its children are its plan)\n\n${lines(c.earlier)}`];
   return [];
 }
-
-export const MOVED_SINCE = '; its plan moved since (pjman review says whether it is due again)';
 
 export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
   const raw = key.startsWith('change:') ? key : `change:${key}`;

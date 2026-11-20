@@ -213,6 +213,7 @@ test('a parent that has had a plan is promoted once no step of its own is open (
   const finished = loaded.byKey.get('change:app/app-20')![0];
   assert.equal(finished.data.kind, 'milestone', 'finished and dropped steps are history');
   assert.equal(stepsOf(finished.data).length, 2, 'and are kept');
+  assert.equal(finished.data.status, 'open', 'it was in review by its plan: a milestone starts open');
   assert.equal(loaded.byKey.get('change:app/app-21')![0].data.parent, 'change:app/app-20');
   assert.equal(loaded.byKey.get('change:app/app-30')![0].data.kind, undefined);
   assert.equal(loaded.byKey.get('change:app/app-31')![0].data.parent, undefined);
@@ -227,4 +228,36 @@ test('a parent that has had a plan is promoted once no step of its own is open (
     validate(loaded).filter((p) => p.level === 'error'),
     [],
   );
+});
+
+test('a sync leaves a parent whose finished work is still on its branch: a milestone merges nothing, and the skip names the merge', () => {
+  const g = (...args: string[]) =>
+    execFileSync('git', ['-c', 'user.name=Tester', '-c', 'user.email=t@example.com', ...args], { cwd: project });
+  g('commit', '-q', '--allow-empty', '-m', 'start');
+  const issue = (number: number, parent?: number) => ({
+    number,
+    title: `Issue ${number}`,
+    state: 'OPEN',
+    stateReason: '',
+    url: `https://github.com/acme/app/issues/${number}`,
+    labels: [],
+    ...(parent ? { parent: { number: parent } } : {}),
+  });
+  syncGithub(store, { from: [issue(40)] });
+  step(store, 'change:app/app-40', 'add', undefined, { texts: ['all of it'] });
+  step(store, 'change:app/app-40', 'done', 1, {});
+  g('checkout', '-q', '-b', 'app-40');
+  fs.writeFileSync(path.join(project, 'work.txt'), 'work\n');
+  g('add', '-A');
+  g('commit', '-q', '-m', 'work');
+  g('checkout', '-q', '-');
+  const r = syncGithub(store, { from: [issue(40), issue(41, 40)] });
+  assert.equal(loadStore(store).byKey.get('change:app/app-40')![0].data.kind, undefined);
+  assert.deepEqual(r.skipped, [
+    {
+      id: 'acme/app#41',
+      reason:
+        'parent acme/app#40 (change:app/app-40) holds work on its branch app-40 that is not merged, and a milestone merges nothing: pjman merge change:app/app-40 first, then sync again',
+    },
+  ]);
 });
