@@ -51,6 +51,8 @@ export interface DecisionGroupProps {
   onDecided?: (key: string) => void;
   /** Name the change on each card, when the group stands away from one change. */
   showChange?: boolean;
+  /** The change the group stands on: its key decision comes first (change:key-decisions). */
+  change?: string;
   className?: string;
 }
 
@@ -69,9 +71,10 @@ export function DecisionGroup({
   held = false,
   onDecided,
   showChange = false,
+  change,
   className,
 }: DecisionGroupProps) {
-  const { waiting: live, decided, history } = grouped(decisions);
+  const { waiting: live, key: keyDecision, decided, history } = grouped(decisions, change);
   const { shown: waiting, letGo } = useHeldList(live, held, keyOf);
   // open: the cards drawn as the ladder; thread: the ones unfolded; a link opens its decision to the thread
   const [open, setOpen] = useState<Set<string>>(() => {
@@ -127,6 +130,18 @@ export function DecisionGroup({
 
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
+      {/* the key decision, decided: first, never folded with the rest (change:key-decisions) */}
+      {where === 'change' && keyDecision && (
+        <DecisionCard
+          d={keyDecision}
+          depth={thread.has(keyDecision.key) ? 'thread' : 'row'}
+          lens={lens}
+          actor={actor}
+          onToggleThread={() => toggleThread(keyDecision.key)}
+          onReopen={onReopen}
+          showChange={showChange}
+        />
+      )}
       <ol className="flex flex-col empty:hidden">
         <AnimatePresence key={moment ?? 'now'} initial={false}>
           {waiting.map((d) => {

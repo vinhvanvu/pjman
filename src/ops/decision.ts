@@ -9,7 +9,7 @@ import path from 'node:path';
 import type { Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
 import { SLUG_RE } from '../store/keys.js';
-import { loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../store/records.js';
+import { loadStore, resolve, unresolved, unresolvedError, type Loaded, type Rec } from '../store/records.js';
 import { resolveSupersedes, supersededBy, supersedesOf } from '../model/supersede.js';
 import { markSuperseded } from './supersede.js';
 import { CliError, isDateString, nowIso, today, notFound, usageError } from '../store/util.js';
@@ -26,6 +26,7 @@ import {
   type Entry,
 } from '../model/foundation.js';
 import { decisionHome } from './new.js';
+import { keyDecisionOf } from '../model/key-decision.js';
 import { acrossCueOfDecision, aspectKeysOf, ASPECT_CUE_HINT, coveredByAspect } from '../model/aspects.js';
 import { deliverDecision, type Delivery } from './host.js';
 
@@ -38,6 +39,8 @@ export interface DecisionOpts {
   /** The entries to append, in order. */
   entries: EntryInput[];
   supersedes?: string;
+  /** The decisions this one rests on (change:key-decisions): added to what it names. */
+  dependsOn?: string[];
   links?: string[];
   /** The record's creation date when the call creates it. */
   created?: string;
@@ -90,6 +93,8 @@ export function entriesFromFlags(
     accept?: string;
     revisit?: string;
     reopen?: boolean;
+    markKey?: string;
+    unmarkKey?: string;
     by?: string;
   },
   writer: string | undefined,
@@ -131,6 +136,17 @@ export function entriesFromFlags(
     out.push({ type: 'accept', option: id, text, by, revisit: f.revisit?.trim() || undefined });
   } else if (f.revisit) throw new CliError('--revisit goes with --accept');
   if (f.reopen) out.push({ type: 'reopen', by, text: f.comment?.trim() || undefined });
+  // the change's key decision marked by hand, or unmarked, each with its reason (change:key-decisions)
+  if (f.markKey !== undefined && f.unmarkKey !== undefined)
+    throw new CliError('--mark-key and --unmark-key undo each other; give one');
+  if (f.markKey !== undefined) {
+    if (!f.markKey.trim()) throw new CliError('--mark-key "why": the reason it is key, against the bar');
+    out.push({ type: 'key', text: f.markKey.trim(), by: writer });
+  }
+  if (f.unmarkKey !== undefined) {
+    if (!f.unmarkKey.trim()) throw new CliError('--unmark-key "why": the reason it is no longer key');
+    out.push({ type: 'unkey', text: f.unmarkKey.trim(), by: writer });
+  }
   return out;
 }
 
@@ -213,6 +229,24 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     data.links = [...have, ...opts.links.filter((l) => !have.includes(l))];
     changed.push('links');
   }
+  // depends_on: the decisions this one rests on; each resolves to a decision other than itself
+  if (opts.dependsOn?.length) {
+    const have = Array.isArray(data.depends_on) ? (data.depends_on as string[]) : [];
+    const add: string[] = [];
+    for (const raw of opts.dependsOn) {
+      const target = raw.includes(':') ? raw : `decision:${raw}`;
+      const res = resolve(loaded, target, product);
+      if (res.status !== 'ok' && res.status !== 'alias') throw new CliError(`--depends-on: ${unresolved(res, target)}`);
+      if (res.rec.type !== 'decision')
+        throw new CliError(`--depends-on: ${res.rec.key} is a ${res.rec.type}, not a decision`);
+      if (res.rec.key === key) throw new CliError('--depends-on: a decision does not rest on itself');
+      if (!have.includes(res.rec.key) && !add.includes(res.rec.key)) add.push(res.rec.key);
+    }
+    if (add.length) {
+      data.depends_on = [...have, ...add];
+      changed.push('depends_on');
+    } else notes.push('it already names each of those in depends_on');
+  }
 
   // the thread: what is there, then what this call appends, each entry checked against the thread so far
   const thread = threadOf(data);
@@ -222,6 +256,8 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
     throw new CliError(`${key} is ${status}; its thread is closed. Open a decision that supersedes it`);
   const at = nowIso();
   const appended: string[] = [];
+  /** The change a hand mark lands on, when this call marks one: a mark elsewhere on it moves here. */
+  let keyFrom: string | undefined;
   let state = before;
   for (const e of opts.entries) {
     const entry: Entry = { ...e, at: e.at ?? at, by: e.by ?? env.writer };
@@ -263,6 +299,23 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
           throw new CliError(
             `comment: --on '${entry.option}' is not an option of ${key} (${[...ids].join(', ') || 'none yet'})`,
           );
+        break;
+      case 'key': {
+        const m = /^decision:(.+)\/[^/]+$/.exec(key);
+        const changeKey = existing?.changeKey ?? (m ? `change:${m[1]}` : undefined);
+        if (!changeKey || !loaded.byKey.get(changeKey)?.length)
+          throw new CliError(`${key} is on no change; a key decision is a change's`);
+        if (state.keyMark) throw new CliError(`${key} is already marked key; --unmark-key first to restate why`);
+        const k = keyDecisionOf(loaded, changeKey);
+        if (k?.how === 'tree' && k.key !== key)
+          throw new CliError(
+            `the tree names ${k.key} key (${k.dependents.length} on ${changeKey} rest on it); a hand mark is for a decision standing alone: name what rests on ${key} with --depends-on instead`,
+          );
+        keyFrom = changeKey;
+        break;
+      }
+      case 'unkey':
+        if (!state.keyMark) throw new CliError(`${key} is not marked key; nothing to unmark`);
         break;
       case 'reopen':
         if (!state.accepted) throw new CliError(`${key} is not decided; nothing to reopen`);
@@ -352,9 +405,37 @@ export function decision(store: Store, ref: string, opts: DecisionOpts): Decisio
       changed.push('supersedes');
     }
   }
+  // a hand mark moves: another decision on the change marked key by hand is unmarked in this same commit; only when
+  // this one ends the call marked, and never one this call already rewrote (a decision it supersedes leaves the tree)
+  if (keyFrom && state.keyMark) {
+    const why = opts.entries.find((e) => e.type === 'key')?.text;
+    for (const other of loaded.records) {
+      if (other.type !== 'decision' || other.key === key || other.changeKey !== keyFrom || !other.valid) continue;
+      if (other.data.status !== 'proposed' && other.data.status !== 'decided') continue;
+      if (!decisionState(threadOf(other.data)).keyMark || prior.has(other.path)) continue;
+      const text = fs.readFileSync(other.abs, 'utf8');
+      prior.set(other.path, text);
+      const odata = { ...other.data };
+      odata.thread = [
+        ...threadOf(other.data).map((e) => ({ ...e })),
+        { type: 'unkey', at, by: env.writer, text: `moved to ${key}${why ? `: ${why}` : ''}` },
+      ].map((e) => Object.fromEntries(Object.entries(e).filter(([, v]) => v !== undefined)));
+      fs.writeFileSync(other.abs, render('decision', odata, other.body));
+      touched.push(other.path);
+      also.push({
+        op: 'set',
+        key: other.key,
+        type: 'decision',
+        path: other.path,
+        fields: ['thread'],
+        writer: env.writer,
+      });
+      notes.push(`the key mark moved from ${other.key}`);
+    }
+  }
   if (existing && !changed.length)
     throw new CliError(
-      `nothing to write to ${key}: give an entry (--question, --option, --recommend, --comment, --reject, --accept, --reopen), --name, --gist, --links or --supersedes`,
+      `nothing to write to ${key}: give an entry (--question, --option, --recommend, --comment, --reject, --accept, --reopen, --mark-key, --unmark-key), --name, --gist, --links, --depends-on or --supersedes`,
     );
   fullKeys(loaded, 'decision', data, undefined, product);
   const rel = existing?.path ?? home!.rel;

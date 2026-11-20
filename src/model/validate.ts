@@ -101,7 +101,7 @@ const LIST_FIELDS: Record<RecordType, string[]> = {
   place: ['links'],
   project: ['owners', 'links'],
   change: ['depends_on', 'features', 'aspects', 'owners', 'binds', 'links', 'aliases'],
-  decision: ['links'],
+  decision: ['links', 'depends_on'],
   release: ['ships', 'links'],
   source: ['links'],
   session: ['changes'],
@@ -132,7 +132,7 @@ export const EDGES: Record<string, [string[], string[]]> = {
     ['session', 'change', 'feature', 'aspect', 'project'],
     ['session', 'change', 'feature', 'aspect', 'project'],
   ],
-  depends_on: [['change'], ['change']],
+  depends_on: [['change'], ['change']], // observed between changes; a decision's depends_on is checked on the decision
   sequence: [['product'], ['change']],
   changes: [['session'], ['change']],
   project: [['change', 'session'], ['project']],
@@ -715,6 +715,46 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
               }
             }
           }
+        }
+        // depends_on: the decisions this one rests on (change:key-decisions); never itself, never back round to it
+        if (d.depends_on !== undefined && !Array.isArray(d.depends_on))
+          err(r, `'depends_on' must be a list of decision keys`);
+        if (listOf(d.depends_on).length) {
+          for (const k of listOf(d.depends_on)) {
+            checkRef(r, 'depends_on', k, ['decision']);
+            if (liveKey(r, k) === r.key) err(r, `depends_on: '${k}' is the decision itself`);
+          }
+          const path: string[] = [r.key];
+          const visit = (rec: Rec, depth: number): boolean => {
+            if (depth > 64) return false;
+            for (const k of listOf(rec.data.depends_on)) {
+              const x = resolve(loaded, k, scopeOf(rec));
+              if (x.status !== 'ok' && x.status !== 'alias') continue;
+              if (x.rec.key === r.key) {
+                err(r, `depends_on cycles: ${[...path, r.key].join(' → ')}`);
+                return true;
+              }
+              if (path.includes(x.rec.key)) continue;
+              path.push(x.rec.key);
+              if (visit(x.rec, depth + 1)) return true;
+              path.pop();
+            }
+            return false;
+          };
+          visit(r, 0);
+        }
+        // a hand mark of the key decision: one in force per change
+        if (r.changeKey && decisionState(threadOf(d)).keyMark) {
+          const others = loaded.records.filter(
+            (o) =>
+              o !== r &&
+              o.type === 'decision' &&
+              o.changeKey === r.changeKey &&
+              (o.data.status === 'proposed' || o.data.status === 'decided') &&
+              !!decisionState(threadOf(o.data)).keyMark,
+          );
+          if (others.length && (d.status === 'proposed' || d.status === 'decided'))
+            err(r, `marked key by hand, as is ${others.map((o) => o.key).join(', ')}: a change has one key decision`);
         }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
         // isDateString narrows what it refuses to never; the name is still the string read from the file

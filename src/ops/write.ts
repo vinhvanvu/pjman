@@ -144,7 +144,7 @@ const KEY_FIELDS: Record<RecordType, string[]> = {
   place: ['feature'],
   project: ['product', 'parent'],
   change: ['project', 'parent', 'depends_on', 'features', 'aspects'],
-  decision: ['supersedes', 'decided_by'],
+  decision: ['supersedes', 'depends_on', 'decided_by'],
   release: ['ships'],
   source: [],
   session: ['changes', 'parent', 'project', 'agent', 'kind'],

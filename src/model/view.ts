@@ -14,6 +14,7 @@ import {
   type RecordType,
 } from '../store/records.js';
 import { supersedesOf } from './supersede.js';
+import { conflictLine, dependsOnOf, keyDecisionOf, keyLine, type KeyDecision } from './key-decision.js';
 import { derivedStatus, effectsOf, FEATURE_STATUSES, live, rootProductOf, structuralParent } from './tree.js';
 import { describeInventory, inventory, isHolds, mapGuidance, type Inventory } from './inventory.js';
 import {
@@ -376,7 +377,7 @@ export function formatLs(rows: Row[]): string {
     .join('\n');
 }
 
-export function show(store: Store, key: string): { rec: Rec; text: string } {
+export function show(store: Store, key: string): { rec: Rec; text: string; keyDecision?: KeyDecision } {
   const loaded = loadStore(store);
   const res = resolve(loaded, key);
   if (res.status === 'ok' || res.status === 'alias' || res.status === 'invalid') {
@@ -389,6 +390,23 @@ export function show(store: Store, key: string): { rec: Rec; text: string } {
       const feature = featureOfPlace(loaded, res.rec);
       const at = aspect && feature ? aspectAt(loaded, aspect, feature) : undefined;
       if (at) text += '\n## Read here\n\n' + formatAspectAt(at) + '\n';
+    }
+    // the key decision is derived, never in the file (change:key-decisions): a change names it, a decision says it is it
+    if (res.status !== 'invalid' && (res.rec.type === 'change' || res.rec.type === 'decision')) {
+      const k =
+        res.rec.type === 'change'
+          ? keyDecisionOf(loaded, res.rec.key)
+          : res.rec.changeKey
+            ? keyDecisionOf(loaded, res.rec.changeKey)
+            : undefined;
+      if (k && res.rec.type === 'change') text += `\n## Key decision\n\n${k.key}\n${keyLine(k)}\n`;
+      else if (k && k.key === res.rec.key)
+        text += `\n## Key decision\n\nthe key decision of ${res.rec.changeKey}: ${keyLine(k)}\n`;
+      const conflict = k && conflictLine(k);
+      if (conflict && (res.rec.type === 'change' || k.conflict?.key === res.rec.key)) text += `note: ${conflict}\n`;
+      // the JSON carries it too: a change's key decision, or the decision's own when it is the key one
+      if (k && (res.rec.type === 'change' || k.key === res.rec.key || k.conflict?.key === res.rec.key))
+        return { rec: res.rec, text, keyDecision: k };
     }
     return { rec: res.rec, text };
   }
@@ -444,6 +462,8 @@ export interface ChangeContext {
   observed: { edge: string; to: string; session: string; at?: string }[];
   /** The aspects the change works under: named by it, or at the features it names (decision aspects/aspect-shape). */
   aspects?: ChangeAspects;
+  /** The decision the rest of the change is built on (change:key-decisions), when one clears the bar. */
+  keyDecision?: KeyDecision;
   /** Decisions on it that read as applying across the product while it names no aspect: the cue to propose one
    *  (change:aspects-as-work-goes). */
   aspectCues: AspectCue[];
@@ -473,10 +493,28 @@ export interface DecisionRow extends Row {
   stale: boolean;
   migrated?: string;
   supersededBy?: string;
+  /** Set on the change's key decision (change:key-decisions): how it was found, why, how many rest on it. */
+  keyed?: Keyed;
 }
 
-export function decisionRow(r: Rec, supersededBy?: string): DecisionRow {
+/** A decision's key mark as a card draws it: found by the tree or marked by hand, why, how many on the change rest on it. */
+export interface Keyed {
+  how: KeyDecision['how'];
+  why?: string;
+  dependents: number;
+  /** One line: why it is key. */
+  line: string;
+}
+
+/** The key mark on `key` when it is its change's key decision. */
+export function keyedOf(k: KeyDecision | undefined, key: string): Keyed | undefined {
+  if (!k || k.key !== key) return undefined;
+  return { how: k.how, ...(k.why ? { why: k.why } : {}), dependents: k.dependents.length, line: keyLine(k) };
+}
+
+export function decisionRow(r: Rec, supersededBy?: string, k?: KeyDecision): DecisionRow {
   const rungs = rungsOf(r);
+  const keyed = keyedOf(k, r.key);
   return {
     ...row(r),
     state: decisionState(threadOf(r.data)),
@@ -484,6 +522,7 @@ export function decisionRow(r: Rec, supersededBy?: string): DecisionRow {
     stale: rungs.stale,
     migrated: typeof r.data.migrated === 'string' ? r.data.migrated : undefined,
     supersededBy,
+    ...(keyed ? { keyed } : {}),
   };
 }
 
@@ -597,7 +636,11 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
   const rungs = rungsOf(rec);
 
   const cx = contextIndex(loaded);
-  const decisions = (cx.decisions.get(rec.key) ?? []).map((r) => decisionRow(r, cx.supersededBy.get(r.key)));
+  // the key decision first (change:key-decisions), the rest as they were written
+  const keyDecision = keyDecisionOf(loaded, rec.key);
+  const decisions = (cx.decisions.get(rec.key) ?? [])
+    .map((r) => decisionRow(r, cx.supersededBy.get(r.key), keyDecision))
+    .toSorted((a, b) => Number(!!b.keyed) - Number(!!a.keyed));
 
   const sources: ChangeContext['sources'] = [];
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -666,6 +709,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     stale: rungs.stale,
     migrated: typeof rec.data.migrated === 'string' ? rec.data.migrated : undefined,
     decisions,
+    ...(keyDecision ? { keyDecision } : {}),
     sources,
     findings: findingsOf(rec.data),
     review: (() => {
@@ -739,6 +783,8 @@ export function decisionLine(dec: Row & { supersededBy?: string }): string {
   else parts.push(dec.status ?? '?');
   const sup = supersedesOf(dec.data);
   if (sup.length) parts.push(`supersedes ${sup.join(', ')}`);
+  const rests = dependsOnOf(dec.data);
+  if (rests.length) parts.push(`rests on ${rests.join(', ')}`);
   return parts.join('; ');
 }
 
@@ -756,6 +802,16 @@ export function nameAndLine(r: Pick<Row, 'name' | 'title'>): string {
   return `${r.name && r.name !== line ? `${r.name}: ` : ''}${line ?? r.name ?? ''}`;
 }
 
+/** The key decision, said under the Intent: which, and why it is key; a hand mark the tree overrides, said. */
+function keyDecisionLines(c: ChangeContext): string[] {
+  const k = c.keyDecision!;
+  const dec = c.decisions.find((d) => d.key === k.key);
+  const out = [`\n## Key decision\n\n${k.key}${dec ? ` — ${nameAndLine(dec)}` : ''}\n${keyLine(k)}`];
+  const conflict = conflictLine(k);
+  if (conflict) out.push(`note: ${conflict}`);
+  return out;
+}
+
 export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
@@ -768,12 +824,14 @@ export function formatChangeContext(c: ChangeContext): string {
   for (const [k, v] of Object.entries(c.sections)) {
     if (k === 'Open questions') out.push(...planText(c, '##'));
     out.push(`\n## ${k}\n\n${v}`);
+    if (k === 'Intent' && c.keyDecision) out.push(...keyDecisionLines(c));
   }
+  if (c.keyDecision && !('Intent' in c.sections)) out.push(...keyDecisionLines(c));
   if (!('Open questions' in c.sections)) out.push(...planText(c, '##'));
   if (c.decisions.length) {
     out.push('\n## Decisions');
     for (const dec of c.decisions) {
-      out.push(`\n${heading('###', dec)}\n${decisionLine(dec)}`);
+      out.push(`\n${heading('###', dec)}${dec.keyed ? ' (key)' : ''}\n${decisionLine(dec)}`);
       out.push(...readinessLines(dec, 'decision'));
       const lines = formatDecisionState(dec.state);
       if (lines.length) out.push(`\n${lines.join('\n')}`);

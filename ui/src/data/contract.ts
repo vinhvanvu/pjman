@@ -13,6 +13,8 @@ export type {
   ChangeRow,
   DecisionState,
   Health,
+  KeyDecision,
+  Keyed,
   HostResult,
   Layer,
   LaunchResult,

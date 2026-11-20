@@ -14,7 +14,8 @@ export type {
 export type { AspectAt, AspectWhole, ChangeAspects, Layer, PlaceLine } from '../model/aspects.js';
 export type { Violation } from '../model/roadmap.js';
 export type { Bridge, BridgeChange, BridgeMotion, BridgeSession, SessionState } from '../model/bridge.js';
-export type { ChangeContext, Row } from '../model/view.js';
+export type { ChangeContext, Keyed, Row } from '../model/view.js';
+export type { KeyDecision } from '../model/key-decision.js';
 export type { Moment } from '../model/moment.js';
 export type { Timeline, TimelineEvent } from '../model/timeline.js';
 export type {

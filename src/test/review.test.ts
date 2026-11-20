@@ -27,6 +27,7 @@ import {
   reviewBrief,
   reviewLoop,
   profilesOf,
+  sameFolder,
   runReview,
   settleFinding,
 } from '../sync/review.js';
@@ -82,11 +83,13 @@ const show = () => ({ id: '01T' + num, number: num, url: 'https://entire.com/gh/
   changes: [{ repository: 'web', number: 1, branch: state.trail.branch, status: fs.existsSync(${JSON.stringify(path.join(tmp, 'merged'))}) ? 'merged' : 'open', mergeability: { mergeable: true, gates: [] } }] });
 if (args[0] === 'review') {
   // the profiles: a listing written to the 'profile' file, the usual one where that file is empty; with 'personal'
-  // there, only a checkout that has its own settings file lists any (the file's text is the listing)
+  // there, only a checkout that has its own settings file lists any (the file's text is the listing), but for what a
+  // 'shared' file lists for every checkout; with 'listfail' the listing fails in a checkout that has its own file
   const own = require('node:path').join(process.cwd(), '.entire', 'settings.local.json');
   const listing = fs.existsSync(${JSON.stringify(path.join(tmp, 'personal'))})
-    ? (fs.existsSync(own) ? fs.readFileSync(own, 'utf8') : '')
+    ? (fs.existsSync(own) ? fs.readFileSync(own, 'utf8') : fs.existsSync(${JSON.stringify(path.join(tmp, 'shared'))}) ? fs.readFileSync(${JSON.stringify(path.join(tmp, 'shared'))}, 'utf8') : '')
     : fs.existsSync(${JSON.stringify(path.join(tmp, 'profile'))}) ? fs.readFileSync(${JSON.stringify(path.join(tmp, 'profile'))}, 'utf8') || 'Profiles:\\n  general  (default)\\n    reviewers: claude-code\\n    output:     trail\\n\\nRun one with entire review <name>.' : '';
+  if (args.includes('--list') && fs.existsSync(${JSON.stringify(path.join(tmp, 'listfail'))}) && fs.existsSync(own)) fail('the server did not answer (503)');
   if (args.includes('--list')) console.log(listing || 'No review profiles configured. Create one with entire review --configure.');
   else if (fs.existsSync(${JSON.stringify(path.join(tmp, 'noreview'))})) fail('the review agents did not start');
   else { state.findings.push({ id: 'R' + (state.findings.length + 1), body: '[intent] the total ignores discounts, which the done-when asks for', severity: 'high', file: 'cart.ts', line: '1', status: 'open' }); save(); console.log('Review complete.'); }
@@ -355,6 +358,21 @@ test('the profile is named to Entire: the one asked for, the default, or the onl
   // the only one there is needs no default mark
   fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  solo\n    output:     trail');
   assert.equal(ran().named, 'solo');
+  // a listing in a layout pjman does not read is not taken for no profile: it is said, and a profile the person names
+  // is still asked of Entire
+  const odd = 'Review profiles\n- general (default)\n- deep';
+  assert.deepEqual(profilesOf(odd), { names: [], fallback: undefined, output: {}, unread: true });
+  assert.equal(profilesOf('').unread, undefined);
+  fs.writeFileSync(path.join(tmp, 'profile'), odd);
+  const unread = ran();
+  assert.equal(unread.named, undefined);
+  assert.match(
+    unread.pending[0],
+    /^entire review --list answered in .* with a listing pjman could not read, so the profile to run was not found: name it \(pjman review change:web\/cart --run --profile <name>\)$/,
+  );
+  const named = ran('general');
+  assert.equal(named.named, 'general');
+  assert.match(named.pending[0], /^Entire does not say where the review profile general sends its verdict/);
   fs.writeFileSync(path.join(tmp, 'profile'), '');
   fs.rmSync(path.join(tmp, 'noreview'));
 });
@@ -364,11 +382,13 @@ test("a profile saved for the person alone is found from a worktree: copied in f
   g('worktree', 'add', '-q', wt, 'cart');
   const mine = path.join(dir, '.entire', 'settings.local.json');
   const here = path.join(wt, '.entire', 'settings.local.json');
+  const copied = `your own review profile was copied into the worktree (${mine} to ${here})`;
+  const general = 'Profiles:\n  general  (default)\n    output:     trail';
   fs.writeFileSync(path.join(tmp, 'personal'), '');
   fs.writeFileSync(path.join(tmp, 'noreview'), '');
-  const run = () => {
+  const run = (profile?: string) => {
     fs.writeFileSync(callsFile, '');
-    const r = runReview(store, 'change:web/cart', { entire: { bin } });
+    const r = runReview(store, 'change:web/cart', { entire: { bin }, profile });
     return { ...r, named: calls().find((c) => c[0] === 'review' && c.includes('--prompt'))?.[1] };
   };
   try {
@@ -376,32 +396,139 @@ test("a profile saved for the person alone is found from a worktree: copied in f
     const none = run();
     assert.match(none.pending[0], new RegExp(`^no review profile in ${wt}: set one up`));
     assert.equal(fs.existsSync(here), false);
-    // the main checkout's own file names none: the copy is taken back
+    // the main checkout's own file names none: the copy is taken back, with the folder made for it
     fs.mkdirSync(path.dirname(mine), { recursive: true });
     fs.writeFileSync(mine, '');
     assert.match(run().pending[0], /^no review profile in /);
     assert.equal(fs.existsSync(here), false);
-    // it names one: copied in, said, and the review is run with it, in the worktree
-    fs.writeFileSync(mine, 'Profiles:\n  general  (default)\n    output:     trail');
+    assert.equal(fs.existsSync(path.dirname(here)), false, 'the worktree is left as it was');
+    // the listing fails once the file is there: the copy is taken back, and the reason is pending
+    fs.writeFileSync(mine, general);
+    fs.writeFileSync(path.join(tmp, 'listfail'), '');
+    const failed = run();
+    fs.rmSync(path.join(tmp, 'listfail'));
+    assert.equal(failed.named, undefined);
+    assert.match(failed.pending[0], /the server did not answer \(503\)/);
+    assert.equal(fs.existsSync(here), false, 'no copy is left where nothing was said of it');
+    assert.equal(fs.existsSync(path.dirname(here)), false);
+    // a file that cannot be read is a reason, never a raw error
+    fs.chmodSync(mine, 0o000);
+    const unreadable = run();
+    fs.chmodSync(mine, 0o644);
+    assert.match(unreadable.pending[0], /^your own review profile could not be copied into the worktree \(.+\): /);
+    assert.equal(fs.existsSync(here), false);
+    assert.equal(fs.existsSync(path.dirname(here)), false);
+    // a branch that would show the file to git and cannot be made to ignore it gets no copy
+    fs.mkdirSync(path.dirname(here), { recursive: true });
+    fs.writeFileSync(path.join(path.dirname(here), '.gitignore'), '!settings.local.json\n');
+    const shown = run();
+    assert.match(
+      shown.pending[0],
+      /^your own review profile was not copied into the worktree: .* does not ignore \.entire\/settings\.local\.json/,
+    );
+    assert.equal(fs.existsSync(here), false);
+    // (the line tried in the repository's exclude list did not hide the file: it is not left there)
+    const exclude = path.join(dir, '.git', 'info', 'exclude');
+    const excluded = () => (fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : '').split('\n');
+    assert.ok(!excluded().includes('/.entire/settings.local.json'));
+    fs.rmSync(path.dirname(here), { recursive: true });
+    // it names one: copied in, said, and the review is run with it, in the worktree. The branch has no ignore rule
+    // for the file (the line just tried is in the repository's exclude list, which now hides it): git does not show it
     const found = run();
-    assert.deepEqual(found.said, [`your own review profile was copied into the worktree (${mine} to ${here})`]);
+    assert.equal(found.said.length, 2);
+    assert.match(
+      found.said[0],
+      /^\.entire\/settings\.local\.json was added to this repository's exclude list \(.*info\/exclude\): the branch does not ignore it$/,
+    );
+    assert.equal(found.said[1], copied);
+    assert.equal(excluded().filter((l) => l === '/.entire/settings.local.json').length, 1);
     assert.equal(found.named, 'general');
     assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
+    assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: wt, encoding: 'utf8' }), '');
     // there already: used as it is, with nothing said
     const again = run();
     assert.deepEqual(again.said, []);
     assert.equal(again.named, 'general');
-    // the worktree's own file is never written over, even where it names no profile
+    // yours changed since (a profile added): pjman's own copy, untouched since, is copied again where the review
+    // needs what it lacks
+    fs.writeFileSync(mine, `${general}\n  deep\n    output:     trail`);
+    const fresh = run('deep');
+    assert.deepEqual(fresh.said, [
+      `your own review profile changed since it was copied into the worktree, and was copied again (${mine} to ${here})`,
+    ]);
+    assert.equal(fresh.named, 'deep');
+    assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
+    // and where the old copy still names a profile to run: yours was corrected (another default), and the corrected
+    // one is what runs, never the copy gone stale
+    fs.writeFileSync(mine, 'Profiles:\n  general\n    output:     trail\n  deep  (default)\n    output:     trail');
+    const corrected = run();
+    assert.equal(corrected.said.length, 1);
+    assert.match(corrected.said[0], /changed since it was copied into the worktree, and was copied again/);
+    assert.equal(corrected.named, 'deep');
+    assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
+    // yours corrected to what resolves no profile is copied all the same and said: the review answers for your file
+    // as it stands, and nothing runs from the copy gone stale
+    const againCopied = /changed since it was copied into the worktree, and was copied again/;
+    fs.writeFileSync(mine, 'Profiles:\n  general\n    output:     trail\n  deep\n    output:     trail');
+    const undecided = run();
+    assert.match(undecided.said[0], againCopied);
+    assert.equal(undecided.named, undefined);
+    assert.match(undecided.pending[0], /^2 review profiles in .* and none is the default/);
+    fs.writeFileSync(mine, '');
+    const emptied = run();
+    assert.match(emptied.said[0], againCopied);
+    assert.equal(emptied.named, undefined);
+    assert.match(emptied.pending[0], /^no review profile in /);
+    assert.equal(fs.readFileSync(here, 'utf8'), '');
+    // yours deleted: pjman's copy of it goes too, said
+    fs.writeFileSync(mine, general);
+    assert.equal(run().named, 'general');
+    fs.rmSync(mine);
+    const gone = run();
+    assert.match(
+      gone.said[0],
+      /^your own review profile is gone from the main checkout \(.*\), so the copy of it in the worktree was removed/,
+    );
+    assert.equal(gone.named, undefined);
+    assert.equal(fs.existsSync(here), false);
+    fs.writeFileSync(mine, general);
+    assert.equal(run().named, 'general');
+    // the worktree's own file is never written over, even where it names no profile; that it is not yours is said
     fs.writeFileSync(here, '');
     const kept = run();
     assert.equal(kept.named, undefined);
-    assert.match(kept.pending[0], /settings\.local\.json is the worktree's own and was left as it is\): set one up/);
+    assert.match(
+      kept.pending[0],
+      /settings\.local\.json is the worktree's own and was left as it is; it differs from yours in .*\): set one up/,
+    );
     assert.equal(fs.readFileSync(here, 'utf8'), '');
+    // profiles shared by the repository do not keep yours out: with the one asked for missing, or several and no
+    // default, your file is brought in
+    fs.rmSync(here);
+    const shared = 'Profiles:\n  team\n    output:     trail\n  other\n    output:     trail';
+    fs.writeFileSync(path.join(tmp, 'shared'), shared);
+    fs.writeFileSync(mine, `${shared}\n  general  (default)\n    output:     trail`);
+    const both = run();
+    assert.deepEqual(both.said, [copied]);
+    assert.equal(both.named, 'general');
+    fs.rmSync(here);
+    assert.equal(run('team').named, 'team', 'a shared profile asked for needs no copy');
+    assert.equal(fs.existsSync(here), false);
   } finally {
-    fs.rmSync(path.join(tmp, 'personal'), { force: true });
-    fs.rmSync(path.join(tmp, 'noreview'), { force: true });
+    for (const f of ['personal', 'noreview', 'listfail', 'shared']) fs.rmSync(path.join(tmp, f), { force: true });
     fs.rmSync(mine, { force: true });
     g('worktree', 'remove', '--force', wt);
+  }
+});
+
+test('the main checkout is known as itself through a link to its folder', () => {
+  const link = path.join(tmp, 'web-link');
+  fs.symlinkSync(dir, link);
+  try {
+    assert.equal(sameFolder(link, dir), true);
+    assert.equal(sameFolder(path.join(tmp, 'elsewhere'), dir), false);
+  } finally {
+    fs.rmSync(link);
   }
 });
 
@@ -555,6 +682,14 @@ test('a round whose findings could not be read is not closed: with no Trail noth
     runReview(store, k, o).pending[0],
     /^Entire does not say where the review profile bare sends its verdict: .* it was not run/,
   );
+  // a listing pjman cannot read does not run a due review either, with or without a profile named: the way on is the
+  // session's own reviewers, never --profile a second time
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Review profiles\n- general (default)');
+  for (const profile of [undefined, 'general'])
+    assert.match(
+      runReview(store, k, { ...o, profile }).pending[0],
+      /^entire review --list answered in .* with a listing pjman could not read, so where a profile's verdict goes is not known: it was not run and the review is still due; hand the round to reviewers of the session's own, one fresh reviewer a lens \(`pjman review change:web\/coupon --lens <intent\|drift\|correctness>`\), then close it/,
+    );
   assert.equal(reviewers(), 0);
   fs.writeFileSync(path.join(tmp, 'profile'), '');
   // with its Trail, the reviewers run; Entire then does not list what they posted: the round stays open

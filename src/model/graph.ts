@@ -105,6 +105,7 @@ function edgesOnce(loaded: Loaded): Edge[] {
         break;
       case 'decision':
         for (const k of supersedesOf(d)) edge('supersedes', r.key, live(k, s), r);
+        for (const k of list(d.depends_on)) edge('depends_on', r.key, live(k, s), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         if (r.changeKey) edge('in', r.key, r.changeKey, r);
         else if (r.productSlug) edge('in', r.key, `product:${r.productSlug}`, r);

@@ -203,10 +203,11 @@ const printed = (key: string): string => shortKey(key, scopeProduct);
 
 /** In a project that opted in to Entire, the Trail of a change a command just wrote is brought to where the change
  *  now stands (change:trail-lifecycle). Never fails the command: what Entire does not answer is printed as pending. */
-function followTrail(store: Store, key: string, session?: string): TrailReconcile | null {
+function followTrail(store: Store, key: string, session?: string, through = false): TrailReconcile | null {
   try {
     // the command's own write has landed: Entire gets a few seconds, and the next sync does what it did not
-    return reconcileTrail(store, key, { session, budget: 12_000 });
+    // (`through`: the command merged the branch through the Trail, whose gates Entire checked)
+    return reconcileTrail(store, key, { session, budget: 12_000, through });
   } catch (e) {
     return { change: key, acts: [], moved: [], pending: [(e as Error).message.split('\n')[0]], commit: null };
   }
@@ -492,6 +493,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           accept: v.accept,
           revisit: v.revisit,
           reopen: v.reopen,
+          markKey: v['mark-key'],
+          unmarkKey: v['unmark-key'],
           by: v.by,
         },
         writer,
@@ -510,6 +513,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         gist,
         entries,
         supersedes: v.supersedes,
+        dependsOn: v['depends-on'],
         links: v.links,
         created: v.created,
         session: v.session,
@@ -889,7 +893,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         store,
         resolveArg(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project }),
       );
-      v.json ? json({ ...row(r.rec), body: r.rec.body }) : out(`# ${r.rec.path}\n${r.text}`);
+      v.json
+        ? json({ ...row(r.rec), body: r.rec.body, ...(r.keyDecision ? { keyDecision: r.keyDecision } : {}) })
+        : out(`# ${r.rec.path}\n${r.text}`);
       return 0;
     }
     case 'set': {
@@ -1137,7 +1143,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (!pos[1]) throw usageError('usage: pjman merge <change> [--json]');
       const loaded = loadStore(store);
       const r = mergeChange(store, resolveArg(loaded, pos[1], { kinds: ['change'] }), { session: v.session });
-      const trail = followTrail(store, r.change, v.session);
+      const trail = followTrail(store, r.change, v.session, r.by === 'entire');
       if (v.json) json(trail ? { ...r, trail } : r);
       else {
         const how =
@@ -1447,15 +1453,19 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (pos[1] === 'git') {
         const r = syncGit(store, { session: v.session });
-        // a change this ended has a Trail to close, where the project opted in
-        for (const d of r.done) followTrail(store, d.change, v.session);
-        if (v.json) json(r);
+        // a change this ended has a Trail to close, where the project opted in; what that read says is printed: this
+        // is the command that follows a merge made on GitHub, which waits for none of the Trail's gates
+        const trails = r.done
+          .map((d) => followTrail(store, d.change, v.session))
+          .filter((t): t is TrailReconcile => !!t);
+        if (v.json) json(trails.length ? { ...r, trails } : r);
         else {
           out(
             `git → ${r.project}: ${r.done.length ? `${plural(r.done.length, 'change')} merged into ${r.base} and set done` : `no change in review has been merged into ${r.base}`}`,
           );
           for (const d of r.done)
             out(`  ${printed(d.change)}: ${d.branch} (${d.how})${d.commit ? ` (committed ${d.commit})` : ''}`);
+          for (const t of trails) for (const line of trailLines(t, printed)) out(line);
         }
         return 0;
       }

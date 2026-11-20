@@ -439,8 +439,11 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
         whyNot: start === rec.key ? (reason) => (startWhyNot = reason) : undefined,
       });
       // the session waiting on the Trail is woken in the same step as the move is recorded
-      if (t && opts.wake && t.moved.length && t.state)
-        note(store, rec.key, `Entire, Trail #${t.state.number}: ${t.moved.join('; ')}`, { writer: opts.writer });
+      // (a merge that may have gone past gates is already a note, written by the reconcile whoever ran it)
+      const noted = t?.noted;
+      const moved = (t?.moved ?? []).filter((m) => m !== noted);
+      if (t && opts.wake && moved.length && t.state)
+        note(store, rec.key, `Entire, Trail #${t.state.number}: ${moved.join('; ')}`, { writer: opts.writer });
     } catch (e) {
       const reason = `${rec.key}: ${(e as Error).message.split('\n')[0]}`;
       if (!result.pending.includes(reason)) result.pending.push(reason);

@@ -187,6 +187,9 @@ test("opted in, the merge is the Trail's: a gate that blocks merges nothing; a m
   assert.equal(r.by, 'entire');
   assert.deepEqual(r.notes, []);
   assert.equal(statusOf('dirty'), 'done');
+  // that the merge went through the Trail is kept on the change, for whichever command reads the merge later
+  const ext = loadStore(store).byKey.get('change:web/dirty')![0].data.ext as { entire?: { merged_through?: string } };
+  assert.match(ext.entire?.merged_through ?? '', /^\d{4}-\d\d-\d\dT/);
   assert.match(
     g('log', '-1', '--format=%s', 'main'),
     /^Merge pull request #9 from acme\/dirty$/,
