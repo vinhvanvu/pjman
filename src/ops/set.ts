@@ -112,10 +112,16 @@ export function set(
     const m = /^([a-z_][a-z0-9_.-]*?)([+-])?=([\s\S]*)$/.exec(pair);
     if (!m) throw usageError(`'${pair}' is not field=value, field+=item or field-=item`);
     const [, field, op, value] = m as unknown as [string, string, '+' | '-' | undefined, string];
-    if (op) {
+    // a decision's supersedes only adds (decision supersedes-add-refusal/plus-equals): += is the same write as =,
+    // taken by the supersedes branch below, and -= is refused for what is true of it
+    const adds = field === 'supersedes' && allowed.includes(field);
+    if (adds && op === '-')
+      throw new CliError(`supersedes-= is refused: supersedes only adds, and a superseded decision stays pointed at`);
+    if (adds && op === '+' && !value.trim()) throw usageError(`supersedes+= needs an item`);
+    if (op && !adds) {
       if (!allowed.includes(field) || !LISTS.has(field))
         throw usageError(
-          `${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f)).join(', ') || 'it has none'}); ${field}=… replaces`,
+          `${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f) || f === 'supersedes').join(', ') || 'it has none'}); ${field}=… replaces`,
         );
       const kind = fieldKind(rec.type, field);
       const items = value
