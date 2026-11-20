@@ -179,7 +179,7 @@ A run of an agent: append-only.
 | create | `pjman session start <id> --agent <agent>   (the adapter does it)` |
 | read | `pjman show session:<id> · pjman brief --session <id> · pjman open --session <id>` |
 | list | `pjman ls session` |
-| update | `pjman session log\|bind\|unbind\|observe\|focus\|project <id> … · pjman session name <id> ["…"] [--kind <kind>]   (a session with no change: its name and kind, inferred from its record when not given) · pjman note session:<id> <text>` |
+| update | `pjman session log\|bind\|unbind\|observe\|unobserve\|focus\|project <id> … · pjman session name <id> ["…"] [--kind <kind>]   (a session with no change: its name and kind, inferred from its record when not given) · pjman note session:<id> <text>` |
 | rename | `— (its id is the harness's)` |
 | delete | `pjman rm session:<id>   (refused while anything was written in it)` |
 
@@ -377,11 +377,12 @@ pjman session start <id> --agent <agent> [--parent session:<id>] [--log <line>] 
 pjman session log <id> <text>
 pjman session bind <id> <change> [--reason prompt|created|branch] [--via <source>]   (--via: the source that led to the change; the log line names how the change relates to it)
 pjman session unbind <id> <change>
-pjman session observe <id> <edge> <from> <to>
+pjman session observe <id> <edge> <from> <to> [--branch <name>]   (--branch: the branch the session stood on; an edge from a change lands on the change that branch belongs to, on <from> when it belongs to none)
+pjman session unobserve <id> <edge> <from> <to>   (the reverse of observe: that one edge leaves the session)
 pjman session focus <id> <change>   (what the session is looking at; pjman context <change> sets it for the session in PJMAN_SESSION)
 pjman session project <id> <project>   (a session that started outside any project, resolved to the one whose repository it works in)
 pjman session name <id> ["<one to four words>"] [--kind <session kind>] [--json]   (a session with no change: what is not given is inferred from its own record; a kind the store lacks is created)
-    a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did
+    a session is a run of an agent, its record append-only: start creates it (unless it exists) with the start line, binds the change its branch names and returns the brief; log, bind, unbind, observe, unobserve, focus and project append to it. unbind backs out a binding made in error (the change, the edges observed on it), logging that it did; unobserve backs out one observed edge and leaves the binding and the other edges, logging that it did (pjman undo <commit> reverts either)
 
 pjman brief
 pjman brief --session <id> [--full] [--json]

@@ -60,6 +60,7 @@ import {
   type BindReason,
   sessionLog,
   sessionObserve,
+  sessionUnobserve,
   sessionStart,
   sessionUnbind,
   sessionProject,
@@ -635,9 +636,21 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           `unbound in ${r.path}${r.dropped ? `; ${r.dropped} observed edge${r.dropped === 1 ? '' : 's'} dropped` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
         );
       } else if (sub === 'observe') {
-        if (!id || rest.length < 3) throw usageError('usage: pjman session observe <id> <edge> <from> <to>');
-        const r = sessionObserve(store, id, rest[0], rest[1], rest[2]);
-        out(`observed in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
+        if (!id || rest.length < 3)
+          throw usageError('usage: pjman session observe <id> <edge> <from> <to> [--branch <name>]');
+        const r = sessionObserve(store, id, rest[0], rest[1], rest[2], { branch: v.branch });
+        const landed = v.branch ? ` on ${printed(r.from)}` : '';
+        out(
+          r.added
+            ? `observed in ${r.path}${landed}${r.commit ? ` (committed ${r.commit})` : ''}`
+            : `already observed in ${r.path}${landed}`,
+        );
+      } else if (sub === 'unobserve') {
+        if (!id || rest.length < 3) throw usageError('usage: pjman session unobserve <id> <edge> <from> <to>');
+        const r = sessionUnobserve(store, id, rest[0], rest[1], rest[2]);
+        out(
+          `unobserved in ${r.path}${r.dropped > 1 ? `; ${r.dropped} entries dropped` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+        );
       } else if (sub === 'focus') {
         if (!id || !rest[0]) throw usageError('usage: pjman session focus <id> <change>');
         const r = sessionFocus(store, id, rest[0]);
@@ -672,7 +685,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           );
       } else
         throw usageError(
-          'usage: pjman session start|log|bind|unbind|observe|focus|project|name <id> … (pjman help session)',
+          'usage: pjman session start|log|bind|unbind|observe|unobserve|focus|project|name <id> … (pjman help session)',
         );
       return 0;
     }

@@ -317,43 +317,56 @@ function resolveProject(st, sid, input, env, cwd, root) {
   return true;
 }
 
-/** Observed edges from the bound change to the branch and the open pull request, once each per session. */
 /** A change the hook took up as the session's subject, remembered so a later read of the record does not take it up again. */
 function taken(st, key) {
   st.taken = [...new Set([...(st.taken ?? []), key])];
   return key;
 }
+/** Observed edges to the branch the session stands on and its open pull request, once each per session. Each is handed
+ *  to the tool with the branch it was seen on (the pull request's own head branch), and the tool lands it on the change
+ *  that branch belongs to: the bound change only when the branch is its own or nobody's (change:observed-branch-belongs). */
 function observeWork(st, sid, cwd, env) {
   const branch = currentBranch(cwd);
   // a pull request is asked of the forge only off the default branch: the call reaches the network
-  const prUrl =
-    branch && store_sourceKinds().includes('github-pr')
-      ? sh('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd)
-      : null;
-  observeKeys(st, sid, cwd, env, workKeys(branch, prUrl));
+  const pr = branch && store_sourceKinds().includes('github-pr') ? sh('gh', PR_VIEW, cwd) : null;
+  observeSeen(st, sid, cwd, env, branch, pr);
+}
+/** What the forge is asked of the checkout's pull request: its URL and its head branch, on one line. */
+const PR_VIEW = ['pr', 'view', '--json', 'url,headRefName', '--jq', '.url + " " + .headRefName'];
+/** The branch and the answer to PR_VIEW, observed: the branch on itself, the pull request on its own head branch. */
+function observeSeen(st, sid, cwd, env, branch, pr) {
+  const [prUrl, head] = pr ? pr.split(/\s+/) : [];
+  const [branchKey, prKey] = workKeys(branch, prUrl);
+  const on = {};
+  if (branchKey) on[branchKey] = branch;
+  if (prKey) on[prKey] = head || branch;
+  return observeKeys(st, sid, cwd, env, [branchKey, prKey].filter(Boolean), on);
 }
 /** The current branch, or null on the default branch or a detached head: nothing to observe there. */
 function currentBranch(cwd) {
   const branch = sh('git', ['rev-parse', '--abbrev-ref', 'HEAD'], cwd);
   return branch && !['HEAD', 'main', 'master'].includes(branch) ? branch : null;
 }
+/** The branch's key and the pull request's, in that order; a kind the store does not take, or a URL that is no pull
+ *  request, leaves its place empty. */
 function workKeys(branch, prUrl) {
-  const keys = [];
-  if (branch && store_sourceKinds().includes('branch')) keys.push(`branch:${branch}`);
   const m = prUrl && /github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)/.exec(prUrl);
-  if (m) keys.push(`github-pr:${m[1]}#${m[2]}`);
-  return keys;
+  return [
+    branch && store_sourceKinds().includes('branch') ? `branch:${branch}` : null,
+    m ? `github-pr:${m[1]}#${m[2]}` : null,
+  ];
 }
 /** The edges observed: from the bound change, or, while nothing is bound, from the session itself (decision
- *  unbound-sessions/sources), so a review or a backlog pass is found from the PR or the ticket it read. Returns how
- *  many were new. */
-function observeKeys(st, sid, cwd, env, keys) {
+ *  unbound-sessions/sources), so a review or a backlog pass is found from the PR or the ticket it read. `on` names, per
+ *  key, the branch it was seen on: the tool then decides which change the edge is from. Returns how many were new. */
+function observeKeys(st, sid, cwd, env, keys, on = {}) {
   const from = st.bound ?? `session:${sid}`;
   let added = 0;
   for (const key of keys) {
     const edge = `${from}|${key}`;
     if (st.observed.includes(edge)) continue;
-    if (tryPjman(['session', 'observe', sid, 'links', from, key], { cwd, env }) !== null) {
+    const seenOn = st.bound && on[key] ? ['--branch', on[key]] : [];
+    if (tryPjman(['session', 'observe', sid, 'links', from, key, ...seenOn], { cwd, env }) !== null) {
       st.observed.push(edge);
       added += 1;
     }
@@ -1125,10 +1138,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
         ? pjmanAsync(['whoami', '--json'], { cwd, json: true })
         : null,
     done: isMain ? pjmanAsync(['ls', 'change', '--status', 'done', '--json'], { cwd, json: true }) : null,
-    pr:
-      isMain && branch && store_sourceKinds().includes('github-pr')
-        ? shAsync('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], cwd)
-        : null,
+    pr: isMain && branch && store_sourceKinds().includes('github-pr') ? shAsync('gh', PR_VIEW, cwd) : null,
   });
   if (!store.actor) {
     note('no actor in ~/.pjman/config.yaml; session record not created');
@@ -1197,7 +1207,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
     text += `\n---\nIdentity (pjman whoami):\n${read.who.notices.map((n) => `- ${n}`).join('\n')}\nOffer the command to the person.\n`;
   emitContext(EVENT, text);
   if (isMain) {
-    observeKeys(st, sid, cwd, env, workKeys(branch, read.pr));
+    observeSeen(st, sid, cwd, env, branch, read.pr);
     await docking;
     if (st.bound) await boundView(sid, cwd); // the session has its subject (the branch's change, or one bound before): a parked pane follows it
     if (st.bound) hostLabel(sid, cwd, env);

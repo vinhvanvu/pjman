@@ -117,7 +117,9 @@ working it.
    context (`pjman context change:<slug>`) moves the session's focus, which the dock follows, so read it when the
    conversation moves to another change. Name the change as `change:<slug>` in your reply so the person can too. When
    the work is a change you did not create and the prompt did not name, bind it: `pjman session bind <session-id>
-   change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`.
+   change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`,
+   and one edge a session observed wrongly (a branch or a pull request on the wrong change) with `pjman session
+   unobserve <session-id> links <change> <source>`, which leaves the binding and the other edges.
    Work that belongs to no change (a review, a backlog pass, a planning chat) is still recorded: the session is named
    with a kind, `pjman session name <session-id> "<one to four words>" --kind review|backlog|chat|other` (a kind the store lacks is
    created; `pjman ls session-kind` lists them). A PR the person's prompt names does this by itself; name the session

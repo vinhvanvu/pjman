@@ -500,6 +500,9 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       else if (verb === 'session' && rest.startsWith('unbind')) {
         op = 'set';
         fields = ['changes', 'observed', 'log'];
+      } else if (verb === 'session' && rest.startsWith('unobserve')) {
+        op = 'set';
+        fields = ['observed', 'log'];
       } else if (verb === 'session' && (rest.startsWith('focus') || rest.startsWith('briefed'))) {
         op = 'set';
         fields = [rest.startsWith('focus') ? 'focus' : 'briefed'];
