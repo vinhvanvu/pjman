@@ -427,11 +427,21 @@ test("a profile saved for the person alone is found from a worktree: copied in f
       /^your own review profile was not copied into the worktree: .* does not ignore \.entire\/settings\.local\.json/,
     );
     assert.equal(fs.existsSync(here), false);
+    // (the line tried in the repository's exclude list did not hide the file: it is not left there)
+    const exclude = path.join(dir, '.git', 'info', 'exclude');
+    const excluded = () => (fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : '').split('\n');
+    assert.ok(!excluded().includes('/.entire/settings.local.json'));
     fs.rmSync(path.dirname(here), { recursive: true });
     // it names one: copied in, said, and the review is run with it, in the worktree. The branch has no ignore rule
     // for the file (the line just tried is in the repository's exclude list, which now hides it): git does not show it
     const found = run();
-    assert.deepEqual(found.said, [copied]);
+    assert.equal(found.said.length, 2);
+    assert.match(
+      found.said[0],
+      /^\.entire\/settings\.local\.json was added to this repository's exclude list \(.*info\/exclude\): the branch does not ignore it$/,
+    );
+    assert.equal(found.said[1], copied);
+    assert.equal(excluded().filter((l) => l === '/.entire/settings.local.json').length, 1);
     assert.equal(found.named, 'general');
     assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
     assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: wt, encoding: 'utf8' }), '');
@@ -447,6 +457,14 @@ test("a profile saved for the person alone is found from a worktree: copied in f
       `your own review profile changed since it was copied into the worktree, and was copied again (${mine} to ${here})`,
     ]);
     assert.equal(fresh.named, 'deep');
+    assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
+    // and where the old copy still names a profile to run: yours was corrected (another default), and the corrected
+    // one is what runs, never the copy gone stale
+    fs.writeFileSync(mine, 'Profiles:\n  general\n    output:     trail\n  deep  (default)\n    output:     trail');
+    const corrected = run();
+    assert.equal(corrected.said.length, 1);
+    assert.match(corrected.said[0], /changed since it was copied into the worktree, and was copied again/);
+    assert.equal(corrected.named, 'deep');
     assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
     // the worktree's own file is never written over, even where it names no profile; that it is not yours is said
     fs.writeFileSync(here, '');
@@ -637,6 +655,14 @@ test('a round whose findings could not be read is not closed: with no Trail noth
     runReview(store, k, o).pending[0],
     /^Entire does not say where the review profile bare sends its verdict: .* it was not run/,
   );
+  // a listing pjman cannot read does not run a due review either, with or without a profile named: the way on is the
+  // session's own reviewers, never --profile a second time
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Review profiles\n- general (default)');
+  for (const profile of [undefined, 'general'])
+    assert.match(
+      runReview(store, k, { ...o, profile }).pending[0],
+      /^entire review --list answered in .* with a listing pjman could not read, so where a profile's verdict goes is not known: it was not run and the review is still due; hand the round to reviewers of the session's own, one fresh reviewer a lens \(`pjman review change:web\/coupon --lens <intent\|drift\|correctness>`\), then close it/,
+    );
   assert.equal(reviewers(), 0);
   fs.writeFileSync(path.join(tmp, 'profile'), '');
   // with its Trail, the reviewers run; Entire then does not list what they posted: the round stays open
