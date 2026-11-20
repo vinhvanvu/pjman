@@ -157,6 +157,49 @@ test('supersedes-= and an empty supersedes+= are refused for what is true of sup
   assert.throws(() => set(store, 'decision:project/sup/newer', ['supersedes+='], {}), /supersedes\+= needs an item/);
   assert.equal(supersedesOf(loadStore(store).byKey.get('decision:project/sup/newer')![0].data).length, 3);
   assert.equal(status(store, 'decision:project/sup/old-six'), 'superseded');
+  // a pair refused after a supersedes pair leaves the earlier pair's target as it was
+  decisionRec(store, 'sup/old-seven', { title: 'Old seven', decision: 'a', why: 'b' });
+  decisionRec(store, 'sup/old-eight', { title: 'Old eight', decision: 'a', why: 'b' });
+  assert.throws(
+    () =>
+      set(
+        store,
+        'decision:project/sup/newer',
+        ['supersedes+=decision:sup/old-seven', 'supersedes+=decision:sup/nope'],
+        {},
+      ),
+    /supersedes: /,
+  );
+  assert.throws(
+    () => set(store, 'decision:project/sup/newer', ['supersedes+=decision:sup/old-seven', 'name='], {}),
+    /rung/,
+  );
+  assert.equal(status(store, 'decision:project/sup/old-seven'), 'proposed');
+  assert.equal(git(store.root, 'status', '--porcelain'), '');
+  assert.equal(errors(store).length, 0);
+  // two supersedes pairs in one write: both targets marked, each with its event and its note, the field named once
+  const both = set(
+    store,
+    'decision:project/sup/newer',
+    ['supersedes+=decision:sup/old-seven', 'supersedes+=decision:sup/old-eight'],
+    {},
+  );
+  assert.deepEqual(both.changed, ['supersedes']);
+  assert.deepEqual(both.notes, [
+    'decision:project/sup/old-seven is now superseded',
+    'decision:project/sup/old-eight is now superseded',
+  ]);
+  assert.deepEqual(
+    readEvents(store)
+      .slice(-3)
+      .map((e) => [e.op, e.key, e.fields?.join(',')]),
+    [
+      ['set', 'decision:project/sup/newer', 'supersedes'],
+      ['set', 'decision:project/sup/old-seven', 'status'],
+      ['set', 'decision:project/sup/old-eight', 'status'],
+    ],
+  );
+  assert.equal(supersedesOf(loadStore(store).byKey.get('decision:project/sup/newer')![0].data).length, 5);
   // on a record that has no supersedes, the list rule still answers
   assert.throws(() => set(store, 'change:project/sup', ['supersedes+=decision:sup/old-six'], {}), /takes a list field/);
   assert.equal(errors(store).length, 0);

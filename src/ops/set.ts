@@ -106,6 +106,9 @@ export function set(
   const changed: string[] = [];
   const env = envelope(opts);
   let marked: Marked | undefined;
+  // the decisions this write supersedes, over every pair; marked on disk only once all pairs are read, so a pair
+  // refused later leaves nothing behind
+  const toMark: (typeof rec)[] = [];
   const notes: string[] = [];
   const refOpts = { projectDir: store.projectDir, project: store.project };
   for (const pair of pairs) {
@@ -121,7 +124,7 @@ export function set(
     if (op && !adds) {
       if (!allowed.includes(field) || !LISTS.has(field))
         throw usageError(
-          `${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f) || f === 'supersedes').join(', ') || 'it has none'}); ${field}=… replaces`,
+          `${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f) || (op === '+' && f === 'supersedes')).join(', ') || 'it has none'}); ${field}=… replaces`,
         );
       const kind = fieldKind(rec.type, field);
       const items = value
@@ -202,8 +205,8 @@ export function set(
       const fresh = targets.filter((t) => !have.includes(t.key));
       if (fresh.length) {
         data.supersedes = [...have, ...fresh.map((t) => t.key)];
-        marked = markSuperseded(fresh, env.writer);
-        changed.push(field);
+        toMark.push(...fresh);
+        if (!changed.includes(field)) changed.push(field);
       }
       continue;
     }
@@ -265,6 +268,7 @@ export function set(
   const filed = promoted?.children ?? [];
   const wrote: string[] = [];
   try {
+    if (toMark.length) marked = markSuperseded(toMark, env.writer);
     for (const c of filed) {
       if (fs.existsSync(path.join(store.root, c.rel))) throw new CliError(`refused: ${c.rel} already exists`);
       writeFile(store, c.rel, c.text);
