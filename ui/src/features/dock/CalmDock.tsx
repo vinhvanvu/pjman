@@ -180,6 +180,7 @@ export function CalmDock({
             moment={moment}
             held={held}
             showChange={beneath.length > 0}
+            change={c.key}
           />
         </section>
       )}

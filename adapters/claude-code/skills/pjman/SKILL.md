@@ -76,6 +76,15 @@ working it.
    removal, the change's status. Carry that chain out and report it; an approval that repeats one already given
    ties up the person. Ask only for what the agreement did not settle. A change or a decision that spawns new work
    is the new change's Origin.
+   **Name what a decision rests on.** A decision that only makes sense given an earlier one on the change (the
+   backfill given the uid type) names it: `--depends-on <decision>` when it is opened or later. The change's **key
+   decision**, the one the rest of the change is built on, is derived from that tree: the decision the most others
+   rest on, the earliest on a tie; never written. While no decision on the change has dependents, mark a decision
+   that stands alone yet plainly decides the change key by hand, with the reason against the bar (decided
+   differently, it would be a different change; most of the plan rewritten, not adjusted):
+   `pjman decision <key> --mark-key "<why>"`, `--unmark-key "<why>"` to take it back. One per change; marking
+   another moves the mark. Most lone decisions are not key; mark none rather than a minor one. Once a tree forms
+   it decides, and context names a hand mark it leaves out: name the missing edge or unmark it.
 3. **Keep the plan true.** The plan is steps written only through commands: `pjman step <change> add "…" "…"` (each
    quoted text a step, one commit; or `--step "…"` on `pjman new change`), `start <n>`, `done <n>… [--note "…"]`,
    `drop <n>`, `note <n> "<where the work stands>"`, `edit <n> "…"`, `move <n> --before <m>`. Before

@@ -5,7 +5,18 @@
 import type { Store } from '../store/config.js';
 import { eventsByKey, readEvents, type StoreEvent } from '../store/events.js';
 import { eventKeysOf, memo, ofType, push, resolve, type Loaded, type Rec } from '../store/records.js';
-import { bugOrder, changeContext, progressOf, row, type ChangeContext, type Row, nextLine } from './view.js';
+import {
+  bugOrder,
+  changeContext,
+  keyedOf,
+  progressOf,
+  row,
+  type ChangeContext,
+  type Keyed,
+  type Row,
+  nextLine,
+} from './view.js';
+import { keyDecisionOf } from './key-decision.js';
 import { ahead, productOf } from './order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import {
@@ -191,6 +202,8 @@ export interface WaitingDecision {
   needs: string[];
   stale: boolean;
   created?: string;
+  /** Set when it is its change's key decision (change:key-decisions). */
+  keyed?: Keyed;
 }
 
 /** The proposed decisions that pass `keep`, oldest first: what waits on a person. One derivation for the inbox, the
@@ -199,6 +212,7 @@ export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = ()
   return ofType(loaded, 'decision')
     .filter((d) => d.valid && d.data.status === 'proposed' && !!d.changeKey && keep(d))
     .map((d) => {
+      const keyed = keyedOf(keyDecisionOf(loaded, d.changeKey!), d.key);
       return {
         key: d.key,
         name: str(d.data.name),
@@ -208,6 +222,7 @@ export function proposedDecisions(loaded: Loaded, keep: (d: Rec) => boolean = ()
         needs: needsOf(d),
         stale: rungsOf(d).stale,
         created: str(d.data.created),
+        ...(keyed ? { keyed } : {}),
       };
     })
     .toSorted((a, b) => (a.created ?? '').localeCompare(b.created ?? '') || a.key.localeCompare(b.key));

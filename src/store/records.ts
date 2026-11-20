@@ -104,6 +104,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
     'decided_by',
     'decided_on',
     'supersedes',
+    'depends_on',
     'links',
     'thread',
     'rungs_from',

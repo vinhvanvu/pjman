@@ -12,11 +12,12 @@
 import { cn } from 'cn';
 import { Check, ChevronRight, Diamond } from 'lucide-react';
 import { m } from 'motion/react';
-import { useState } from 'react';
-import type { ChangeAspects, ChangeContext, Lens, WaitingDecision } from '@/data/contract';
+import { Fragment, type ReactNode, useState } from 'react';
+import type { ChangeAspects, ChangeContext, DecideAction, Lens, WaitingDecision } from '@/data/contract';
 import type { useDecideAction } from '@/data/queries';
 import { Chip, KeyText, Label } from '@/components/chips/Chip';
-import { fromRow, fromWaiting, groupHead } from '@/components/decisions/model';
+import { type CardDecision, fromRow, fromWaiting, groupHead } from '@/components/decisions/model';
+import { DecisionCard } from '@/components/decisions/DecisionCard';
 import { DecisionGroup } from '@/components/decisions/DecisionGroup';
 import { CopyKey } from '@/components/links/CopyKey';
 import { NodeLink } from '@/components/links/NodeLink';
@@ -112,11 +113,14 @@ export function ChangeTree({
   const c = ctx.change;
   const milestone = c.data.kind === 'milestone'; // by its kind, never by child count (decision milestone-kind/kind-not-children)
   const beneath = waitingBeneath.filter((d) => d.change !== c.key).map(fromWaiting);
-  const decisions = [...ctx.decisions.map((d) => fromRow(d, c.key)), ...beneath];
+  const onSession = where === 'session';
+  // the change's key decision, decided, sits under the Intent rather than in the group (change:key-decisions)
+  const all = [...ctx.decisions.map((d) => fromRow(d, c.key)), ...beneath];
+  const keyDecided = onSession ? undefined : all.find((d) => d.status === 'decided' && d.keyed && d.change === c.key);
+  const decisions = all.filter((d) => d !== keyDecided);
   const waiting = decisions.filter((d) => d.status === 'proposed').length;
   const decided = decisions.length - waiting;
   const kind = c.data.kind === 'bug' ? 'bug' : milestone ? 'milestone' : 'change';
-  const onSession = where === 'session';
   const onNow = onSession && !isViewing && live;
   return (
     <m.div {...RISE} className={cn('flex flex-col', wide ? 'gap-6' : 'gap-3')}>
@@ -170,7 +174,13 @@ export function ChangeTree({
         <section className="flex flex-col gap-2.5">
           <Head
             label={beneath.length ? 'Decisions beneath' : 'Decisions'}
-            sum={decisions.length || onSession ? groupHead(waiting, decided, where) : 'none yet'}
+            sum={
+              decisions.length || onSession
+                ? groupHead(waiting, decided, where)
+                : keyDecided
+                  ? 'the key decision is under the Intent'
+                  : 'none yet'
+            }
           />
           {(onSession ? waiting > 0 : decisions.length > 0) && (
             <DecisionGroup
@@ -187,11 +197,29 @@ export function ChangeTree({
               moment={moment}
               held={held}
               showChange={beneath.length > 0}
+              change={c.key}
             />
           )}
         </section>
 
-        {!onSession && <SectionsPart sections={ctx.sections} wide={wide} />}
+        {!onSession && (
+          <SectionsPart
+            sections={ctx.sections}
+            wide={wide}
+            keyPart={
+              keyDecided && (
+                <KeyDecisionPart
+                  d={keyDecided}
+                  lens={lens}
+                  actor={actor}
+                  linked={linked}
+                  onLink={onLink}
+                  onReopen={reopen}
+                />
+              )
+            }
+          />
+        )}
       </div>
     </m.div>
   );
@@ -324,12 +352,64 @@ function PlanPart({ ctx, wide, working }: { ctx: ChangeContext; wide: boolean; w
   );
 }
 
+/** The change's key decision under its Intent: the decided card, its row reading the answer with the Key chip, its
+ *  thread opening on why it is key (change:key-decisions). */
+function KeyDecisionPart({
+  d,
+  lens,
+  actor,
+  linked,
+  onLink,
+  onReopen,
+}: {
+  d: CardDecision;
+  lens: Lens;
+  actor?: string;
+  linked?: string;
+  onLink?: (key: string | undefined) => void;
+  onReopen?: DecideAction;
+}) {
+  const [open, setOpen] = useState(linked === d.key);
+  // a link to it followed while the record is open opens it, as the group does for its own
+  const [seen, setSeen] = useState(linked);
+  if (linked !== seen) {
+    setSeen(linked);
+    if (linked === d.key) setOpen(true);
+  }
+  return (
+    <section className="flex flex-col gap-2.5">
+      <Head label="Key decision" sum={d.keyed?.line} />
+      <DecisionCard
+        d={d}
+        depth={open ? 'thread' : 'row'}
+        lens={lens}
+        actor={actor}
+        onToggleThread={() => {
+          if (!open) onLink?.(d.key);
+          else if (linked === d.key) onLink?.(undefined);
+          setOpen((v) => !v);
+        }}
+        onReopen={onReopen}
+      />
+    </section>
+  );
+}
+
 /** The sections in order of depth, as written: wide each out, folded each its head with its first line, opening in
- *  place. */
-function SectionsPart({ sections, wide }: { sections: Record<string, string>; wide: boolean }) {
+ *  place. The key decision follows the Intent, or leads when there is none. */
+function SectionsPart({
+  sections,
+  wide,
+  keyPart,
+}: {
+  sections: Record<string, string>;
+  wide: boolean;
+  keyPart?: ReactNode;
+}) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set());
   const entries = Object.entries(sections).filter(([, v]) => v.trim());
-  if (!entries.length) return null;
+  if (!entries.length && !keyPart) return null;
+  const hasIntent = entries.some(([k]) => k === 'Intent');
   const toggle = (k: string) =>
     setOpen((prev) => {
       const next = new Set(prev);
@@ -339,6 +419,7 @@ function SectionsPart({ sections, wide }: { sections: Record<string, string>; wi
     });
   return (
     <div className={cn('flex flex-col', wide ? 'gap-8' : 'gap-1')}>
+      {!hasIntent && keyPart}
       {entries.map(([k, v]) => {
         const shown = wide || open.has(k);
         const first = v
@@ -346,17 +427,20 @@ function SectionsPart({ sections, wide }: { sections: Record<string, string>; wi
           .split('\n')[0]!
           .replace(/^[-*>]\s*/, '');
         return (
-          <section key={k} className="flex flex-col gap-2.5">
-            <Head
-              label={k}
-              sum={wide ? undefined : first}
-              open={wide ? undefined : shown}
-              onToggle={wide ? undefined : () => toggle(k)}
-            />
-            {shown && (
-              <p className="max-w-[720px] text-body leading-relaxed whitespace-pre-line text-ink">{v.trim()}</p>
-            )}
-          </section>
+          <Fragment key={k}>
+            <section className="flex flex-col gap-2.5">
+              <Head
+                label={k}
+                sum={wide ? undefined : first}
+                open={wide ? undefined : shown}
+                onToggle={wide ? undefined : () => toggle(k)}
+              />
+              {shown && (
+                <p className="max-w-[720px] text-body leading-relaxed whitespace-pre-line text-ink">{v.trim()}</p>
+              )}
+            </section>
+            {k === 'Intent' && keyPart}
+          </Fragment>
         );
       })}
     </div>
