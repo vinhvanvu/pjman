@@ -2,6 +2,57 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.7.0 — 2026-11-20
+
+### Added
+
+- **Entire adapter**: One module talks to Entire through its CLI, behind a per-project opt-in that leaves pjman untouched when off (change:entire-adapter)
+- **Checkpoint link**: A change and its sessions show the Entire checkpoints that built them (change:checkpoint-link)
+- **Merge via PR**: pjman follows merges it did not make, and pjman merge runs the gated merge (change:merge-via-pr)
+- **Trail lifecycle**: A change's Trail follows the change: created when work starts, ready at review, closed at done (change:trail-lifecycle)
+- **pjman review**: pjman reviews a change against its done-when and decisions, and files findings onto its Trail (change:pjman-review)
+- **pjman why**: Why a line exists, down to the change, intent and decision behind it; intake searches past sessions (change:pjman-why)
+
+### Changed
+
+- **Ask before mapping**: When a product's first map is due, the agent asks the person what the product is for before drafting it, and the proposal fires reliably (change:pjman-27)
+- **Clean house**: The repo's docs, package line and screenshots say what pjman is now, with no team, owner or Rex leftovers (change:clean-house)
+- **Thesis statement**: One headline and one line that say what pjman is, used everywhere pjman describes itself (change:thesis-statement)
+- **Entire trial**: One pjman change followed through an Entire Trail from intent to merge, to learn what Entire gives before opting in (change:entire-trial)
+- **Node 24 only**: pjman supports and tests Node 24 alone; 22.13 leaves the engines range and CI (change:node-24-only)
+- **Four CI checks**: CI reports the CLI's and the dashboard's tests apart from their other checks, four jobs in all (change:ci-checks)
+- **Strategy scrub**: The public repo and package carry no business strategy: the changelog's thesis lines rewritten, the history's old thesis weighed (change:strategy-scrub)
+- **Entire follow-ups**: The review findings left open when the Entire opt-in merged, none of which held a merge, are fixed (change:entire-follow-ups)
+- **Review loop**: A change reaching review is reviewed by independent reviewers for intent, drift and correctness, fixed and re-reviewed until nothing above a set severity is open (change:review-loop)
+- **Entire review seen live**: Entire's own review runs from a worktree with no profile named and no settings file copied by hand, seen on a real Trail (change:entire-seen-live)
+- **Review reads ended follow-ups**: What the review of Review reads ended found that did not hold its merge (change:review-reads-ended-follow-ups)
+- **Trail doubled follow-ups**: What the review of Trail doubled found that did not hold its merge (change:trail-doubled-follow-ups)
+- **Review follow-ups**: What the review of Start ignores short key found that did not hold its merge (change:entire-start-short-key-follow-ups)
+- **Key decisions**: Each change's key decision, read from how its decisions depend on each other, marked in every view (change:key-decisions)
+- **Entire Gates skipped follow-ups**: What the review of Entire Gates skipped found that did not hold its merge (change:entire-gates-skipped-follow-ups)
+- **Entire seen live follow-ups**: What the review of Entire seen live found that did not hold its merge (change:entire-seen-live-follow-ups)
+- **Merge in session**: A reviewed change is merged, installed and cleaned up in the session, waiting on its gates, never past them (change:merge-in-session)
+
+### Fixed
+
+- **Scope reads to product**: Inside a project, tree, ls and intake read only that project's product, with --all for the whole store (change:pjman-26)
+- **Adapter lint types**: npm run lint fails because the adapter's tsconfig extends type declarations Claude Code writes only when it loads the folder as a plugin (change:adapter-lint-types)
+- **Package ships entire**: The installed pjman starts again: the entire layer is in the package's files, and a test refuses a layer left out (change:pack-entire)
+- **Trail doubled**: A Trail create that times out leaves a Trail with no branch on Entire, and the next write creates a second one (change:trail-doubled)
+- **Review reads ended**: A change that returns to review with new commits after its review ended still reads ended, so the new work is not reviewed (change:review-reads-ended)
+- **Entire Gates skipped**: The Entire Gates check on pull request #37 ended as skipped, so the Trail's gates did not gate that merge (change:entire-gates-skipped)
+- **Start ignores short key**: pjman sync entire --start starts no Trail when the change is named by its slug alone, and says nothing of it (change:entire-start-short-key)
+- **Review closes unread**: pjman review --run on a change with no Trail closes the full review with no finding read (change:review-run-no-trail)
+- **Promote to milestone**: A change that has had a plan becomes a milestone where it stands: each open step is filed as a child change, finished steps stay as history; today kind=milestone is refused forever (change:promote-to-milestone)
+
+### Removed
+
+- **Trim to personal**: pjman cut to one person and their agents: the collaborative and hosted parts removed, what goes unused trimmed, the north star restated (change:trim-to-personal)
+
+### Store
+
+- The entire-kinds move: Entire's checkpoints and Trails as source kinds. After installing, run `pjman migrate` until it reports nothing to migrate (each run makes one move; the stamp comes last).
+
 ## 0.6.0 — 2026-11-12
 
 ### Changed
