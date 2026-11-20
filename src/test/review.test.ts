@@ -466,6 +466,33 @@ test("a profile saved for the person alone is found from a worktree: copied in f
     assert.match(corrected.said[0], /changed since it was copied into the worktree, and was copied again/);
     assert.equal(corrected.named, 'deep');
     assert.equal(fs.readFileSync(here, 'utf8'), fs.readFileSync(mine, 'utf8'));
+    // yours corrected to what resolves no profile is copied all the same and said: the review answers for your file
+    // as it stands, and nothing runs from the copy gone stale
+    const againCopied = /changed since it was copied into the worktree, and was copied again/;
+    fs.writeFileSync(mine, 'Profiles:\n  general\n    output:     trail\n  deep\n    output:     trail');
+    const undecided = run();
+    assert.match(undecided.said[0], againCopied);
+    assert.equal(undecided.named, undefined);
+    assert.match(undecided.pending[0], /^2 review profiles in .* and none is the default/);
+    fs.writeFileSync(mine, '');
+    const emptied = run();
+    assert.match(emptied.said[0], againCopied);
+    assert.equal(emptied.named, undefined);
+    assert.match(emptied.pending[0], /^no review profile in /);
+    assert.equal(fs.readFileSync(here, 'utf8'), '');
+    // yours deleted: pjman's copy of it goes too, said
+    fs.writeFileSync(mine, general);
+    assert.equal(run().named, 'general');
+    fs.rmSync(mine);
+    const gone = run();
+    assert.match(
+      gone.said[0],
+      /^your own review profile is gone from the main checkout \(.*\), so the copy of it in the worktree was removed/,
+    );
+    assert.equal(gone.named, undefined);
+    assert.equal(fs.existsSync(here), false);
+    fs.writeFileSync(mine, general);
+    assert.equal(run().named, 'general');
     // the worktree's own file is never written over, even where it names no profile; that it is not yours is said
     fs.writeFileSync(here, '');
     const kept = run();

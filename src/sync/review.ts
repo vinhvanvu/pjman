@@ -747,15 +747,40 @@ function bringPersonal(
   const mine = path.join(dir, PERSONAL);
   const here = path.join(at, PERSONAL);
   const said: string[] = [];
-  if (!fs.existsSync(mine)) return { known, said, ...(fs.existsSync(here) ? { own: ownWords(here) } : {}) };
+  const markAt = tryGit(at, ['rev-parse', '--git-path', 'pjman-entire-settings']).trim();
+  const mark = markAt ? path.resolve(at, markAt) : undefined;
+  if (!fs.existsSync(mine)) {
+    if (!fs.existsSync(here)) return { known, said };
+    // yours is gone from the main checkout: a copy pjman made of it, unchanged since, goes with it, and is said
+    try {
+      const copied = mark && fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8').trim() : undefined;
+      if (!copied || hashOf(here) !== copied) return { known, said, own: ownWords(here) };
+      const prior = fs.readFileSync(here);
+      fs.rmSync(here);
+      const again = list();
+      if (!again.ok) {
+        fs.writeFileSync(here, prior);
+        return { known, said, pending: again.reason };
+      }
+      if (mark) fs.rmSync(mark, { force: true });
+      said.push(
+        `your own review profile is gone from the main checkout (${mine}), so the copy of it in the worktree was removed (${here})`,
+      );
+      return { known: profilesOf(again.data), said };
+    } catch (e) {
+      return {
+        known,
+        said,
+        pending: `the copy of your own review profile in the worktree could not be removed (${here}): ${(e as Error).message.split('\n')[0]}`,
+      };
+    }
+  }
   let undo: (() => void) | undefined;
   // the line added to the repository's exclude list, taken out again wherever the copy is not kept; and what is said
   // of it where the copy is
   let restore: (() => void) | undefined;
   let excluded: string | undefined;
   try {
-    const markAt = tryGit(at, ['rev-parse', '--git-path', 'pjman-entire-settings']).trim();
-    const mark = markAt ? path.resolve(at, markAt) : undefined;
     const had = fs.existsSync(here);
     if (had) {
       const copied = mark && fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8').trim() : undefined;
@@ -814,8 +839,10 @@ function bringPersonal(
     fs.copyFileSync(mine, here);
     const again = list();
     const next = again.ok ? profilesOf(again.data) : undefined;
-    // kept where it brought something: the profile the review needs, or one the worktree did not list
-    if (next && (usable(next) || next.names.some((n) => !known.names.includes(n)))) {
+    // a first copy is kept where it brought something: the profile the review needs, or one the worktree did not
+    // list. A copy made again is kept whatever yours now says (no default, no profile at all): it is your file as it
+    // stands, and the review answers for that, never for the copy gone stale
+    if (next && (had || usable(next) || next.names.some((n) => !known.names.includes(n)))) {
       if (mark) fs.writeFileSync(mark, `${hashOf(here)}\n`);
       if (excluded) said.push(excluded);
       said.push(
