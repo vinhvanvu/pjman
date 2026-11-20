@@ -72,8 +72,8 @@ working it.
    recommend. **When the person decides in chat ("agreed", "go", "accept
    it"), that is the decision: record it at once**, never hand them the command:
    `pjman decision <change>/<slug> --accept <id>="<their words>" --by person:<handle> [--revisit "<when to look again>"]`.
-   The agreement also covers what follows from it: the build, the merge once reviewed, the install, the worktree's
-   removal, the change's status. Carry that chain out and report it; an approval that repeats one already given
+   The agreement also covers what follows from it: the build, the merge once reviewed (rule 8: in the session, waiting
+   on its gates), the install, the worktree's removal, the change's status. Carry that chain out and report it; an approval that repeats one already given
    ties up the person. Ask only for what the agreement did not settle. A change or a decision that spawns new work
    is the new change's Origin.
    **Name what a decision rests on.** A decision that only makes sense given an earlier one on the change (the
@@ -130,13 +130,19 @@ working it.
    line; `pjman new change` prints it), the harness creates the worktree and its branch (`claude --worktree <slug>`, or
    the enter-worktree tool in a running session). A session on a branch so named is bound to the change at start, with
    no prompt. Two sessions on one change share its worktree. When you stop, leave the worktree clean or committed so the
-   harness can remove it on exit. Once the person has approved the work, land it with `pjman merge <change>`: it merges
-   the branch into the base and sets the change done; in a project that opted in to Entire the merge is the change's
-   Trail's, whose gates decide, and a gate that blocks is said and nothing is merged (never merge around it by hand,
-   and never approve: the approval is the person's, on Entire). A merge made elsewhere (a pull request merged on the
-   forge, squashed or rebased) is followed by itself: `pjman sync git` sets its change done. Then remove the worktree
-   and its branch (`git worktree remove <path> && git branch -D <branch>`; the project's own instructions say what an
-   install after a merge takes); the session-start context names any
+   harness can remove it on exit. **Land it in the session.** Once the review has ended and nothing holds the merge
+   (`pjman review <change>` says so), the person's go on the work covers the landing: merge with `pjman merge <change>`
+   without asking, and never leave it for the person to click on the forge or the Trail. It merges the branch into the
+   base and sets the change done; in a project that opted in to Entire the merge is the change's Trail's, whose gates
+   decide. A gate still running (checks in progress) is waited on: `entire trail merge --branch <branch> --dry-run`
+   names it; poll it in the background until it is mergeable or fails, then run `pjman merge` again. A check that
+   fails is the work's: read why, fix it on the branch, push, and wait again. A gate only a person passes (an approval,
+   where the project requires one) is said, with the Trail's URL, and the change rests there until they pass it. Never
+   merge around a gate by hand, never bypass one, and never approve: the approval is the person's, on Entire. A merge
+   made elsewhere (a pull request merged on the forge, squashed or rebased) is followed by itself: `pjman sync git`
+   sets its change done. Then, in the same session, run what the project's own instructions say follows a merge (its
+   install, a store migration) and remove the worktree and its branch (`git worktree remove <path> && git branch -D
+   <branch>`), and report the landing; the session-start context names any
    worktree whose change is done and whose branch is merged, so a leftover is seen the next time someone sits down.
    pjman creates and removes no worktree itself.
    In a project that opted in to Entire (`pjman where --json` says `entire: true`) a change's Trail on Entire follows
@@ -169,7 +175,7 @@ working it.
    where a change reaching review is reviewed without being asked: the command that finishes the plan says so,
    `pjman rest` holds the stop, naming what moves the review on, until it has ended, and `pjman merge` refuses a
    change not yet reviewed. On request nothing moves unasked: `pjman review <change> --follow-up` moves what is left
-   when the person says so. Review before asking the person to approve; where the
+   when the person says so. Review before landing; where the
    project opted in to Entire the findings go onto the Trail and hold its merge until resolved, and what is posted on
    the Trail (by Entire's own review, or a person) is read onto the change by each sync and by `pjman merge` before it
    merges: Entire lists a Trail's findings only while its branch is open. A round handed to Entire's review
