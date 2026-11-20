@@ -4,7 +4,7 @@
 // Entire each finding is also filed onto the change's Trail (`entire trail finding add`), where the Findings gate holds
 // the merge until it is resolved, and resolving or dismissing it here is told to Entire too; with no Entire the review
 // is local and the findings stand on the change alone. Filing may be left pending: the next review or sync files it.
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
@@ -687,7 +687,13 @@ function checkoutOf(dir: string, branch: string): string | undefined {
 }
 
 /** What `entire review --list` names: each profile with where its verdict goes, and the one marked default. */
-export function profilesOf(listing: string): { names: string[]; fallback?: string; output: Record<string, string> } {
+export function profilesOf(listing: string): {
+  names: string[];
+  fallback?: string;
+  output: Record<string, string>;
+  /** The listing said something and no profile could be read from it: not the same as none set up. */
+  unread?: boolean;
+} {
   const names: string[] = [];
   const output: Record<string, string> = {};
   let fallback: string | undefined;
@@ -702,11 +708,171 @@ export function profilesOf(listing: string): { names: string[]; fallback?: strin
     const out = /^\s{3,}output:\s+(\S+)/i.exec(line);
     if (out && names.length) output[names.at(-1)!] = out[1].toLowerCase();
   }
-  return { names, fallback, output };
+  // no profile is taken from Entire's own words for it, or from an empty answer: a listing that says something else
+  // and names none in the layout read here was not read (Entire may have changed how it lists them)
+  const notRead = !names.length && !!listing.trim() && !/no review profiles configured/i.test(listing);
+  return { names, fallback, output, ...(notRead ? { unread: true } : {}) };
 }
+type Profiles = ReturnType<typeof profilesOf>;
 
 /** The file Entire keeps a person's own settings in, for one clone only: never committed, so a worktree has none. */
 const PERSONAL = path.join('.entire', 'settings.local.json');
+
+const realOf = (p: string): string => {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return path.resolve(p);
+  }
+};
+/** Two paths to one folder, as git names it: a link to the project's folder is the folder. */
+export const sameFolder = (a: string, b: string): boolean => realOf(a) === realOf(b);
+const hashOf = (file: string): string => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+
+/** Bring the person's own settings file from the main checkout into the worktree a change is reviewed in, where the
+ *  worktree's listing lacks the profile the review needs. Never over a file the worktree has of its own: only over a
+ *  copy pjman made earlier that is still as it was copied (its hash is kept under the worktree's git directory), and
+ *  then only when the person's file has changed since. Never into a tree where git would show it: where the branch
+ *  does not ignore the file it is added to the repository's own exclude list first, or not copied. A copy that
+ *  brings nothing the review can use is taken back, with the directory made for it. Every failure is a reason. */
+function bringPersonal(
+  dir: string,
+  at: string,
+  known: Profiles,
+  list: () => ReturnType<typeof runEntire<string>>,
+  usable: (k: Profiles) => boolean,
+  /** The worktree's listing lacks the profile the review needs: without that, only a copy gone stale is refreshed. */
+  need: boolean,
+): { known: Profiles; said: string[]; pending?: string; own?: string } {
+  const mine = path.join(dir, PERSONAL);
+  const here = path.join(at, PERSONAL);
+  const said: string[] = [];
+  const markAt = tryGit(at, ['rev-parse', '--git-path', 'pjman-entire-settings']).trim();
+  const mark = markAt ? path.resolve(at, markAt) : undefined;
+  if (!fs.existsSync(mine)) {
+    if (!fs.existsSync(here)) return { known, said };
+    // yours is gone from the main checkout: a copy pjman made of it, unchanged since, goes with it, and is said
+    try {
+      const copied = mark && fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8').trim() : undefined;
+      if (!copied || hashOf(here) !== copied) return { known, said, own: ownWords(here) };
+      const prior = fs.readFileSync(here);
+      fs.rmSync(here);
+      const again = list();
+      if (!again.ok) {
+        fs.writeFileSync(here, prior);
+        return { known, said, pending: again.reason };
+      }
+      if (mark) fs.rmSync(mark, { force: true });
+      said.push(
+        `your own review profile is gone from the main checkout (${mine}), so the copy of it in the worktree was removed (${here})`,
+      );
+      return { known: profilesOf(again.data), said };
+    } catch (e) {
+      return {
+        known,
+        said,
+        pending: `the copy of your own review profile in the worktree could not be removed (${here}): ${(e as Error).message.split('\n')[0]}`,
+      };
+    }
+  }
+  let undo: (() => void) | undefined;
+  // the line added to the repository's exclude list, taken out again wherever the copy is not kept; and what is said
+  // of it where the copy is
+  let restore: (() => void) | undefined;
+  let excluded: string | undefined;
+  try {
+    const had = fs.existsSync(here);
+    if (had) {
+      const copied = mark && fs.existsSync(mark) ? fs.readFileSync(mark, 'utf8').trim() : undefined;
+      // the worktree's own (never copied by pjman, or changed since): left as it is, and said where it is not yours
+      if (!copied || hashOf(here) !== copied)
+        return { known, said, own: ownWords(here, hashOf(here) !== hashOf(mine) ? mine : undefined) };
+      // pjman's copy, and yours has not changed since: nothing more to bring
+      if (hashOf(mine) === copied) return { known, said };
+      // (pjman's copy, and yours has changed: copied again whether or not the old copy still names a profile, so a
+      // profile corrected in the main checkout is the one that runs)
+    } else if (!need) return { known, said };
+    // git must not show the file in the tree under review, where a later `git add -A` would commit it
+    const ignored = () => {
+      try {
+        git(at, ['check-ignore', '-q', PERSONAL]);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (!ignored()) {
+      const excludeAt = tryGit(at, ['rev-parse', '--git-path', 'info/exclude']).trim();
+      // (the list is the repository's, shared by every checkout: a line that did not hide the file is taken out
+      // again, and one already there is not added twice)
+      if (excludeAt) {
+        const exclude = path.resolve(at, excludeAt);
+        const was = fs.existsSync(exclude) ? fs.readFileSync(exclude, 'utf8') : undefined;
+        if (!(was ?? '').split('\n').includes(`/${PERSONAL}`)) {
+          fs.mkdirSync(path.dirname(exclude), { recursive: true });
+          fs.writeFileSync(exclude, `${was ?? ''}${was && !was.endsWith('\n') ? '\n' : ''}/${PERSONAL}\n`);
+          restore = () => (was === undefined ? fs.rmSync(exclude, { force: true }) : fs.writeFileSync(exclude, was));
+        }
+      }
+      if (!ignored()) {
+        restore?.();
+        return {
+          known,
+          said,
+          pending: `your own review profile was not copied into the worktree: ${at} does not ignore ${PERSONAL} (its branch has no .entire/.gitignore, or tracks the file), so git would show your settings in the tree under review`,
+        };
+      }
+      if (restore)
+        excluded = `${PERSONAL} was added to this repository's exclude list (${excludeAt}): the branch does not ignore it`;
+    }
+    const folder = path.dirname(here);
+    const madeFolder = !fs.existsSync(folder);
+    const prior = had ? fs.readFileSync(here) : undefined;
+    const back = () => {
+      if (prior) fs.writeFileSync(here, prior);
+      else fs.rmSync(here, { force: true });
+      restore?.();
+      if (madeFolder) fs.rmdirSync(folder);
+    };
+    undo = back;
+    fs.mkdirSync(folder, { recursive: true });
+    fs.copyFileSync(mine, here);
+    const again = list();
+    const next = again.ok ? profilesOf(again.data) : undefined;
+    // a first copy is kept where it brought something: the profile the review needs, or one the worktree did not
+    // list. A copy made again is kept whatever yours now says (no default, no profile at all): it is your file as it
+    // stands, and the review answers for that, never for the copy gone stale
+    if (next && (had || usable(next) || next.names.some((n) => !known.names.includes(n)))) {
+      if (mark) fs.writeFileSync(mark, `${hashOf(here)}\n`);
+      if (excluded) said.push(excluded);
+      said.push(
+        had
+          ? `your own review profile changed since it was copied into the worktree, and was copied again (${mine} to ${here})`
+          : `your own review profile was copied into the worktree (${mine} to ${here})`,
+      );
+      return { known: next, said };
+    }
+    // it brought nothing: the worktree is left as it was
+    undo = undefined;
+    back();
+    return { known, said, ...(again.ok ? {} : { pending: again.reason }) };
+  } catch (e) {
+    // (a copy cut short is taken back as far as it can be: a read-only worktree, a source that cannot be read)
+    try {
+      if (undo) undo();
+      else restore?.();
+    } catch {
+      // what could not be written could not be left either
+    }
+    return {
+      known,
+      said,
+      pending: `your own review profile could not be copied into the worktree (${mine} to ${here}): ${(e as Error).message.split('\n')[0]}`,
+    };
+  }
+}
+const ownWords = (here: string, differsFrom?: string): string =>
+  `${here} is the worktree's own and was left as it is${differsFrom ? `; it differs from yours in ${differsFrom}` : ''}`;
 
 /** Hand the review to Entire's own (decision pjman-review/who-reviews): several agents and a judge read the branch,
  *  with the brief only pjman holds added to their task, and post what they find onto the Trail; the findings are then
@@ -766,44 +932,67 @@ export function runReview(
     return none;
   }
   let known = profilesOf(first.data);
-  // a profile saved for the person alone (entire review --configure --local) is in the main checkout's own settings
-  // file, which is never committed: a worktree, where a change is worked, has none. It is copied in, and never over
-  // a file the worktree already has
-  const mine = path.join(dir, PERSONAL);
-  const here = path.join(at, PERSONAL);
-  if (!known.names.length && at !== dir && fs.existsSync(mine) && !fs.existsSync(here)) {
-    fs.mkdirSync(path.dirname(here), { recursive: true });
-    fs.copyFileSync(mine, here);
-    const again = list();
-    known = again.ok ? profilesOf(again.data) : known;
-    if (known.names.length) none.said.push(`your own review profile was copied into the worktree (${mine} to ${here})`);
-    else fs.rmSync(here); // it brought no profile: the worktree is left as it was
-    if (!again.ok) {
-      none.pending.push(again.reason);
-      return none;
-    }
-  }
-  if (!known.names.length) {
-    none.pending.push(
-      `no review profile in ${at}${at !== dir && fs.existsSync(here) ? ` (${here} is the worktree's own and was left as it is)` : ''}: set one up, which is yours to run (entire review --configure --set-output trail)`,
-    );
-    return none;
-  }
   // Entire runs no review without a profile named ("Specify a profile to review"): the one asked for, else the one
   // Entire marks default, else the only one there is
-  const profile = opts.profile ?? known.fallback ?? (known.names.length === 1 ? known.names[0] : undefined);
-  if (!profile || !known.names.includes(profile)) {
-    none.pending.push(
-      profile
-        ? `no review profile named ${profile} in ${at}: there ${known.names.length === 1 ? 'is' : 'are'} ${known.names.join(', ')}`
-        : `${known.names.length} review profiles in ${at} and none is the default (${known.names.join(', ')}): name one with --profile`,
-    );
-    return none;
+  const chosen = (k: Profiles): string | undefined =>
+    opts.profile
+      ? k.names.includes(opts.profile)
+        ? opts.profile
+        : undefined
+      : (k.fallback ?? (k.names.length === 1 ? k.names[0] : undefined));
+  // a profile saved for the person alone (entire review --configure --local) is in the main checkout's own settings
+  // file, which is never committed: a worktree, where a change is worked, has none. It is brought in wherever the
+  // worktree's own listing lacks the profile this review needs (none at all, the one asked for missing, several and
+  // no default), and never over a file the worktree has of its own. (The two paths are compared as git knows them:
+  // a project folder reached through a link is still the main checkout.)
+  let own: string | undefined;
+  if (!known.unread && !sameFolder(at, dir)) {
+    const need = !chosen(known);
+    const brought = bringPersonal(dir, at, known, list, (k) => !!chosen(k), need);
+    known = brought.known;
+    none.said.push(...brought.said);
+    // (the worktree's own file is named only where the review found no profile to run)
+    own = need ? brought.own : undefined;
+    if (brought.pending) {
+      none.pending.push(brought.pending);
+      return none;
+    }
   }
   const b = reviewBrief(store, key);
   // Entire's reviewers read through every lens, and a review that is due closes its round: only when what they found
   // can be read back. Where it cannot, nothing is run (the reviewers take minutes, and their findings would be lost)
   const due = b.loop.state === 'due' || b.loop.state === 'recheck';
+  /** The way on for a due review Entire's own cannot make: the session's own reviewers take the round. */
+  const ownRound = `hand the round to reviewers of the session's own, one fresh reviewer a lens (\`pjman review ${rec.key} --lens <${b.loop.state === 'recheck' ? 'fix' : REVIEW_LENSES.join('|')}>\`), then close it (\`pjman review ${rec.key} --reviewed\`)`;
+  if (known.unread && (due || !opts.profile)) {
+    // (nothing is copied on a listing that was not read: the profiles may be there. A review that is due is not run
+    // on one either, whatever profile is named: where its verdict goes is in the listing, and findings kept local
+    // could not be read back)
+    none.pending.push(
+      `entire review --list answered in ${at} with a listing pjman could not read, so ${
+        due
+          ? `where a profile's verdict goes is not known: it was not run and the review is still due; ${ownRound}`
+          : `the profile to run was not found: name it (pjman review ${rec.key} --run --profile <name>)`
+      }`,
+    );
+    return none;
+  }
+  if (!known.names.length && !known.unread) {
+    none.pending.push(
+      `no review profile in ${at}${own ? ` (${own})` : ''}: set one up, which is yours to run (entire review --configure --set-output trail)`,
+    );
+    return none;
+  }
+  // (a listing that was not read does not refuse a profile the person named: Entire is asked for it as it was said)
+  const profile = known.unread ? opts.profile : (chosen(known) ?? opts.profile);
+  if (!profile || (!known.unread && !known.names.includes(profile))) {
+    none.pending.push(
+      profile
+        ? `no review profile named ${profile} in ${at}: there ${known.names.length === 1 ? 'is' : 'are'} ${known.names.join(', ')}${own ? ` (${own})` : ''}`
+        : `${known.names.length} review profiles in ${at} and none is the default (${known.names.join(', ')}): name one with --profile${own ? ` (${own})` : ''}`,
+    );
+    return none;
+  }
   if (known.output[profile] !== 'trail') {
     // (a listing that does not say is not taken for the Trail: Entire's own default is local)
     const where = known.output[profile]
@@ -824,7 +1013,7 @@ export function runReview(
       const still = due ? '; the review is still due' : '';
       none.pending.push(
         readable.gone
-          ? `${readable.gone}, so nothing its review found could be read and it was not run${still}${due ? `: hand the round to reviewers of the session's own, one fresh reviewer a lens (\`pjman review ${rec.key} --lens <${b.loop.state === 'recheck' ? 'fix' : REVIEW_LENSES.join('|')}>\`), then close it (\`pjman review ${rec.key} --reviewed\`)` : ''}`
+          ? `${readable.gone}, so nothing its review found could be read and it was not run${still}${due ? `: ${ownRound}` : ''}`
           : `${rec.key} has no Trail yet: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}. \`pjman sync entire --start ${rec.key}\` starts the Trail (it publishes ${branch} on origin, which is the person's to ask for)`,
       );
       return none;
