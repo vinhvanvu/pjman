@@ -275,7 +275,7 @@ pjman order [<product>]                  the roadmap's order; with <change> --be
 pjman new product|feature …              the product tree: a root, then nested features
 pjman tree [<product>|<feature>]         the product by features: levels, derived status, backlog by project
 pjman activity <ref> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
-pjman history <change|feature> [--node] [--decisions] [--sources] [--all] [--match <words>]   what came before on that part of the product, as an index by node: the changes on the node and on each parent, their decisions and sources when asked for
+pjman history <change|feature> [--node] [--decisions] [--sources] [--all] [--match <words>] [--dropped]   what came before on that part of the product, as an index by node: the changes on the node and on each parent, their decisions and sources when asked for
 pjman set <ref>... field=value | list+=item | list-=item   authored fields: name, gist, status, links, binds; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; several records in one commit
 pjman rm <ref>... [--detach]             remove records created by mistake; refused while anything refers to one
 pjman mv <kind>:<old> <kind>:<new>       rename a change, a feature, an aspect, a decision… (the old slug stays an alias); every reference follows
