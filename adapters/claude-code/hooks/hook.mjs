@@ -363,9 +363,11 @@ function observeKeys(st, sid, cwd, env, keys, on = {}) {
   const from = st.bound ?? `session:${sid}`;
   let added = 0;
   for (const key of keys) {
-    const edge = `${from}|${key}`;
-    if (st.observed.includes(edge)) continue;
     const seenOn = st.bound && on[key] ? ['--branch', on[key]] : [];
+    // remembered with the branch it was seen on: what a session remembers from before the tool decided where an edge
+    // lands (the bare pair, which may have landed on the wrong change) is asked once more, and the tool writes none twice
+    const edge = seenOn.length ? `${from}|${key}@${on[key]}` : `${from}|${key}`;
+    if (st.observed.includes(edge)) continue;
     if (tryPjman(['session', 'observe', sid, 'links', from, key, ...seenOn], { cwd, env }) !== null) {
       st.observed.push(edge);
       added += 1;
@@ -1182,7 +1184,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (st.seq === undefined) st.seq = read.receipt?.seq ?? 0; // receipts start from here
   if (start.bound) st.bound = start.bound;
   if (st.bound) taken(st, st.bound);
-  if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}`);
+  if (start.observed && st.bound) st.observed.push(`${st.bound}|${start.observed}@${branch}`);
   let text =
     (read.brief ?? '') +
     `\n---\npjman store: ${store.root}; project ${store.project ?? '(none)'}. This run is session:${sid}; records it writes carry that session.\n\n`;

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../store/config.js';
 import { parseRecord, sections } from '../store/frontmatter.js';
-import { findReferences, get } from '../model/graph.js';
+import { branchOwner, findReferences, get } from '../model/graph.js';
 import { computeBrief, type Brief } from './hydrate.js';
 import { findSession, forget, fullKey, loadStore, resolve, unresolvedError, type Rec } from '../store/records.js';
 import { CliError, localDate, nowIso, notFound } from '../store/util.js';
@@ -25,7 +25,8 @@ function load(store: Store, id: string) {
 
 type SaveOp = 'log' | 'bind' | 'observe' | 'unobserve' | 'unbind' | 'focus' | 'briefed' | 'project' | 'name';
 
-/** `value`: on a bind or a focus, the key of the change, so the event says where the session went. */
+/** `value`: on a bind or a focus, the key of the change, so the event says where the session went; on an unobserve,
+ *  the record the edge left, so the event says whose line moved. */
 function save(
   store: Store,
   rec: ReturnType<typeof load>['rec'],
@@ -42,8 +43,8 @@ function save(
     log: ['log'],
     bind: ['changes'],
     observe: ['observed'],
-    unbind: ['changes', 'observed', 'log'],
     unobserve: ['observed', 'log'],
+    unbind: ['changes', 'observed', 'log'],
     focus: ['focus'],
     briefed: ['briefed'],
     project: ['project', 'log'],
@@ -443,34 +444,120 @@ export function sessionUnbind(
   return { path: rec.path, commit, dropped };
 }
 
-/** Append an observed edge `{edge, from, to, at}`. With `branch`, the branch the session stood on when it saw the
- *  source: an edge from a change lands on the change that branch belongs to (decision observed-branch-belongs/
- *  another-changes-branch), and on `from` only when the branch belongs to none (decision observed-branch-belongs/
- *  unclaimed-branch); an edge the session already holds is not written twice. An edge from anything else (the session
- *  itself, while it is bound to nothing) lands as given. Backed out by `sessionUnobserve`. */
+export interface Unobserved {
+  path: string;
+  commit: string | null;
+  dropped: number;
+  /** The edge's ends as the record held them. */
+  from: string;
+  to: string;
+  /** When each copy taken back was observed: what `pjman session observe … --at` restores it with. */
+  at: string[];
+  /** The other sessions that still hold the same edge: a line read across sessions stays as it was until they let go. */
+  others: string[];
+}
+
+/** Take back one observed edge: every `{edge, from, to}` entry of that kind between those two records leaves
+ *  `observed`, and the taking back is a line in `## Log` that keeps when each was observed. The session's bindings and
+ *  its other edges stay. The reverse of `sessionObserve`; one commit, which `pjman undo` reverts while nothing later
+ *  wrote to the session, and `sessionObserve` with the time kept restores it after that. */
+export function sessionUnobserve(store: Store, id: string, edge: string, from: string, to: string): Unobserved {
+  if (!EDGES[edge]) throw new CliError(`'${edge}' is not an edge (${Object.keys(EDGES).join(', ')})`);
+  const { loaded, rec } = load(store, id);
+  // An end is matched as the record it leads to (a renamed change by its old key too). A slug alone names a change,
+  // as it does for unbind; one that two records share is refused naming both; one that leads to no record (a removed
+  // change, a source with no record) is matched as written, a slug against the stored key's own.
+  const end = (raw: string): { key: string; missing: boolean } => {
+    const named = raw.includes(':') ? raw : `change:${raw}`;
+    const res = resolve(loaded, named);
+    if (res.status === 'ok' || res.status === 'alias' || res.status === 'invalid')
+      return { key: res.rec.key, missing: false };
+    if (res.status === 'ambiguous' || res.status === 'malformed') throw unresolvedError(res, named);
+    return { key: named, missing: true };
+  };
+  const same = (stored: string, want: { key: string; missing: boolean }): boolean => {
+    if (fullKey(loaded, stored) === want.key) return true;
+    if (!want.missing) return false;
+    const [kind, slug] = [want.key.slice(0, want.key.indexOf(':') + 1), want.key.slice(want.key.indexOf(':') + 1)];
+    return !slug.includes('/') && stored.startsWith(kind) && stored.endsWith(`/${slug}`);
+  };
+  const [wantFrom, wantTo] = [end(from), end(to)];
+  type Seen = { edge?: string; from?: string; to?: string; at?: string };
+  const entries = (r: Rec): Seen[] =>
+    (Array.isArray(r.data.observed) ? (r.data.observed as Seen[]) : []).filter(
+      (o) => typeof o?.from === 'string' && typeof o.to === 'string',
+    );
+  const hit = (o: Seen) => o.edge === edge && same(o.from!, wantFrom) && same(o.to!, wantTo);
+  const observed = Array.isArray(rec.data.observed) ? (rec.data.observed as Seen[]) : [];
+  const taken = entries(rec).filter(hit);
+  const others = loaded.records
+    .filter((r) => r.type === 'session' && r.valid && r.key !== rec.key && entries(r).some(hit))
+    .map((r) => r.key);
+  if (!taken.length) {
+    const near = entries(rec)
+      .filter((o) => same(o.from!, wantFrom))
+      .map((o) => `${o.edge} ${o.to}`);
+    throw new CliError(
+      `${rec.key} observed no ${edge} edge from ${wantFrom.key} to ${wantTo.key}` +
+        (near.length ? ` (from ${wantFrom.key} it observed: ${[...new Set(near)].join(', ')})` : '') +
+        (others.length ? `; observed by ${others.join(', ')}, each taken back by its own id` : ''),
+    );
+  }
+  const kept = observed.filter((o) => !taken.includes(o));
+  const [fromKey, toKey] = [taken[0].from!, taken[0].to!];
+  const at = taken.map((o) => (typeof o.at === 'string' ? o.at : '')).filter(Boolean);
+  const data: Record<string, unknown> = { ...rec.data, observed: kept };
+  if (!kept.length) delete data.observed;
+  const commit = save(
+    store,
+    rec,
+    data,
+    withLogLine(
+      rec,
+      `took back ${edge} ${fromKey} → ${toKey}${at.length ? ` (observed ${at.join(', ')})` : ''}, observed in error`,
+    ),
+    `pjman: session unobserve ${rec.key} ${edge} ${fromKey} ${toKey}`,
+    'unobserve',
+    fromKey,
+  );
+  return { path: rec.path, commit, dropped: taken.length, from: fromKey, to: toKey, at, others };
+}
+
+/** Append an observed edge `{edge, from, to, at}`. `at`: when it was observed, for an edge put back after it was
+ *  taken back (the time decides which branch a change's line reads); now when not given. `branch`: the branch the
+ *  session stood on when it saw the source. An edge from a change then lands on the change a written link or the
+ *  branch's name gives it to (decision observed-branch-belongs/another-changes-branch), and stays on `from` when
+ *  nothing but an earlier observation claims the branch (decision observed-branch-belongs/unclaimed-branch: an
+ *  observation is no ground to move another change's edge); an edge the session already holds is not written twice.
+ *  An edge from anything else (the session itself, while bound to nothing) lands as given. `sessionUnobserve` is the
+ *  reverse. */
 export function sessionObserve(
   store: Store,
   id: string,
   edge: string,
   from: string,
   to: string,
-  opts: { branch?: string } = {},
+  at?: string,
+  branch?: string,
 ): { path: string; commit: string | null; from: string; added: boolean } {
   if (!EDGES[edge]) throw new CliError(`'${edge}' is not an edge (${Object.keys(EDGES).join(', ')})`);
+  if (at !== undefined && Number.isNaN(Date.parse(at)))
+    throw new CliError(`--at takes a time (${nowIso()}), not '${at}'`);
   const { loaded, rec } = load(store, id);
   // the record holds full keys; a source key stays as written
+  const observed = Array.isArray(rec.data.observed) ? [...(rec.data.observed as unknown[])] : [];
   let origin = fullKey(loaded, from);
   const target = fullKey(loaded, to);
-  const observed = Array.isArray(rec.data.observed) ? [...(rec.data.observed as ObservedEdge[])] : [];
-  if (opts.branch && origin.startsWith('change:')) {
-    origin =
-      findReferences(loaded, `branch:${opts.branch}`, { projectDir: store.projectDir, project: store.project }).find(
-        (r) => r.change,
-      )?.change ?? origin;
-    if (observed.some((o) => o.edge === edge && o.from === origin && o.to === target))
-      return { path: rec.path, commit: null, from: origin, added: false };
+  if (branch && origin.startsWith('change:')) {
+    const owner = branchOwner(loaded, branch, { projectDir: store.projectDir, project: store.project });
+    if (owner && owner.by !== 'observed') origin = owner.change;
+    const held = (o: unknown) => {
+      const e = o as { edge?: string; from?: string; to?: string };
+      return e?.edge === edge && e.from === origin && e.to === target;
+    };
+    if (observed.some(held)) return { path: rec.path, commit: null, from: origin, added: false };
   }
-  observed.push({ edge, from: origin, to: target, at: nowIso() });
+  observed.push({ edge, from: origin, to: target, at: at ?? nowIso() });
   const commit = save(
     store,
     rec,
@@ -480,35 +567,4 @@ export function sessionObserve(
     'observe',
   );
   return { path: rec.path, commit, from: origin, added: true };
-}
-type ObservedEdge = { edge?: string; from?: string; to?: string; at?: string };
-
-/** Back out one observed edge, the reverse of `sessionObserve` (decision observed-branch-belongs/reverse): every entry
- *  of that edge, origin and target leaves `observed`; the binding and the session's other edges stay, and the removal
- *  is a line in `## Log`. One commit, which `pjman undo <commit>` reverts. */
-export function sessionUnobserve(
-  store: Store,
-  id: string,
-  edge: string,
-  from: string,
-  to: string,
-): { path: string; commit: string | null; dropped: number } {
-  const { loaded, rec } = load(store, id);
-  const origin = fullKey(loaded, from);
-  const target = fullKey(loaded, to);
-  const observed = Array.isArray(rec.data.observed) ? (rec.data.observed as ObservedEdge[]) : [];
-  const kept = observed.filter((o) => !(o.edge === edge && o.from === origin && o.to === target));
-  const dropped = observed.length - kept.length;
-  if (!dropped) throw new CliError(`${rec.key} observed no ${edge} edge from ${origin} to ${target}`);
-  const data: Record<string, unknown> = { ...rec.data, observed: kept };
-  if (!kept.length) delete data.observed;
-  const commit = save(
-    store,
-    rec,
-    data,
-    withLogLine(rec, `unobserved ${origin} ${edge} ${target}`),
-    `pjman: session unobserve ${rec.key} ${edge} ${origin} ${to}`,
-    'unobserve',
-  );
-  return { path: rec.path, commit, dropped };
 }

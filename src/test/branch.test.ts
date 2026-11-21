@@ -97,6 +97,14 @@ test('whose branch: a written link, then the name, then an observed edge (decisi
   sessionObserve(store, 'sess-1', 'links', 'change:app/stack-a', 'branch:feat/login');
   assert.equal(whose('feat/login'), 'change:app/stack-a');
   assert.equal(findReferences(loadStore(store), 'branch:feat/login', opts)[0]?.relation, 'observed');
+  // observed with the branch it was seen on, an edge lands on the change the name gives the branch to
+  const seen = (from: string, branch: string) =>
+    sessionObserve(store, 'sess-1', 'links', from, `github-pr:acme/app#${branch.length}`, undefined, branch);
+  assert.equal(seen('change:app/stack-a', 'TICK-2/stack-b').from, 'change:app/stack-b');
+  assert.equal(seen('change:app/stack-a', 'TICK-2/stack-b').added, false, 'an edge it holds is not written twice');
+  // an earlier observation is no ground to move another change's edge: on a branch nothing else claims, it stays
+  assert.equal(seen('change:app/stack-b', 'feat/login').from, 'change:app/stack-b');
+  assert.equal(seen('change:app/stack-b', 'nobodys').from, 'change:app/stack-b');
   // a link someone wrote outranks the name
   set(store, 'change:app/stack-a', ['links+=branch:TICK-2/stack-b'], {});
   assert.equal(whose('TICK-2/stack-b'), 'change:app/stack-a');

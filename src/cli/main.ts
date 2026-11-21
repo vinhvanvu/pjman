@@ -60,9 +60,9 @@ import {
   type BindReason,
   sessionLog,
   sessionObserve,
-  sessionUnobserve,
   sessionStart,
   sessionUnbind,
+  sessionUnobserve,
   sessionProject,
   sessionName,
 } from '../ops/session.js';
@@ -637,8 +637,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         );
       } else if (sub === 'observe') {
         if (!id || rest.length < 3)
-          throw usageError('usage: pjman session observe <id> <edge> <from> <to> [--branch <name>]');
-        const r = sessionObserve(store, id, rest[0], rest[1], rest[2], { branch: v.branch });
+          throw usageError('usage: pjman session observe <id> <edge> <from> <to> [--at <time>] [--branch <name>]');
+        const r = sessionObserve(store, id, rest[0], rest[1], rest[2], v.at, v.branch);
         const landed = v.branch ? ` on ${printed(r.from)}` : '';
         out(
           r.added
@@ -648,9 +648,23 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       } else if (sub === 'unobserve') {
         if (!id || rest.length < 3) throw usageError('usage: pjman session unobserve <id> <edge> <from> <to>');
         const r = sessionUnobserve(store, id, rest[0], rest[1], rest[2]);
-        out(
-          `unobserved in ${r.path}${r.dropped > 1 ? `; ${r.dropped} entries dropped` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+        const sid = id.startsWith('session:') ? id.slice(8) : id;
+        const [from, to] = [printed(r.from), printed(r.to)];
+        const lines = [
+          `took back ${r.dropped} observed edge${r.dropped === 1 ? '' : 's'} in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`,
+        ];
+        // undo holds only until the next write to the session, and a running session is written to all the time
+        const again = `pjman session observe ${sid} ${rest[0]} ${from} ${to}${r.at.length ? ` --at ${r.at.at(-1)}` : ''}`;
+        lines.push(
+          r.commit
+            ? `  to put it back: pjman undo ${r.commit} until something else writes to the session, then ${again}`
+            : `  to put it back: ${again}`,
         );
+        for (const other of r.others)
+          lines.push(
+            `  still observed by ${other}: pjman session unobserve ${other.slice(8)} ${rest[0]} ${from} ${to}`,
+          );
+        out(lines.join('\n'));
       } else if (sub === 'focus') {
         if (!id || !rest[0]) throw usageError('usage: pjman session focus <id> <change>');
         const r = sessionFocus(store, id, rest[0]);

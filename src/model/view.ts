@@ -102,6 +102,28 @@ export function row(r: Rec): Row {
   };
 }
 
+/** Every session's observed edges that leave a record (by the key it resolves to), oldest first: who saw what, and
+ *  when. A wrong branch line is one of these, and each holder has to take its own back. */
+export function observedFrom(
+  loaded: Loaded,
+  fromKey: string,
+): { session: string; edge: string; to: string; at: string }[] {
+  const seen: { session: string; edge: string; to: string; at: string }[] = [];
+  for (const s of ofType(loaded, 'session')) {
+    if (!s.valid || !Array.isArray(s.data.observed)) continue;
+    for (const o of s.data.observed as unknown[]) {
+      if (!o || typeof o !== 'object') continue;
+      const e = o as Record<string, unknown>;
+      if (typeof e.edge !== 'string' || typeof e.from !== 'string' || typeof e.to !== 'string') continue;
+      const from = resolve(loaded, e.from);
+      const key = from.status === 'ok' || from.status === 'alias' ? from.rec.key : e.from;
+      if (key !== fromKey) continue;
+      seen.push({ session: s.key, edge: e.edge, to: e.to, at: typeof e.at === 'string' ? e.at : '' });
+    }
+  }
+  return seen.toSorted((x, y) => x.at.localeCompare(y.at));
+}
+
 /** A change's branch and worktree, as views say them: the branch a session was last seen on (observed), else one the
  *  change links, else the recommended name derived from the key (decision branch-names/derived-not-stored). */
 export interface ChangeBranch {
