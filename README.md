@@ -1,12 +1,10 @@
 # pjman
 
-**Every change, every decision, and why.**
+pjman is a command-line tool and a Claude Code plugin. It keeps a record of your product work in a store: Markdown files in a git repository on your machine.
 
-Coding agents do the work and forget why. Each session starts from nothing, and last week's choice lives in a chat that is gone.
+The agent reads the store at the start of each session and writes to it through the `pjman` command, so a new session starts from what earlier sessions recorded. A local dashboard shows the same files. pjman needs no account.
 
-pjman keeps the record in a store: Markdown files in a git repository on your machine. It holds what your product is, each piece of work with where it came from and what done means, and every choice with its options. Your agent reads the store at the start of each session and writes to it through one command. You make the decisions.
-
-It is a command and a Claude Code plugin. A local dashboard draws the same files. There is no account.
+The store holds these records:
 
 ```text
 product           pantry            what you are building
@@ -18,7 +16,7 @@ product           pantry            what you are building
          └─ session   2026-11-21    one agent run that worked on it
 ```
 
-State rolls up and is never written by hand. A change's status follows its plan, and a capability is live once the change that adds it is done.
+Status is derived, not written by hand. A change's status follows its plan, and a capability is live once the change that adds it is done.
 
 The examples on this page follow one made-up product: `pantry`, a shopping list app.
 
@@ -96,7 +94,7 @@ you    let me save my shopping list as a PDF
 agent  filed change:list-as-pdf · changes feature:share-a-list · one change · later · no date
 ```
 
-Before it files anything, the agent does three things in one motion:
+Before it files anything, the agent does three things:
 
 - **It checks for a duplicate.** If an open change already covers the request, it attaches yours to that change and files nothing new.
 - **It finds the place on the map.** The change names the most specific feature it adds, changes or removes.
@@ -131,7 +129,7 @@ A person in a shop with no signal still has their list.
 Save as PDF on any list downloads a file that shows every item on it.
 ```
 
-What you point at becomes a source. A ticket or a URL named in your request is linked to the change, and so is each file the agent writes for it.
+A ticket or a URL named in your request is linked to the change as a source. Each file the agent writes for the change is linked too.
 
 ## Pick the work up in any session
 
@@ -139,7 +137,7 @@ Start a session on the change's branch, or name the change in your prompt. The s
 
 When the agent needs what came before on that part of the product, it runs `pjman history`. That lists the earlier changes, their decisions and their sources, for a node of the map and each parent above it.
 
-When the agent reaches a choice that closes off options, it does not choose. It opens a decision with the options laid out and one recommended, and it works on what does not depend on the answer. Only a person can accept: the command refuses an acceptance from an agent.
+When the agent reaches a choice that closes off options, it opens a decision with the options laid out and one recommended. It then works on what does not depend on the answer. Only a person can accept: the command refuses an acceptance from an agent.
 
 ```text
 Page size (decision:list-as-pdf/page-size)
@@ -156,7 +154,7 @@ A session stops in one of three places: at a decision that waits on you, at a re
 
 ## Read the store
 
-The store is files you can open, and three commands read it for you:
+Every record is a file you can open. Three commands read the store for you:
 
 ```bash
 pjman context                     # what is in flight
