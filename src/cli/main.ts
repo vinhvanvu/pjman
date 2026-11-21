@@ -832,6 +832,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         node: !!v.node,
         kinds: v.all ? [...HISTORY_KINDS] : HISTORY_KINDS.filter((k) => v[k]),
         match: v.match,
+        dropped: !!v.dropped,
       });
       v.json ? json(h) : out(formatHistory(h));
       return 0;

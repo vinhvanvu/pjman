@@ -53,6 +53,10 @@ export interface HistoryNode {
   /** Everything on the node, whatever was asked for or matched: its changes, their decisions, their distinct sources
    *  (less those that record a run). */
   counts: Record<HistoryKind, number>;
+  /** What is on the node and left out unless asked for (decision branch-sources-follow-ups/statuses-listed): its
+   *  dropped changes, with all beneath them, and the superseded or reverted decisions of the others. Counted in
+   *  neither `counts` nor `changes`. */
+  leftOut: { changes: number; decisions: number };
   /** The changes naming this node itself (never one beneath it), newest first: each that is shown, or that carries a
    *  decision or a source that is. */
   changes: HistoryChange[];
@@ -109,6 +113,8 @@ export interface HistoryOpts {
   kinds?: HistoryKind[];
   /** Words a record must all carry (in its key, name, gist or title) to be shown. */
   match?: string;
+  /** Dropped changes and superseded or reverted decisions too. */
+  dropped?: boolean;
 }
 
 export function history(loaded: Loaded, key: string, opts: HistoryOpts = {}): History {
@@ -145,6 +151,7 @@ export function history(loaded: Loaded, key: string, opts: HistoryOpts = {}): Hi
     ...(words.length ? { match: words.join(' ') } : {}),
     nodes: nodes.map((f) => {
       const counts = { changes: 0, decisions: 0, sources: 0 };
+      const leftOut = { changes: 0, decisions: 0 };
       const distinct = new Set<string>();
       const changes: HistoryChange[] = [];
       const on = (naming.get(f.key) ?? [])
@@ -153,11 +160,19 @@ export function history(loaded: Loaded, key: string, opts: HistoryOpts = {}): Hi
         .toSorted(newestFirst);
       for (const c of on) {
         const r = row(c);
+        // what was abandoned is counted, and listed only when asked for: what stands and what is moving is the history
+        if (!opts.dropped && r.status === 'dropped') {
+          leftOut.changes++;
+          continue;
+        }
+        const every = decisionsOf(loaded, c.key).map((d): HistoryDecision => {
+          const dr = row(d);
+          return { key: d.key, name: dr.name, gist: dr.gist, status: dr.status };
+        });
+        const stands = opts.dropped ? every : every.filter((d) => d.status !== 'superseded' && d.status !== 'reverted');
+        leftOut.decisions += every.length - stands.length;
         const all = {
-          decisions: decisionsOf(loaded, c.key).map((d): HistoryDecision => {
-            const dr = row(d);
-            return { key: d.key, name: dr.name, gist: dr.gist, status: dr.status };
-          }),
+          decisions: stands,
           sources: sourcesOf(loaded, c)
             .filter((s) => !RUN_KINDS.has(s.key.slice(0, s.key.indexOf(':'))))
             .map((s): HistorySource => ({ key: s.key, relation: s.relation, title: s.record?.title, url: s.url })),
@@ -197,6 +212,7 @@ export function history(loaded: Loaded, key: string, opts: HistoryOpts = {}): Hi
         title: str(f.data.title),
         level: levelOf(loaded, f),
         counts,
+        leftOut,
         changes,
       };
     }),
@@ -220,14 +236,20 @@ export function formatHistory(h: History): string {
   for (const n of h.nodes) {
     const label = n.name && n.title && n.name !== n.title ? `${n.name}: ${n.title}` : (n.title ?? n.name ?? '');
     out.push(`\n## ${n.key} (${n.level})${label ? ` — ${label}` : ''}`);
+    const left = [
+      n.leftOut.changes ? plural(n.leftOut.changes, 'dropped change') : '',
+      n.leftOut.decisions ? plural(n.leftOut.decisions, 'superseded or reverted decision') : '',
+    ].filter(Boolean);
+    const leftLine = left.length ? `left out: ${left.join(', ')} (--dropped)` : '';
     if (!n.counts.changes) {
-      out.push(h.of.startsWith('change:') ? 'no other change names it' : 'no change names it');
+      out.push(leftLine || (h.of.startsWith('change:') ? 'no other change names it' : 'no change names it'));
       continue;
     }
     // everything on the node counted, and what was not asked for named by the flag that prints it
     const count = (k: HistoryKind, word: string) =>
       `${plural(n.counts[k], word)}${!has(k) && n.counts[k] ? ` (--${k})` : ''}`;
     out.push([count('changes', 'change'), count('decisions', 'decision'), count('sources', 'source')].join(', '));
+    if (leftLine) out.push(leftLine);
     const before = out.length;
     if (has('changes')) {
       // each change a line, what was asked for of its decisions and sources beneath it

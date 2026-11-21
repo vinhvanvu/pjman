@@ -10,6 +10,7 @@ import { before, test } from 'node:test';
 import { init } from '../cli/init.js';
 import { formatHistory, history, HISTORY_KINDS } from '../model/history.js';
 import { newRecord } from '../ops/new.js';
+import { set } from '../ops/set.js';
 import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { change, decisionRec } from './shape.js';
@@ -242,4 +243,45 @@ test('the command: a slug or a key in, text or JSON out, the kinds and the words
   assert.equal(r.code, 1);
   assert.match(r.err, /reads a change or a node of the map/);
   assert.equal(pj(['history', 'nothing-here']).code, 1);
+});
+
+test('what was abandoned is left out and counted: a dropped change with all beneath it, a superseded decision', () => {
+  // filed last, so the tests above read the store without them
+  change(store, 'wallet', { title: 'A wallet', features: ['feature:shop/checkout'], links: ['file:src/wallet.ts'] });
+  decisionRec(store, 'wallet/coins', { title: 'Coins', decidedBy: 'person:tester' });
+  set(store, 'change:shop/wallet', ['status=dropped'], {});
+  decisionRec(store, 'pay-button/shape', { title: 'The shape', decidedBy: 'person:tester' });
+  decisionRec(store, 'pay-button/round', {
+    title: 'Round',
+    decidedBy: 'person:tester',
+    supersedes: 'decision:shop/pay-button/shape',
+  });
+  const loaded = loadStore(store);
+  const h = history(loaded, 'feature:shop/checkout', { node: true, kinds: ALL });
+  assert.deepEqual(
+    h.nodes[0].changes.map((c) => c.key),
+    ['change:shop/pay-button'],
+  );
+  assert.deepEqual(
+    h.nodes[0].changes[0].decisions!.map((d) => d.key),
+    ['decision:shop/pay-button/colour', 'decision:shop/pay-button/round'],
+  );
+  assert.deepEqual(h.nodes[0].counts, { changes: 1, decisions: 2, sources: 1 });
+  assert.deepEqual(h.nodes[0].leftOut, { changes: 1, decisions: 1 });
+  assert.match(
+    formatHistory(h),
+    /^1 change, 2 decisions, 1 source\nleft out: 1 dropped change, 1 superseded or reverted decision \(--dropped\)$/m,
+  );
+  // asked for, they are listed with their status and nothing is left out
+  const all = history(loaded, 'feature:shop/checkout', { node: true, kinds: ALL, dropped: true });
+  assert.deepEqual(
+    all.nodes[0].changes.map((c) => `${c.key} ${c.status}`),
+    ['change:shop/wallet dropped', 'change:shop/pay-button open'],
+  );
+  assert.ok(all.nodes[0].changes[1].decisions!.some((d) => d.status === 'superseded'));
+  assert.deepEqual(all.nodes[0].leftOut, { changes: 0, decisions: 0 });
+  assert.deepEqual(all.nodes[0].counts, { changes: 2, decisions: 4, sources: 2 });
+  const r = pj(['history', 'checkout', '--node', '--dropped']);
+  assert.match(r.out, /^- change:wallet \[dropped\] /m);
+  assert.doesNotMatch(r.out, /left out/);
 });
