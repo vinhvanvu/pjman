@@ -8,8 +8,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
 import { init } from '../cli/init.js';
-import { formatHistory, history, HISTORY_KINDS } from '../model/history.js';
+import { formatHistory, history, HISTORY_KINDS, type HistoryKind } from '../model/history.js';
 import { newRecord } from '../ops/new.js';
+import { set } from '../ops/set.js';
 import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { change, decisionRec } from './shape.js';
@@ -184,6 +185,7 @@ test('words narrow every kind asked for: a change that carries them keeps what i
   assert.deepEqual(h.nodes[1].changes, [
     {
       key: 'change:shop/card-form',
+      status: 'open',
       decisions: [
         {
           key: 'decision:shop/card-form/vault',
@@ -242,4 +244,84 @@ test('the command: a slug or a key in, text or JSON out, the kinds and the words
   assert.equal(r.code, 1);
   assert.match(r.err, /reads a change or a node of the map/);
   assert.equal(pj(['history', 'nothing-here']).code, 1);
+});
+
+test('what was abandoned is left out and counted, all beneath it too, and listed as dropped when asked for', () => {
+  // filed last, so the tests above read the store without them
+  change(store, 'wallet', { title: 'A wallet', features: ['feature:shop/checkout'], links: ['file:src/wallet.ts'] });
+  decisionRec(store, 'wallet/coins', { title: 'Coins', decidedBy: 'person:tester' });
+  set(store, 'change:shop/wallet', ['status=dropped'], {});
+  decisionRec(store, 'pay-button/shape', { title: 'The shape', decidedBy: 'person:tester' });
+  decisionRec(store, 'pay-button/round', {
+    title: 'Round',
+    decidedBy: 'person:tester',
+    supersedes: 'decision:shop/pay-button/shape',
+  });
+  // (no command writes a reverted decision any more; it is left out by the same test as a superseded one)
+  // a node whose only change was dropped
+  newRecord(store, 'feature', 'gifts', { title: 'Gifts', product: 'product:shop' });
+  change(store, 'gift-wrap', { title: 'Gift wrap', features: ['adds feature:shop/gifts'] });
+  set(store, 'change:shop/gift-wrap', ['status=dropped'], {});
+  const loaded = loadStore(store);
+  const h = history(loaded, 'feature:shop/checkout', { node: true, kinds: ALL });
+  assert.deepEqual(
+    h.nodes[0].changes.map((c) => c.key),
+    ['change:shop/pay-button'],
+  );
+  assert.deepEqual(
+    h.nodes[0].changes[0].decisions!.map((d) => d.key),
+    ['decision:shop/pay-button/colour', 'decision:shop/pay-button/round'],
+  );
+  assert.deepEqual(h.nodes[0].counts, { changes: 1, decisions: 2, sources: 1 });
+  // the dropped change, its decision with the superseded one, and the source only it carries
+  assert.deepEqual(h.nodes[0].leftOut, { changes: 1, decisions: 2, sources: 1 });
+  assert.match(
+    formatHistory(h),
+    /^1 change, 2 decisions, 1 source\nleft out: 1 dropped change \(--dropped\), 2 decisions dropped with their change, superseded or reverted \(--dropped\), 1 source of dropped changes \(--dropped\)$/m,
+  );
+  // a kind not asked for is named with the flag that asks for it
+  assert.match(
+    formatHistory(history(loaded, 'feature:shop/checkout', { node: true })),
+    /^left out: 1 dropped change \(--dropped\), 2 decisions .* \(--decisions --dropped\), 1 source of dropped changes \(--sources --dropped\)$/m,
+  );
+  // a node with nothing but what was dropped says that, not that nothing names it
+  const gifts = formatHistory(history(loaded, 'feature:shop/gifts'));
+  assert.match(gifts, /^## feature:shop\/gifts .*\nleft out: 1 dropped change \(--dropped\)$/m);
+  assert.doesNotMatch(gifts, /no change names it/);
+  // asked for, they are listed with their status and nothing is left out
+  const all = history(loaded, 'feature:shop/checkout', { node: true, kinds: ALL, dropped: true });
+  assert.deepEqual(
+    all.nodes[0].changes.map((c) => `${c.key} ${c.status}`),
+    ['change:shop/wallet dropped', 'change:shop/pay-button open'],
+  );
+  assert.deepEqual(all.nodes[0].changes[1].decisions!.map((d) => d.status).toSorted(), [
+    'decided',
+    'proposed',
+    'superseded',
+  ]);
+  assert.deepEqual(all.nodes[0].leftOut, { changes: 0, decisions: 0, sources: 0 });
+  assert.deepEqual(all.nodes[0].counts, { changes: 2, decisions: 4, sources: 2 });
+  // the flat lists: without --dropped nothing of a dropped change; with it, each line says its change was dropped
+  const flat = { node: true, kinds: ['decisions', 'sources'] as HistoryKind[] };
+  const kept = formatHistory(history(loaded, 'feature:shop/checkout', flat));
+  assert.doesNotMatch(kept, /wallet|shape/);
+  const told = history(loaded, 'feature:shop/checkout', { ...flat, dropped: true });
+  assert.deepEqual(
+    told.nodes[0].changes.map((c) => [c.key, c.status, c.name]),
+    [
+      ['change:shop/wallet', 'dropped', undefined],
+      ['change:shop/pay-button', 'open', undefined],
+    ],
+  );
+  const text = formatHistory(told);
+  assert.match(text, /^- decision:shop\/wallet\/coins \[decided, its change dropped\] — /m);
+  assert.match(text, /^- decision:shop\/pay-button\/shape \[superseded\] — /m);
+  assert.match(text, /^- file:src\/wallet\.ts · links change:shop\/wallet \[dropped\]$/m);
+  // the command: the flag, and what is left out carried in JSON
+  let r = pj(['history', 'checkout', '--node', '--dropped']);
+  assert.match(r.out, /^- change:wallet \[dropped\] /m);
+  assert.doesNotMatch(r.out, /left out/);
+  r = pj(['history', 'checkout', '--node', '--json']);
+  assert.deepEqual(JSON.parse(r.out).nodes[0].leftOut, { changes: 1, decisions: 2, sources: 1 });
+  assert.match(pj(['history']).err, /\[--dropped\]/);
 });
