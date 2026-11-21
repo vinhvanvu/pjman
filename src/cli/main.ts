@@ -817,7 +817,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1])
         throw usageError(
-          'usage: pjman history <change|feature> [--node] [--changes] [--decisions] [--sources] [--all] [--match <words>]',
+          'usage: pjman history <change|feature> [--node] [--changes] [--decisions] [--sources] [--all] [--match <words>] [--dropped]',
         );
       const loaded = loadStore(store);
       const key = resolveArg(loaded, pos[1], {

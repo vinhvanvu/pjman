@@ -447,7 +447,7 @@ export const COMMANDS: Command[] = [
     group: 'reading',
     line: 'what came before on a part of the product: the changes on a node and on each parent, their decisions and sources',
     about:
-      "the history of a part of the product, reached for when the work needs it (a change's context carries none of it): the changes naming a node, the decisions on them and the sources they bind and link, for the node and every parent up the map, under a heading per node with the nearest first. A change stands for the nodes it names, and is left out of its own history. It answers as an index: each node counts everything on it, then lists the changes, a line each (key, status, date, effect, name and gist); the depth of one is pjman context <change> or pjman show <decision>. --decisions and --sources ask for those kinds, --changes for the changes, --all for every kind: with the changes, a change's decisions and sources sit beneath its line; without them, each kind is a flat list per node. --match narrows to the records that carry every word given (in a key, a name, a gist or a source's title); a change that carries them is shown with all that was asked for beneath it. --node reads the node alone, without its parents. Only what names a node itself is read, never what names a node beneath it (pjman ls change --feature reads downward). What stands and what is moving is listed, with its status, the changes newest first: a dropped change (with all beneath it) and a superseded or reverted decision are left out and counted, and --dropped lists them too. Sources that record a run and not the product (Entire's checkpoints and Trails) are left out and not counted. A change naming no node says so. Never writes",
+      "the history of a part of the product, reached for when the work needs it (a change's context carries none of it): the changes naming a node, the decisions on them and the sources they bind and link, for the node and every parent up the map, under a heading per node with the nearest first. A change stands for the nodes it names, and is left out of its own history. It answers as an index: each node counts everything on it, then lists the changes, a line each (key, status, date, effect, name and gist); the depth of one is pjman context <change> or pjman show <decision>. --decisions and --sources ask for those kinds, --changes for the changes, --all for every kind: with the changes, a change's decisions and sources sit beneath its line; without them, each kind is a flat list per node. --match narrows to the records that carry every word given (in a key, a name, a gist or a source's title); a change that carries them is shown with all that was asked for beneath it. --node reads the node alone, without its parents. Only what names a node itself is read, never what names a node beneath it (pjman ls change --feature reads downward). What stands and what is moving is listed, with its status, the changes newest first: a dropped change, with the decisions and sources beneath it, and a superseded or reverted decision are left out and counted on their node, and --dropped lists them too, each said as dropped. Sources that record a run and not the product (Entire's checkpoints and Trails) are left out and not counted. A change naming no node says so. Never writes",
     usage: [
       'pjman history <change|feature> [--node] [--changes] [--decisions] [--sources] [--all] [--match <words>] [--dropped] [--json]',
     ],
@@ -847,7 +847,7 @@ export const ENTITIES: Entity[] = [
       ['read', 'pjman show <feature> · pjman tree <feature> · pjman context <feature> · pjman activity <feature>'],
       [
         'history',
-        'pjman history <feature> [--node] [--decisions] [--sources] [--all] [--match <words>]   (what came before on it and on each parent, as an index)',
+        'pjman history <feature> [--node] [--decisions] [--sources] [--all] [--match <words>] [--dropped]   (what came before on it and on each parent, as an index)',
       ],
       ['list', 'pjman ls feature [--product <p>] [--parent <feature>] [--status …]'],
       ['update', 'pjman set <feature>... <field>=… | <list>+=<item> | <list>-=<item>'],
@@ -896,7 +896,7 @@ export const ENTITIES: Entity[] = [
       ],
       [
         'history',
-        'pjman history <change> [--node] [--decisions] [--sources] [--all] [--match <words>]   (what came before on the nodes it names and on each parent, as an index)',
+        'pjman history <change> [--node] [--decisions] [--sources] [--all] [--match <words>] [--dropped]   (what came before on the nodes it names and on each parent, as an index)',
       ],
       [
         'list',
