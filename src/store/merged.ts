@@ -1,6 +1,8 @@
 // What the repository says of a branch, read from git alone: the base branch, and whether a branch's work has reached
 // it and how. Below the store's operations, so a write can ask it (ops/promote) as the syncs do (sync/git).
-import { git } from './git.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { git, toplevel } from './git.js';
 
 export const tryGit = (cwd: string, args: string[]): string => {
   try {
@@ -25,6 +27,34 @@ export function baseBranch(dir: string): string {
   for (const b of ['main', 'master'])
     if (tryGit(dir, ['rev-parse', '--verify', '--quiet', `refs/heads/${b}`])) return b;
   return tryGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) || 'main';
+}
+
+/** The local branches of the repository at `dir`, newest commit first, each with the name of the worktree that has it
+ *  checked out when a folder other than the checkout `dir` is in does (its top level: a project may sit in a
+ *  subfolder of its repository). */
+export function localHeads(dir: string): { name: string; worktree?: string }[] {
+  const out = tryGit(dir, [
+    'for-each-ref',
+    '--sort=-committerdate',
+    '--format=%(refname:short)%09%(worktreepath)',
+    'refs/heads',
+  ]);
+  const real = (p: string): string | null => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return null; // the folder is gone: the branch is checked out nowhere to be found
+    }
+  };
+  const home = toplevel(dir) ?? real(dir);
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [name, at] = line.split('\t');
+      const where = at ? real(at) : null;
+      return where && where !== home ? { name, worktree: path.basename(at) } : { name };
+    });
 }
 
 /** The branch a merge commit's subject names: git's own (`Merge branch 'x'`) or GitHub's (`Merge pull request #n from

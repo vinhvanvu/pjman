@@ -12,6 +12,7 @@ import { live } from '../model/tree.js';
 import { CliError, nowIso } from '../store/util.js';
 import { findingsOf, formatFinding, holdsMerge } from '../model/findings.js';
 import { observedBranches } from '../model/view.js';
+import { localHeads } from '../store/merged.js';
 import { baseBranch, branchesOf, mergedInto } from './git.js';
 import { formatLoop, readFindings, reviewLoop } from './review.js';
 
@@ -50,7 +51,7 @@ export function mergeChange(
     throw new CliError(`${rec.key} is a milestone: its children merge, each on its own`);
   const base = baseBranch(dir);
   const local = new Set((tryGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']) ?? '').split('\n'));
-  const branch = branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.has(b));
+  const branch = branchesOf(rec, observedBranches(loaded), localHeads(dir)).find((b) => b !== base && local.has(b));
   if (!branch) throw new CliError(`${rec.key} has no branch in this repository to merge`);
   const named = `change:${rec.changeSlug}`;
   const notes: string[] = [];

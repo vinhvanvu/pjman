@@ -37,6 +37,7 @@ import { newChange } from '../ops/new.js';
 import { step } from '../ops/step.js';
 import { live } from '../model/tree.js';
 import { MOVED_SINCE, observedBranches } from '../model/view.js';
+import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
@@ -78,7 +79,10 @@ function branchIn(loaded: Loaded, rec: Rec, dir: string | undefined): { branch?:
   if (!dir) return {};
   const base = baseBranch(dir);
   const local = tryGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n');
-  return { base, branch: branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.includes(b)) };
+  return {
+    base,
+    branch: branchesOf(rec, observedBranches(loaded), localHeads(dir)).find((b) => b !== base && local.includes(b)),
+  };
 }
 
 /** A round's head as shown: the full hash is what is stored and resolved. */
