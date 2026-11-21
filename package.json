@@ -1,7 +1,7 @@
 {
   "name": "@vinhvanvu/pjman",
   "version": "0.7.0",
-  "description": "Every change, every decision, and why: an opinionated framework for product development and project management, built on a context graph your agents keep and you steer.",
+  "description": "Every change, every decision, and why: the record of your product work, kept by your coding agents as Markdown files in git.",
   "keywords": [
     "context-graph",
     "product-development",
