@@ -8,6 +8,7 @@ import { markSuperseded, unmark, type Marked } from './supersede.js';
 import { CliError, usageError } from '../store/util.js';
 import { fieldKind } from '../store/keys.js';
 import { fieldRef } from '../model/graph.js';
+import { observedFrom } from '../model/view.js';
 import { reachOfBase } from '../model/aspects.js';
 import {
   CHANGE_FOUNDATION,
@@ -100,7 +101,8 @@ export function set(
   }
   const rec = res.rec;
   const allowed = SETTABLE[rec.type];
-  if (allowed.length === 0) throw new CliError(`a ${rec.type} is append-only; use \`pjman session log|bind|observe\``);
+  if (allowed.length === 0)
+    throw new CliError(`a ${rec.type} is append-only; use \`pjman session log|bind|unbind|observe|unobserve\``);
   const data: Record<string, unknown> = { ...rec.data };
   let body = rec.body;
   const changed: string[] = [];
@@ -177,6 +179,17 @@ export function set(
       continue;
     }
     if (!allowed.includes(field)) {
+      if (rec.type === 'change' && field === 'branch') {
+        // the line is read, never stored: say what it is read from and how a wrong reading is taken back
+        const seen = observedFrom(loaded, rec.key).filter((o) => o.to.startsWith('branch:'));
+        const sid = (k: string) => k.slice('session:'.length);
+        throw new CliError(
+          `'branch' cannot be set on a change: its branch line is read from the branch edges sessions observed on it (one named for it first, else the newest that names no change). A wrong one is taken back with \`pjman session unobserve <session> links ${rec.key} branch:<name>\`` +
+            (seen.length
+              ? `\n${seen.map((o) => `  ${o.to}, observed by ${o.session} at ${o.at}: pjman session unobserve ${sid(o.session)} ${o.edge} ${rec.key} ${o.to}`).join('\n')}`
+              : ` (no session has observed a branch on ${rec.key}; its line is the recommended name)`),
+        );
+      }
       if ((rec.type === 'change' || rec.type === 'decision') && RETIRED[field]) throw new CliError(RETIRED[field]);
       throw new CliError(
         `'${field}' cannot be set on a ${rec.type} (${allowed.join(', ')}; ext.<owner>.<field> on any record)`,

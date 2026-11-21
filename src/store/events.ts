@@ -497,7 +497,10 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
         op = 'set';
         fields = ['plan', `step ${rest.split(' ')[1] ?? ''}`.trim()];
       } // one move of a change's plan
-      else if (verb === 'session' && rest.startsWith('unbind')) {
+      else if (verb === 'session' && rest.startsWith('unobserve')) {
+        op = 'set';
+        fields = ['observed', 'log'];
+      } else if (verb === 'session' && rest.startsWith('unbind')) {
         op = 'set';
         fields = ['changes', 'observed', 'log'];
       } else if (verb === 'session' && (rest.startsWith('focus') || rest.startsWith('briefed'))) {
@@ -534,6 +537,9 @@ export function rebuildEvents(store: Store): { events: number; commits: number }
       }
       if (type === 'session' && (op === 'bind' || (op === 'set' && fields?.includes('focus'))))
         value = rest.split(' ')[2] || undefined;
+      // an unobserve names the record the edge left: `session unobserve <session> <edge> <from> <to>`
+      if (type === 'session' && verb === 'session' && rest.startsWith('unobserve'))
+        value = rest.split(' ')[3] || undefined;
       // a step write names the steps it touched: `step <change> <verb> <n,n>`
       if (verb === 'step' && type === 'change' && value === undefined) value = rest.split(' ')[2] || undefined;
       events.push({ seq: ++seq, at, op, key, type, path: p, fields, value, writer, session, commit: short });
