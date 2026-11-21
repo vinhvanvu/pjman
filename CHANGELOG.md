@@ -2,6 +2,23 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.8.0 — 2026-11-21
+
+### Changed
+
+- **Trail without asking**: With Entire on, a change's Trail is always started and its merge follows the review, with no wait for the person's permission (change:trail-without-asking)
+- **Correct a branch**: A person or an agent can correct a change's branch line when it is wrong, without losing what the session rightly observed (change:correct-a-branch)
+- **Branch history**: A command reads the history of any node or change's branch on the map, indexed by node: the changes there, their decisions and their sources, reached for when needed and never ingested (change:branch-sources)
+- **Branch history follow-ups**: What the review of Branch history found that did not hold its merge (change:branch-sources-follow-ups)
+- **README rework**: The README is written again from nothing for the adopter, each section settled with Vinh before it is written (change:readme-rework)
+- **Review fixes in place**: What a review finds is fixed on the change's own branch before it merges, or deferred in so many words; no follow-up change, Trail or pull request is made by itself (change:review-fixes-in-place)
+
+### Fixed
+
+- **supersedes+= refusal**: pjman set <decision> supersedes+=<decision> is refused with a message that says supersedes= replaces the list, when it only adds (change:supersedes-add-refusal)
+- **Branch line's own branch**: A change's branch line shows the newest branch any session observed on it, even one named for another change, and recommends a new branch when one named for it exists (change:branch-line-own-branch)
+- **Observed branch belongs**: A session bound to one change while standing in another change's worktree records that worktree's branch and pull request as the bound change's (change:observed-branch-belongs)
+
 ## 0.7.0 — 2026-11-20
 
 ### Added
