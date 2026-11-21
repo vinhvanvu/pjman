@@ -1130,7 +1130,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       }
       if (v.reviewed || v['follow-up']) {
         const o = { session: v.session, writer: v.writer };
-        const r = v.reviewed ? closeRound(store, key, o) : followUp(store, key, o);
+        const r = v.reviewed ? closeRound(store, key, o) : followUp(store, key, { ...o, by: v.by, note: v.note });
         if (v.json) json(r);
         else for (const line of roundLines(r, printed)) out(line);
         return 0;

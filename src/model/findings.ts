@@ -31,6 +31,9 @@ export interface Finding {
   line?: number;
   /** Why it was resolved, dismissed or deferred. */
   note?: string;
+  /** The branch's head when it was settled, in full: what was committed to handle a pass's findings is not work the
+   *  review has yet to see. */
+  head?: string;
   by?: string;
   at?: string;
   /** Its id on the change's Trail, once filed there. */
@@ -63,6 +66,7 @@ export function findingsOf(data: Record<string, unknown>): Finding[] {
       ...(str(f.file) ? { file: str(f.file) } : {}),
       ...(typeof f.line === 'number' ? { line: f.line } : {}),
       ...(str(f.note) ? { note: str(f.note) } : {}),
+      ...(str(f.head) ? { head: str(f.head) } : {}),
       ...(str(f.by) ? { by: str(f.by) } : {}),
       ...(str(f.at) ? { at: str(f.at) } : {}),
       ...(str(f.entire) ? { entire: str(f.entire) } : {}),

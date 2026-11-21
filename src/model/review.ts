@@ -144,8 +144,15 @@ export function loopOf(
   const moved = steps.some((s) => (s.at ?? '') > last.at);
   if (!moved) return now;
   if (!opts.newWork) return { ...now, maybeAgain: true };
+  // what was committed to handle the pass's findings is the review's own end, not work it has yet to see: the branch
+  // is read from where it stood when the last of them was settled (decision review-fixes-in-place/where-findings-go),
+  // or the loop would be due again for its own fixes, with no end
+  const handled = findingsOf(data)
+    .filter((f) => !!f.head && !!f.settled && f.settled > last.at)
+    .toSorted((a, b) => a.settled!.localeCompare(b.settled!))
+    .at(-1);
   // (a round closed with no head recorded is told from nothing: the repository says whether the branch holds work)
-  if (!opts.newWork(last.head)) return now;
+  if (!opts.newWork(handled?.head ?? last.head)) return now;
   // the plan is being worked, not at its end: the review comes when it is
   const atEnd = steps.every((s) => s.state === 'done' || s.state === 'dropped');
   return {
@@ -197,17 +204,19 @@ function loopOfPass(data: Record<string, unknown>, opts: { reviewable: boolean }
   }
   const n = holding.length;
   // (in this pass: one dismissed in an earlier pass says nothing of this one)
-  const dismissed = findings.some(
-    (f) => f.state === 'dismissed' && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at),
-  );
+  const settledAs = (state: Finding['state']): boolean =>
+    findings.some((f) => f.state === state && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at));
+  const dismissed = settledAs('dismissed');
+  // (deferred by a person, or moved to a follow-up change they asked for: not fixed, and said so)
+  const deferred = settledAs('deferred');
   const because = fix
     ? n
       ? `${n} finding${n === 1 ? ' still holds' : 's still hold'} the merge after the one re-review: ${n === 1 ? 'it is' : 'they are'} the person's to settle`
       : 'the fixes were re-reviewed and nothing holds the merge'
     : n
       ? `${n} finding${n === 1 ? ' holds' : 's hold'} the merge`
-      : dismissed
-        ? 'what held the merge was dismissed, the reason on each, so there is no fix to re-review'
+      : dismissed || deferred
+        ? `what held the merge was ${dismissed && deferred ? 'dismissed or deferred by a person' : dismissed ? 'dismissed' : 'deferred by a person'}, the reason on each, so there is no fix to re-review`
         : 'one full review left nothing that holds the merge';
   return { ...base, state: left.length ? 'closing' : 'ended', because };
 }

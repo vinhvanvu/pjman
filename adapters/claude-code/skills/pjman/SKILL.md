@@ -195,8 +195,8 @@ working it.
    again); what it finds is fixed on the branch too, and no fix is reviewed after that. The review has ended once
    no finding is open; a finding that still holds after the re-review is the person's to settle. Never start a
    third round, and never make a follow-up change, branch, Trail or pull request for what a review found: the tool
-   makes none by itself, and `pjman review <change> --follow-up` moves what is left to `<change>-follow-ups` only
-   when the person asks for one. A change worked on again after its review ended, its plan run to its end
+   makes none by itself, and `pjman review <change> --follow-up --note "<why>" --by person:<handle>` moves what is left to
+   `<change>-follow-ups` only when the person asks for one, in so many words. A change worked on again after its review ended, its plan run to its end
    once more with new commits, is due again: that is a new pass with its own two rounds, and the tool says so. How a project is reviewed is a line on its
    record, the person's to set: `ext.review.mode` is `off`, `request` (the default: review when asked) or `auto`,
    where a change reaching review is reviewed without being asked: the command that finishes the plan says so,

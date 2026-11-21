@@ -2,7 +2,7 @@
 // whether it holds the merge; a change reaching review in a project that reviews every change does not rest until one
 // full review and one re-review of the fix have been made; what does not hold the merge goes to one follow-up change.
 import assert from 'node:assert/strict';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -26,6 +26,7 @@ import {
   closeRound,
   followUp,
   formatLoop,
+  formatReviewBrief,
   handLens,
   lensBrief,
   reviewBrief,
@@ -81,6 +82,9 @@ before(() => {
     next: 'build it',
   });
 });
+
+/** A follow-up change asked for by the person, as the command takes it. */
+const ASKED = { by: 'person:tester', note: 'asked for in the test' };
 
 test('how a project is reviewed is a line on its record: on request by default, and only one of the three', () => {
   assert.equal(reviewMode(loadStore(store), 'project:web'), 'request');
@@ -245,11 +249,11 @@ test('the fix is re-reviewed once and alone; then the review has ended, and says
   assert.throws(() => settleFinding(store, KEY, 6, 'deferred', undefined, { by: 'person:tester' }), /says why/);
   assert.throws(
     () => settleFinding(store, KEY, 6, 'deferred', 'rounding comes with currencies'),
-    /a finding is deferred by a person, in so many words: --by person:<handle>; an agent does not defer one/,
+    /a finding is deferred by a person, in so many words: --by person:<handle>; an agent does not\. Fix it on this branch/,
   );
   assert.throws(
     () => settleFinding(store, KEY, 6, 'deferred', 'rounding comes with currencies', { by: 'agent:bot' }),
-    /agent:bot does not defer one/,
+    /agent:bot does not\./,
   );
   assert.equal(reviewLoop(store, KEY).state, 'closing');
   assert.throws(() => mergeChange(store, KEY), /not merged: 1 finding is not handled/);
@@ -314,10 +318,10 @@ test('a finding that still holds after the re-review ends the loop as the person
   // a finding filed after the end is moved when asked
   addFinding(store, T, { text: 'A comment is stale', severity: 'low' });
   assert.equal(reviewLoop(store, T).state, 'closing');
-  const moved = followUp(store, T);
+  const moved = followUp(store, T, ASKED);
   assert.deepEqual(moved.moved, [3]);
   assert.equal(moved.loop.state, 'ended');
-  assert.deepEqual(followUp(store, T).moved, []);
+  assert.deepEqual(followUp(store, T, ASKED).moved, []);
 });
 
 test('a full review that finds nothing holding the merge ends there', () => {
@@ -375,14 +379,23 @@ test('on request nothing moves unasked, and what held the merge and was dismisse
     loop.words,
     'the rounds are over (what held the merge was dismissed, the reason on each, so there is no fix to re-review); 1 finding is still to handle before the merge',
   );
-  assert.match(loop.next!, /Handle each on this branch[\s\S]*unless the person asks for one \(`--follow-up`\)/);
+  assert.match(
+    loop.next!,
+    /Handle each on this branch[\s\S]*unless the person asks for one, in so many words \(`--follow-up --note/,
+  );
   assert.equal(findingsOf(data(G))[1].state, 'open');
   // on request the review is the person's call, and the merge waits on an open finding all the same
   assert.throws(() => mergeChange(store, G), /not merged: 1 finding is not handled on change:web\/gift/);
-  // a follow-up change is made only when the person asks for one
-  const moved = followUp(store, G);
+  // a follow-up change is made only when the person asks for one, in so many words: never by an agent's own call
+  assert.throws(() => followUp(store, G), /a follow-up change is asked for by a person, in so many words/);
+  assert.throws(() => followUp(store, G, { by: 'person:tester' }), /says why/);
+  assert.equal(findingsOf(data(G))[1].state, 'open');
+  const moved = followUp(store, G, ASKED);
   assert.deepEqual([moved.moved, moved.followUp], [[2], 'change:web/gift-follow-ups']);
-  assert.equal(findingsOf(data(G))[1].note, 'moved to change:web/gift-follow-ups');
+  assert.equal(
+    findingsOf(data(G))[1].note,
+    'moved to change:web/gift-follow-ups, asked for by person:tester: asked for in the test',
+  );
   assert.equal(mergeChange(store, G).by, 'local');
 });
 
@@ -495,7 +508,7 @@ test('a later pass files what does not hold the merge to its own follow-up chang
   addFinding(store, W, { text: 'The wrap colour is fixed', severity: 'low' });
   // (closing a round moves nothing by itself: here the person asks for a follow-up change)
   assert.deepEqual((({ loop, followUp: to }) => [loop.state, to])(closeRound(store, W)), ['closing', undefined]);
-  assert.equal(followUp(store, W).followUp, 'change:web/wrap-follow-ups');
+  assert.equal(followUp(store, W, ASKED).followUp, 'change:web/wrap-follow-ups');
   set(store, 'change:web/wrap-follow-ups', ['status=dropped'], {});
   // worked on again: the plan added to, a commit the round did not see, the plan not at its end
   step(store, W, 'add', undefined, { text: 'a choice of colour' });
@@ -522,7 +535,7 @@ test('a later pass files what does not hold the merge to its own follow-up chang
   addFinding(store, W, { text: 'No colour for a birthday', severity: 'low' });
   // the first follow-up change is over: asked for again, what is left goes into one of the pass's own
   const closed = closeRound(store, W);
-  const second = followUp(store, W);
+  const second = followUp(store, W, ASKED);
   assert.deepEqual(
     [closed.round?.pass, closed.loop.state, second.loop.state, second.followUp, second.moved],
     [2, 'closing', 'ended', 'change:web/wrap-follow-ups-2', [2]],
@@ -553,7 +566,7 @@ test('a later pass adds to the first follow-up change while it is open', () => {
   handed(W);
   addFinding(store, W, { text: 'The ribbon has one width', severity: 'low' });
   const third = closeRound(store, W);
-  assert.deepEqual([third.round?.pass, followUp(store, W).followUp], [3, 'change:web/wrap-follow-ups']);
+  assert.deepEqual([third.round?.pass, followUp(store, W, ASKED).followUp], [3, 'change:web/wrap-follow-ups']);
   assert.deepEqual(
     stepsOf(data('change:web/wrap-follow-ups')).map((s) => s.text),
     ['The wrap colour is fixed', 'The ribbon has one width'],
@@ -612,7 +625,7 @@ test('a later follow-up change is the next one not over, and what is left is fil
   handed(W);
   addFinding(store, W, { text: 'The card has no envelope', severity: 'low' });
   assert.deepEqual(
-    [closeRound(store, W).round?.pass, followUp(store, W).followUp],
+    [closeRound(store, W).round?.pass, followUp(store, W, ASKED).followUp],
     [4, 'change:web/wrap-follow-ups-4'],
   );
   // on request, what is left after a pass is moved when asked, even once the next pass is under way: it goes where
@@ -631,8 +644,72 @@ test('a later follow-up change is the next one not over, and what is left is fil
   step(store, B, 'add', undefined, { text: 'a second colour' });
   on('bow', 'bow.ts', 'export const bow = 2;\n', 'feat: colours (change:bow)');
   assert.equal(reviewLoop(store, B).words?.startsWith('worked on since its review ended'), true);
-  const moved = followUp(store, B);
+  const moved = followUp(store, B, ASKED);
   assert.deepEqual([moved.followUp, moved.moved], ['change:web/bow-follow-ups-2', [1]]);
   assert.match(String(data('change:web/bow-follow-ups-2').gist), /^What pass 1 of the review of Bows found/);
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
+});
+
+// change:review-fixes-in-place
+
+test('what is committed to handle a pass’s findings is not work the review has yet to see; a holding finding a person deferred is said as that', () => {
+  set(store, 'project:web', ['ext.review.mode=auto'], {});
+  g('branch', 'label', 'main');
+  on('label', 'label.ts', 'export const tag = 1;\n', 'feat: a gift tag (change:label)');
+  change(store, 'label', { name: 'Gift tag', gist: 'A tag on a gift', project: 'project:web', next: 'build it' });
+  const T = 'change:web/label';
+  step(store, T, 'done', 1, {});
+  handed(T);
+  addFinding(store, T, { text: 'The tag has no name on it', severity: 'low' });
+  addFinding(store, T, { text: 'The tag is not printed', kind: 'intent' });
+  assert.equal(closeRound(store, T).loop.state, 'fixing');
+  // the person defers what held the merge: no fix to re-review, and the loop says what happened to it
+  settleFinding(store, T, 2, 'deferred', 'printing comes with the printer', { by: 'person:tester' });
+  const left = reviewLoop(store, T);
+  assert.equal(left.state, 'closing');
+  assert.match(left.words!, /what held the merge was deferred by a person, the reason on each/);
+  // the other is fixed on the branch, committed, resolved, and the step noted with where the work stands
+  on('label', 'label.ts', 'export const tag = { name: true };\n', 'fix: a name on the tag (change:label)');
+  settleFinding(store, T, 1, 'resolved', 'the tag carries the name');
+  assert.equal(findingsOf(data(T))[0].head, g('rev-parse', 'label').trim());
+  step(store, T, 'note', 1, { text: 'the review’s findings are fixed' });
+  // the loop has ended and is not due again for its own fixes: the change rests and merges
+  assert.deepEqual([reviewLoop(store, T).state, reviewLoop(store, T).due], ['ended', false]);
+  // work after that, with the plan moved, is a new pass as before
+  step(store, T, 'add', undefined, { text: 'a second tag' });
+  on('label', 'label.ts', 'export const tag = { name: true, second: true };\n', 'feat: a second tag (change:label)');
+  step(store, T, 'done', 2, {});
+  assert.deepEqual([reviewLoop(store, T).state, reviewLoop(store, T).due], ['due', true]);
+});
+
+test('the brief a reviewer is handed, and the command, say the rule: every finding handled on the change, deferred only by a person', () => {
+  const brief = formatReviewBrief(reviewBrief(store, KEY));
+  assert.match(brief, /Every finding, of either sort, is handled on the change's own branch before it merges/);
+  assert.match(brief, /--defer <n> --note "<why, as they said it>" --by person:<handle>/);
+  assert.doesNotMatch(brief, /go to a follow-up change/);
+  // the command: --defer is refused without a person, and written with one
+  set(store, 'project:web', ['ext.review.mode=request'], {});
+  g('branch', 'bag', 'main');
+  on('bag', 'bag.ts', 'export const bag = 1;\n', 'feat: a bag (change:bag)');
+  change(store, 'bag', { name: 'Gift bag', gist: 'A bag', project: 'project:web', next: 'build it' });
+  step(store, 'change:web/bag', 'done', 1, {});
+  addFinding(store, 'change:web/bag', { text: 'The bag has no handle', severity: 'low' });
+  const pj = (...args: string[]) => {
+    const r = spawnSync(process.execPath, [bin, ...args], { cwd: dir, env: process.env, encoding: 'utf8' });
+    return { code: r.status, out: r.stdout, err: r.stderr };
+  };
+  let r = pj('review', 'bag', '--defer', '1', '--note', 'handles come later');
+  assert.equal(r.code, 1);
+  assert.match(r.err, /a finding is deferred by a person, in so many words: --by person:<handle>/);
+  r = pj('review', 'bag', '--follow-up');
+  assert.equal(r.code, 1);
+  assert.match(r.err, /a follow-up change is asked for by a person, in so many words/);
+  r = pj('review', 'bag', '--defer', '1', '--note', 'handles come later', '--by', 'person:tester');
+  assert.equal(r.code, 0, r.err);
+  assert.match(
+    r.out,
+    /finding 1\. \[deferred\] low — The bag has no handle \(handles come later \(deferred by person:tester\)\)/,
+  );
+  assert.match(pj('help', 'merge').out, /refused while any finding of the change's review is open/);
   set(store, 'project:web', ['ext.review.mode=auto'], {});
 });

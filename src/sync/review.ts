@@ -41,7 +41,7 @@ import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
-import { loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../store/records.js';
+import { loadStore, resolve, type Loaded, type Rec } from '../store/records.js';
 import { CliError, nowIso, usageError } from '../store/util.js';
 import { baseBranch, branchesOf } from './git.js';
 import { noTrailWhy, reconcileTrail, trailLines, trailOf } from './trail.js';
@@ -286,7 +286,7 @@ export function formatReviewBrief(b: ReviewBrief, printed: (key: string) => stri
   } else out.push('(no branch of the change in this repository: review what the change links)');
   if (b.findings.length) out.push(`\n## Findings\n\n${b.findings.map((f, i) => formatFinding(i + 1, f)).join('\n')}`);
   out.push(
-    `\n## Filing\n\nOne command per finding${b.entire ? "; each is also filed onto the change's Trail on Entire, whose Findings gate holds the merge until it is resolved" : ''}:\n  pjman review ${key} --finding "<what is wrong, and what the done-when or decision says>" --severity high|medium|low --kind intent|drift|correctness [--file <path> --line <n>]\nSeverity is high only for what is wrong in normal use or loses data, medium for what is wrong at an edge, low for the rest. Kind is intent where the done-when is not met, drift where a decision or the scope is not kept, correctness where the code breaks. Only a high finding, or one of kind intent, holds the merge: the rest are kept and go to a follow-up change.\nWhen a finding is fixed or does not hold:\n  pjman review ${key} --resolve <n> [--note "<what fixed it>"]\n  pjman review ${key} --dismiss <n> --note "<why it does not hold>"`,
+    `\n## Filing\n\nOne command per finding${b.entire ? "; each is also filed onto the change's Trail on Entire, whose Findings gate holds the merge until it is resolved" : ''}:\n  pjman review ${key} --finding "<what is wrong, and what the done-when or decision says>" --severity high|medium|low --kind intent|drift|correctness [--file <path> --line <n>]\nSeverity is high only for what is wrong in normal use or loses data, medium for what is wrong at an edge, low for the rest. Kind is intent where the done-when is not met, drift where a decision or the scope is not kept, correctness where the code breaks. A high finding, or one of kind intent, holds the merge and its fix is re-reviewed. Every finding, of either sort, is handled on the change's own branch before it merges: fixed, dismissed with the reason, or deferred by a person in so many words; none goes to another change unless the person asks for one.\nWhen a finding is fixed or is not a fault:\n  pjman review ${key} --resolve <n> [--note "<what fixed it>"]\n  pjman review ${key} --dismiss <n> --note "<why it does not hold>"\nWhen the person says, in so many words, that one waits:\n  pjman review ${key} --defer <n> --note "<why, as they said it>" --by person:<handle>`,
   );
   return out.join('\n');
 }
@@ -373,6 +373,24 @@ export function addFinding(
   };
 }
 
+/** The person a deferral or a follow-up change is asked for by, as a key: theirs to say, never an agent's. A handle
+ *  with no record in the store is taken as written, as an acceptance takes it. */
+function askedBy(loaded: Loaded, by: string | undefined, what: string): string {
+  if (!by?.startsWith('person:'))
+    throw new CliError(
+      `${what} by a person, in so many words: --by person:<handle>; ${by ?? 'an agent'} does not. Fix it on this branch, or dismiss it with why it is not a fault`,
+    );
+  const who = resolve(loaded, by);
+  return who.status === 'ok' || who.status === 'alias' ? who.rec.key : by;
+}
+
+/** The branch's head now, in full, when the change has a branch in this repository. */
+function headOf(store: Store, loaded: Loaded, rec: Rec): string | undefined {
+  const dir = store.projectDir;
+  const { branch } = branchIn(loaded, rec, dir);
+  return (dir && branch && tryGit(dir, ['rev-parse', '--verify', '--quiet', `${branch}^{commit}`])) || undefined;
+}
+
 /** Resolve, dismiss, defer or reopen a finding by its number. A deferral is a person's, said in so many words: it
  *  names them (`by`) and why, and the finding stays on the change as deferred. */
 export function settleFinding(
@@ -395,13 +413,7 @@ export function settleFinding(
     throw usageError('dismissing a finding says why it does not hold: --note "…"');
   if (state === 'deferred') {
     if (!note?.trim()) throw usageError('deferring a finding says why, as the person said it: --note "…"');
-    if (!opts.by?.startsWith('person:'))
-      throw new CliError(
-        `a finding is deferred by a person, in so many words: --by person:<handle>; ${opts.by ?? 'an agent'} does not defer one. Fix it on this branch, or dismiss it with why it is not a fault`,
-      );
-    const who = resolve(loaded, opts.by);
-    if (who.status !== 'ok' && who.status !== 'alias') throw unresolvedError(who, opts.by);
-    note = `${note.trim()} (deferred by ${who.rec.key})`;
+    note = `${note.trim()} (deferred by ${askedBy(loaded, opts.by, 'a finding is deferred')})`;
   }
   if (f.state === state) {
     // already so here; Entire may not have been told (the call was left pending): told now
@@ -421,6 +433,8 @@ export function settleFinding(
     state,
     settled: nowIso(),
     ...(note?.trim() ? { note: note.trim() } : state === 'open' ? { note: undefined } : {}),
+    // (where the branch stood: what was committed to handle it is not new work for the review)
+    head: state === 'open' ? undefined : headOf(store, loaded, rec),
   };
   const commit = save(store, rec, findings, `finding ${n} ${state === 'open' ? 'reopened' : state}`, opts);
   const told = fileFindings(store, rec.key, opts);
@@ -1245,7 +1259,7 @@ function nextOf(b: LoopRead, k: string): string | undefined {
       return `The fix is re-reviewed once, and only the fix. ${entire ? `${entire}${own(['fix'])}` : own(['fix']).replace(/^s/, 'S')}; then close the round: \`pjman review ${k} --reviewed\`.`;
     case 'closing':
       return [
-        `Handle each on this branch before the merge: fix it, commit, and \`pjman review ${k} --resolve <n> --note "<what fixed it>"\`; or \`--dismiss <n> --note "<why it is not a fault>"\`. One is deferred only when the person says so in so many words: \`--defer <n> --note "<why, as they said it>" --by person:<handle>\`. No fix here is reviewed again, and nothing is moved to another change unless the person asks for one (\`--follow-up\`).`,
+        `Handle each on this branch before the merge: fix it, commit, and \`pjman review ${k} --resolve <n> --note "<what fixed it>"\`; or \`--dismiss <n> --note "<why it is not a fault>"\`. One is deferred only when the person says so in so many words: \`--defer <n> --note "<why, as they said it>" --by person:<handle>\`. No fix here is reviewed again, and nothing is moved to another change unless the person asks for one, in so many words (\`--follow-up --note "<why>" --by person:<handle>\`).`,
         ...b.loop.left.map((n) => formatFinding(n, b.findings[n - 1])),
       ].join('\n');
     default:
@@ -1459,10 +1473,18 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts & { liste
  *  finding that does not hold the merge to the change's follow-up change, one step each, and off the Trail; the
  *  finding stays on the change as deferred, its note naming where it went.
  *  The follow-up change is filed when there is none, under the same project and features. */
-export function followUp(store: Store, key: string, opts: ReviewOpts = {}): RoundResult {
+export function followUp(
+  store: Store,
+  key: string,
+  opts: ReviewOpts & { by?: string; note?: string } = {},
+): RoundResult {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
   reviewed(loaded, store);
+  // a follow-up change defers what it takes: a person's to ask for, in so many words, as a deferral is
+  const by = askedBy(loaded, opts.by, 'a follow-up change is asked for');
+  const why = opts.note?.trim();
+  if (!why) throw usageError('asking for a follow-up change says why, as the person said it: --note "…"');
   const findings = findingsOf(rec.data);
   const moved = findings.map((f, i) => (f.state === 'open' && !holdsMerge(f) ? i + 1 : 0)).filter((n) => n > 0);
   const none = (): RoundResult => ({
@@ -1513,7 +1535,13 @@ export function followUp(store: Store, key: string, opts: ReviewOpts = {}): Roun
     const mine = findings[n - 1];
     const i = mine.id ? current.findIndex((x) => x.id === mine.id) : current[n - 1]?.text === mine.text ? n - 1 : -1;
     if (i >= 0 && current[i].state === 'open')
-      current[i] = { ...current[i], state: 'deferred', settled: at, note: `moved to ${target}` };
+      current[i] = {
+        ...current[i],
+        state: 'deferred',
+        settled: at,
+        note: `moved to ${target}, asked for by ${by}: ${why}`,
+        head: headOf(store, loaded, rec),
+      };
   }
   const commit = save(
     store,
