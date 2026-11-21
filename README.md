@@ -157,9 +157,9 @@ A decision waiting on you shows its options, the recommendation and its reason, 
 
 ### Review
 
-`pjman review <change>` prints what a reviewer judges a branch by (the change's done-when, the decisions accepted on it and the options turned down, the diff) and takes what is found. A finding holds the merge only when it is of high severity or says the done-when is not met; `pjman merge` refuses while one stands.
+`pjman review <change>` prints what a reviewer judges a branch by (the change's done-when, the decisions accepted on it and the options turned down, the diff) and takes what is found. A finding holds the merge when it is of high severity or says the done-when is not met, and its fix is re-reviewed. Every finding, of either sort, is handled on the change's own branch before it merges: fixed, dismissed with the reason, or deferred by a person in so many words (`--defer <n> --note "…" --by person:<handle>`). `pjman merge` refuses while one is open.
 
-The review is a loop with an end. One full review by reviewers that did not write the change, one each for intent, drift and correctness (`--lens`); the findings that hold the merge are fixed; one re-review of the fix alone; then it has ended and says why. What does not hold the merge is moved to one follow-up change, a step each.
+The review is a loop with an end. One full review by reviewers that did not write the change, one each for intent, drift and correctness (`--lens`); the findings that hold the merge are fixed; one re-review of the fix alone; then its rounds are over. The rest is fixed on the same branch with no further review, and the review has ended once no finding is open. No follow-up change is made unless the person asks for one (`--follow-up`).
 
 How a project is reviewed is a line on its record: `pjman set <project> ext.review.mode=off`, `request` (the default: only when asked) or `auto`, where a change reaching review is reviewed without being asked.
 

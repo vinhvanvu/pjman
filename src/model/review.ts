@@ -2,9 +2,10 @@
 // (decision review-loop/setting): `ext.review.mode` is off, request (the default: pjman review only when asked) or auto
 // (a change reaching review is reviewed without being asked). The loop has an end by rule (decision
 // review-loop/stop-rule): one full review; the findings that hold the merge (high severity, or the done-when not met)
-// are fixed; one re-review of the fix alone; then it ends and says why, and what does not hold the merge goes to one
-// follow-up change. A round is data on the change (`reviews`), as its findings are; where the loop stands is read from
-// the two, never stored.
+// are fixed; one re-review of the fix alone; then its rounds are over and it says why. What does not hold the merge is
+// the change's own all the same (decision review-fixes-in-place/where-findings-go): the review has ended only once
+// every finding is fixed, dismissed or deferred by a person, and nothing is moved to another change by itself. A round
+// is data on the change (`reviews`), as its findings are; where the loop stands is read from the two, never stored.
 import { findingsOf, holdsMerge, wouldHold, type Finding } from './findings.js';
 import { stepsOf } from './foundation.js';
 import type { Loaded } from '../store/records.js';
@@ -92,7 +93,8 @@ export function lensesAsked(data: Record<string, unknown>): Asked[] {
 
 /** Where the loop stands. `none`: nothing to review (not in review, or no branch). `due`: the full review has not been
  *  made. `fixing`: findings hold the merge. `recheck`: they were fixed, and the fix has not been re-reviewed.
- *  `closing`: the review is over but findings that do not hold the merge are still on the change. `ended`: over. */
+ *  `closing`: the rounds are over, and findings that do not hold the merge are still open on the change: each is
+ *  handled there (fixed, dismissed, deferred) before it has ended. `ended`: over. */
 export type LoopState = 'none' | 'due' | 'fixing' | 'recheck' | 'closing' | 'ended';
 
 export interface Loop {
@@ -105,7 +107,7 @@ export interface Loop {
   holding: number[];
   /** The findings held and since resolved: what the re-review reads. */
   fixed: number[];
-  /** The open findings that do not hold the merge: what goes to the follow-up change. */
+  /** The open findings that do not hold the merge: what is still to handle on the change once the rounds are over. */
   left: number[];
   /** The lenses of the round to close that no reviewer was handed yet. */
   missing: string[];
@@ -228,6 +230,7 @@ export function loopWords(l: Loop): string | undefined {
     case 'recheck':
       return 'the re-review of the fix is due';
     case 'closing':
+      return `the rounds are over (${l.because}); ${l.left.length} finding${l.left.length === 1 ? ' is' : 's are'} still to handle before the merge`;
     case 'ended':
       return `ended: ${l.because}`;
   }

@@ -41,7 +41,7 @@ import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
-import { loadStore, type Loaded, type Rec } from '../store/records.js';
+import { loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../store/records.js';
 import { CliError, nowIso, usageError } from '../store/util.js';
 import { baseBranch, branchesOf } from './git.js';
 import { noTrailWhy, reconcileTrail, trailLines, trailOf } from './trail.js';
@@ -373,14 +373,15 @@ export function addFinding(
   };
 }
 
-/** Resolve, dismiss or reopen a finding by its number. */
+/** Resolve, dismiss, defer or reopen a finding by its number. A deferral is a person's, said in so many words: it
+ *  names them (`by`) and why, and the finding stays on the change as deferred. */
 export function settleFinding(
   store: Store,
   key: string,
   n: number,
   state: FindingState,
   note: string | undefined,
-  opts: ReviewOpts = {},
+  opts: ReviewOpts & { by?: string } = {},
 ): ReviewWrite {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
@@ -392,6 +393,16 @@ export function settleFinding(
     );
   if (state === 'dismissed' && !note?.trim())
     throw usageError('dismissing a finding says why it does not hold: --note "…"');
+  if (state === 'deferred') {
+    if (!note?.trim()) throw usageError('deferring a finding says why, as the person said it: --note "…"');
+    if (!opts.by?.startsWith('person:'))
+      throw new CliError(
+        `a finding is deferred by a person, in so many words: --by person:<handle>; ${opts.by ?? 'an agent'} does not defer one. Fix it on this branch, or dismiss it with why it is not a fault`,
+      );
+    const who = resolve(loaded, opts.by);
+    if (who.status !== 'ok' && who.status !== 'alias') throw unresolvedError(who, opts.by);
+    note = `${note.trim()} (deferred by ${who.rec.key})`;
+  }
   if (f.state === state) {
     // already so here; Entire may not have been told (the call was left pending): told now
     const due = f.entire ? (f.filed ?? 'open') !== state : state === 'open';
@@ -1227,13 +1238,16 @@ function nextOf(b: LoopRead, k: string): string | undefined {
       return `The session that wrote the change does not review it. ${entire ? `${entire}${own(REVIEW_LENSES)}` : own(REVIEW_LENSES).replace(/^s/, 'S')}; when they are back, close the round: \`pjman review ${k} --reviewed\`.`;
     case 'fixing':
       return [
-        `Fix what holds the merge, commit, and settle each: \`pjman review ${k} --resolve <n> --note "<what fixed it>"\`, or \`--dismiss <n> --note "<why it does not hold>"\`. The rest wait for the follow-up change.`,
+        `Fix what holds the merge, commit, and settle each: \`pjman review ${k} --resolve <n> --note "<what fixed it>"\`, or \`--dismiss <n> --note "<why it does not hold>"\`. Every other finding is fixed here too, on the same branch, before the merge.`,
         ...b.loop.holding.map((n) => formatFinding(n, b.findings[n - 1])),
       ].join('\n');
     case 'recheck':
       return `The fix is re-reviewed once, and only the fix. ${entire ? `${entire}${own(['fix'])}` : own(['fix']).replace(/^s/, 'S')}; then close the round: \`pjman review ${k} --reviewed\`.`;
     case 'closing':
-      return `Move what does not hold the merge to ${followUpKey(k)}${b.followUp.slice(followUpKey(b.change).length)}: \`pjman review ${k} --follow-up\`.`;
+      return [
+        `Handle each on this branch before the merge: fix it, commit, and \`pjman review ${k} --resolve <n> --note "<what fixed it>"\`; or \`--dismiss <n> --note "<why it is not a fault>"\`. One is deferred only when the person says so in so many words: \`--defer <n> --note "<why, as they said it>" --by person:<handle>\`. No fix here is reviewed again, and nothing is moved to another change unless the person asks for one (\`--follow-up\`).`,
+        ...b.loop.left.map((n) => formatFinding(n, b.findings[n - 1])),
+      ].join('\n');
     default:
       return undefined;
   }
@@ -1376,8 +1390,8 @@ export function handLens(
 }
 
 /** Close the round the reviewers just made: the full review when none is recorded, the re-review of the fix after it.
- *  Refused while findings hold the merge with no fix to read, and once the loop has ended. Where closing it ends the
- *  loop, what does not hold the merge goes to the follow-up change in the same call. */
+ *  Refused while findings hold the merge with no fix to read, and once the rounds are over. Nothing is moved by it:
+ *  what is left open is handled on the change (decision review-fixes-in-place/where-findings-go). */
 export function closeRound(store: Store, key: string, opts: ReviewOpts & { listed?: boolean } = {}): RoundResult {
   let b = reviewBrief(store, key);
   // Entire's reviewers post what they find on the Trail: their round is closed only once that was read (`listed`: the
@@ -1400,7 +1414,7 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts & { liste
     );
   if (state === 'closing' || state === 'ended')
     throw new CliError(
-      `${rec.key}: the review has ${loopWords(b.loop)}; a change is reviewed once and its fix once (decision review-loop/stop-rule)`,
+      `${rec.key}: ${state === 'ended' ? `the review has ${loopWords(b.loop)}` : loopWords(b.loop)}; a change is reviewed once and its fix once (decision review-loop/stop-rule)`,
     );
   if (!b.branch) throw new CliError(`${rec.key} has no branch in this repository: there was nothing to review`);
   // a round was made through its lenses: each handed to a reviewer (--lens), or all of them Entire's (--run)
@@ -1438,16 +1452,12 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts & { liste
     filed: [],
     pending: [],
   };
-  // (on request nothing moves unasked: the loop says what is left, and --follow-up moves it)
-  if (out.loop.state === 'closing' && b.mode === 'auto') {
-    const moved = followUp(store, key, opts);
-    return { ...moved, round, commit };
-  }
   return out;
 }
 
-/** Move every open finding that does not hold the merge to the change's follow-up change, one step each, and off the
- *  Trail (decision review-loop/stop-rule): the finding stays on the change as deferred, its note naming where it went.
+/** Only when a person asks for a follow-up change (decision review-fixes-in-place/where-findings-go): move every open
+ *  finding that does not hold the merge to the change's follow-up change, one step each, and off the Trail; the
+ *  finding stays on the change as deferred, its note naming where it went.
  *  The follow-up change is filed when there is none, under the same project and features. */
 export function followUp(store: Store, key: string, opts: ReviewOpts = {}): RoundResult {
   const loaded = loadStore(store);

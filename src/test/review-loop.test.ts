@@ -218,23 +218,51 @@ test('the fix is re-reviewed once and alone; then the review has ended, and says
   addFinding(store, KEY, { text: 'The sum is not rounded', kind: 'correctness' });
   const r = closeRound(store, KEY);
   assert.equal(r.round?.round, 'fix');
-  assert.equal(r.loop.state, 'ended');
-  assert.equal(r.loop.words, 'ended: the fixes were re-reviewed and nothing holds the merge');
-  assert.equal(r.loop.next, undefined);
-  // what does not hold the merge went to one follow-up change, a step each, and stays on the change as deferred
-  assert.deepEqual(r.moved, [3, 4, 6]);
-  assert.equal(r.followUp, 'change:web/cart-follow-ups');
-  const follow = data('change:web/cart-follow-ups');
-  assert.equal(follow.name, 'Cart follow-ups');
-  assert.deepEqual(
-    stepsOf(follow).map((s) => s.text),
-    ['The export is not typed', 'A name could be clearer', 'The sum is not rounded'],
+  // the rounds are over, and what does not hold the merge is still the change's own: nothing is moved by itself, no
+  // follow-up change is made, and neither the stop nor the merge is let past it
+  // (decision review-fixes-in-place/where-findings-go)
+  assert.equal(r.loop.state, 'closing');
+  assert.equal(
+    r.loop.words,
+    'the rounds are over (the fixes were re-reviewed and nothing holds the merge); 3 findings are still to handle before the merge',
   );
+  assert.match(
+    r.loop.next!,
+    /Handle each on this branch before the merge[\s\S]*--defer <n>[\s\S]*3\. \[open\][\s\S]*4\. \[open\][\s\S]*6\. \[open\]/,
+  );
+  assert.deepEqual(r.moved, []);
+  assert.equal(r.followUp, undefined);
+  assert.equal(loadStore(store).byKey.get('change:web/cart-follow-ups'), undefined);
+  assert.equal(rest().rests, false);
+  assert.throws(
+    () => mergeChange(store, KEY),
+    /not merged: 3 findings are not handled on change:web\/cart\n3\. \[open\]/,
+  );
+  assert.throws(() => closeRound(store, KEY), /the rounds are over .*reviewed once and its fix once/);
+  // each is handled on the change: fixed, dismissed with the reason, or deferred by a person in so many words
+  settleFinding(store, KEY, 3, 'resolved', 'the export is typed');
+  settleFinding(store, KEY, 4, 'dismissed', 'the name is the one the cart uses');
+  assert.throws(() => settleFinding(store, KEY, 6, 'deferred', undefined, { by: 'person:tester' }), /says why/);
+  assert.throws(
+    () => settleFinding(store, KEY, 6, 'deferred', 'rounding comes with currencies'),
+    /a finding is deferred by a person, in so many words: --by person:<handle>; an agent does not defer one/,
+  );
+  assert.throws(
+    () => settleFinding(store, KEY, 6, 'deferred', 'rounding comes with currencies', { by: 'agent:bot' }),
+    /agent:bot does not defer one/,
+  );
+  assert.equal(reviewLoop(store, KEY).state, 'closing');
+  assert.throws(() => mergeChange(store, KEY), /not merged: 1 finding is not handled/);
+  settleFinding(store, KEY, 6, 'deferred', 'rounding comes with currencies', { by: 'person:tester' });
   assert.deepEqual(
     findings().map((f) => f.state),
-    ['resolved', 'dismissed', 'deferred', 'deferred', 'dismissed', 'deferred'],
+    ['resolved', 'dismissed', 'resolved', 'dismissed', 'dismissed', 'deferred'],
   );
-  assert.equal(findings()[2].note, 'moved to change:web/cart-follow-ups');
+  assert.equal(findings()[5].note, 'rounding comes with currencies (deferred by person:tester)');
+  // no fix of these is reviewed again: the review has ended
+  assert.equal(reviewLoop(store, KEY).state, 'ended');
+  assert.equal(reviewLoop(store, KEY).next, undefined);
+  assert.equal(loadStore(store).byKey.get('change:web/cart-follow-ups'), undefined);
   assert.equal(rest().rests, true);
   assert.match(formatLoop(reviewLoop(store, KEY)), /review \(auto\): ended: the fixes were re-reviewed/);
   // a change is reviewed once and its fix once
@@ -345,11 +373,16 @@ test('on request nothing moves unasked, and what held the merge and was dismisse
   assert.deepEqual([loop.state, loop.due], ['closing', false]);
   assert.equal(
     loop.words,
-    'ended: what held the merge was dismissed, the reason on each, so there is no fix to re-review',
+    'the rounds are over (what held the merge was dismissed, the reason on each, so there is no fix to re-review); 1 finding is still to handle before the merge',
   );
-  assert.match(loop.next!, /pjman review change:web\/gift --follow-up/);
+  assert.match(loop.next!, /Handle each on this branch[\s\S]*unless the person asks for one \(`--follow-up`\)/);
   assert.equal(findingsOf(data(G))[1].state, 'open');
-  // on request the merge is the person's call: only a finding that holds it is in the way
+  // on request the review is the person's call, and the merge waits on an open finding all the same
+  assert.throws(() => mergeChange(store, G), /not merged: 1 finding is not handled on change:web\/gift/);
+  // a follow-up change is made only when the person asks for one
+  const moved = followUp(store, G);
+  assert.deepEqual([moved.moved, moved.followUp], [[2], 'change:web/gift-follow-ups']);
+  assert.equal(findingsOf(data(G))[1].note, 'moved to change:web/gift-follow-ups');
   assert.equal(mergeChange(store, G).by, 'local');
 });
 
@@ -460,7 +493,9 @@ test('a later pass files what does not hold the merge to its own follow-up chang
   step(store, W, 'done', 1, {});
   handed(W);
   addFinding(store, W, { text: 'The wrap colour is fixed', severity: 'low' });
-  assert.equal(closeRound(store, W).followUp, 'change:web/wrap-follow-ups');
+  // (closing a round moves nothing by itself: here the person asks for a follow-up change)
+  assert.deepEqual((({ loop, followUp: to }) => [loop.state, to])(closeRound(store, W)), ['closing', undefined]);
+  assert.equal(followUp(store, W).followUp, 'change:web/wrap-follow-ups');
   set(store, 'change:web/wrap-follow-ups', ['status=dropped'], {});
   // worked on again: the plan added to, a commit the round did not see, the plan not at its end
   step(store, W, 'add', undefined, { text: 'a choice of colour' });
@@ -485,11 +520,12 @@ test('a later pass files what does not hold the merge to its own follow-up chang
   handLens(store, W, 'drift');
   handLens(store, W, 'correctness');
   addFinding(store, W, { text: 'No colour for a birthday', severity: 'low' });
-  // the first follow-up change is over: the pass closes all the same, into one of its own
-  const second = closeRound(store, W);
+  // the first follow-up change is over: asked for again, what is left goes into one of the pass's own
+  const closed = closeRound(store, W);
+  const second = followUp(store, W);
   assert.deepEqual(
-    [second.round?.pass, second.loop.state, second.followUp, second.moved],
-    [2, 'ended', 'change:web/wrap-follow-ups-2', [2]],
+    [closed.round?.pass, closed.loop.state, second.loop.state, second.followUp, second.moved],
+    [2, 'closing', 'ended', 'change:web/wrap-follow-ups-2', [2]],
   );
   assert.deepEqual(
     stepsOf(data('change:web/wrap-follow-ups-2')).map((s) => s.text),
@@ -517,7 +553,7 @@ test('a later pass adds to the first follow-up change while it is open', () => {
   handed(W);
   addFinding(store, W, { text: 'The ribbon has one width', severity: 'low' });
   const third = closeRound(store, W);
-  assert.deepEqual([third.round?.pass, third.followUp], [3, 'change:web/wrap-follow-ups']);
+  assert.deepEqual([third.round?.pass, followUp(store, W).followUp], [3, 'change:web/wrap-follow-ups']);
   assert.deepEqual(
     stepsOf(data('change:web/wrap-follow-ups')).map((s) => s.text),
     ['The wrap colour is fixed', 'The ribbon has one width'],
@@ -575,10 +611,10 @@ test('a later follow-up change is the next one not over, and what is left is fil
   step(store, W, 'done', 4, {});
   handed(W);
   addFinding(store, W, { text: 'The card has no envelope', severity: 'low' });
-  assert.deepEqual((({ round, followUp }) => [round?.pass, followUp])(closeRound(store, W)), [
-    4,
-    'change:web/wrap-follow-ups-4',
-  ]);
+  assert.deepEqual(
+    [closeRound(store, W).round?.pass, followUp(store, W).followUp],
+    [4, 'change:web/wrap-follow-ups-4'],
+  );
   // on request, what is left after a pass is moved when asked, even once the next pass is under way: it goes where
   // the pass it was found in files, and says that pass
   set(store, 'project:web', ['ext.review.mode=request'], {});

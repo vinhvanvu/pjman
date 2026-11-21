@@ -178,24 +178,30 @@ working it.
    A review is pjman's own, with or without Entire: `pjman review <change>` prints what to judge the branch by (the
    done-when, the decisions accepted and the options turned down, the branch's diff), and each thing found is filed
    with `pjman review <change> --finding "…" --severity high|medium|low --kind intent|drift|correctness [--file <path>
-   --line <n>]`, then settled with `--resolve <n>` or `--dismiss <n> --note "why"`. A finding holds the merge only when
-   it is of high severity (wrong in normal use, or data lost) or of kind intent (the done-when is not met): `pjman
-   merge` refuses while one stands, so never raise a severity to be heard and never lower one to pass.
+   --line <n>]`, then settled with `--resolve <n>` or `--dismiss <n> --note "why"`. A finding holds the merge when
+   it is of high severity (wrong in normal use, or data lost) or of kind intent (the done-when is not met): its fix
+   is re-reviewed, so never raise a severity to be heard and never lower one to pass. **Every finding is the
+   change's own, whatever its severity**: fix each on the change's branch, in the same commits as what holds the
+   merge, and resolve it; dismiss one that is not a fault, with why. `pjman merge` refuses while any finding is
+   open. One is deferred only when the person says so in so many words, never on your judgment: `pjman review
+   <change> --defer <n> --note "<why, as they said it>" --by person:<handle>`; it stays on the change as deferred.
+   A finding that is a choice for the person is a decision, opened proposed, and the merge waits on it.
    The review is a loop with an end, and the session that wrote a change does not review it. One full review: three
    fresh agents with no part of your conversation, one per lens, each told only to run `pjman review <change> --lens
    intent|drift|correctness` and do what it says (hand them the command, never your account of the work: the
    command records that the lens went out, and a round is not closed without its lenses); then `pjman review <change>
-   --reviewed` closes the round. Fix what holds the merge, commit, and settle each finding.
-   Then one re-review of the fix alone (`--lens fix`, one fresh agent; `--reviewed` again), and the review has ended:
-   what does not hold the merge is moved to `<change>-follow-ups`, a step each (once that change is done or dropped, a
-   later pass files to `<change>-follow-ups-<pass>`), and a finding that still holds after
-   the re-review is the person's to settle. Never start a third round. A change worked on again after its review ended, its plan run to its end
+   --reviewed` closes the round. Fix every finding, commit, and settle each.
+   Where one held the merge, one re-review of the fix alone follows (`--lens fix`, one fresh agent; `--reviewed`
+   again); what it finds is fixed on the branch too, and no fix is reviewed after that. The review has ended once
+   no finding is open; a finding that still holds after the re-review is the person's to settle. Never start a
+   third round, and never make a follow-up change, branch, Trail or pull request for what a review found: the tool
+   makes none by itself, and `pjman review <change> --follow-up` moves what is left to `<change>-follow-ups` only
+   when the person asks for one. A change worked on again after its review ended, its plan run to its end
    once more with new commits, is due again: that is a new pass with its own two rounds, and the tool says so. How a project is reviewed is a line on its
    record, the person's to set: `ext.review.mode` is `off`, `request` (the default: review when asked) or `auto`,
    where a change reaching review is reviewed without being asked: the command that finishes the plan says so,
    `pjman rest` holds the stop, naming what moves the review on, until it has ended, and `pjman merge` refuses a
-   change not yet reviewed. On request nothing moves unasked: `pjman review <change> --follow-up` moves what is left
-   when the person says so. Where the project reviews every change, review before landing; where the
+   change not yet reviewed. Where the project reviews every change, review before landing; where the
    project opted in to Entire the findings go onto the Trail and hold its merge until resolved, and what is posted on
    the Trail (by Entire's own review, or a person) is read onto the change by each sync and by `pjman merge` before it
    merges: Entire lists a Trail's findings only while its branch is open. A round handed to Entire's review

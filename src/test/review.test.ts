@@ -21,6 +21,7 @@ import { syncEntire } from '../sync/entire.js';
 import {
   addFinding,
   closeRound,
+  followUp,
   formatReviewBrief,
   handLens,
   readFindings,
@@ -587,13 +588,17 @@ test('opted in, the re-review is handed the fix alone, and what does not hold th
   assert.equal(run[run.indexOf('--base') + 1], full.head);
   assert.match(run[run.indexOf('--prompt') + 1], /^This branch had one full review at .* Judge only the fix/);
   assert.equal(r.round?.round?.round, 'fix');
-  // its own review posts a high finding again (the fake's one answer): the loop ends with it standing
-  assert.equal(r.round?.loop.state, 'ended');
+  // its own review posts a high finding again (the fake's one answer): the rounds are over with it standing, and
+  // what does not hold the merge is still the change's own: nothing is moved by the round's close
+  assert.equal(r.round?.loop.state, 'closing');
   assert.match(r.round.loop.words!, /1 finding still holds the merge after the one re-review/);
-  // what does not hold the merge is a step of the follow-up change, deferred here and dismissed on the Trail
-  const moved = r.round.moved;
-  assert.ok(moved.includes(low.n!));
-  assert.equal(r.round?.followUp, 'change:web/cart-follow-ups');
+  assert.deepEqual([r.round.moved, r.round.followUp], [[], undefined]);
+  assert.equal(findings()[low.n! - 1].state, 'open');
+  // asked for by the person, it is a step of the follow-up change, deferred here and dismissed on the Trail
+  const asked = followUp(store, 'change:web/cart', o);
+  assert.ok(asked.moved.includes(low.n!));
+  assert.equal(asked.followUp, 'change:web/cart-follow-ups');
+  assert.equal(asked.loop.state, 'ended');
   const mine = findings()[low.n! - 1];
   assert.deepEqual(
     [mine.state, mine.filed, mine.note],

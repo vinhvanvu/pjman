@@ -4,8 +4,10 @@
 // is also filed onto the change's Trail, whose Findings gate holds the merge until it is resolved; `entire` is its id
 // there, and `filed` the state Entire was last told.
 // A finding says whether it holds the merge (decision review-loop/stop-rule): one of high severity, or one that says
-// the done-when is not met (kind intent), holds it while it stands; the rest are kept, and once the review has ended
-// they go to one follow-up change (state deferred, the note naming that change).
+// the done-when is not met (kind intent), holds it while it stands, and its fix is re-reviewed. Every finding, of
+// either sort, is the change's own to handle before it merges (decision review-fixes-in-place/where-findings-go):
+// fixed and resolved, dismissed with the reason, or deferred in so many words by a person, the reason on it. A
+// deferred one stays on the change; it goes to a follow-up change only when a person asks for one.
 export const FINDING_SEVERITIES = ['high', 'medium', 'low'] as const;
 export type FindingSeverity = (typeof FINDING_SEVERITIES)[number];
 export const FINDING_STATES = ['open', 'resolved', 'dismissed', 'deferred'] as const;
@@ -27,7 +29,7 @@ export interface Finding {
   settled?: string;
   file?: string;
   line?: number;
-  /** Why it was resolved or dismissed. */
+  /** Why it was resolved, dismissed or deferred. */
   note?: string;
   by?: string;
   at?: string;
