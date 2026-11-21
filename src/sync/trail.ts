@@ -638,7 +638,7 @@ export function trailLines(r: TrailReconcile, printed: (key: string) => string =
   if (r.pushed) out.push(`entire: pushed ${r.pushed} to origin (a Trail is created with its branch)`);
   if (r.unstarted)
     out.push(
-      `entire: ${printed(r.change)} has no Trail: starting one pushes ${r.unstarted} to origin (pjman sync entire --start ${printed(r.change)})`,
+      `entire: ${printed(r.change)} has no Trail: whoever works it starts one without asking, which pushes ${r.unstarted} to origin (pjman sync entire --start ${printed(r.change)})`,
     );
   for (const m of r.moved) out.push(`entire: ${m}`);
   if (r.done) out.push(`entire: ${printed(r.change)} is done (merged on Entire)`);

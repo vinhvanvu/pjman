@@ -653,13 +653,14 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   const data = () => loadStore(store).byKey.get(k)![0].data;
   const reviewers = () => calls().filter((c) => c[0] === 'review' && c.includes('--prompt')).length;
   assert.equal(reviewLoop(store, k).state, 'due');
-  // no Trail: the reviewers are not started, nothing is recorded, and what starts a Trail is said
+  // no Trail, and none can be started (the stand-in's one Trail is closed): the reviewers are not started, nothing
+  // is recorded, and what held the Trail is said, with nothing to ask anyone for (change:trail-without-asking)
   fs.writeFileSync(callsFile, '');
   const none = runReview(store, k, o);
   assert.equal(none.ran, false);
   assert.match(
     none.pending[0],
-    /^change:web\/coupon has no Trail yet: .* it was not run; the review is still due\. `pjman sync entire --start change:web\/coupon` starts the Trail \(it publishes coupon on origin/,
+    /^change:web\/coupon has no Trail yet and one could not be started \(Trail #1 on coupon is closed: .*\): .* it was not run; the review is still due\. .*`pjman sync entire --start change:web\/coupon`\); neither needs asking for$/,
   );
   assert.equal(reviewers(), 0);
   // the command says so by its status too: a review that did not run is not a review made
@@ -692,14 +693,16 @@ test('a round whose findings could not be read is not closed: with no Trail noth
     );
   assert.equal(reviewers(), 0);
   fs.writeFileSync(path.join(tmp, 'profile'), '');
-  // with its Trail, the reviewers run; Entire then does not list what they posted: the round stays open
+  // with no Trail on the branch, the review starts one itself and says the branch was pushed, then the reviewers
+  // run; Entire then does not list what they posted: the round stays open
   // (the stand-in holds one Trail, closed by the test before: it starts again with none, and numbers the next 2)
   fs.rmSync(stateFile);
   fs.writeFileSync(path.join(tmp, 'number'), '2');
-  assert.deepEqual(reconcileTrail(store, k, o)?.pending, []);
   fs.writeFileSync(path.join(tmp, 'nolist'), '');
   const unread = runReview(store, k, o);
   assert.equal(unread.ran, true);
+  assert.match(unread.said.join('\n'), /^entire: change:web\/coupon created, readied · Trail #2 /m);
+  assert.match(unread.said.join('\n'), /^entire: pushed coupon to origin/m);
   assert.equal(reviewers(), 1);
   assert.equal(unread.round, undefined);
   assert.equal(unread.open, true);

@@ -44,7 +44,7 @@ import { git } from '../store/git.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
 import { CliError, nowIso, usageError } from '../store/util.js';
 import { baseBranch, branchesOf } from './git.js';
-import { trailOf } from './trail.js';
+import { reconcileTrail, trailLines, trailOf } from './trail.js';
 
 const tryGit = (cwd: string, args: string[]): string => {
   try {
@@ -1012,13 +1012,32 @@ export function runReview(
       `${where}: only findings posted to the Trail are read back (entire review --configure --set-output trail)`,
     );
   } else {
-    const readable = readableTrail(loaded, rec, dir);
+    let readable = readableTrail(loaded, rec, dir);
+    let whyNot = '';
+    if (!readable.branch && !readable.gone) {
+      // the review is a command run on the change, so it starts the Trail it posts to, as a step started does, and
+      // says the branch was pushed: nobody is asked first (decision entire-follow-ups/unasked-push;
+      // change:trail-without-asking)
+      const started = reconcileTrail(store, rec.key, {
+        session: opts.session,
+        writer: opts.writer,
+        entire: opts.entire,
+        budget: 90_000,
+        whyNot: (reason) => (whyNot = reason),
+      });
+      if (started) {
+        none.said.push(...trailLines(started).filter((l) => !l.startsWith('entire: pending (')));
+        whyNot ||= started.pending.join('; ');
+      }
+      const now = loadStore(store);
+      readable = readableTrail(now, changeOf(now, key), dir);
+    }
     if (!readable.branch) {
       const still = due ? '; the review is still due' : '';
       none.pending.push(
         readable.gone
           ? `${readable.gone}, so nothing its review found could be read and it was not run${still}${due ? `: ${ownRound}` : ''}`
-          : `${rec.key} has no Trail yet: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}. \`pjman sync entire --start ${rec.key}\` starts the Trail (it publishes ${branch} on origin, which is the person's to ask for)`,
+          : `${rec.key} has no Trail yet and one could not be started${whyNot ? ` (${whyNot})` : ''}: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}. Once what held it is cleared, run this again, or start the Trail alone (\`pjman sync entire --start ${rec.key}\`); neither needs asking for`,
       );
       return none;
     }
