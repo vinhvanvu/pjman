@@ -78,6 +78,7 @@ import { reviewMode } from '../model/review.js';
 import { formatTree, live, tree } from '../model/tree.js';
 import { formatReceipt, receipt } from '../model/receipt.js';
 import { activity, formatActivity } from '../model/activity.js';
+import { formatHistory, history, HISTORY_KINDS } from '../model/history.js';
 import { set } from '../ops/set.js';
 import { decision, entriesFromFlags, entriesFromJson } from '../ops/decision.js';
 import { formatPlan, step } from '../ops/step.js';
@@ -805,6 +806,29 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, pos[1]);
       const a = activity(store, loaded, res.rec.key, { days: v.days ? Number(v.days) : undefined, since: v.since });
       v.json ? json(a) : out(formatActivity(a, formatEvent));
+      return 0;
+    }
+    case 'history': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1])
+        throw usageError(
+          'usage: pjman history <change|feature> [--node] [--changes] [--decisions] [--sources] [--all] [--match <words>]',
+        );
+      const loaded = loadStore(store);
+      const key = resolveArg(loaded, pos[1], {
+        cwd,
+        projectDir: store.projectDir,
+        project: store.project,
+        kinds: ['change', 'feature'],
+      });
+      const res = resolve(loaded, key);
+      if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, pos[1]);
+      const h = history(loaded, res.rec.key, {
+        node: !!v.node,
+        kinds: v.all ? [...HISTORY_KINDS] : HISTORY_KINDS.filter((k) => v[k]),
+        match: v.match,
+      });
+      v.json ? json(h) : out(formatHistory(h));
       return 0;
     }
     case 'context': {

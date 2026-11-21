@@ -121,6 +121,11 @@ export const FLAG_TYPES = {
   step: { type: 'string', multiple: true },
   'no-host': { type: 'boolean' },
   clear: { type: 'boolean' },
+  changes: { type: 'boolean' },
+  decisions: { type: 'boolean' },
+  sources: { type: 'boolean' },
+  node: { type: 'boolean' },
+  match: { type: 'string' },
 } as const satisfies Record<string, { type: 'string' | 'boolean'; multiple?: boolean; short?: string }>;
 
 /** Flags of models since replaced: refused wherever they are given, with where their job went. */
@@ -434,6 +439,18 @@ export const COMMANDS: Command[] = [
       'the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person. A batch (pjman apply, a bulk set or rm, several steps added) is one entry',
     usage: ['pjman activity <ref> [--days 14] [--since <iso>] [--json]'],
     flags: ['days', 'since'],
+    args: 1,
+  },
+  {
+    name: 'history',
+    group: 'reading',
+    line: 'what came before on a part of the product: the changes on a node and on each parent, their decisions and sources',
+    about:
+      "the history of a part of the product, reached for when the work needs it (a change's context carries none of it): the changes naming a node, the decisions on them and the sources they bind and link, for the node and every parent up the map, under a heading per node with the nearest first. A change stands for the nodes it names, and is left out of its own history. It answers as an index: each node counts everything on it, then lists the changes, a line each (key, status, date, effect, name and gist); the depth of one is pjman context <change> or pjman show <decision>. --decisions and --sources ask for those kinds, --changes for the changes, --all for every kind: with the changes, a change's decisions and sources sit beneath its line; without them, each kind is a flat list per node. --match narrows to the records that carry every word given (in a key, a name, a gist or a source's title); a change that carries them is shown with all that was asked for beneath it. --node reads the node alone, without its parents. Only what names a node itself is read, never what names a node beneath it (pjman ls change --feature reads downward). Every status is listed, with its status. A change naming no node says so. Never writes",
+    usage: [
+      'pjman history <change|feature> [--node] [--changes] [--decisions] [--sources] [--all] [--match <words>] [--json]',
+    ],
+    flags: ['node', 'changes', 'decisions', 'sources', 'all', 'match'],
     args: 1,
   },
   {
@@ -827,6 +844,10 @@ export const ENTITIES: Entity[] = [
         'pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> | --parent <feature>',
       ],
       ['read', 'pjman show <feature> · pjman tree <feature> · pjman context <feature> · pjman activity <feature>'],
+      [
+        'history',
+        'pjman history <feature> [--node] [--decisions] [--sources] [--all] [--match <words>]   (what came before on it and on each parent, as an index)',
+      ],
       ['list', 'pjman ls feature [--product <p>] [--parent <feature>] [--status …]'],
       ['update', 'pjman set <feature>... <field>=… | <list>+=<item> | <list>-=<item>'],
       ['rename', 'pjman mv feature:<old> feature:<new>   (the old slug stays an alias)'],
@@ -871,6 +892,10 @@ export const ENTITIES: Entity[] = [
       [
         'read',
         'pjman context <change> (to work it) · pjman show <change> (as stored) · pjman get <ref> (with its neighbourhood) · pjman view <change>',
+      ],
+      [
+        'history',
+        'pjman history <change> [--node] [--decisions] [--sources] [--all] [--match <words>]   (what came before on the nodes it names and on each parent, as an index)',
       ],
       [
         'list',

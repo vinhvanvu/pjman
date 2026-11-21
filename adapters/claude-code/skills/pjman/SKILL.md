@@ -42,7 +42,11 @@ working it.
 
 1. **Read before acting.** When a change is named or implied, run `pjman context change:<slug>` first. It is the
    record of what was decided, what was tried, and where the plan stands. Given a ticket, a URL or a file instead, run
-   `pjman get <it>`: it finds the change through the graph. Its **Aspects** section, when there is one, is the
+   `pjman get <it>`: it finds the change through the graph. The context is the change's own record; what came
+   before on the same part of the product is not in it. When the work needs that (what was built on this node and
+   the ones above it, what was decided there and what it linked), reach for it: `pjman history change:<slug>`. It
+   answers as an index (each node's counts, its changes a line each); ask for more with `--decisions`, `--sources`
+   or `--all`, narrow it with `--match <words>` or `--node`, and read the one record you want by its key. Its **Aspects** section, when there is one, is the
    contract the work is done under (how text reads, how the app moves, a shared component): follow the `aspect`
    skill for it, and for anything that creates or edits an aspect. Its **May be an aspect** section lists decisions
    on the change that read as holding across the product while no aspect answers them: propose one (below).
@@ -271,6 +275,7 @@ pjman order [<product>]                  the roadmap's order; with <change> --be
 pjman new product|feature …              the product tree: a root, then nested features
 pjman tree [<product>|<feature>]         the product by features: levels, derived status, backlog by project
 pjman activity <ref> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
+pjman history <change|feature> [--node] [--decisions] [--sources] [--all] [--match <words>]   what came before on that part of the product, as an index by node: the changes on the node and on each parent, their decisions and sources when asked for
 pjman set <ref>... field=value | list+=item | list-=item   authored fields: name, gist, status, links, binds; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; several records in one commit
 pjman rm <ref>... [--detach]             remove records created by mistake; refused while anything refers to one
 pjman mv <kind>:<old> <kind>:<new>       rename a change, a feature, an aspect, a decision… (the old slug stays an alias); every reference follows

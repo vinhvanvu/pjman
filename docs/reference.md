@@ -70,6 +70,7 @@ What the product does for a person; a capability is a feature beneath one, nesti
 |---|---|
 | create | `pjman new feature <slug> --title <sentence> [--name <one to three words>] --product <product> \| --parent <feature>` |
 | read | `pjman show <feature> · pjman tree <feature> · pjman context <feature> · pjman activity <feature>` |
+| history | `pjman history <feature> [--node] [--decisions] [--sources] [--all] [--match <words>]   (what came before on it and on each parent, as an index)` |
 | list | `pjman ls feature [--product <p>] [--parent <feature>] [--status …]` |
 | update | `pjman set <feature>... <field>=… \| <list>+=<item> \| <list>-=<item>` |
 | rename | `pjman mv feature:<old> feature:<new>   (the old slug stays an alias)` |
@@ -109,6 +110,7 @@ A unit of work: name, gist, sections, a plan of steps; a milestone is a change o
 |---|---|
 | create | `pjman new change <slug> --name … --gist … --origin … --intent … --done-when … [--step <text>]...` |
 | read | `pjman context <change> (to work it) · pjman show <change> (as stored) · pjman get <ref> (with its neighbourhood) · pjman view <change>` |
+| history | `pjman history <change> [--node] [--decisions] [--sources] [--all] [--match <words>]   (what came before on the nodes it names and on each parent, as an index)` |
 | list | `pjman ls change [--status …] [--kind bug\|milestone] [--parent <milestone>] [--feature <node>] [--project <p>] · pjman context (the board)` |
 | update | `pjman set <change>... <field>=… \| <list>+=<item> \| <list>-=<item>   (sections by name: origin, intent, done-when, scope, …)` |
 | promote | `pjman set <change> kind=milestone   (each open step is filed as a child change, the finished ones stay as its earlier steps; pjman undo reverts it)` |
@@ -215,6 +217,7 @@ A version the product shipped.
 - `pjman get`: anything in (key, slug, ticket, URL, file): the record, its edges, the changes in reach
 - `pjman tree`: the product by its features, with derived status and backlog
 - `pjman activity`: the events beneath any node and what they say about health
+- `pjman history`: what came before on a part of the product: the changes on a node and on each parent, their decisions and sources
 - `pjman intake`: what already exists for a request, before it is filed
 - `pjman refs`: every reference in a text and the change it leads to
 - `pjman view`: one reference as a Markdown document
@@ -335,6 +338,9 @@ pjman tree [<product>|<feature>] [--all] [--json]
 
 pjman activity <ref> [--days 14] [--since <iso>] [--json]
     the activity of a subtree: every event beneath a key (a product, feature, project or change, through every chain) in a window, with what it says about health: when it last moved, what got done, what is new, what is blocked, what waits on a person. A batch (pjman apply, a bulk set or rm, several steps added) is one entry
+
+pjman history <change|feature> [--node] [--changes] [--decisions] [--sources] [--all] [--match <words>] [--json]
+    the history of a part of the product, reached for when the work needs it (a change's context carries none of it): the changes naming a node, the decisions on them and the sources they bind and link, for the node and every parent up the map, under a heading per node with the nearest first. A change stands for the nodes it names, and is left out of its own history. It answers as an index: each node counts everything on it, then lists the changes, a line each (key, status, date, effect, name and gist); the depth of one is pjman context <change> or pjman show <decision>. --decisions and --sources ask for those kinds, --changes for the changes, --all for every kind: with the changes, a change's decisions and sources sit beneath its line; without them, each kind is a flat list per node. --match narrows to the records that carry every word given (in a key, a name, a gist or a source's title); a change that carries them is shown with all that was asked for beneath it. --node reads the node alone, without its parents. Only what names a node itself is read, never what names a node beneath it (pjman ls change --feature reads downward). Every status is listed, with its status. A change naming no node says so. Never writes
 
 pjman intake <text> [--all] [--json]
 pjman intake - [--all] [--json]   (text on stdin)

@@ -126,6 +126,7 @@ pjman decision card-export/format --name … --gist … --question … --option 
 pjman ls decision --status proposed    # what waits on you
 pjman tree                             # the product map with derived status
 pjman activity feature:saved-cards     # what moved beneath a node
+pjman history feature:saved-cards      # what came before on a node and each parent: changes, decisions, sources
 pjman apply - --for change:card-export # many writes as one commit; pjman undo reverts it
 pjman validate                         # every record and every reference
 ```
