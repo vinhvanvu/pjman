@@ -680,6 +680,20 @@ test('what is committed to handle a pass’s findings is not work the review has
   on('label', 'label.ts', 'export const tag = { name: true, second: true };\n', 'feat: a second tag (change:label)');
   step(store, T, 'done', 2, {});
   assert.deepEqual([reviewLoop(store, T).state, reviewLoop(store, T).due], ['due', true]);
+  // and a finding settled after the plan moved hides none of that work: the review is still due
+  settleFinding(store, T, 1, 'open', undefined);
+  assert.equal(findingsOf(data(T))[0].head, undefined);
+  settleFinding(store, T, 1, 'resolved', 'the second tag carries the name too');
+  assert.equal(findingsOf(data(T))[0].head, g('rev-parse', 'label').trim());
+  assert.deepEqual([reviewLoop(store, T).state, reviewLoop(store, T).due], ['due', true]);
+  // a person is named: an empty handle is no one, and one with no record is taken as written
+  assert.throws(
+    () => settleFinding(store, T, 2, 'deferred', 'again', { by: 'person:' }),
+    /by a person, named: --by person:<handle>; 'person:' names no one/,
+  );
+  settleFinding(store, T, 2, 'open', undefined);
+  settleFinding(store, T, 2, 'deferred', 'printing comes with the printer', { by: 'person:nobody-yet' });
+  assert.match(findingsOf(data(T))[1].note!, /\(deferred by person:nobody-yet\)$/);
 });
 
 test('the brief a reviewer is handed, and the command, say the rule: every finding handled on the change, deferred only by a person', () => {
@@ -711,5 +725,14 @@ test('the brief a reviewer is handed, and the command, say the rule: every findi
     /finding 1\. \[deferred\] low — The bag has no handle \(handles come later \(deferred by person:tester\)\)/,
   );
   assert.match(pj('help', 'merge').out, /refused while any finding of the change's review is open/);
+  // asked for by the person, the follow-up change is made through the command, who asked and why on the finding
+  addFinding(store, 'change:web/bag', { text: 'The bag has no ribbon', severity: 'low' });
+  r = pj('review', 'bag', '--follow-up', '--note', 'ribbons are their own work', '--by', 'person:tester');
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /1 finding that does not hold the merge moved to change:bag-follow-ups \(#2\)/);
+  assert.equal(
+    findingsOf(data('change:web/bag'))[1].note,
+    'moved to change:web/bag-follow-ups, asked for by person:tester: ribbons are their own work',
+  );
   set(store, 'project:web', ['ext.review.mode=auto'], {});
 });

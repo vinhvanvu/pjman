@@ -41,7 +41,7 @@ import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
-import { loadStore, resolve, type Loaded, type Rec } from '../store/records.js';
+import { loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../store/records.js';
 import { CliError, nowIso, usageError } from '../store/util.js';
 import { baseBranch, branchesOf } from './git.js';
 import { noTrailWhy, reconcileTrail, trailLines, trailOf } from './trail.js';
@@ -380,8 +380,13 @@ function askedBy(loaded: Loaded, by: string | undefined, what: string): string {
     throw new CliError(
       `${what} by a person, in so many words: --by person:<handle>; ${by ?? 'an agent'} does not. Fix it on this branch, or dismiss it with why it is not a fault`,
     );
+  if (!by.slice('person:'.length).trim())
+    throw new CliError(`${what} by a person, named: --by person:<handle>; '${by}' names no one`);
   const who = resolve(loaded, by);
-  return who.status === 'ok' || who.status === 'alias' ? who.rec.key : by;
+  if (who.status === 'ok' || who.status === 'alias') return who.rec.key;
+  // (a well-formed handle with no record is the person all the same; anything else names no one person)
+  if (who.status !== 'actor-key') throw unresolvedError(who, by);
+  return by;
 }
 
 /** The branch's head now, in full, when the change has a branch in this repository. */
@@ -664,7 +669,14 @@ export function readFindings(
       const there = mine.state === 'deferred' && state === 'dismissed' ? 'deferred' : state;
       // settled on Entire, and not settled differently here since Entire was last told
       if ((mine.filed ?? 'open') === mine.state && mine.state !== there) {
-        findings[at] = { ...mine, state, filed: state, settled: nowIso() };
+        // (where the branch stood, as a settle here records it; none on one that stands again)
+        findings[at] = {
+          ...mine,
+          state,
+          filed: state,
+          settled: nowIso(),
+          head: state === 'open' ? undefined : headOf(store, loaded, rec),
+        };
         out.read.push(`${state === 'open' ? 'reopened' : state} #${at + 1}`);
       }
       continue;

@@ -147,8 +147,15 @@ export function loopOf(
   // what was committed to handle the pass's findings is the review's own end, not work it has yet to see: the branch
   // is read from where it stood when the last of them was settled (decision review-fixes-in-place/where-findings-go),
   // or the loop would be due again for its own fixes, with no end
+  // Only what was settled before the plan first moved again counts: a finding settled after that (a deferred one
+  // resolved once built, one reopened and resolved, one filed later) stands on work no review saw, and its head hides
+  // none of it
+  const firstMove = steps
+    .map((s) => s.at ?? '')
+    .filter((t) => t > last.at)
+    .toSorted()[0];
   const handled = findingsOf(data)
-    .filter((f) => !!f.head && !!f.settled && f.settled > last.at)
+    .filter((f) => f.state !== 'open' && !!f.head && !!f.settled && f.settled > last.at && f.settled < firstMove)
     .toSorted((a, b) => a.settled!.localeCompare(b.settled!))
     .at(-1);
   // (a round closed with no head recorded is told from nothing: the repository says whether the branch holds work)
