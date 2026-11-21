@@ -2,7 +2,7 @@
 // it and how. Below the store's operations, so a write can ask it (ops/promote) as the syncs do (sync/git).
 import fs from 'node:fs';
 import path from 'node:path';
-import { git } from './git.js';
+import { git, toplevel } from './git.js';
 
 export const tryGit = (cwd: string, args: string[]): string => {
   try {
@@ -30,7 +30,8 @@ export function baseBranch(dir: string): string {
 }
 
 /** The local branches of the repository at `dir`, newest commit first, each with the name of the worktree that has it
- *  checked out when a folder other than `dir` does. */
+ *  checked out when a folder other than the checkout `dir` is in does (its top level: a project may sit in a
+ *  subfolder of its repository). */
 export function localHeads(dir: string): { name: string; worktree?: string }[] {
   const out = tryGit(dir, [
     'for-each-ref',
@@ -45,7 +46,7 @@ export function localHeads(dir: string): { name: string; worktree?: string }[] {
       return null; // the folder is gone: the branch is checked out nowhere to be found
     }
   };
-  const home = real(dir);
+  const home = toplevel(dir) ?? real(dir);
   return out
     .split('\n')
     .filter(Boolean)

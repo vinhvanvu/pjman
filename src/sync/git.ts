@@ -12,23 +12,24 @@ import type { Store } from '../store/config.js';
 import { baseBranch, localHeads, mergedInto, tryGit, type MergedHow } from '../store/merged.js';
 import { loadStore, type Rec } from '../store/records.js';
 import { CliError } from '../store/util.js';
-import { branchOf, observedBranches, type LocalBranch } from '../model/view.js';
+import { branchOf, observedBranches, ownBranches, type LocalBranch } from '../model/view.js';
 import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { set } from '../ops/set.js';
 
 export { baseBranch, baseRefs, mergedBranch, mergedInto, type Merged, type MergedHow } from '../store/merged.js';
 
-/** The branch names a change's work may be on, most likely first: its own as the views name it (seen by a session,
- *  linked, or among the repository's `local` branches by its name, as localHeads lists them;
- *  change:branch-line-own-branch), the recommended
- *  name, the worktree's. A branch named for another change is never among them. */
+/** The branch names a change's work may be on, most likely first: the one the views name (change:branch-line-own-branch),
+ *  then every branch among the repository's `local` ones named for the change, as localHeads lists them, so a branch
+ *  of its own is found where the views name one that is not in this repository; then the recommended name and the
+ *  worktree's. A branch a session was seen on that is named for another change is never among them. */
 export function branchesOf(
   rec: Rec,
   observed: ReturnType<typeof observedBranches>,
   local: LocalBranch[] = [],
 ): string[] {
-  const own = branchOf(rec, observed, undefined, () => local).name;
-  return [...new Set([own, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])];
+  const shown = branchOf(rec, observed, undefined, () => local).name;
+  const mine = ownBranches(observed.loaded, rec, local).map((l) => l.name);
+  return [...new Set([shown, ...mine, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])];
 }
 
 export interface GitSyncResult {

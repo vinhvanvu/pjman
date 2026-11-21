@@ -192,6 +192,13 @@ export function localBranchesFor(store: Store, rec: Rec, heads = repoHeads(store
   return () => (store.project && rec.data.project === store.project ? heads() : []);
 }
 
+/** The branches of a repository named for a change, by the change's own product: the one a worktree holds first, then
+ *  as listed (newest first). */
+export function ownBranches(loaded: Loaded, rec: Rec, local: LocalBranch[]): LocalBranch[] {
+  const mine = local.filter((l) => standing(loaded, rec, l.name) === 'own');
+  return [...mine.filter((l) => l.worktree), ...mine.filter((l) => !l.worktree)];
+}
+
 export function branchOf(
   rec: Rec,
   observed: ObservedBranches,
@@ -215,10 +222,8 @@ export function branchOf(
   // (decision work-on-the-branch). Only what a session observed is doubted by its name
   const fallback = onName ?? linked[0]?.name;
   if (fallback) return seen(fallback);
-  // before a name is recommended: a branch of the repository named for the change, by the change's own product, the
-  // one a worktree holds first, then the newest
-  const mine = local().filter((l) => standing(observed.loaded, rec, l.name) === 'own');
-  const found = mine.find((l) => l.worktree) ?? mine[0];
+  // before a name is recommended: a branch of the repository named for the change
+  const found = ownBranches(observed.loaded, rec, local())[0];
   return found
     ? {
         name: found.name,
@@ -715,7 +720,12 @@ export function planText(c: Pick<ChangeContext, 'plan' | 'planProgress' | 'earli
   return [];
 }
 
-export function changeContext(store: Store, key: string, loaded: Loaded = loadStore(store)): ChangeContext {
+export function changeContext(
+  store: Store,
+  key: string,
+  loaded: Loaded = loadStore(store),
+  heads: () => LocalBranch[] = repoHeads(store),
+): ChangeContext {
   const raw = key.startsWith('change:') ? key : `change:${key}`;
   const res = resolve(loaded, raw);
   if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, raw);
@@ -775,7 +785,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     .map(row);
   const neededBy = (cx.neededBy.get(rec.key) ?? []).map(row);
   // the branch: the change's own (seen, linked or found in the repository), else the recommended name
-  const branch = branchOf(rec, observedBranches(loaded), undefined, localBranchesFor(store, rec));
+  const branch = branchOf(rec, observedBranches(loaded), undefined, localBranchesFor(store, rec, heads));
   const features = effectsOf(rec)
     .map((e) => liveKey(e.key))
     .map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined))

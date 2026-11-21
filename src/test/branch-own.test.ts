@@ -17,6 +17,7 @@ import { step } from '../ops/step.js';
 import { changeContext, formatChangeContext, ls } from '../model/view.js';
 import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
+import { localHeads } from '../store/merged.js';
 import { syncGit } from '../sync/git.js';
 import { change } from './shape.js';
 
@@ -150,6 +151,27 @@ test("one change's merged branch does not set another done", () => {
   );
   assert.equal(status('fourth-thing'), 'done');
   assert.equal(status('fifth-thing'), 'review');
+});
+
+test('a change shown on a branch that is not in this repository is still merged by its own', () => {
+  change(store, 'sixth-thing', { title: 'sixth-thing', summary: 's', project: 'project:web', next: 'build it' });
+  step(store, 'change:sixth-thing', 'done', 1, {});
+  seenOn('sixth-thing', 'fix/nowhere');
+  branch('TICK-6/sixth-thing', 'sixth-thing');
+  assert.equal(line('sixth-thing'), 'branch: fix/nowhere', 'the views keep the branch a session worked on');
+  g('merge', '-q', '--no-ff', 'TICK-6/sixth-thing', '-m', "Merge branch 'TICK-6/sixth-thing'");
+  assert.deepEqual(
+    syncGit(store).done.map((d) => [d.change, d.branch]),
+    [['change:web/sixth-thing', 'TICK-6/sixth-thing']],
+  );
+});
+
+test("a project in a subfolder of its repository reads the checkout's own branch as held by no worktree", () => {
+  const sub = path.join(dir, 'packages', 'app');
+  fs.mkdirSync(sub, { recursive: true });
+  const heads = localHeads(sub);
+  assert.equal(heads.find((h) => h.name === 'main')?.worktree, undefined);
+  assert.equal(heads.find((h) => h.name === 'TICK-3/third-thing')?.worktree, 'third');
 });
 
 test('filing a change whose branch is already cut names that branch, not one to create', () => {
