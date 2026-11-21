@@ -226,7 +226,9 @@ test('opted in, each finding is filed onto the Trail, and settling one here sett
   const early = settleFinding(store, 'change:web/cart', 2, 'dismissed', 'covered by the pricing suite', {
     entire: { bin },
   });
-  assert.deepEqual(early.pending, ['change:web/cart has no Trail yet: its findings are filed once it has one']);
+  assert.deepEqual(early.pending, [
+    'change:web/cart has no Trail yet: its findings are filed once it has one (`pjman sync entire --start change:web/cart` starts it, without asking)',
+  ]);
   reconcileTrail(store, 'change:web/cart', { entire: { bin } });
   // the sync files what waits: the open one; the dismissed one was never on Entire and stays off it
   const s = syncEntire(store, { entire: { bin } });
@@ -669,6 +671,21 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   assert.deepEqual(lensesAsked(data()), []);
   assert.deepEqual(roundsOf(data()), []);
   assert.equal(reviewLoop(store, k).state, 'due');
+  // a change not yet in work gets no Trail, and the review says that is why
+  g('branch', 'voucher');
+  change(store, 'voucher', {
+    name: 'Voucher',
+    gist: 'A voucher is taken once',
+    intent: 'A shopper uses a voucher once.',
+    doneWhen: 'A voucher used is refused the second time.',
+    project: 'project:web',
+    next: 'build it',
+  });
+  assert.match(
+    runReview(store, 'change:web/voucher', o).pending[0],
+    /^change:web\/voucher has no Trail yet and one could not be started \(it is \w+, and a Trail follows a change in work: start a step first\): /,
+  );
+  assert.equal(reviewers(), 0);
   // a profile that keeps its verdict local posts nothing to read: not run either while the review is due
   fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  deep\n    output:     local');
   const local = runReview(store, k, o);

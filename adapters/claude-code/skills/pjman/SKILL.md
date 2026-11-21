@@ -159,7 +159,7 @@ working it.
    or dropped. Creating a Trail publishes the change's branch on origin: the command that did it prints
    `entire: pushed <branch> to origin`, which you relay to the person. **A change you work always has its Trail, and
    starting it is never asked for:** the opt-in was the person's yes. A command run on the change starts it (a step
-   started, `pjman review <change> --run`, `pjman merge`); where the change you are working still has none, start it
+   started, `pjman review <change> --run`); where the change you are working still has none, start it
    yourself with `pjman sync entire --start <change>`, in the same turn. `pjman sync entire` alone starts none: it
    names each branch that has none, for whoever works that change. Nor is the merge asked for: once the review has
    ended with nothing holding it, `pjman merge <change>` follows, and only a gate a person passes on Entire waits.
