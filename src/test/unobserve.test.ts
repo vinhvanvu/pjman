@@ -8,6 +8,7 @@ import { init } from '../cli/init.js';
 import { undo } from '../ops/apply.js';
 import { newRecord } from '../ops/new.js';
 import { sessionBind, sessionObserve, sessionUnobserve } from '../ops/session.js';
+import { set } from '../ops/set.js';
 import { findStore, type Store } from '../store/config.js';
 import { readEvents, rebuildEvents } from '../store/events.js';
 import { findSession, loadStore } from '../store/records.js';
@@ -61,7 +62,7 @@ test('unobserve corrects the branch line and keeps the binding and the other edg
     ['abc-1'],
   );
   assert.deepEqual(edges(), ['abc-1 branch:abc-1', 'abc-1 file:src/a.ts']);
-  assert.match(rec.body, /took back links change:\S*abc-1 → branch:abc-2, observed in error/);
+  assert.match(rec.body, /took back links change:\S*abc-1 → branch:abc-2 \(observed \S+\), observed in error/);
   assert.equal(validate(loadStore(store)).filter((p) => p.level === 'error').length, 0);
   for (const read of [() => readEvents(store), () => (rebuildEvents(store), readEvents(store))]) {
     const last = read().at(-1)!;
@@ -98,4 +99,46 @@ test('unobserve takes back every copy of the edge, and the last edge leaves no e
     ['abc-2'],
   );
   assert.equal(line('abc-2').observed, false);
+});
+
+test('unobserve names the other sessions that still hold the edge, and its event names the change', () => {
+  newRecord(store, 'session', 's3', { agent: 'agent:claude-code' });
+  sessionObserve(store, 's3', 'links', 'change:abc-1', 'branch:abc-2');
+  const r = sessionUnobserve(store, 's1', 'links', 'abc-1', 'branch:abc-2');
+  assert.deepEqual(r.others, ['session:s3']);
+  // the line is read across sessions: it stays wrong until the last holder lets go
+  assert.equal(line('abc-1').name, 'abc-2');
+  for (const read of [() => readEvents(store), () => (rebuildEvents(store), readEvents(store))]) {
+    const last = read().at(-1)!;
+    assert.equal(last.key, 'session:s1');
+    assert.match(last.value ?? '', /^change:\S*abc-1$/);
+  }
+  assert.throws(
+    () => sessionUnobserve(store, 's1', 'links', 'abc-1', 'branch:abc-2'),
+    /observed no links edge .*; observed by session:s3, each taken back by its own id/,
+  );
+  assert.deepEqual(sessionUnobserve(store, 's3', 'links', 'abc-1', 'branch:abc-2').others, []);
+  assert.equal(line('abc-1').name, 'abc-1');
+});
+
+test('an edge taken back is put back with the time it was first seen, after later writes refuse the undo', () => {
+  newRecord(store, 'session', 's4', { agent: 'agent:claude-code' });
+  sessionObserve(store, 's4', 'links', 'change:abc-2', 'branch:early', '2026-01-01T00:00:00.000Z');
+  sessionObserve(store, 's4', 'links', 'change:abc-2', 'branch:late');
+  const r = sessionUnobserve(store, 's4', 'links', 'abc-2', 'branch:early');
+  assert.deepEqual(r.at, ['2026-01-01T00:00:00.000Z']);
+  assert.match(findSession(loadStore(store), 's4')!.body, /took back .* \(observed 2026-01-01T00:00:00.000Z\)/);
+  sessionObserve(store, 's4', 'links', 'change:abc-2', 'file:src/b.ts');
+  assert.throws(() => undo(store, { commit: r.commit ?? '' }), /later write/);
+  sessionObserve(store, 's4', 'links', r.from, r.to, r.at[0]);
+  // restored with a new time it would have become the newest and taken the line
+  assert.equal(line('abc-2').name, 'late');
+  assert.throws(() => sessionObserve(store, 's4', 'links', r.from, r.to, 'yesterday'), /--at takes a time/);
+});
+
+test('set branch= on a change is refused naming unobserve and each session that observed a branch on it', () => {
+  assert.throws(
+    () => set(store, 'change:abc-2', ['branch=abc-2'], {}),
+    /'branch' cannot be set on a change: .*pjman session unobserve <session> links change:\S*abc-2 branch:<name>[\s\S]*branch:late, observed by session:s4 at \S+: pjman session unobserve s4 links change:\S*abc-2 branch:late/,
+  );
 });

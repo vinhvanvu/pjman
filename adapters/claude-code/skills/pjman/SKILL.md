@@ -120,7 +120,8 @@ working it.
    change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`.
    One edge observed in error (a branch or a pull request of another change, which makes the change's `branch:` line
    wrong) is taken back alone, the binding and every other edge kept: `pjman session unobserve <session-id> links
-   change:<slug> branch:<name>` (`pjman show session:<id>` lists what it observed; `pjman undo` reverts it).
+   change:<slug> branch:<name>` (`pjman show session:<id>` lists what it observed). Each session holding the
+   edge takes its own back, and the command names the ones left and how to put the edge back.
    Work that belongs to no change (a review, a backlog pass, a planning chat) is still recorded: the session is named
    with a kind, `pjman session name <session-id> "<one to four words>" --kind review|backlog|chat|other` (a kind the store lacks is
    created; `pjman ls session-kind` lists them). A PR the person's prompt names does this by itself; name the session
