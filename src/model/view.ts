@@ -725,6 +725,27 @@ function contextIndex(loaded: Loaded): ContextIndex {
   });
 }
 
+/** A change's decisions, by its live key, in the order they were written. */
+export function decisionsOf(loaded: Loaded, changeKey: string): Rec[] {
+  return contextIndex(loaded).decisions.get(changeKey) ?? [];
+}
+
+/** The sources a record binds and links, once each, the bound ones first: the key, its record when the store holds
+ *  one, and the URL it opens. */
+export function sourcesOf(loaded: Loaded, rec: Rec): ChangeContext['sources'] {
+  const sources: ChangeContext['sources'] = [];
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  for (const relation of ['binds', 'links'] as const) {
+    for (const k of list(rec.data[relation])) {
+      if (sources.some((s) => s.key === k)) continue;
+      const r = resolve(loaded, k);
+      const record = r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? row(r.rec) : undefined;
+      sources.push({ key: k, relation, record, url: urlOf(k, record?.data.url) });
+    }
+  }
+  return sources;
+}
+
 /** The view's word on a change worked on after its review ended, where it cannot read the repository; a caller that can
  *  says instead whether the review is due again. */
 export const MOVED_SINCE = '; its plan moved since (pjman review says whether it is due again)';
@@ -767,16 +788,8 @@ export function changeContext(
     .map((r) => decisionRow(r, cx.supersededBy.get(r.key), keyDecision))
     .toSorted((a, b) => Number(!!b.keyed) - Number(!!a.keyed));
 
-  const sources: ChangeContext['sources'] = [];
+  const sources = sourcesOf(loaded, rec);
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  for (const relation of ['binds', 'links'] as const) {
-    for (const k of list(rec.data[relation])) {
-      if (sources.some((s) => s.key === k)) continue;
-      const r = resolve(loaded, k);
-      const record = r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? row(r.rec) : undefined;
-      sources.push({ key: k, relation, record, url: urlOf(k, record?.data.url) });
-    }
-  }
   const sessions = sessionsOf(loaded, rec.key).map((r) => {
     const log = r.sections.get('Log') ?? '';
     const lines = log.split('\n').filter((l) => l.trim());
@@ -922,7 +935,7 @@ function heading(level: string, r: Row): string {
 }
 
 /** `name: gist` on one line, the name left out when it is the gist or absent. */
-export function nameAndLine(r: Pick<Row, 'name' | 'title'>): string {
+export function nameAndLine(r: Pick<Row, 'name' | 'title' | 'gist'>): string {
   const line = lineOfRow(r);
   return `${r.name && r.name !== line ? `${r.name}: ` : ''}${line ?? r.name ?? ''}`;
 }
