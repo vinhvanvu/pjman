@@ -643,9 +643,14 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         );
       } else if (sub === 'observe') {
         if (!id || rest.length < 3)
-          throw usageError('usage: pjman session observe <id> <edge> <from> <to> [--at <time>]');
-        const r = sessionObserve(store, id, rest[0], rest[1], rest[2], v.at);
-        out(`observed in ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
+          throw usageError('usage: pjman session observe <id> <edge> <from> <to> [--at <time>] [--branch <name>]');
+        const r = sessionObserve(store, id, rest[0], rest[1], rest[2], v.at, v.branch);
+        const landed = v.branch ? ` on ${printed(r.from)}` : '';
+        out(
+          r.added
+            ? `observed in ${r.path}${landed}${r.commit ? ` (committed ${r.commit})` : ''}`
+            : `already observed in ${r.path}${landed}`,
+        );
       } else if (sub === 'unobserve') {
         if (!id || rest.length < 3) throw usageError('usage: pjman session unobserve <id> <edge> <from> <to>');
         const r = sessionUnobserve(store, id, rest[0], rest[1], rest[2]);

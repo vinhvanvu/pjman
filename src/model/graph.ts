@@ -529,6 +529,27 @@ export interface Reference {
   weak: boolean;
 }
 
+/** Whose a branch is, and on what ground (decision observed-branch-belongs/whose-branch): a link someone wrote, then
+ *  the name (its last segment is the change's slug), then an edge a session observed. A wrong observation never proves
+ *  itself against a name, and a branch not named for its change, once observed on it, still leads to it. `relation` is
+ *  how that change relates to the branch in the graph, when any edge joins them. */
+export function branchOwner(
+  loaded: Loaded,
+  branch: string,
+  opts: GetOpts = {},
+): { change: string; by: 'link' | 'name' | 'observed'; relation?: Relation } | undefined {
+  const n = get(loaded, `branch:${branch}`, opts);
+  const reached = n.changes.map((c) => c.change.key);
+  const linked = reached.find((c) => n.relation[c] !== 'observed');
+  if (linked) return { change: linked, by: 'link', relation: n.relation[linked] };
+  for (const slug of slugsOfBranch(branch)) {
+    const r = resolveRef(loaded, `change:${slug}`, opts);
+    if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:'))
+      return { change: r.key, by: 'name', relation: n.relation[r.key] };
+  }
+  return reached[0] ? { change: reached[0], by: 'observed', relation: n.relation[reached[0]] } : undefined;
+}
+
 /** Every reference in a text that resolves to something, in order of appearance, each with the change it leads to.
  *  The last mention that is not weak is what a prompt is about. Never writes. */
 export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {}): Reference[] {
@@ -553,20 +574,14 @@ export function findReferences(loaded: Loaded, text: string, opts: GetOpts = {})
     let change: string | undefined;
     let relation: Relation | undefined;
     if (key.startsWith('change:')) change = key;
-    else {
+    else if (kind === 'branch') {
+      const owner = branchOwner(loaded, key.slice('branch:'.length), opts);
+      change = owner?.change;
+      relation = owner?.relation;
+    } else {
       const n = get(loaded, key, opts);
       change = (ticket ? n.changes.filter((c) => n.relation[c.change.key] === 'binds') : n.changes)[0]?.change.key;
       if (change) relation = n.relation[change];
-    }
-    if (!change && kind === 'branch') {
-      // no record links the branch yet: the name itself says which change it was cut for
-      for (const slug of slugsOfBranch(key.slice('branch:'.length))) {
-        const r = resolveRef(loaded, `change:${slug}`, opts);
-        if ((r.status === 'record' || r.status === 'alias') && r.key?.startsWith('change:')) {
-          change = r.key;
-          break;
-        }
-      }
     }
     const weak = !!m.weak;
     out.push({

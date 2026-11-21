@@ -804,6 +804,86 @@ test('binding observes the branch as a source of the change', () => {
   );
 });
 
+test("a session bound to one change and standing in another's worktree observes the branch and the pull request on the change they belong to (change:observed-branch-belongs)", () => {
+  const stack = path.join(tmp, 'stack');
+  fs.mkdirSync(stack, { recursive: true });
+  const git = (args: string[], cwd = stack) =>
+    execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@e.com', ...args], { cwd, encoding: 'utf8' }).trim();
+  git(['init', '-q', '-b', 'main']);
+  git(['commit', '-q', '--allow-empty', '-m', 'root']);
+  init({ cwd: stack, name: 'stack' });
+  const g = findStore(stack)!;
+  change(g, 'first-part', { title: 'First part', summary: 's', project: 'project:stack' });
+  change(g, 'second-part', { title: 'Second part', summary: 's', project: 'project:stack' });
+  const treeA = path.join(stack, '.claude', 'worktrees', 'first-part');
+  const treeB = path.join(stack, '.claude', 'worktrees', 'second-part');
+  git(['worktree', 'add', '-q', '-b', 'TICK-1/first-part', treeA, 'main']);
+  git(['worktree', 'add', '-q', '-b', 'TICK-2/second-part', treeB, 'main']);
+  // a forge that answers for the checkout's pull request with what the test names: its URL and its head branch
+  const forge = path.join(tmp, 'forge');
+  fs.mkdirSync(forge, { recursive: true });
+  fs.writeFileSync(
+    path.join(forge, 'gh'),
+    '#!/bin/sh\ncase "$*" in *"pr view"*) [ -n "$GH_PR" ] && echo "$GH_PR" || exit 1;; *) exit 1;; esac\n',
+    { mode: 0o755 },
+  );
+  const run = (event: string, input: Record<string, unknown>, pr: string) =>
+    execFileSync(process.execPath, [HOOK, event], {
+      input: JSON.stringify(input),
+      encoding: 'utf8',
+      env: { ...env, PATH: `${forge}:${process.env.PATH ?? ''}`, GH_PR: pr },
+    });
+  const edges = (sid: string) =>
+    (
+      (loadStore(g).byKey.get(`session:${sid}`)![0].data.observed ?? []) as { edge: string; from: string; to: string }[]
+    ).map((o) => `${o.from} ${o.edge} ${o.to}`);
+
+  // started in the main checkout, then standing in b's worktree when the prompt binds a
+  run('SessionStart', { cwd: stack, session_id: 'sess-stack', source: 'startup' }, '');
+  run(
+    'UserPromptSubmit',
+    { cwd: treeB, session_id: 'sess-stack', prompt: 'continue change:first-part' },
+    'https://github.com/acme/app/pull/22 TICK-2/second-part',
+  );
+  assert.deepEqual(loadStore(g).byKey.get('session:sess-stack')![0].data.changes, ['change:stack/first-part']);
+  assert.deepEqual(edges('sess-stack'), [
+    'change:stack/second-part links branch:TICK-2/second-part',
+    'change:stack/second-part links github-pr:acme/app#22',
+  ]);
+  const a = execFileSync(process.execPath, [BIN, 'context', 'change:first-part'], {
+    cwd: stack,
+    env,
+    encoding: 'utf8',
+  });
+  assert.doesNotMatch(a, /second-part|acme\/app#22/);
+  assert.match(a, /^branch: TICK-1\/first-part \(exists; worktree first-part\)$/m);
+
+  // the pull request goes by its own head branch, not by where the session stands: here the forge answers, in b's
+  // worktree, with a's pull request
+  run('SessionStart', { cwd: stack, session_id: 'sess-head', source: 'startup' }, '');
+  run(
+    'UserPromptSubmit',
+    { cwd: treeB, session_id: 'sess-head', prompt: 'continue change:second-part' },
+    'https://github.com/acme/app/pull/21 TICK-1/first-part',
+  );
+  assert.deepEqual(edges('sess-head'), [
+    'change:stack/second-part links branch:TICK-2/second-part',
+    'change:stack/first-part links github-pr:acme/app#21',
+  ]);
+
+  // a session resumed in b's worktree while bound to a: the start observes by the same rule, and writes nothing twice
+  run(
+    'SessionStart',
+    { cwd: treeB, session_id: 'sess-stack', source: 'resume' },
+    'https://github.com/acme/app/pull/22 TICK-2/second-part',
+  );
+  assert.equal(edges('sess-stack').length, 2);
+  assert.deepEqual(
+    validate(loadStore(g)).filter((p) => p.level === 'error'),
+    [],
+  );
+});
+
 test('SessionStart names the worktrees whose change is done and whose branch is merged, from the store, ahead of the board', () => {
   const trees = path.join(tmp, 'trees');
   fs.mkdirSync(trees, { recursive: true });

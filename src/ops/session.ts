@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Store } from '../store/config.js';
 import { parseRecord, sections } from '../store/frontmatter.js';
-import { findReferences, get } from '../model/graph.js';
+import { branchOwner, findReferences, get } from '../model/graph.js';
 import { computeBrief, type Brief } from './hydrate.js';
 import { findSession, forget, fullKey, loadStore, resolve, unresolvedError, type Rec } from '../store/records.js';
 import { CliError, localDate, nowIso, notFound } from '../store/util.js';
@@ -526,7 +526,13 @@ export function sessionUnobserve(store: Store, id: string, edge: string, from: s
 }
 
 /** Append an observed edge `{edge, from, to, at}`. `at`: when it was observed, for an edge put back after it was
- *  taken back (the time decides which branch a change's line reads); now when not given. */
+ *  taken back (the time decides which branch a change's line reads); now when not given. `branch`: the branch the
+ *  session stood on when it saw the source. An edge from a change then lands on the change a written link or the
+ *  branch's name gives it to (decision observed-branch-belongs/another-changes-branch), and stays on `from` when
+ *  nothing but an earlier observation claims the branch (decision observed-branch-belongs/unclaimed-branch: an
+ *  observation is no ground to move another change's edge); an edge the session already holds is not written twice.
+ *  An edge from anything else (the session itself, while bound to nothing) lands as given. `sessionUnobserve` is the
+ *  reverse. */
 export function sessionObserve(
   store: Store,
   id: string,
@@ -534,17 +540,29 @@ export function sessionObserve(
   from: string,
   to: string,
   at?: string,
-): { path: string; commit: string | null } {
+  branch?: string,
+): { path: string; commit: string | null; from: string; added: boolean } {
   if (!EDGES[edge]) throw new CliError(`'${edge}' is not an edge (${Object.keys(EDGES).join(', ')})`);
   if (at !== undefined && Number.isNaN(Date.parse(at)))
     throw new CliError(`--at takes a time (${nowIso()}), not '${at}'`);
   const { loaded, rec } = load(store, id);
   // the record holds full keys; a source key stays as written
   const observed = Array.isArray(rec.data.observed) ? [...(rec.data.observed as unknown[])] : [];
+  let origin = fullKey(loaded, from);
+  const target = fullKey(loaded, to);
+  if (branch && origin.startsWith('change:')) {
+    const owner = branchOwner(loaded, branch, { projectDir: store.projectDir, project: store.project });
+    if (owner && owner.by !== 'observed') origin = owner.change;
+    const held = (o: unknown) => {
+      const e = o as { edge?: string; from?: string; to?: string };
+      return e?.edge === edge && e.from === origin && e.to === target;
+    };
+    if (observed.some(held)) return { path: rec.path, commit: null, from: origin, added: false };
+  }
   observed.push({
     edge,
-    from: fullKey(loaded, from),
-    to: fullKey(loaded, to),
+    from: origin,
+    to: target,
     at: at === undefined ? nowIso() : new Date(Date.parse(at)).toISOString(),
   });
   const commit = save(
@@ -552,8 +570,8 @@ export function sessionObserve(
     rec,
     { ...rec.data, observed },
     rec.body,
-    `pjman: session observe ${rec.key} ${edge} ${from} ${to}`,
+    `pjman: session observe ${rec.key} ${edge} ${origin} ${to}`,
     'observe',
   );
-  return { path: rec.path, commit };
+  return { path: rec.path, commit, from: origin, added: true };
 }
