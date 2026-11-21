@@ -30,6 +30,7 @@ import { short } from '@/lib/keys';
 import { Wash } from '@/lib/motion';
 import { statusTone, TONE } from '@/lib/tones';
 import {
+  branchWords,
   earlierSum,
   effectsOf,
   identityLabel,
@@ -630,14 +631,7 @@ export function Sources({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: L
       {v.branch && (
         <SourceRow label="branch">
           <KeyText className="text-ink">{v.branch.name}</KeyText>
-          <span className="text-meta text-ink-faint">
-            ·{' '}
-            {v.branch.observed
-              ? 'a session was seen on it'
-              : v.branch.exists
-                ? 'in the repository, not seen yet'
-                : 'recommended, not seen yet'}
-          </span>
+          <span className="text-meta text-ink-faint">· {branchWords(v.branch)}</span>
         </SourceRow>
       )}
       {v.links.map((s) => (

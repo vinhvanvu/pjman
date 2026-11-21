@@ -104,11 +104,24 @@ test('a branch named for the change in the repository is shown with its worktree
   const found = { name: 'TICK-3/third-thing', worktree: 'third', observed: false, exists: true, checkedOut: true };
   assert.deepEqual(branchOfChange('third-thing'), found);
   assert.deepEqual(listed('third-thing'), found);
-  // its own in the repository stands before a branch that names no change, and a session seen on its own says so
-  seenOn('third-thing', 'fix/misc');
+  // a newer branch of the same name's end is passed over for the one a worktree holds
+  g('branch', 'other/third-thing', 'main');
   assert.equal(branchOfChange('third-thing')?.name, 'TICK-3/third-thing');
+  // the repository is asked only before a name is recommended: a branch a session worked on, naming no change, stands
+  seenOn('third-thing', 'fix/misc');
+  assert.equal(line('third-thing'), 'branch: fix/misc');
   seenOn('third-thing', 'TICK-3/third-thing');
   assert.equal(line('third-thing'), 'branch: TICK-3/third-thing');
+});
+
+test('a branch the change links stands whatever it names, after its own', () => {
+  make('linked');
+  set(store, 'change:web/linked', ['links+=branch:TICK-1/first-thing'], {});
+  assert.equal(line('linked'), 'branch: TICK-1/first-thing', "a link is the change's own word");
+  set(store, 'change:web/linked', ['links+=branch:TICK-9/linked'], {});
+  assert.equal(line('linked'), 'branch: TICK-9/linked', 'a linked branch of its own name comes first');
+  seenOn('linked', 'fix/misc');
+  assert.equal(line('linked'), 'branch: TICK-9/linked');
 });
 
 test("a change of another project is not read from this repository's branches", () => {
@@ -137,4 +150,18 @@ test("one change's merged branch does not set another done", () => {
   );
   assert.equal(status('fourth-thing'), 'done');
   assert.equal(status('fifth-thing'), 'review');
+});
+
+test('filing a change whose branch is already cut names that branch, not one to create', () => {
+  g('branch', 'TICK-7/filed-here', 'main');
+  const out = execFileSync(
+    process.execPath,
+    [
+      path.resolve(import.meta.dirname, '..', '..', 'bin', 'pjman.js'),
+      ...['new', 'change', 'filed-here', '--name', 'Filed here', '--gist', 'Filed from its branch'],
+      ...['--origin', 'asked for in a test', '--intent', 'what the test needs', '--done-when', 'the test passes'],
+    ],
+    { cwd: dir, env: { ...env, PJMAN_HOME: process.env.PJMAN_HOME }, encoding: 'utf8' },
+  );
+  assert.match(out, /^branch: TICK-7\/filed-here \(exists, no worktree; recommended worktree filed-here\)$/m);
 });

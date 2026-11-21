@@ -104,9 +104,10 @@ export function row(r: Rec): Row {
 }
 
 /** A change's branch and worktree, as views say them (change:branch-line-own-branch): the branch that is its own, one
- *  whose last segment resolves to the change, seen by a session, linked from the change or found in the project's
- *  repository, in that order; else the latest a session was seen on that names no change, else one the change links;
- *  else the recommended name derived from the key (decision branch-names/derived-not-stored). A branch a session was
+ *  whose last segment resolves to the change, seen by a session or linked from the change, in that order; else the
+ *  latest a session was seen on that names no change, else one the change links; else one found in the project's
+ *  repository under a name that resolves to the change; else the recommended name derived from the key (decision
+ *  branch-names/derived-not-stored). A branch a session was
  *  seen on that is named for another change never stands for this one (decision
  *  branch-line-own-branch/foreign-fallback). */
 export interface ChangeBranch {
@@ -170,36 +171,25 @@ function observedBranchesOnce(loaded: Loaded): ObservedBranches['on'] {
   return latest;
 }
 
-/** A branch of the project's repository: the worktree that has it checked out (its folder's name), when one other
- *  than the project's own folder does, and the change its name resolves to. */
+/** A branch of the project's repository, and the worktree that has it checked out (its folder's name) when one other
+ *  than the project's own folder does. */
 export interface LocalBranch {
   name: string;
   worktree?: string;
-  change?: string;
 }
 
-/** The project's local branches, newest commit first, read from its repository once per load; none outside a
- *  registered project. */
-export function localBranches(store: Store, loaded: Loaded): LocalBranch[] {
-  return memo(loaded, 'local-branches', () => {
-    const dir = store.projectDir;
-    if (!dir || !fs.existsSync(dir)) return [];
-    return localHeads(dir).map((h) => ({ ...h, change: changeOfBranch(loaded, h.name) }));
-  });
-}
-
-/** Branch names of a repository as branchOf reads them: each with the change its name resolves to, as `rec` reads it. */
-export function namedBranches(loaded: Loaded, rec: Rec, names: Iterable<string>): () => LocalBranch[] {
-  return () =>
-    [...names]
-      .filter(Boolean)
-      .map((name) => ({ name, change: changeOfBranch(loaded, name, rec.productSlug ?? loaded.scope) }));
+/** The project's local branches, newest commit first, read from its repository when first asked and once for the
+ *  view that asks: never kept with the load, which a server holds while branches and worktrees come and go. None
+ *  outside a registered project. */
+export function repoHeads(store: Store): () => LocalBranch[] {
+  let heads: LocalBranch[] | undefined;
+  return () => (heads ??= store.projectDir && fs.existsSync(store.projectDir) ? localHeads(store.projectDir) : []);
 }
 
 /** The local branches that may stand for a change: the project's, for a change of the project the store was opened
  *  in; elsewhere the repository is not the change's to read. */
-export function localBranchesFor(store: Store, loaded: Loaded, rec: Rec): () => LocalBranch[] {
-  return () => (store.project && rec.data.project === store.project ? localBranches(store, loaded) : []);
+export function localBranchesFor(store: Store, rec: Rec, heads = repoHeads(store)): () => LocalBranch[] {
+  return () => (store.project && rec.data.project === store.project ? heads() : []);
 }
 
 export function branchOf(
@@ -221,21 +211,22 @@ export function branchOf(
     }));
   const ownLinked = linked.find((l) => l.whose === 'own');
   if (ownLinked) return seen(ownLinked.name);
-  const mine = local().filter((l) => l.change === rec.key);
-  const found = mine.find((l) => l.worktree) ?? mine[0];
-  if (found)
-    return {
-      name: found.name,
-      worktree: found.worktree ?? worktreeNameFor(rec.key),
-      observed: false,
-      exists: true,
-      checkedOut: !!found.worktree,
-    };
   // a link is the change's own word, whatever the branch is named: a milestone's child carries on its parent's branch
   // (decision work-on-the-branch). Only what a session observed is doubted by its name
   const fallback = onName ?? linked[0]?.name;
-  return fallback
-    ? seen(fallback)
+  if (fallback) return seen(fallback);
+  // before a name is recommended: a branch of the repository named for the change, by the change's own product, the
+  // one a worktree holds first, then the newest
+  const mine = local().filter((l) => standing(observed.loaded, rec, l.name) === 'own');
+  const found = mine.find((l) => l.worktree) ?? mine[0];
+  return found
+    ? {
+        name: found.name,
+        worktree: found.worktree ?? worktreeNameFor(rec.key),
+        observed: false,
+        exists: true,
+        checkedOut: !!found.worktree,
+      }
     : { name: branchNameFor(rec.key, prefix), worktree: worktreeNameFor(rec.key), observed: false };
 }
 
@@ -424,9 +415,10 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
   // a change's row carries its branch and worktree name, computed once for the listing
   const observed = recs.some((r) => r.type === 'change') ? observedBranches(loaded) : null;
   const prefix = readUserConfig().branch_prefix;
+  const heads = repoHeads(store);
   const withBranch = (r: Rec): Row =>
     r.type === 'change' && r.valid && observed
-      ? { ...row(r), branch: branchOf(r, observed, prefix, localBranchesFor(store, loaded, r)) }
+      ? { ...row(r), branch: branchOf(r, observed, prefix, localBranchesFor(store, r, heads)) }
       : r.type === 'feature'
         ? { ...row(r), status: statusOf(r) }
         : row(r);
@@ -783,7 +775,7 @@ export function changeContext(store: Store, key: string, loaded: Loaded = loadSt
     .map(row);
   const neededBy = (cx.neededBy.get(rec.key) ?? []).map(row);
   // the branch: the change's own (seen, linked or found in the repository), else the recommended name
-  const branch = branchOf(rec, observedBranches(loaded), undefined, localBranchesFor(store, loaded, rec));
+  const branch = branchOf(rec, observedBranches(loaded), undefined, localBranchesFor(store, rec));
   const features = effectsOf(rec)
     .map((e) => liveKey(e.key))
     .map((k) => (k ? loaded.byKey.get(k)?.[0] : undefined))

@@ -103,10 +103,20 @@ type Source = ChangeContext['sources'][number];
 /** A Trail's line as the context carries it, less its address (the row's link opens that). */
 export const trailWords = (trail: string): string => trail.replace(/ \(https?:[^)]*\)$/, '');
 
+type Branch = NonNullable<ChangeContext['branch']>;
+
+/** What the branch row says after the name, as the context's line does: seen by a session, found in the repository
+ *  with the worktree that holds it, or only a name to create. */
+export function branchWords(b: Branch): string {
+  if (b.observed) return 'a session was seen on it';
+  if (!b.exists) return 'recommended, not seen yet';
+  return b.checkedOut ? `in the repository, worktree ${b.worktree}` : 'in the repository, no worktree yet';
+}
+
 export function sourcesView(
   ctx: Pick<ChangeContext, 'sources' | 'branch'> & Partial<Pick<ChangeContext, 'findings'>>,
 ): {
-  branch?: { name: string; observed: boolean; exists?: boolean };
+  branch?: Branch;
   links: Source[];
   files: Source[];
   /** What a review found (pjman review), the ones still standing first. */

@@ -15,6 +15,7 @@ export { TRAIL_KIND, trailLine, type TrailGate, type TrailState };
 import { decisionState, threadOf } from '../model/foundation.js';
 import { repoOf } from '../model/refs.js';
 import { observedBranches } from '../model/view.js';
+import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
 import { note } from '../ops/note.js';
 import { set } from '../ops/set.js';
@@ -255,7 +256,7 @@ export function reconcileTrail(
       );
       return null;
     }
-    branch = branchesOf(rec, observedBranches(loaded), local).find((b) => b !== base && local.includes(b));
+    branch = branchesOf(rec, observedBranches(loaded), localHeads(dir)).find((b) => b !== base && local.includes(b));
     if (!branch) {
       opts.whyNot?.(
         'no branch of its own was found in this repository; create a branch named for it and run this again',

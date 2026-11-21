@@ -29,8 +29,8 @@ export function baseBranch(dir: string): string {
   return tryGit(dir, ['rev-parse', '--abbrev-ref', 'HEAD']) || 'main';
 }
 
-/** The repository's local branches, newest commit first, each with the name of the worktree that has it checked out
- *  when one other than the repository's own folder does (a linked worktree's `.git` is a file). */
+/** The local branches of the repository at `dir`, newest commit first, each with the name of the worktree that has it
+ *  checked out when a folder other than `dir` does. */
 export function localHeads(dir: string): { name: string; worktree?: string }[] {
   const out = tryGit(dir, [
     'for-each-ref',
@@ -38,18 +38,21 @@ export function localHeads(dir: string): { name: string; worktree?: string }[] {
     '--format=%(refname:short)%09%(worktreepath)',
     'refs/heads',
   ]);
+  const real = (p: string): string | null => {
+    try {
+      return fs.realpathSync(p);
+    } catch {
+      return null; // the folder is gone: the branch is checked out nowhere to be found
+    }
+  };
+  const home = real(dir);
   return out
     .split('\n')
     .filter(Boolean)
     .map((line) => {
       const [name, at] = line.split('\t');
-      let linked = false;
-      try {
-        linked = !!at && fs.statSync(path.join(at, '.git')).isFile();
-      } catch {
-        // the worktree's folder is gone: the branch is checked out nowhere to be found
-      }
-      return linked ? { name, worktree: path.basename(at) } : { name };
+      const where = at ? real(at) : null;
+      return where && where !== home ? { name, worktree: path.basename(at) } : { name };
     });
 }
 

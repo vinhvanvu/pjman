@@ -9,24 +9,25 @@
 //   forward  the branch's tip is on the base and a commit there names the change (a fast-forward)
 // A change in review whose branch is merged is set done: the merge was the person's act, wherever they made it.
 import type { Store } from '../store/config.js';
-import { baseBranch, mergedInto, tryGit, type MergedHow } from '../store/merged.js';
+import { baseBranch, localHeads, mergedInto, tryGit, type MergedHow } from '../store/merged.js';
 import { loadStore, type Rec } from '../store/records.js';
 import { CliError } from '../store/util.js';
-import { branchOf, namedBranches, observedBranches } from '../model/view.js';
+import { branchOf, observedBranches, type LocalBranch } from '../model/view.js';
 import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { set } from '../ops/set.js';
 
 export { baseBranch, baseRefs, mergedBranch, mergedInto, type Merged, type MergedHow } from '../store/merged.js';
 
 /** The branch names a change's work may be on, most likely first: its own as the views name it (seen by a session,
- *  linked, or among the repository's `local` branches by its name; change:branch-line-own-branch), the recommended
+ *  linked, or among the repository's `local` branches by its name, as localHeads lists them;
+ *  change:branch-line-own-branch), the recommended
  *  name, the worktree's. A branch named for another change is never among them. */
 export function branchesOf(
   rec: Rec,
   observed: ReturnType<typeof observedBranches>,
-  local: Iterable<string> = [],
+  local: LocalBranch[] = [],
 ): string[] {
-  const own = branchOf(rec, observed, undefined, namedBranches(observed.loaded, rec, local)).name;
+  const own = branchOf(rec, observed, undefined, () => local).name;
   return [...new Set([own, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])];
 }
 
@@ -49,6 +50,7 @@ export function syncGit(store: Store, opts: { session?: string; write?: boolean 
   const base = baseBranch(dir);
   const result: GitSyncResult = { project, base, done: [], merged: [] };
   const observed = observedBranches(loaded);
+  const heads = localHeads(dir);
   const local = new Set(
     tryGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n').filter(Boolean),
   );
@@ -57,7 +59,7 @@ export function syncGit(store: Store, opts: { session?: string; write?: boolean 
     const status = rec.data.status;
     if (status !== 'review' && status !== 'done') continue;
     if (rec.data.kind === 'milestone') continue;
-    const branch = branchesOf(rec, observed, local).find((b) => b !== base && local.has(b));
+    const branch = branchesOf(rec, observed, heads).find((b) => b !== base && local.has(b));
     if (!branch) continue;
     const m = mergedInto(dir, branch, { base, named: `change:${rec.changeSlug}` });
     if (!m) continue;

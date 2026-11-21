@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChangeContext } from '@/data/contract';
 import {
+  branchWords,
   changeBar,
   earlierSum,
   effectsOf,
@@ -53,6 +54,14 @@ describe('the path and the sources', () => {
     expect(v.sum).toBe('branch detail-pages · 1 link · 2 files');
     expect(v.files).toHaveLength(2);
     expect(sourcesView({ sources: [] }).sum).toBe('no files yet');
+  });
+  it('says where the branch stands: seen, found in the repository with its worktree, or a name to create', () => {
+    const b = { name: 'TICK-3/c', worktree: 'c', observed: false };
+    expect(branchWords({ ...b, observed: true })).toBe('a session was seen on it');
+    expect(branchWords(b)).toBe('recommended, not seen yet');
+    expect(branchWords({ ...b, exists: true, checkedOut: true })).toBe('in the repository, worktree c');
+    expect(branchWords({ ...b, exists: true, checkedOut: false })).toBe('in the repository, no worktree yet');
+    expect(sourcesView({ sources: [], branch: { ...b, exists: true, checkedOut: true } }).branch?.worktree).toBe('c');
   });
   it('labels the identity row by where the session is', () => {
     expect(identityLabel(false)).toBe('on now · change');
