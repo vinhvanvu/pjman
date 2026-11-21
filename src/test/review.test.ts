@@ -683,7 +683,7 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   });
   assert.match(
     runReview(store, 'change:web/voucher', o).pending[0],
-    /^change:web\/voucher has no Trail yet and one could not be started \(it is \w+, and a Trail follows a change in work: start a step first\): /,
+    /^change:web\/voucher has no Trail yet and one could not be started \(work has not started on it \(status \w+\): a Trail starts with the first step \(pjman step change:web\/voucher start <n>\)\): /,
   );
   assert.equal(reviewers(), 0);
   // a profile that keeps its verdict local posts nothing to read: not run either while the review is due
@@ -715,11 +715,17 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   // (the stand-in holds one Trail, closed by the test before: it starts again with none, and numbers the next 2)
   fs.rmSync(stateFile);
   fs.writeFileSync(path.join(tmp, 'number'), '2');
+  // (the start does not wait on the profile: a review that is not run for its profile has started the Trail)
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  deep\n    output:     local');
+  const begun = runReview(store, k, o);
+  assert.equal(begun.ran, false);
+  assert.match(begun.said.join('\n'), /^entire: change:web\/coupon created, readied · Trail #2 /m);
+  assert.match(begun.said.join('\n'), /^entire: pushed coupon to origin/m);
+  fs.writeFileSync(path.join(tmp, 'profile'), '');
   fs.writeFileSync(path.join(tmp, 'nolist'), '');
   const unread = runReview(store, k, o);
   assert.equal(unread.ran, true);
-  assert.match(unread.said.join('\n'), /^entire: change:web\/coupon created, readied · Trail #2 /m);
-  assert.match(unread.said.join('\n'), /^entire: pushed coupon to origin/m);
+  assert.doesNotMatch(unread.said.join('\n'), /created/);
   assert.equal(reviewers(), 1);
   assert.equal(unread.round, undefined);
   assert.equal(unread.open, true);

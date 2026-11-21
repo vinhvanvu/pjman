@@ -44,7 +44,7 @@ import { git } from '../store/git.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
 import { CliError, nowIso, usageError } from '../store/util.js';
 import { baseBranch, branchesOf } from './git.js';
-import { reconcileTrail, trailLines, trailOf } from './trail.js';
+import { noTrailWhy, reconcileTrail, trailLines, trailOf } from './trail.js';
 
 const tryGit = (cwd: string, args: string[]): string => {
   try {
@@ -435,9 +435,7 @@ export function fileFindings(
   const trail = trailOf(loaded, rec);
   const branch = trail?.state?.branch ?? branchIn(loaded, rec, dir).branch;
   if (!trail?.state || !branch) {
-    out.pending.push(
-      `${rec.key} has no Trail yet: its findings are filed once it has one (\`pjman sync entire --start ${rec.key}\` starts it, without asking)`,
-    );
+    out.pending.push(`${rec.key} has no Trail yet: its findings are filed once it has one${startHint(rec)}`);
     return out;
   }
   const slug = rec.key.replace(/^change:/, '');
@@ -567,7 +565,7 @@ export function readFindings(
     out.pending.push(
       trail.gone
         ? `${trail.gone}; the change keeps what was read before`
-        : `${rec.key} has no Trail yet: there are no findings on Entire to read (\`pjman sync entire --start ${rec.key}\` starts it, without asking)`,
+        : `${rec.key} has no Trail yet: there are no findings on Entire to read${startHint(rec)}`,
     );
     return out;
   }
@@ -884,6 +882,14 @@ const ownWords = (here: string, differsFrom?: string): string =>
  *  with the brief only pjman holds added to their task, and post what they find onto the Trail; the findings are then
  *  read back onto the change. The review profile is the person's to set up (`entire review --configure`); with none,
  *  nothing runs and the command to run is named. Long: the agents take minutes. */
+/** What starts the Trail of a change in work that has none; nothing for a change no Trail would be started for. */
+const startHint = (rec: Rec): string =>
+  rec.data.status === 'active' || rec.data.status === 'review'
+    ? ` (\`pjman sync entire --start ${rec.key}\` starts it, without asking)`
+    : '';
+const notStarted = (key: string, why: string): string =>
+  `entire: ${key} has no Trail and one could not be started (${why})`;
+
 export function runReview(
   store: Store,
   key: string,
@@ -927,6 +933,38 @@ export function runReview(
   if (!branch) {
     none.pending.push(`${rec.key} has no branch in this repository to review`);
     return none;
+  }
+  // the review is a command run on the change, so it starts the Trail the change lacks, as a step started does, and
+  // says the branch was pushed: nobody is asked first, whatever profile there is and wherever it sends its verdict
+  // (decisions entire-follow-ups/unasked-push, trail-without-asking/sweep-starts)
+  let readable = readableTrail(loaded, rec, dir);
+  let whyNot = '';
+  if (!readable.branch && !readable.gone) {
+    let started: ReturnType<typeof reconcileTrail> = null;
+    try {
+      started = reconcileTrail(store, rec.key, {
+        session: opts.session,
+        writer: opts.writer,
+        entire: opts.entire,
+        budget: 90_000,
+        whyNot: (reason) => (whyNot = reason),
+      });
+    } catch (e) {
+      // (a start that threw is not lost to a bare error: the review says so below. Entire is asked before the store
+      // is written, so the Trail may stand and the branch be on origin with nothing here to say it)
+      whyNot = `${(e as Error).message.split('\n')[0]}; the Trail may have been made, and ${branch} pushed to origin, before that`;
+    }
+    const now = loadStore(store);
+    readable = readableTrail(now, changeOf(now, key), dir);
+    if (started) {
+      // (what Entire did not answer is said as it is where the Trail stands; where it does not, it is the reason)
+      const lines = trailLines(started);
+      none.said.push(...(readable.branch ? lines : lines.filter((l) => !l.startsWith('entire: pending ('))));
+      whyNot ||= started.pending.join('; ');
+    }
+    whyNot ||= noTrailWhy(store, loaded, rec, store.project) ?? 'no Trail could be made for it';
+    // (said on every way out but the one whose own refusal carries it)
+    if (!readable.branch && !readable.gone) none.said.push(notStarted(rec.key, whyNot));
   }
   // where the branch is checked out, Entire reviews it there; else it is asked to check the branch out itself
   const checkout = checkoutOf(dir, branch);
@@ -999,40 +1037,6 @@ export function runReview(
     );
     return none;
   }
-  // the review is a command run on the change, so it starts the Trail the change lacks, as a step started does, and
-  // says the branch was pushed: nobody is asked first, wherever the profile sends its verdict (decisions
-  // entire-follow-ups/unasked-push, trail-without-asking/sweep-starts)
-  let readable = readableTrail(loaded, rec, dir);
-  let whyNot = '';
-  if (!readable.branch && !readable.gone) {
-    let started: ReturnType<typeof reconcileTrail> = null;
-    try {
-      started = reconcileTrail(store, rec.key, {
-        session: opts.session,
-        writer: opts.writer,
-        entire: opts.entire,
-        budget: 90_000,
-        whyNot: (reason) => (whyNot = reason),
-      });
-    } catch (e) {
-      // (a start that threw is a Trail not started: the review says so below, and is not lost to a bare error)
-      whyNot = (e as Error).message.split('\n')[0];
-    }
-    const now = loadStore(store);
-    readable = readableTrail(now, changeOf(now, key), dir);
-    if (started) {
-      // (what Entire did not answer is said as it is where the Trail stands; where it does not, it is the reason)
-      const lines = trailLines(started);
-      none.said.push(...(readable.branch ? lines : lines.filter((l) => !l.startsWith('entire: pending ('))));
-      whyNot ||= started.pending.join('; ');
-    } else if (!whyNot) {
-      const status = typeof rec.data.status === 'string' ? rec.data.status : 'open';
-      whyNot =
-        status === 'active' || status === 'review'
-          ? 'no Trail could be made for it'
-          : `it is ${status}, and a Trail follows a change in work: start a step first`;
-    }
-  }
   if (known.output[profile] !== 'trail') {
     // (a listing that does not say is not taken for the Trail: Entire's own default is local)
     const where = known.output[profile]
@@ -1049,6 +1053,7 @@ export function runReview(
     );
   } else {
     if (!readable.branch) {
+      none.said = none.said.filter((l) => l !== notStarted(rec.key, whyNot));
       const still = due ? '; the review is still due' : '';
       none.pending.push(
         readable.gone
