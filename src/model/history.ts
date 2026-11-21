@@ -3,6 +3,7 @@
 // nearest first. Reached for on demand; a change's context carries none of it (decision branch-sources/level-cut). It
 // answers as an index (aspect:index-then-getter): the counts of every kind, the changes a line each, the decisions and
 // the sources only when asked for, narrowed by words; the depth of a record is its getter's.
+import { readEvents } from '../store/events.js';
 import { CliError, plural } from '../store/util.js';
 import type { Loaded, Rec } from '../store/records.js';
 import { effectsOf, levelOf, live, treeIndex } from './tree.js';
@@ -18,6 +19,10 @@ export interface HistoryDecision {
   status?: string;
 }
 
+/** The kinds of source that record a run, not the product (Entire's checkpoints and Trails): left out of a history,
+ *  uncounted (decision branch-sources/level-cut holds it in every option). */
+const RUN_KINDS = new Set(['entire-checkpoint', 'entire-trail']);
+
 export interface HistorySource {
   key: string;
   relation: 'binds' | 'links';
@@ -31,8 +36,9 @@ export interface HistoryChange {
   gist?: string;
   status?: string;
   created?: string;
-  /** How the change names this node: adds, changes or removes. */
-  effect: string;
+  /** How the change names this node: adds, changes or removes. With the changes not asked for, a change is only the
+   *  key its decisions and sources sit under, and carries neither this nor its name, gist, status and date. */
+  effect?: string;
   /** Present when decisions were asked for. */
   decisions?: HistoryDecision[];
   /** Present when sources were asked for. */
@@ -44,7 +50,8 @@ export interface HistoryNode {
   name?: string;
   title?: string;
   level: string;
-  /** Everything on the node, whatever was asked for or matched: its changes, their decisions, their distinct sources. */
+  /** Everything on the node, whatever was asked for or matched: its changes, their decisions, their distinct sources
+   *  (less those that record a run). */
   counts: Record<HistoryKind, number>;
   /** The changes naming this node itself (never one beneath it), newest first: each that is shown, or that carries a
    *  decision or a source that is. */
@@ -120,6 +127,17 @@ export function history(loaded: Loaded, key: string, opts: HistoryOpts = {}): Hi
   const nodes = opts.node ? named : branchOfNodes(loaded, named);
   const naming = treeIndex(loaded).naming;
   const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
+  // a record carries the day it was created; within a day the stream says which came first
+  let filed: Map<string, number> | undefined;
+  const filedAt = (k: string): number => {
+    if (!filed) {
+      filed = new Map();
+      for (const e of readEvents(loaded.store)) if (e.op === 'created' && e.type === 'change') filed.set(e.key, e.seq);
+    }
+    return filed.get(k) ?? 0;
+  };
+  const newestFirst = (a: Rec, b: Rec): number =>
+    (str(b.data.created) ?? '').localeCompare(str(a.data.created) ?? '') || filedAt(b.key) - filedAt(a.key);
   return {
     of: rec.key,
     reach: opts.node ? 'node' : 'branch',
@@ -132,7 +150,7 @@ export function history(loaded: Loaded, key: string, opts: HistoryOpts = {}): Hi
       const on = (naming.get(f.key) ?? [])
         // a change asking about its own branch is not its own history
         .filter((c) => c.key !== rec.key)
-        .toSorted((a, b) => (str(b.data.created) ?? '').localeCompare(str(a.data.created) ?? ''));
+        .toSorted(newestFirst);
       for (const c of on) {
         const r = row(c);
         const all = {
@@ -140,31 +158,34 @@ export function history(loaded: Loaded, key: string, opts: HistoryOpts = {}): Hi
             const dr = row(d);
             return { key: d.key, name: dr.name, gist: dr.gist, status: dr.status };
           }),
-          sources: sourcesOf(loaded, c).map((s): HistorySource => ({
-            key: s.key,
-            relation: s.relation,
-            title: s.record?.title,
-            url: s.url,
-          })),
+          sources: sourcesOf(loaded, c)
+            .filter((s) => !RUN_KINDS.has(s.key.slice(0, s.key.indexOf(':'))))
+            .map((s): HistorySource => ({ key: s.key, relation: s.relation, title: s.record?.title, url: s.url })),
         };
         counts.changes++;
         counts.decisions += all.decisions.length;
         for (const s of all.sources) distinct.add(s.key);
         // a change that carries the words is shown with all that was asked for beneath it; one that does not is shown
         // for what beneath it does
-        const own = kinds.includes('changes') && hit(c.key, r.name, r.gist);
+        const own = hit(c.key, r.name, r.gist);
+        const shown = kinds.includes('changes');
         const decisions = kinds.includes('decisions')
           ? all.decisions.filter((d) => own || hit(d.key, d.name, d.gist))
           : undefined;
         const sources = kinds.includes('sources') ? all.sources.filter((s) => own || hit(s.key, s.title)) : undefined;
-        if (words.length && !own && !decisions?.length && !sources?.length) continue;
+        // with the changes not asked for, a change is there only to say whose the decisions and sources are
+        if (!decisions?.length && !sources?.length && !(shown && own)) continue;
         changes.push({
           key: c.key,
-          name: r.name,
-          gist: r.gist,
-          status: r.status,
-          created: r.created,
-          effect: effectsOf(c).find((e) => live(loaded, e.key)?.key === f.key)?.effect ?? 'changes',
+          ...(shown
+            ? {
+                name: r.name,
+                gist: r.gist,
+                status: r.status,
+                created: r.created,
+                effect: effectsOf(c).find((e) => live(loaded, e.key)?.key === f.key)?.effect ?? 'changes',
+              }
+            : {}),
           ...(decisions ? { decisions } : {}),
           ...(sources ? { sources } : {}),
         });
@@ -212,14 +233,15 @@ export function formatHistory(h: History): string {
       // each change a line, what was asked for of its decisions and sources beneath it
       for (const c of n.changes) {
         out.push(
-          `- ${c.key} [${c.status ?? '?'}]${c.created ? ` ${c.created}` : ''} ${c.effect} — ${nameAndLine({ name: c.name, gist: c.gist })}`,
+          `- ${c.key} [${c.status ?? '?'}]${c.created ? ` ${c.created}` : ''} ${c.effect ?? 'changes'} — ${nameAndLine({ name: c.name, gist: c.gist })}`,
         );
         for (const d of c.decisions ?? [])
           out.push(`  - ${d.key} [${d.status ?? '?'}] — ${nameAndLine({ name: d.name, gist: d.gist })}`);
         for (const s of c.sources ?? []) out.push(`  - ${s.relation} ${sourceLine(s)}`);
       }
     } else {
-      // without the changes, each kind is a flat list: a decision's key names its change, a source says which link it
+      // without the changes, each kind is a flat list: a decision's key names its change, a source says which changes
+      // bind and link it
       for (const c of n.changes)
         for (const d of c.decisions ?? [])
           out.push(`- ${d.key} [${d.status ?? '?'}] — ${nameAndLine({ name: d.name, gist: d.gist })}`);
@@ -227,7 +249,7 @@ export function formatHistory(h: History): string {
       for (const c of n.changes)
         for (const s of c.sources ?? []) {
           const e = by.get(s.key) ?? { source: s, changes: [] };
-          e.changes.push(c.key);
+          e.changes.push(`${s.relation} ${c.key}`);
           by.set(s.key, e);
         }
       for (const { source, changes } of by.values()) out.push(`- ${sourceLine(source)} · ${changes.join(', ')}`);

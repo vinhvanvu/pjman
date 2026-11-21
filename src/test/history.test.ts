@@ -44,7 +44,8 @@ before(() => {
   change(store, 'pay-button', {
     title: 'The pay button',
     features: ['adds feature:shop/checkout'],
-    links: ['file:src/pay.ts'],
+    // what records a run is no source of the product's history
+    links: ['file:src/pay.ts', 'entire-checkpoint:abc123'],
     created: '2026-01-01',
   });
   change(store, 'card-form', {
@@ -61,6 +62,8 @@ before(() => {
   });
   change(store, 'scan', { title: 'Scanning', features: ['adds feature:shop/card-scan', 'feature:shop/search'] });
   change(store, 'find', { title: 'Finding', features: ['adds feature:shop/search'] });
+  // filed the same day as find, after it
+  change(store, 'a-second-find', { title: 'Finding again', features: ['feature:shop/search'] });
   change(store, 'chore', { title: 'A chore' });
   decisionRec(store, 'card-form/vault', { title: 'Where cards are kept', decidedBy: 'person:tester' });
   decisionRec(store, 'pay-button/colour', { title: 'The colour' });
@@ -120,7 +123,7 @@ test('a node alone; the changes unless another kind is asked for, with everythin
   // without the changes a kind is a flat list: a source once, with every change that names it
   const sources = formatHistory(history(loaded, 'feature:shop/saved-cards', { node: true, kinds: ['sources'] }));
   assert.match(sources, /^2 changes \(--changes\), 1 decision \(--decisions\), 2 sources$/m);
-  assert.match(sources, /^- file:src\/card\.ts · change:shop\/card-endpoint, change:shop\/card-form$/m);
+  assert.match(sources, /^- file:src\/card\.ts · links change:shop\/card-endpoint, links change:shop\/card-form$/m);
   assert.doesNotMatch(sources, /^- change:/m);
   const decisions = formatHistory(history(loaded, 'feature:shop/card-scan', { kinds: ['decisions'] }));
   assert.match(decisions, /^- decision:shop\/card-form\/vault \[decided\] — /m);
@@ -135,9 +138,10 @@ test('a change stands for the nodes it names, each branch once, and is left out 
     ['feature:shop/card-scan', 'feature:shop/search', 'feature:shop/saved-cards', 'feature:shop/checkout'],
   );
   assert.deepEqual(h.nodes[0].changes, []);
+  // within a day, the one filed later comes first, whatever its slug
   assert.deepEqual(
     h.nodes[1].changes.map((c) => c.key),
-    ['change:shop/find'],
+    ['change:shop/a-second-find', 'change:shop/find'],
   );
   assert.match(formatHistory(h), /^## feature:shop\/card-scan .*\nno other change names it$/m);
   assert.equal(history(loaded, 'change:shop/scan', { node: true }).nodes.length, 2);
@@ -173,6 +177,28 @@ test('words narrow every kind asked for: a change that carries them keeps what i
   assert.deepEqual(
     h.nodes[0].changes.map((c) => [c.key, c.decisions!.length, c.sources!.map((s) => s.key)]),
     [['change:shop/card-form', 0, ['url:https://example.com/spec']]],
+  );
+  // without the changes, a change that carries the words still brings what was asked for beneath it, and is no more
+  // than the key they sit under; one with nothing asked for beneath it is not carried at all
+  h = history(loaded, 'feature:shop/card-scan', { kinds: ['decisions'], match: 'card form' });
+  assert.deepEqual(h.nodes[1].changes, [
+    {
+      key: 'change:shop/card-form',
+      decisions: [
+        {
+          key: 'decision:shop/card-form/vault',
+          name: 'Where cards are kept',
+          gist: 'Where cards are kept',
+          status: 'decided',
+        },
+      ],
+    },
+  ]);
+  assert.deepEqual(
+    history(loaded, 'feature:shop/saved-cards', { node: true, kinds: ['decisions'] }).nodes[0].changes.map(
+      (c) => c.key,
+    ),
+    ['change:shop/card-form'],
   );
   // a kind not asked for is not searched
   assert.deepEqual(history(loaded, 'feature:shop/saved-cards', { node: true, match: 'spec' }).nodes[0].changes, []);
