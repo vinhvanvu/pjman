@@ -188,6 +188,26 @@ export interface TrailReconcile {
   noted?: string;
 }
 
+/** Why a change gets no Trail at all, or null where one may be started for it: said by whoever was asked to start
+ *  one (`pjman sync entire --start`, a review that found none). */
+export function noTrailWhy(store: Store, loaded: Loaded, rec: Rec, project: string | undefined): string | null {
+  const status = typeof rec.data.status === 'string' ? rec.data.status : 'open';
+  return !rec.valid
+    ? 'its record does not validate (pjman validate says why)'
+    : rec.data.project !== project
+      ? `it belongs to ${typeof rec.data.project === 'string' ? rec.data.project : 'no project'}, not ${project}`
+      : rec.data.kind === 'milestone'
+        ? 'it is a milestone: its children have Trails, each its own'
+        : !store.config.source_kinds.includes(TRAIL_KIND)
+          ? `the store has no ${TRAIL_KIND} source kind: run pjman migrate, or, where the store lists its own kinds, add it to source_kinds in pjman.yaml`
+          : status === 'done' || status === 'dropped'
+            ? `the change has ended (status ${status})`
+            : // a Trail closed when last read is read again by the sweep (it may have been reopened on Entire)
+              status !== 'active' && status !== 'review' && !trailOf(loaded, rec)?.state
+              ? `work has not started on it (status ${status}): a Trail starts with the first step (pjman step ${rec.key} start <n>)`
+              : null;
+}
+
 /** Bring one change's Trail to where the change stands, and read it back. Nothing is done for a project that has not
  *  opted in, a milestone, or a change whose work has not started. */
 export function reconcileTrail(
@@ -638,7 +658,7 @@ export function trailLines(r: TrailReconcile, printed: (key: string) => string =
   if (r.pushed) out.push(`entire: pushed ${r.pushed} to origin (a Trail is created with its branch)`);
   if (r.unstarted)
     out.push(
-      `entire: ${printed(r.change)} has no Trail: starting one pushes ${r.unstarted} to origin (pjman sync entire --start ${printed(r.change)})`,
+      `entire: ${printed(r.change)} has no Trail: whoever works it starts one without asking, which pushes ${r.unstarted} to origin (pjman sync entire --start ${printed(r.change)})`,
     );
   for (const m of r.moved) out.push(`entire: ${m}`);
   if (r.done) out.push(`entire: ${printed(r.change)} is done (merged on Entire)`);
