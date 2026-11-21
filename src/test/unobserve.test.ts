@@ -44,13 +44,26 @@ before(async () => {
   sessionBind(store, 's1', 'change:abc-1');
   sessionObserve(store, 's1', 'links', 'change:abc-1', 'branch:abc-1');
   sessionObserve(store, 's1', 'links', 'change:abc-1', 'file:src/a.ts');
-  // the edge observed in error: another change's branch, seen later, so it decides the line
+  // the edge observed in error: another change's branch, seen later. It no longer decides the line (a branch named
+  // for another change never stands for this one, change:branch-line-own-branch), and is still a wrong edge to take back
   await new Promise((r) => setTimeout(r, 5));
   sessionObserve(store, 's1', 'links', 'change:abc-1', 'branch:abc-2');
 });
 
-test('unobserve corrects the branch line and keeps the binding and the other edges; undo reverts it', () => {
-  assert.equal(line('abc-1').name, 'abc-2');
+test('unobserve corrects a branch line that names a stray branch', () => {
+  change(store, 'abc-3', { title: 'Three', summary: 's', project: 'project:web' });
+  newRecord(store, 'session', 's0', { agent: 'agent:claude-code' });
+  sessionBind(store, 's0', 'change:abc-3');
+  // a branch that names no change, observed on the change in error: nothing says it is another's, so it is the line
+  sessionObserve(store, 's0', 'links', 'change:abc-3', 'branch:spike/throwaway');
+  assert.deepEqual(line('abc-3'), { name: 'spike/throwaway', worktree: line('abc-3').worktree, observed: true });
+  sessionUnobserve(store, 's0', 'links', 'abc-3', 'branch:spike/throwaway');
+  assert.equal(line('abc-3').observed, false);
+  assert.equal(line('abc-3').name, 'abc-3');
+});
+
+test('unobserve takes back a wrong edge and keeps the binding and the other edges; undo reverts it', () => {
+  assert.equal(line('abc-1').name, 'abc-1');
   const r = sessionUnobserve(store, 's1', 'links', 'abc-1', 'branch:abc-2');
   assert.equal(r.dropped, 1);
   assert.ok(r.commit);
@@ -71,7 +84,7 @@ test('unobserve corrects the branch line and keeps the binding and the other edg
   }
 
   undo(store, { commit: r.commit });
-  assert.equal(line('abc-1').name, 'abc-2');
+  assert.equal(line('abc-1').name, 'abc-1');
   assert.deepEqual(edges(), ['abc-1 branch:abc-1', 'abc-1 file:src/a.ts', 'abc-1 branch:abc-2']);
 });
 
@@ -106,8 +119,8 @@ test('unobserve names the other sessions that still hold the edge, and its event
   sessionObserve(store, 's3', 'links', 'change:abc-1', 'branch:abc-2');
   const r = sessionUnobserve(store, 's1', 'links', 'abc-1', 'branch:abc-2');
   assert.deepEqual(r.others, ['session:s3']);
-  // the line is read across sessions: it stays wrong until the last holder lets go
-  assert.equal(line('abc-1').name, 'abc-2');
+  // the edge is read across sessions: it stands until the last holder lets go
+  assert.equal(line('abc-1').name, 'abc-1');
   for (const read of [() => readEvents(store), () => (rebuildEvents(store), readEvents(store))]) {
     const last = read().at(-1)!;
     assert.equal(last.key, 'session:s1');

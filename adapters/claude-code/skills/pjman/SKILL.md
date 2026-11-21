@@ -161,9 +161,13 @@ working it.
    the change by itself: created with the change's branch when its first step starts, its body kept to the change's
    intent, done-when and accepted decisions, marked ready when the last step is done, closed when the change is done
    or dropped. Creating a Trail publishes the change's branch on origin: the command that did it prints
-   `entire: pushed <branch> to origin`, which you relay to the person. `pjman sync entire` starts no Trail by itself: it
-   names each branch that has none, and `pjman sync entire --start <change>` starts that one, once the person has said
-   so. `pjman context` shows it under Trail (phase, gates, open findings). Push the branch as the work lands,
+   `entire: pushed <branch> to origin`, which you relay to the person. **A change you work always has its Trail, and
+   starting it is never asked for:** the opt-in was the person's yes. A command run on the change starts it (a step
+   started, `pjman review <change> --run`); where the change you are working still has none, start it
+   yourself with `pjman sync entire --start <change>`, in the same turn. `pjman sync entire` alone starts none: it
+   names each branch that has none, for whoever works that change. Nor is the merge asked for: once the review has
+   ended with nothing holding it, `pjman merge <change>` follows, and only a gate a person passes on Entire waits.
+   `pjman context` shows it under Trail (phase, gates, open findings). Push the branch as the work lands,
    so the Trail shows it; never run `entire trail approve`, `entire login` or `entire enable`, which are the person's,
    and never merge past a gate. A line `entire: pending (…)` means Entire did not answer: the write stands, and
    `pjman sync entire` takes it up again.
@@ -191,8 +195,9 @@ working it.
    project opted in to Entire the findings go onto the Trail and hold its merge until resolved, and what is posted on
    the Trail (by Entire's own review, or a person) is read onto the change by each sync and by `pjman merge` before it
    merges: Entire lists a Trail's findings only while its branch is open. A round handed to Entire's review
-   (`pjman review <change> --run`) is closed only once what it posted was read: with no Trail the review is not run
-   and the command names what starts one, which is the person's to ask for; where the read fails the round stays open,
+   (`pjman review <change> --run`) is closed only once what it posted was read: with no Trail the command starts one
+   and says the branch was pushed, and only where one cannot be started (it says why) is the review not run; where
+   the read fails the round stays open,
    the review stays due, the command exits 1, and `pjman review <change> --reviewed` reads the Trail and closes it.
    Where Entire will never list it (the Trail closed or merged), hand the round to reviewers of your own (`--lens`),
    whose record takes the place of Entire's.

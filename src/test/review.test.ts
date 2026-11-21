@@ -226,7 +226,9 @@ test('opted in, each finding is filed onto the Trail, and settling one here sett
   const early = settleFinding(store, 'change:web/cart', 2, 'dismissed', 'covered by the pricing suite', {
     entire: { bin },
   });
-  assert.deepEqual(early.pending, ['change:web/cart has no Trail yet: its findings are filed once it has one']);
+  assert.deepEqual(early.pending, [
+    'change:web/cart has no Trail yet: its findings are filed once it has one (`pjman sync entire --start change:web/cart` starts it, without asking)',
+  ]);
   reconcileTrail(store, 'change:web/cart', { entire: { bin } });
   // the sync files what waits: the open one; the dismissed one was never on Entire and stays off it
   const s = syncEntire(store, { entire: { bin } });
@@ -653,13 +655,14 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   const data = () => loadStore(store).byKey.get(k)![0].data;
   const reviewers = () => calls().filter((c) => c[0] === 'review' && c.includes('--prompt')).length;
   assert.equal(reviewLoop(store, k).state, 'due');
-  // no Trail: the reviewers are not started, nothing is recorded, and what starts a Trail is said
+  // no Trail, and none can be started (the stand-in's one Trail is closed): the reviewers are not started, nothing
+  // is recorded, and what held the Trail is said, with nothing to ask anyone for (change:trail-without-asking)
   fs.writeFileSync(callsFile, '');
   const none = runReview(store, k, o);
   assert.equal(none.ran, false);
   assert.match(
     none.pending[0],
-    /^change:web\/coupon has no Trail yet: .* it was not run; the review is still due\. `pjman sync entire --start change:web\/coupon` starts the Trail \(it publishes coupon on origin/,
+    /^change:web\/coupon has no Trail yet and one could not be started \(Trail #1 on coupon is closed: .*\): .* it was not run; the review is still due\. .*`pjman sync entire --start change:web\/coupon`\); neither needs asking for$/,
   );
   assert.equal(reviewers(), 0);
   // the command says so by its status too: a review that did not run is not a review made
@@ -668,6 +671,21 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   assert.deepEqual(lensesAsked(data()), []);
   assert.deepEqual(roundsOf(data()), []);
   assert.equal(reviewLoop(store, k).state, 'due');
+  // a change not yet in work gets no Trail, and the review says that is why
+  g('branch', 'voucher');
+  change(store, 'voucher', {
+    name: 'Voucher',
+    gist: 'A voucher is taken once',
+    intent: 'A shopper uses a voucher once.',
+    doneWhen: 'A voucher used is refused the second time.',
+    project: 'project:web',
+    next: 'build it',
+  });
+  assert.match(
+    runReview(store, 'change:web/voucher', o).pending[0],
+    /^change:web\/voucher has no Trail yet and one could not be started \(work has not started on it \(status \w+\): a Trail starts with the first step \(pjman step change:web\/voucher start <n>\)\): .* it was not run$/,
+  );
+  assert.equal(reviewers(), 0);
   // a profile that keeps its verdict local posts nothing to read: not run either while the review is due
   fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  deep\n    output:     local');
   const local = runReview(store, k, o);
@@ -692,14 +710,22 @@ test('a round whose findings could not be read is not closed: with no Trail noth
     );
   assert.equal(reviewers(), 0);
   fs.writeFileSync(path.join(tmp, 'profile'), '');
-  // with its Trail, the reviewers run; Entire then does not list what they posted: the round stays open
+  // with no Trail on the branch, the review starts one itself and says the branch was pushed, then the reviewers
+  // run; Entire then does not list what they posted: the round stays open
   // (the stand-in holds one Trail, closed by the test before: it starts again with none, and numbers the next 2)
   fs.rmSync(stateFile);
   fs.writeFileSync(path.join(tmp, 'number'), '2');
-  assert.deepEqual(reconcileTrail(store, k, o)?.pending, []);
+  // (the start does not wait on the profile: a review that is not run for its profile has started the Trail)
+  fs.writeFileSync(path.join(tmp, 'profile'), 'Profiles:\n  deep\n    output:     local');
+  const begun = runReview(store, k, o);
+  assert.equal(begun.ran, false);
+  assert.match(begun.said.join('\n'), /^entire: change:web\/coupon created, readied · Trail #2 /m);
+  assert.match(begun.said.join('\n'), /^entire: pushed coupon to origin/m);
+  fs.writeFileSync(path.join(tmp, 'profile'), '');
   fs.writeFileSync(path.join(tmp, 'nolist'), '');
   const unread = runReview(store, k, o);
   assert.equal(unread.ran, true);
+  assert.doesNotMatch(unread.said.join('\n'), /created/);
   assert.equal(reviewers(), 1);
   assert.equal(unread.round, undefined);
   assert.equal(unread.open, true);

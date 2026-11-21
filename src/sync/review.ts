@@ -37,13 +37,14 @@ import { newChange } from '../ops/new.js';
 import { step } from '../ops/step.js';
 import { live } from '../model/tree.js';
 import { MOVED_SINCE, observedBranches } from '../model/view.js';
+import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
 import { CliError, nowIso, usageError } from '../store/util.js';
 import { baseBranch, branchesOf } from './git.js';
-import { trailOf } from './trail.js';
+import { noTrailWhy, reconcileTrail, trailLines, trailOf } from './trail.js';
 
 const tryGit = (cwd: string, args: string[]): string => {
   try {
@@ -78,7 +79,10 @@ function branchIn(loaded: Loaded, rec: Rec, dir: string | undefined): { branch?:
   if (!dir) return {};
   const base = baseBranch(dir);
   const local = tryGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n');
-  return { base, branch: branchesOf(rec, observedBranches(loaded)).find((b) => b !== base && local.includes(b)) };
+  return {
+    base,
+    branch: branchesOf(rec, observedBranches(loaded), localHeads(dir)).find((b) => b !== base && local.includes(b)),
+  };
 }
 
 /** A round's head as shown: the full hash is what is stored and resolved. */
@@ -431,7 +435,9 @@ export function fileFindings(
   const trail = trailOf(loaded, rec);
   const branch = trail?.state?.branch ?? branchIn(loaded, rec, dir).branch;
   if (!trail?.state || !branch) {
-    out.pending.push(`${rec.key} has no Trail yet: its findings are filed once it has one`);
+    out.pending.push(
+      `${rec.key} has no Trail yet: its findings are filed once it has one${startHint(store, loaded, rec)}`,
+    );
     return out;
   }
   const slug = rec.key.replace(/^change:/, '');
@@ -561,7 +567,7 @@ export function readFindings(
     out.pending.push(
       trail.gone
         ? `${trail.gone}; the change keeps what was read before`
-        : `${rec.key} has no Trail yet: there are no findings on Entire to read`,
+        : `${rec.key} has no Trail yet: there are no findings on Entire to read${startHint(store, loaded, rec)}`,
     );
     return out;
   }
@@ -874,6 +880,14 @@ function bringPersonal(
 const ownWords = (here: string, differsFrom?: string): string =>
   `${here} is the worktree's own and was left as it is${differsFrom ? `; it differs from yours in ${differsFrom}` : ''}`;
 
+/** What starts the Trail of a change that has none; nothing for a change no Trail would be started for. */
+const startHint = (store: Store, loaded: Loaded, rec: Rec): string =>
+  noTrailWhy(store, loaded, rec, store.project) === null
+    ? ` (\`pjman sync entire --start ${rec.key}\` starts it, without asking)`
+    : '';
+const notStarted = (key: string, why: string): string =>
+  `entire: ${key} has no Trail and one could not be started (${why})`;
+
 /** Hand the review to Entire's own (decision pjman-review/who-reviews): several agents and a judge read the branch,
  *  with the brief only pjman holds added to their task, and post what they find onto the Trail; the findings are then
  *  read back onto the change. The review profile is the person's to set up (`entire review --configure`); with none,
@@ -921,6 +935,49 @@ export function runReview(
   if (!branch) {
     none.pending.push(`${rec.key} has no branch in this repository to review`);
     return none;
+  }
+  // the review is a command run on the change, so it starts the Trail the change lacks, as a step started does, and
+  // says the branch was pushed: nobody is asked first, whatever profile there is and wherever it sends its verdict
+  // (decisions entire-follow-ups/unasked-push, trail-without-asking/sweep-starts)
+  let readable = readableTrail(loaded, rec, dir);
+  let whyNot = '';
+  /** Why no Trail is ever started for this change, where that is the reason: nothing clears it, and --start refuses. */
+  let never: string | null = null;
+  if (!readable.branch && !readable.gone) {
+    let started: ReturnType<typeof reconcileTrail> = null;
+    let threw = '';
+    try {
+      started = reconcileTrail(store, rec.key, {
+        session: opts.session,
+        writer: opts.writer,
+        entire: opts.entire,
+        budget: 90_000,
+        whyNot: (reason) => (whyNot = reason),
+      });
+    } catch (e) {
+      // (a start that threw is not lost to a bare error: the review says so below. Entire is asked before the store
+      // is written, so the Trail may stand and the branch be on origin with nothing here to say it)
+      threw = `${(e as Error).message.split('\n')[0]}; if Entire was reached before that, the Trail may have been made and ${branch} pushed to origin`;
+      whyNot = threw;
+    }
+    const now = loadStore(store);
+    readable = readableTrail(now, changeOf(now, key), dir);
+    if (started) {
+      // (what Entire did not answer is said as it is where the Trail stands; where it does not, it is the reason)
+      const lines = trailLines(started);
+      const reasoned = !readable.branch && !readable.gone;
+      none.said.push(...(reasoned ? lines.filter((l) => !l.startsWith('entire: pending (')) : lines));
+      whyNot ||= started.pending.join('; ');
+    }
+    // (a start that threw with the Trail already bound: the review goes on, and the throw is still said)
+    if (threw && readable.branch)
+      none.said.push(`entire: the start of ${rec.key}'s Trail did not end cleanly (${threw})`);
+    if (!whyNot) {
+      never = noTrailWhy(store, loaded, rec, store.project);
+      whyNot = never ?? 'no Trail could be made for it';
+    }
+    // (said on every way out but the one whose own refusal carries it)
+    if (!readable.branch && !readable.gone) none.said.push(notStarted(rec.key, whyNot));
   }
   // where the branch is checked out, Entire reviews it there; else it is asked to check the branch out itself
   const checkout = checkoutOf(dir, branch);
@@ -1008,13 +1065,13 @@ export function runReview(
       `${where}: only findings posted to the Trail are read back (entire review --configure --set-output trail)`,
     );
   } else {
-    const readable = readableTrail(loaded, rec, dir);
     if (!readable.branch) {
+      none.said = none.said.filter((l) => l !== notStarted(rec.key, whyNot));
       const still = due ? '; the review is still due' : '';
       none.pending.push(
         readable.gone
           ? `${readable.gone}, so nothing its review found could be read and it was not run${still}${due ? `: ${ownRound}` : ''}`
-          : `${rec.key} has no Trail yet: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}. \`pjman sync entire --start ${rec.key}\` starts the Trail (it publishes ${branch} on origin, which is the person's to ask for)`,
+          : `${rec.key} has no Trail yet and one could not be started${whyNot ? ` (${whyNot})` : ''}: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}${never ? '' : `. Once what held it is cleared, run this again, or start the Trail alone (\`pjman sync entire --start ${rec.key}\`); neither needs asking for`}`,
       );
       return none;
     }

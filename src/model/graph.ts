@@ -9,7 +9,7 @@ import { memo, push, resolve, type Loaded, type Rec } from '../store/records.js'
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { parseAspectEffect } from './aspects.js';
-import { changeContext, lineOfRow, row, type ChangeContext, type Row } from './view.js';
+import { changeContext, lineOfRow, repoHeads, row, type ChangeContext, type Row } from './view.js';
 
 // --- edges ---------------------------------------------------------------------------------------
 
@@ -447,9 +447,10 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
       if (c && e.edge !== 'session' && e.edge !== 'writer') relate(c, e, e.edge);
     }
   }
+  const heads = repoHeads(loaded.store); // the repository is read once for every change in reach
   for (const [k, how] of reach) {
     try {
-      result.changes.push(changeContext(loaded.store, k, loaded));
+      result.changes.push(changeContext(loaded.store, k, loaded, heads));
       result.via[k] = how;
       const r = relation.get(k);
       if (r) result.relation[k] = r;

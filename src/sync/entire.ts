@@ -21,7 +21,7 @@ import { CliError, localDate, nowIso } from '../store/util.js';
 import { baseBranch, mergedBranch } from './git.js';
 import { note } from '../ops/note.js';
 import { fileFindings, readFindings } from './review.js';
-import { reconcileTrail, TRAIL_KIND, trailCandidates, trailOf, type TrailReconcile } from './trail.js';
+import { noTrailWhy, reconcileTrail, trailCandidates, trailOf, type TrailReconcile } from './trail.js';
 
 export const CHECKPOINT_KIND = 'entire-checkpoint';
 
@@ -197,21 +197,7 @@ function startChange(store: Store, loaded: Loaded, project: string, raw: string)
   const rec = res.status === 'ok' || res.status === 'alias' || res.status === 'invalid' ? res.rec : undefined;
   if (!rec) throw new CliError(`${name} is not a change: --start takes the change whose Trail to start`);
   if (rec.type !== 'change') throw new CliError(`${rec.key} is a ${rec.type}; --start takes a change`);
-  const status = typeof rec.data.status === 'string' ? rec.data.status : 'open';
-  const why = !rec.valid
-    ? 'its record does not validate (pjman validate says why)'
-    : rec.data.project !== project
-      ? `it belongs to ${typeof rec.data.project === 'string' ? rec.data.project : 'no project'}, not ${project}`
-      : rec.data.kind === 'milestone'
-        ? 'it is a milestone: its children have Trails, each its own'
-        : !store.config.source_kinds.includes(TRAIL_KIND)
-          ? `the store has no ${TRAIL_KIND} source kind: run pjman migrate, or, where the store lists its own kinds, add it to source_kinds in pjman.yaml`
-          : status === 'done' || status === 'dropped'
-            ? `the change has ended (status ${status})`
-            : // a Trail closed when last read is read again by the sweep (it may have been reopened on Entire)
-              status !== 'active' && status !== 'review' && !trailOf(loaded, rec)?.state
-              ? `work has not started on it (status ${status}): a Trail starts with the first step (pjman step ${rec.key} start <n>)`
-              : null;
+  const why = noTrailWhy(store, loaded, rec, project);
   if (why) throw new CliError(`${rec.key} gets no Trail from --start: ${why}`);
   return rec;
 }

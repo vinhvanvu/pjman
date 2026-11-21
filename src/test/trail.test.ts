@@ -384,7 +384,7 @@ test('the sweep starts no Trail: it names the branch and the command, and --star
   assert.equal(made(), 0, 'nothing created, so nothing pushed');
   assert.equal(trailOf(loadStore(store), rec('search')), undefined);
   assert.deepEqual(trailLines(swept), [
-    'entire: change:web/search has no Trail: starting one pushes search to origin (pjman sync entire --start change:web/search)',
+    'entire: change:web/search has no Trail: whoever works it starts one without asking, which pushes search to origin (pjman sync entire --start change:web/search)',
   ]);
   const started = syncEntire(store, { entire: { bin }, start: 'change:web/search' }).trails.find(
     (t) => t.change === 'change:web/search',

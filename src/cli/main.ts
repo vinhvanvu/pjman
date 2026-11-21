@@ -15,7 +15,6 @@ import { start, stop } from './start.js';
 import { openPage, openUrl } from './open.js';
 import { openWindow } from './follow-window.js';
 import { withStoreLock } from '../store/lock.js';
-import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { buildIndex, query } from '../ops/indexdb.js';
 import { resetIndex } from '../store/store-index.js';
 import { loadStore, resolve, storeScope, unresolvedError } from '../store/records.js';
@@ -97,6 +96,10 @@ import {
   mapState,
   MOVED_SINCE,
   type MapState,
+  branchNote,
+  branchOf,
+  localBranchesFor,
+  observedBranches,
 } from '../model/view.js';
 import { describeMigration, formatMismatch, migrate, pendingMigration } from '../ops/migrate.js';
 import { doctor, formatFindings } from './doctor.js';
@@ -463,10 +466,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (v.json) json(map ? { ...r, map: map.prompt } : r);
       else {
         out(`created ${r.key} at ${r.path}${r.commit ? ` (committed ${r.commit})` : ''}`);
-        if (r.type === 'change')
-          out(
-            `branch: ${branchNameFor(r.key, readUserConfig().branch_prefix)} (recommended; worktree ${worktreeNameFor(r.key)})`,
-          );
+        if (r.type === 'change') {
+          // the line the context prints: a branch already cut for the slug is named, not recommended anew
+          const now = loadStore(store);
+          const rec = now.byKey.get(r.key)?.[0];
+          const b = rec && branchOf(rec, observedBranches(now), undefined, localBranchesFor(store, rec));
+          if (b) out(`branch: ${b.name}${branchNote(b)}`);
+        }
         if (map) out(`no product map: ${map.prompt}`);
         for (const n of r.notes) out(`note: ${n}`);
       }
