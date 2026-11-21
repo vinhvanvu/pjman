@@ -184,7 +184,7 @@ export function set(
         const seen = observedFrom(loaded, rec.key).filter((o) => o.to.startsWith('branch:'));
         const sid = (k: string) => k.slice('session:'.length);
         throw new CliError(
-          `'branch' cannot be set on a change: its branch line is read from the branch edges sessions observed on it, the newest first. A wrong one is taken back with \`pjman session unobserve <session> links ${rec.key} branch:<name>\`` +
+          `'branch' cannot be set on a change: its branch line is read from the branch edges sessions observed on it (one named for it first, else the newest that names no change). A wrong one is taken back with \`pjman session unobserve <session> links ${rec.key} branch:<name>\`` +
             (seen.length
               ? `\n${seen.map((o) => `  ${o.to}, observed by ${o.session} at ${o.at}: pjman session unobserve ${sid(o.session)} ${o.edge} ${rec.key} ${o.to}`).join('\n')}`
               : ` (no session has observed a branch on ${rec.key}; its line is the recommended name)`),

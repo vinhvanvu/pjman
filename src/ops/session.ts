@@ -479,7 +479,9 @@ export function sessionUnobserve(store: Store, id: string, edge: string, from: s
     if (fullKey(loaded, stored) === want.key) return true;
     if (!want.missing) return false;
     const [kind, slug] = [want.key.slice(0, want.key.indexOf(':') + 1), want.key.slice(want.key.indexOf(':') + 1)];
-    return !slug.includes('/') && stored.startsWith(kind) && stored.endsWith(`/${slug}`);
+    // only a record keyed under a product is named by its slug alone; a source key (branch:, file:) is matched whole
+    const scoped = ['change:', 'feature:', 'decision:'].includes(kind);
+    return scoped && !slug.includes('/') && stored.startsWith(kind) && stored.endsWith(`/${slug}`);
   };
   const [wantFrom, wantTo] = [end(from), end(to)];
   type Seen = { edge?: string; from?: string; to?: string; at?: string };
@@ -557,7 +559,12 @@ export function sessionObserve(
     };
     if (observed.some(held)) return { path: rec.path, commit: null, from: origin, added: false };
   }
-  observed.push({ edge, from: origin, to: target, at: at ?? nowIso() });
+  observed.push({
+    edge,
+    from: origin,
+    to: target,
+    at: at === undefined ? nowIso() : new Date(Date.parse(at)).toISOString(),
+  });
   const commit = save(
     store,
     rec,

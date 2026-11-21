@@ -118,7 +118,7 @@ working it.
    conversation moves to another change. Name the change as `change:<slug>` in your reply so the person can too. When
    the work is a change you did not create and the prompt did not name, bind it: `pjman session bind <session-id>
    change:<slug>` (the id is in the session-start context); one bound in error is backed out with `pjman session unbind`.
-   One edge observed in error (a branch or a pull request of another change, which makes the change's `branch:` line
+   One edge observed in error (a branch or a pull request that is not the change's, which can make its `branch:` line
    wrong) is taken back alone, the binding and every other edge kept: `pjman session unobserve <session-id> links
    change:<slug> branch:<name>` (`pjman show session:<id>` lists what it observed). Each session holding the
    edge takes its own back, and the command names the ones left and how to put the edge back.
