@@ -435,7 +435,9 @@ export function fileFindings(
   const trail = trailOf(loaded, rec);
   const branch = trail?.state?.branch ?? branchIn(loaded, rec, dir).branch;
   if (!trail?.state || !branch) {
-    out.pending.push(`${rec.key} has no Trail yet: its findings are filed once it has one${startHint(rec)}`);
+    out.pending.push(
+      `${rec.key} has no Trail yet: its findings are filed once it has one${startHint(store, loaded, rec)}`,
+    );
     return out;
   }
   const slug = rec.key.replace(/^change:/, '');
@@ -565,7 +567,7 @@ export function readFindings(
     out.pending.push(
       trail.gone
         ? `${trail.gone}; the change keeps what was read before`
-        : `${rec.key} has no Trail yet: there are no findings on Entire to read${startHint(rec)}`,
+        : `${rec.key} has no Trail yet: there are no findings on Entire to read${startHint(store, loaded, rec)}`,
     );
     return out;
   }
@@ -878,18 +880,18 @@ function bringPersonal(
 const ownWords = (here: string, differsFrom?: string): string =>
   `${here} is the worktree's own and was left as it is${differsFrom ? `; it differs from yours in ${differsFrom}` : ''}`;
 
-/** Hand the review to Entire's own (decision pjman-review/who-reviews): several agents and a judge read the branch,
- *  with the brief only pjman holds added to their task, and post what they find onto the Trail; the findings are then
- *  read back onto the change. The review profile is the person's to set up (`entire review --configure`); with none,
- *  nothing runs and the command to run is named. Long: the agents take minutes. */
-/** What starts the Trail of a change in work that has none; nothing for a change no Trail would be started for. */
-const startHint = (rec: Rec): string =>
-  rec.data.status === 'active' || rec.data.status === 'review'
+/** What starts the Trail of a change that has none; nothing for a change no Trail would be started for. */
+const startHint = (store: Store, loaded: Loaded, rec: Rec): string =>
+  noTrailWhy(store, loaded, rec, store.project) === null
     ? ` (\`pjman sync entire --start ${rec.key}\` starts it, without asking)`
     : '';
 const notStarted = (key: string, why: string): string =>
   `entire: ${key} has no Trail and one could not be started (${why})`;
 
+/** Hand the review to Entire's own (decision pjman-review/who-reviews): several agents and a judge read the branch,
+ *  with the brief only pjman holds added to their task, and post what they find onto the Trail; the findings are then
+ *  read back onto the change. The review profile is the person's to set up (`entire review --configure`); with none,
+ *  nothing runs and the command to run is named. Long: the agents take minutes. */
 export function runReview(
   store: Store,
   key: string,
@@ -939,8 +941,11 @@ export function runReview(
   // (decisions entire-follow-ups/unasked-push, trail-without-asking/sweep-starts)
   let readable = readableTrail(loaded, rec, dir);
   let whyNot = '';
+  /** Why no Trail is ever started for this change, where that is the reason: nothing clears it, and --start refuses. */
+  let never: string | null = null;
   if (!readable.branch && !readable.gone) {
     let started: ReturnType<typeof reconcileTrail> = null;
+    let threw = '';
     try {
       started = reconcileTrail(store, rec.key, {
         session: opts.session,
@@ -952,17 +957,25 @@ export function runReview(
     } catch (e) {
       // (a start that threw is not lost to a bare error: the review says so below. Entire is asked before the store
       // is written, so the Trail may stand and the branch be on origin with nothing here to say it)
-      whyNot = `${(e as Error).message.split('\n')[0]}; the Trail may have been made, and ${branch} pushed to origin, before that`;
+      threw = `${(e as Error).message.split('\n')[0]}; if Entire was reached before that, the Trail may have been made and ${branch} pushed to origin`;
+      whyNot = threw;
     }
     const now = loadStore(store);
     readable = readableTrail(now, changeOf(now, key), dir);
     if (started) {
       // (what Entire did not answer is said as it is where the Trail stands; where it does not, it is the reason)
       const lines = trailLines(started);
-      none.said.push(...(readable.branch ? lines : lines.filter((l) => !l.startsWith('entire: pending ('))));
+      const reasoned = !readable.branch && !readable.gone;
+      none.said.push(...(reasoned ? lines.filter((l) => !l.startsWith('entire: pending (')) : lines));
       whyNot ||= started.pending.join('; ');
     }
-    whyNot ||= noTrailWhy(store, loaded, rec, store.project) ?? 'no Trail could be made for it';
+    // (a start that threw with the Trail already bound: the review goes on, and the throw is still said)
+    if (threw && readable.branch)
+      none.said.push(`entire: the start of ${rec.key}'s Trail did not end cleanly (${threw})`);
+    if (!whyNot) {
+      never = noTrailWhy(store, loaded, rec, store.project);
+      whyNot = never ?? 'no Trail could be made for it';
+    }
     // (said on every way out but the one whose own refusal carries it)
     if (!readable.branch && !readable.gone) none.said.push(notStarted(rec.key, whyNot));
   }
@@ -1058,7 +1071,7 @@ export function runReview(
       none.pending.push(
         readable.gone
           ? `${readable.gone}, so nothing its review found could be read and it was not run${still}${due ? `: ${ownRound}` : ''}`
-          : `${rec.key} has no Trail yet and one could not be started${whyNot ? ` (${whyNot})` : ''}: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}. Once what held it is cleared, run this again, or start the Trail alone (\`pjman sync entire --start ${rec.key}\`); neither needs asking for`,
+          : `${rec.key} has no Trail yet and one could not be started${whyNot ? ` (${whyNot})` : ''}: Entire's review posts what it finds on the Trail, so nothing it found could be read and it was not run${still}${never ? '' : `. Once what held it is cleared, run this again, or start the Trail alone (\`pjman sync entire --start ${rec.key}\`); neither needs asking for`}`,
       );
       return none;
     }

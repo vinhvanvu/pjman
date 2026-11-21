@@ -683,7 +683,7 @@ test('a round whose findings could not be read is not closed: with no Trail noth
   });
   assert.match(
     runReview(store, 'change:web/voucher', o).pending[0],
-    /^change:web\/voucher has no Trail yet and one could not be started \(work has not started on it \(status \w+\): a Trail starts with the first step \(pjman step change:web\/voucher start <n>\)\): /,
+    /^change:web\/voucher has no Trail yet and one could not be started \(work has not started on it \(status \w+\): a Trail starts with the first step \(pjman step change:web\/voucher start <n>\)\): .* it was not run$/,
   );
   assert.equal(reviewers(), 0);
   // a profile that keeps its verdict local posts nothing to read: not run either while the review is due

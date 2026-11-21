@@ -188,8 +188,6 @@ export interface TrailReconcile {
   noted?: string;
 }
 
-/** Bring one change's Trail to where the change stands, and read it back. Nothing is done for a project that has not
- *  opted in, a milestone, or a change whose work has not started. */
 /** Why a change gets no Trail at all, or null where one may be started for it: said by whoever was asked to start
  *  one (`pjman sync entire --start`, a review that found none). */
 export function noTrailWhy(store: Store, loaded: Loaded, rec: Rec, project: string | undefined): string | null {
@@ -210,6 +208,8 @@ export function noTrailWhy(store: Store, loaded: Loaded, rec: Rec, project: stri
               : null;
 }
 
+/** Bring one change's Trail to where the change stands, and read it back. Nothing is done for a project that has not
+ *  opted in, a milestone, or a change whose work has not started. */
 export function reconcileTrail(
   store: Store,
   changeKey: string,
