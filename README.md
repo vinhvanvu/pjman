@@ -16,7 +16,7 @@ product           pantry            what you are building
          └─ session   2026-11-21    one agent run that worked on it
 ```
 
-Status is derived, not written by hand. A change's status follows its plan, and a capability is live once the change that adds it is done.
+Most state is derived from the records. A change becomes `planning` once its plan has a step and `active` once a step starts, and a capability is live once the change that adds it is done.
 
 The examples on this page follow one made-up product: `pantry`, a shopping list app.
 
@@ -79,7 +79,7 @@ pantry
 └─ stores            Sort a list by the aisles of your store
 ```
 
-Nothing is created until you accept it.
+Nothing is created until you accept it. A repository with no docs or code yet gets no proposal: its map grows as changes are filed.
 
 ### If you say no
 
@@ -94,7 +94,7 @@ you    let me save my shopping list as a PDF
 agent  filed change:list-as-pdf · changes feature:share-a-list · one change · later · no date
 ```
 
-Before it files anything, the agent does three things:
+For each request, the agent does three things:
 
 - **It checks for a duplicate.** If an open change already covers the request, it attaches yours to that change and files nothing new.
 - **It finds the place on the map.** The change names the most specific feature it adds, changes or removes.
@@ -106,7 +106,7 @@ This is the change in the store, trimmed to its main fields:
 ---
 name: List as PDF
 gist: A shopping list can be saved as a PDF
-status: open
+status: planning
 features:
   - feature:pantry/share-a-list
 plan:
@@ -145,12 +145,12 @@ Question: Which page size does the PDF use?
 Options:
 - a4: Always A4
 - letter: Always US Letter
-- by-locale (recommended): US Letter in the US and Canada, A4 everywhere else
+- by-locale (accepted): US Letter in the US and Canada, A4 everywhere else
 Why by-locale: A list printed at home should fit the paper in the printer.
 Accepted by-locale by person:ada on 2026-11-21: by locale, and let me change it later
 ```
 
-A session stops in one of three places: at a decision that waits on you, at a recorded blocker, or with every step done and the work committed for review. If the agent tries to stop anywhere else, the plugin sends it back once.
+A session that wrote code for the change stops where the record says it can: at a decision that waits on you, at a recorded blocker, at a status you set, or with every step done and the work committed for review. If the agent tries to stop anywhere else, the plugin sends it back once.
 
 ## Read the store
 
