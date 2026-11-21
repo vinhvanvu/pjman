@@ -71,7 +71,8 @@ export function mergeChange(
   if (already) return done('already', `${branch} is merged into ${already.on} (${already.how})`);
 
   // a finding of high severity, or one saying the done-when is not met, holds the merge while it stands (decision
-  // review-loop/stop-rule): here as on the Trail, whose gate knows severity alone
+  // review-loop/stop-rule): here as on the Trail, whose gate knows severity alone. Every other finding waits on the
+  // merge too until it is handled (decision review-fixes-in-place/where-findings-go): none is merged past unsaid
   const held = (): void => {
     const findings = findingsOf(live(loadStore(store), rec.key)?.data ?? {});
     const holding = findings.map((f, i) => (holdsMerge(f) ? formatFinding(i + 1, f) : '')).filter(Boolean);
@@ -84,6 +85,11 @@ export function mergeChange(
     const loop = reviewLoop(store, rec.key);
     if (loop.due && (loop.state === 'due' || loop.state === 'recheck'))
       throw new CliError(`not merged: ${formatLoop(loop)}`);
+    const open = findings.map((f, i) => (f.state === 'open' ? formatFinding(i + 1, f) : '')).filter(Boolean);
+    if (open.length)
+      throw new CliError(
+        `not merged: ${open.length} finding${open.length === 1 ? ' is' : 's are'} not handled on ${rec.key}\n${open.join('\n')}\nfix and resolve each on its branch (pjman review ${rec.key} --resolve <n> --note "…"), dismiss one that is not a fault (--dismiss <n> --note "…"), or, where the person says so in so many words, defer it (--defer <n> --note "…" --by person:<handle>)`,
+      );
   };
 
   if (entireOn(loaded, store.project)) {

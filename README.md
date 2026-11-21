@@ -166,7 +166,7 @@ pjman tree                        # the product map, with the state of each node
 
 ## Finish a change
 
-`pjman review change:list-as-pdf` prints what a reviewer judges the branch by: the change's intent, what done means, the decisions accepted on it, and its commits. `pjman merge change:list-as-pdf` lands the branch and sets the change done. It refuses while a finding stands that is of high severity or says the work is not done.
+`pjman review change:list-as-pdf` prints what a reviewer judges the branch by: the change's intent, what done means, the decisions accepted on it, and its commits. `pjman merge change:list-as-pdf` lands the branch and sets the change done. It refuses while any finding of the review is still open: each is fixed on the branch, dismissed with the reason, or deferred by a person first.
 
 ### With Entire (opt-in)
 

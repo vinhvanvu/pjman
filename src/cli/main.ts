@@ -312,6 +312,7 @@ function main(argv: string[]): number {
       (v.finding !== undefined ||
         !!v.resolve ||
         !!v.dismiss ||
+        !!v.defer ||
         !!v.reopen ||
         v.lens !== undefined ||
         !!v.reviewed ||
@@ -1117,11 +1118,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw usageError('usage: pjman review <change> [--finding "…" --severity high|medium|low]');
       const key = resolveArg(loadStore(store), pos[1], { kinds: ['change'] });
-      const settle = v.resolve ? 'resolved' : v.dismiss ? 'dismissed' : v.reopen ? 'open' : null;
+      const settle = v.resolve ? 'resolved' : v.dismiss ? 'dismissed' : v.defer ? 'deferred' : v.reopen ? 'open' : null;
       const acts = [v.run, v.read, v.finding !== undefined, !!settle, v.lens !== undefined, v.reviewed, v['follow-up']];
       if (acts.filter(Boolean).length > 1)
         throw usageError(
-          'one act per call: --finding, a settle (--resolve|--dismiss|--reopen <n>), --lens, --reviewed, --follow-up, --run or --read',
+          'one act per call: --finding, a settle (--resolve|--dismiss|--defer|--reopen <n>), --lens, --reviewed, --follow-up, --run or --read',
         );
       if (v.lens !== undefined) {
         out(handLens(store, key, v.lens, { session: v.session, writer: v.writer }, printed));
@@ -1129,7 +1130,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       }
       if (v.reviewed || v['follow-up']) {
         const o = { session: v.session, writer: v.writer };
-        const r = v.reviewed ? closeRound(store, key, o) : followUp(store, key, o);
+        const r = v.reviewed ? closeRound(store, key, o) : followUp(store, key, { ...o, by: v.by, note: v.note });
         if (v.json) json(r);
         else for (const line of roundLines(r, printed)) out(line);
         return 0;
@@ -1184,7 +1185,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
               },
               { session: v.session, writer: v.writer },
             )
-          : settleFinding(store, key, Number(pos[2]), settle!, v.note, { session: v.session, writer: v.writer });
+          : settleFinding(store, key, Number(pos[2]), settle!, v.note, {
+              session: v.session,
+              writer: v.writer,
+              by: v.by,
+            });
       if (v.json) json(r);
       else {
         const f = r.findings[r.n! - 1];

@@ -2,9 +2,10 @@
 // (decision review-loop/setting): `ext.review.mode` is off, request (the default: pjman review only when asked) or auto
 // (a change reaching review is reviewed without being asked). The loop has an end by rule (decision
 // review-loop/stop-rule): one full review; the findings that hold the merge (high severity, or the done-when not met)
-// are fixed; one re-review of the fix alone; then it ends and says why, and what does not hold the merge goes to one
-// follow-up change. A round is data on the change (`reviews`), as its findings are; where the loop stands is read from
-// the two, never stored.
+// are fixed; one re-review of the fix alone; then its rounds are over and it says why. What does not hold the merge is
+// the change's own all the same (decision review-fixes-in-place/where-findings-go): the review has ended only once
+// every finding is fixed, dismissed or deferred by a person, and nothing is moved to another change by itself. A round
+// is data on the change (`reviews`), as its findings are; where the loop stands is read from the two, never stored.
 import { findingsOf, holdsMerge, wouldHold, type Finding } from './findings.js';
 import { stepsOf } from './foundation.js';
 import type { Loaded } from '../store/records.js';
@@ -92,7 +93,8 @@ export function lensesAsked(data: Record<string, unknown>): Asked[] {
 
 /** Where the loop stands. `none`: nothing to review (not in review, or no branch). `due`: the full review has not been
  *  made. `fixing`: findings hold the merge. `recheck`: they were fixed, and the fix has not been re-reviewed.
- *  `closing`: the review is over but findings that do not hold the merge are still on the change. `ended`: over. */
+ *  `closing`: the rounds are over, and findings that do not hold the merge are still open on the change: each is
+ *  handled there (fixed, dismissed, deferred) before it has ended. `ended`: over. */
 export type LoopState = 'none' | 'due' | 'fixing' | 'recheck' | 'closing' | 'ended';
 
 export interface Loop {
@@ -105,7 +107,7 @@ export interface Loop {
   holding: number[];
   /** The findings held and since resolved: what the re-review reads. */
   fixed: number[];
-  /** The open findings that do not hold the merge: what goes to the follow-up change. */
+  /** The open findings that do not hold the merge: what is still to handle on the change once the rounds are over. */
   left: number[];
   /** The lenses of the round to close that no reviewer was handed yet. */
   missing: string[];
@@ -142,8 +144,22 @@ export function loopOf(
   const moved = steps.some((s) => (s.at ?? '') > last.at);
   if (!moved) return now;
   if (!opts.newWork) return { ...now, maybeAgain: true };
+  // what was committed to handle the pass's findings is the review's own end, not work it has yet to see: the branch
+  // is read from where it stood when the last of them was settled (decision review-fixes-in-place/where-findings-go),
+  // or the loop would be due again for its own fixes, with no end
+  // Only what was settled before the plan first moved again counts: a finding settled after that (a deferred one
+  // resolved once built, one reopened and resolved, one filed later) stands on work no review saw, and its head hides
+  // none of it
+  const firstMove = steps
+    .map((s) => s.at ?? '')
+    .filter((t) => t > last.at)
+    .toSorted()[0];
+  const handled = findingsOf(data)
+    .filter((f) => f.state !== 'open' && !!f.head && !!f.settled && f.settled > last.at && f.settled < firstMove)
+    .toSorted((a, b) => a.settled!.localeCompare(b.settled!))
+    .at(-1);
   // (a round closed with no head recorded is told from nothing: the repository says whether the branch holds work)
-  if (!opts.newWork(last.head)) return now;
+  if (!opts.newWork(handled?.head ?? last.head)) return now;
   // the plan is being worked, not at its end: the review comes when it is
   const atEnd = steps.every((s) => s.state === 'done' || s.state === 'dropped');
   return {
@@ -195,17 +211,19 @@ function loopOfPass(data: Record<string, unknown>, opts: { reviewable: boolean }
   }
   const n = holding.length;
   // (in this pass: one dismissed in an earlier pass says nothing of this one)
-  const dismissed = findings.some(
-    (f) => f.state === 'dismissed' && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at),
-  );
+  const settledAs = (state: Finding['state']): boolean =>
+    findings.some((f) => f.state === state && wouldHold(f) && !!f.settled && f.settled >= (began ?? full.at));
+  const dismissed = settledAs('dismissed');
+  // (deferred by a person, or moved to a follow-up change they asked for: not fixed, and said so)
+  const deferred = settledAs('deferred');
   const because = fix
     ? n
       ? `${n} finding${n === 1 ? ' still holds' : 's still hold'} the merge after the one re-review: ${n === 1 ? 'it is' : 'they are'} the person's to settle`
       : 'the fixes were re-reviewed and nothing holds the merge'
     : n
       ? `${n} finding${n === 1 ? ' holds' : 's hold'} the merge`
-      : dismissed
-        ? 'what held the merge was dismissed, the reason on each, so there is no fix to re-review'
+      : dismissed || deferred
+        ? `what held the merge was ${dismissed && deferred ? 'dismissed or deferred by a person' : dismissed ? 'dismissed' : 'deferred by a person'}, the reason on each, so there is no fix to re-review`
         : 'one full review left nothing that holds the merge';
   return { ...base, state: left.length ? 'closing' : 'ended', because };
 }
@@ -228,6 +246,7 @@ export function loopWords(l: Loop): string | undefined {
     case 'recheck':
       return 'the re-review of the fix is due';
     case 'closing':
+      return `the rounds are over (${l.because}); ${l.left.length} finding${l.left.length === 1 ? ' is' : 's are'} still to handle before the merge`;
     case 'ended':
       return `ended: ${l.because}`;
   }

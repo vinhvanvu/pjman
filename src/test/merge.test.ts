@@ -16,6 +16,7 @@ import { loadStore } from '../store/records.js';
 import { mergedInto, syncGit } from '../sync/git.js';
 import { mergeChange } from '../sync/merge.js';
 import { findingsOf } from '../model/findings.js';
+import { settleFinding } from '../sync/review.js';
 import { reconcileTrail } from '../sync/trail.js';
 import { change } from './shape.js';
 
@@ -223,23 +224,32 @@ test("the Trail's findings are read onto the change before the merge, since a me
     `case "$1 $2" in
   "trail show"|"trail update") echo '${trail}' ;;
   "trail ready") echo ready ;;
-  "trail finding") echo '{"counts":{"Open":1},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"open"}]}' ;;
+  "trail finding") if [ "$3" = dismiss ]; then touch ${path.join(tmp, 'late.dismissed')}; echo dismissed; elif [ -f ${path.join(tmp, 'late.dismissed')} ]; then echo '{"counts":{"Open":0},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"dismissed"}]}'; else echo '{"counts":{"Open":1},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"open"}]}'; fi ;;
   "trail merge") cd ${other} && git -c user.name=t -c user.email=t@example.com merge -q --no-ff origin/late -m "Merge pull request #10 from acme/late" && git push -q origin main && echo '{"merged":true}' ;;
 esac`,
   );
   assert.deepEqual(reconcileTrail(store, 'change:web/late', { entire: { bin } })!.pending, []);
   fs.rmSync(path.join(tmp, 'calls.log'));
-  const r = mergeChange(store, 'change:web/late', { entire: { bin } });
-  assert.equal(r.by, 'entire');
-  assert.deepEqual(r.notes, ['1 finding read from the Trail onto the change']);
+  // what was posted on the Trail is read first, and is the change's own to handle: the merge waits on it, whatever
+  // its severity (decision review-fixes-in-place/where-findings-go)
+  assert.throws(
+    () => mergeChange(store, 'change:web/late', { entire: { bin } }),
+    /not merged: 1 finding is not handled on change:web\/late\n1\. \[open\] low — a late finding[\s\S]*--defer <n>/,
+  );
   const log = fs.readFileSync(path.join(tmp, 'calls.log'), 'utf8').trim().split('\n');
   assert.ok(
-    log.findIndex((l) => l.startsWith('trail finding list')) < log.findIndex((l) => l.startsWith('trail merge')),
+    log.some((l) => l.startsWith('trail finding list')),
     'read first',
   );
+  assert.ok(!log.some((l) => l.startsWith('trail merge')), 'not merged past it');
   assert.deepEqual(
     findingsOf(loadStore(store).byKey.get('change:web/late')![0].data).map((f) => [f.text, f.by, f.entire]),
     [['a late finding', 'entire', 'L1']],
   );
+  assert.equal(statusOf('late'), 'review');
+  // handled, it no longer stands in the way
+  settleFinding(store, 'change:web/late', 1, 'dismissed', 'the comment is right as it reads', { entire: { bin } });
+  const r = mergeChange(store, 'change:web/late', { entire: { bin } });
+  assert.equal(r.by, 'entire');
   assert.equal(statusOf('late'), 'done');
 });
