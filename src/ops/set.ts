@@ -108,16 +108,25 @@ export function set(
   const changed: string[] = [];
   const env = envelope(opts);
   let marked: Marked | undefined;
+  // the decisions this write supersedes, over every pair; marked on disk only once all pairs are read, so a pair
+  // refused later leaves nothing behind
+  const toMark: (typeof rec)[] = [];
   const notes: string[] = [];
   const refOpts = { projectDir: store.projectDir, project: store.project };
   for (const pair of pairs) {
     const m = /^([a-z_][a-z0-9_.-]*?)([+-])?=([\s\S]*)$/.exec(pair);
     if (!m) throw usageError(`'${pair}' is not field=value, field+=item or field-=item`);
     const [, field, op, value] = m as unknown as [string, string, '+' | '-' | undefined, string];
-    if (op) {
+    // a decision's supersedes only adds (decision supersedes-add-refusal/plus-equals): += is the same write as =,
+    // taken by the supersedes branch below, and -= is refused for what is true of it
+    const adds = field === 'supersedes' && allowed.includes(field);
+    if (adds && op === '-')
+      throw new CliError(`supersedes-= is refused: supersedes only adds, and a superseded decision stays pointed at`);
+    if (adds && op === '+' && !value.trim()) throw usageError(`supersedes+= needs an item`);
+    if (op && !adds) {
       if (!allowed.includes(field) || !LISTS.has(field))
         throw usageError(
-          `${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f)).join(', ') || 'it has none'}); ${field}=… replaces`,
+          `${field}${op}= takes a list field of a ${rec.type} (${allowed.filter((f) => LISTS.has(f) || (op === '+' && f === 'supersedes')).join(', ') || 'it has none'}); ${field}=… replaces`,
         );
       const kind = fieldKind(rec.type, field);
       const items = value
@@ -175,7 +184,7 @@ export function set(
         const seen = observedFrom(loaded, rec.key).filter((o) => o.to.startsWith('branch:'));
         const sid = (k: string) => k.slice('session:'.length);
         throw new CliError(
-          `'branch' cannot be set on a change: its branch line is read from the branch edges sessions observed on it, the newest first. A wrong one is taken back with \`pjman session unobserve <session> links ${rec.key} branch:<name>\`` +
+          `'branch' cannot be set on a change: its branch line is read from the branch edges sessions observed on it (one named for it first, else the newest that names no change). A wrong one is taken back with \`pjman session unobserve <session> links ${rec.key} branch:<name>\`` +
             (seen.length
               ? `\n${seen.map((o) => `  ${o.to}, observed by ${o.session} at ${o.at}: pjman session unobserve ${sid(o.session)} ${o.edge} ${rec.key} ${o.to}`).join('\n')}`
               : ` (no session has observed a branch on ${rec.key}; its line is the recommended name)`),
@@ -209,8 +218,8 @@ export function set(
       const fresh = targets.filter((t) => !have.includes(t.key));
       if (fresh.length) {
         data.supersedes = [...have, ...fresh.map((t) => t.key)];
-        marked = markSuperseded(fresh, env.writer);
-        changed.push(field);
+        toMark.push(...fresh);
+        if (!changed.includes(field)) changed.push(field);
       }
       continue;
     }
@@ -272,6 +281,7 @@ export function set(
   const filed = promoted?.children ?? [];
   const wrote: string[] = [];
   try {
+    if (toMark.length) marked = markSuperseded(toMark, env.writer);
     for (const c of filed) {
       if (fs.existsSync(path.join(store.root, c.rel))) throw new CliError(`refused: ${c.rel} already exists`);
       writeFile(store, c.rel, c.text);

@@ -9,19 +9,27 @@
 //   forward  the branch's tip is on the base and a commit there names the change (a fast-forward)
 // A change in review whose branch is merged is set done: the merge was the person's act, wherever they made it.
 import type { Store } from '../store/config.js';
-import { baseBranch, mergedInto, tryGit, type MergedHow } from '../store/merged.js';
+import { baseBranch, localHeads, mergedInto, tryGit, type MergedHow } from '../store/merged.js';
 import { loadStore, type Rec } from '../store/records.js';
 import { CliError } from '../store/util.js';
-import { branchOf, observedBranches } from '../model/view.js';
+import { branchOf, observedBranches, ownBranches, type LocalBranch } from '../model/view.js';
 import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { set } from '../ops/set.js';
 
 export { baseBranch, baseRefs, mergedBranch, mergedInto, type Merged, type MergedHow } from '../store/merged.js';
 
-/** The branch names a change's work may be on, most likely first: the one a session was seen on, the recommended
- *  name, the worktree's. */
-export function branchesOf(rec: Rec, observed: ReturnType<typeof observedBranches>): string[] {
-  return [...new Set([branchOf(rec, observed).name, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])];
+/** The branch names a change's work may be on, most likely first: the one the views name (change:branch-line-own-branch),
+ *  then every branch among the repository's `local` ones named for the change, as localHeads lists them, so a branch
+ *  of its own is found where the views name one that is not in this repository; then the recommended name and the
+ *  worktree's. A branch a session was seen on that is named for another change is never among them. */
+export function branchesOf(
+  rec: Rec,
+  observed: ReturnType<typeof observedBranches>,
+  local: LocalBranch[] = [],
+): string[] {
+  const shown = branchOf(rec, observed, undefined, () => local).name;
+  const mine = ownBranches(observed.loaded, rec, local).map((l) => l.name);
+  return [...new Set([shown, ...mine, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])];
 }
 
 export interface GitSyncResult {
@@ -43,6 +51,7 @@ export function syncGit(store: Store, opts: { session?: string; write?: boolean 
   const base = baseBranch(dir);
   const result: GitSyncResult = { project, base, done: [], merged: [] };
   const observed = observedBranches(loaded);
+  const heads = localHeads(dir);
   const local = new Set(
     tryGit(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n').filter(Boolean),
   );
@@ -51,7 +60,7 @@ export function syncGit(store: Store, opts: { session?: string; write?: boolean 
     const status = rec.data.status;
     if (status !== 'review' && status !== 'done') continue;
     if (rec.data.kind === 'milestone') continue;
-    const branch = branchesOf(rec, observed).find((b) => b !== base && local.has(b));
+    const branch = branchesOf(rec, observed, heads).find((b) => b !== base && local.has(b));
     if (!branch) continue;
     const m = mergedInto(dir, branch, { base, named: `change:${rec.changeSlug}` });
     if (!m) continue;

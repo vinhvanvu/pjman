@@ -15,8 +15,8 @@ import { TRAIL_KIND } from '../entire/trail.js';
 import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { sections as parseSections } from '../store/frontmatter.js';
 import { foundationHash, foundationOf, stepIsOpen, stepsOf } from '../model/foundation.js';
-import { branchOf, observedBranches } from '../model/view.js';
-import { baseBranch, mergedInto } from '../store/merged.js';
+import { branchOf, observedBranches, ownBranches } from '../model/view.js';
+import { baseBranch, localHeads, mergedInto } from '../store/merged.js';
 import { render } from './write.js';
 
 /** The statuses that follow a plan by themselves (ops/lift): on a milestone they would follow a plan it has not. */
@@ -62,7 +62,12 @@ export function branchAt(
   try {
     const base = baseBranch(dir);
     const local = git(dir, ['for-each-ref', '--format=%(refname:short)', 'refs/heads']).split('\n');
-    const name = [...new Set([seen.name, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])].find(
+    // the branch the views name, then its own among the repository's branches by its name, before a name to look for
+    // (change:branch-line-own-branch; the order branchesOf in sync/git.ts gives)
+    const heads = localHeads(dir);
+    const shown = branchOf(rec, observedBranches(loaded), undefined, () => heads).name;
+    const mine = ownBranches(loaded, rec, heads).map((l) => l.name);
+    const name = [...new Set([shown, ...mine, branchNameFor(rec.key, undefined), worktreeNameFor(rec.key)])].find(
       (b) => b !== base && local.includes(b),
     );
     if (!name) return undefined;

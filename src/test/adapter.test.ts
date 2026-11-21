@@ -829,10 +829,13 @@ test('SessionStart names the worktrees whose change is done and whose branch is 
       { cwd: trees, env, encoding: 'utf8' },
     ),
   ) as { key: string; branch?: { name: string; worktree: string; observed: boolean } }[];
+  // the branch the harness cut is found by its name, with the worktree that holds it (change:branch-line-own-branch)
   assert.deepEqual(rows.find((r) => r.key === 'change:trees/old-thing')?.branch, {
-    name: 'old-thing',
+    name: 'worktree-old-thing',
     worktree: 'old-thing',
     observed: false,
+    exists: true,
+    checkedOut: true,
   });
   const ctx = context(hook('SessionStart', { cwd: trees, session_id: 'sess-trees', source: 'startup' }));
   const at = ctx.indexOf('Worktrees whose change is done and whose branch is merged');
