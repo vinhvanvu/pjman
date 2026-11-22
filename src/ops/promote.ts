@@ -107,7 +107,7 @@ export function promote(
   };
   // the work in progress goes on in the child it belongs to: the step in work, else the first still to do
   const carrier = open.find((s) => s.step.state === 'active') ?? open[0];
-  const trails = list(data.binds).filter((k) => k.startsWith(`${TRAIL_KIND}:`));
+  const trails = list(data.links).filter((k) => k.startsWith(`${TRAIL_KIND}:`));
   const created = today();
   const at = nowIso();
   const children: Promotion['children'] = [];
@@ -132,8 +132,7 @@ export function promote(
       status: 'open',
       project: data.project,
       parent: rec.key,
-      binds: takes && trails.length ? trails : undefined,
-      links: takes ? [`branch:${branch.name}`] : undefined,
+      links: takes ? [`branch:${branch.name}`, ...trails] : undefined,
       rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))),
       writer: env.writer,
       session: env.session,
@@ -157,9 +156,9 @@ export function promote(
   if (open.length) {
     data.plan = plan;
     if (trails.length && carrier && branch && branch.unmerged !== false) {
-      const rest = list(data.binds).filter((k) => !trails.includes(k));
-      if (rest.length) data.binds = rest;
-      else delete data.binds;
+      const rest = list(data.links).filter((k) => !trails.includes(k));
+      if (rest.length) data.links = rest;
+      else delete data.links;
     }
   }
   if (!opts.statusGiven && FOLLOWS_PLAN.has(String(data.status))) {

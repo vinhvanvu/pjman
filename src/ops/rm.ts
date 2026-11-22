@@ -27,7 +27,18 @@ export interface RmResult {
   commit: string | null;
 }
 
-const LISTS = ['binds', 'links', 'changes', 'features', 'aspects', 'depends_on', 'sequence', 'supersedes'];
+const LISTS = [
+  'binds',
+  'delivers',
+  'design',
+  'links',
+  'changes',
+  'features',
+  'aspects',
+  'depends_on',
+  'sequence',
+  'supersedes',
+];
 const SINGLE = ['parent', 'supersedes']; // supersedes is one key or a list; each branch handles its shape
 
 /** Drop `key` from the fields that may lose a reference. Returns the fields changed. */

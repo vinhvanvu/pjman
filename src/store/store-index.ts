@@ -27,7 +27,18 @@ import type * as NodeSqlite from 'node:sqlite';
 /** The fields a load reads from every record, kept apart so a load parses no record whole. */
 /** The fields of a record read across the whole store: a load's keys, and the checks one record's validation makes
  *  against every other (one binding per source, one holder per old key, one place per feature, a supersession). */
-export const HEAD_FIELDS = ['kind', 'key', 'aliases', 'binds', 'links', 'supersedes', 'status', 'feature'] as const;
+export const HEAD_FIELDS = [
+  'kind',
+  'key',
+  'aliases',
+  'binds',
+  'delivers',
+  'design',
+  'links',
+  'supersedes',
+  'status',
+  'feature',
+] as const;
 export type HeadField = (typeof HEAD_FIELDS)[number];
 export type Head = { valid: boolean } & Partial<Record<HeadField, unknown>>;
 

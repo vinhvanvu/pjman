@@ -28,12 +28,21 @@ import { sections as parseSections } from '../store/frontmatter.js';
 import { compareVersions, UNSTAMPED_VERSION } from '../store/version.js';
 import { noteReshaping } from '../store/store-index.js';
 import { missingSessionKinds, seedSessionKinds } from './session-kinds.js';
+import { canBePrimary, isPullRequest, ofRepo } from '../model/roles.js';
+import { repoOf } from '../model/refs.js';
 
 /** A move the store's format has made, with the pjman version that introduced it. In order: the first whose check says
  *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
  *  since they predate the stamp and a store from then carries no version; a move from here on checks the stamp
  *  (`compareVersions(storeVersion(store), since) < 0`). */
-export type MigrationName = 'layout' | 'foundation' | 'kinds' | 'session-kinds' | 'entire-kinds' | 'code-kinds';
+export type MigrationName =
+  | 'layout'
+  | 'foundation'
+  | 'kinds'
+  | 'session-kinds'
+  | 'entire-kinds'
+  | 'code-kinds'
+  | 'source-roles';
 
 export interface Migration {
   name: MigrationName;
@@ -95,7 +104,123 @@ export const MIGRATIONS: readonly Migration[] = [
     run: (store, opts) => migrateEntireKinds(store, opts, CODE_KINDS, 'code-kinds', '0.9.0'),
     about: 'the files that implement a capability as a source kind (code)',
   },
+  {
+    name: 'source-roles',
+    since: '0.11.0',
+    pending: (store) =>
+      compareVersions(storeVersion(store), '0.11.0') < 0 && sourceRoleMoves(loadStore(store)).length > 0,
+    run: (store, opts) => migrateSourceRoles(store, opts),
+    about: 'each source by the part it plays: one primary bound, pull requests delivering, the rest linked',
+  },
 ];
+
+/** A record the source roles move rewrites, with its data as it will stand. */
+interface RoleMove {
+  rec: Rec;
+  data: Record<string, unknown>;
+}
+
+/** The records the source roles (change:source-edge-roles) rewrite: a change binds one primary (a tracker's ticket) and
+ *  links the rest (its Trail, checkpoints, files); a pull request of its project's repository that it bound or linked
+ *  delivers it, one of another repository stays linked. A session's observed link from a change to a pull request of
+ *  that change's repository delivers it, and the first ticket or pull request a session on no change was seen on binds
+ *  it. */
+export function sourceRoleMoves(loaded: ReturnType<typeof loadStore>): RoleMove[] {
+  const moves: RoleMove[] = [];
+  const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  for (const rec of loaded.records) {
+    if (!rec.valid) continue;
+    if (rec.type === 'change') {
+      const binds = strs(rec.data.binds);
+      const links = strs(rec.data.links);
+      const delivers = strs(rec.data.delivers);
+      // the primary is the change's ticket; a pull request it bound delivers it; the rest it bound is linked
+      const primary = binds.find((k) => canBePrimary(k));
+      const unbound = binds.filter((k) => k !== primary);
+      const repo = typeof rec.data.project === 'string' ? repoOf(loaded, rec.data.project) : undefined;
+      const boundPrs = unbound.filter((k) => isPullRequest(k) && ofRepo(k, repo));
+      // a pull request it links delivers it when it is of the project's own repository; one elsewhere is cited
+      const prs = links.filter((k) => isPullRequest(k) && ofRepo(k, repo));
+      if (!unbound.length && !prs.length) continue;
+      const nextLinks = [
+        ...links.filter((k) => !prs.includes(k)),
+        ...unbound.filter((k) => !boundPrs.includes(k) && !links.includes(k)),
+      ];
+      const nextDelivers = [...new Set([...delivers, ...boundPrs, ...prs])];
+      const data: Record<string, unknown> = { ...rec.data };
+      if (primary) data.binds = [primary];
+      else delete data.binds;
+      if (nextDelivers.length) data.delivers = nextDelivers;
+      if (nextLinks.length) data.links = nextLinks;
+      else delete data.links;
+      moves.push({ rec, data });
+    } else if (rec.type === 'session' && Array.isArray(rec.data.observed)) {
+      const onChange = strs(rec.data.changes).length > 0;
+      let bound = rec.data.observed.some(
+        (o) => (o as { edge?: unknown })?.edge === 'binds' && (o as { from?: unknown }).from === rec.key,
+      );
+      let moved = false;
+      const observed = rec.data.observed.map((o) => {
+        const e = o as Record<string, unknown>;
+        if (!e || e.edge !== 'links' || typeof e.from !== 'string' || typeof e.to !== 'string') return o;
+        const project = e.from.startsWith('change:') ? loaded.byKey.get(e.from)?.[0]?.data.project : undefined;
+        const repo = typeof project === 'string' ? repoOf(loaded, project) : undefined;
+        if (e.from.startsWith('change:') && isPullRequest(e.to) && ofRepo(e.to, repo)) {
+          moved = true;
+          return { ...e, edge: 'delivers' };
+        }
+        if (e.from === rec.key && !onChange && !bound && canBePrimary(e.to, 'session')) {
+          moved = bound = true;
+          return { ...e, edge: 'binds' };
+        }
+        return o;
+      });
+      if (moved) moves.push({ rec, data: { ...rec.data, observed } });
+    }
+  }
+  return moves;
+}
+
+/** The source roles: one commit, one event; `pjman undo <commit>` reverts it. */
+export function migrateSourceRoles(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+  const root = store.root;
+  if (ownsRepository(store) && git(root, ['status', '--porcelain', '--', '.']))
+    throw new CliError('the store has uncommitted changes; commit or discard them first');
+  const moves = sourceRoleMoves(loadStore(store));
+  for (const m of moves) fs.writeFileSync(m.rec.abs, render(m.rec.type, m.data, m.rec.body));
+  const problems = validate(loadStore(store)).filter((p) => p.level === 'error');
+  if (problems.length) {
+    if (toplevel(root) !== null) {
+      git(root, ['reset', '-q', '--hard', 'HEAD']);
+      git(root, ['clean', '-qfd', '--', '.']);
+    }
+    throw new CliError(
+      `refused: the migrated store would not validate; nothing was written\n${formatProblems(problems)}`,
+    );
+  }
+  const env = envelope(opts);
+  const changes = moves.filter((m) => m.rec.type === 'change').length;
+  const sessions = moves.length - changes;
+  const commit = ownsRepository(store)
+    ? commitAll(root, `pjman: migrate sources to their roles (${changes} changes, ${sessions} sessions)`, env.session)
+    : null;
+  emit(
+    store,
+    [
+      {
+        op: 'migrated',
+        key: 'store',
+        type: 'store',
+        path: 'pjman.yaml',
+        fields: [`${changes} changes`, `${sessions} sessions`],
+        writer: env.writer,
+        session: env.session,
+      },
+    ],
+    commit,
+  );
+  return { kind: 'source-roles', since: '0.11.0', products: 0, moved: 0, rewritten: moves.length, changes, commit };
+}
 
 /** Source kinds the store's list lacks join it: Entire's (change:checkpoint-link), `entire-checkpoint` and
  *  `entire-trail`, so a project that opts in to Entire can link them; the code a capability is built from
@@ -188,7 +313,7 @@ export function migrate(store: Store, opts: { session?: string; writer?: string 
   const pending = pendingMigration(store);
   if (!pending) {
     throw new CliError(
-      `nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, the session kinds are records, Entire's source kinds are listed, and the store is in format ${storeVersion(store)}`,
+      `nothing to migrate: every record is keyed under its product, every change and decision is in its shape, every parent change is a milestone, the session kinds are records, Entire's source kinds are listed, each source plays its role, and the store is in format ${storeVersion(store)}`,
     );
   }
   if (pending === 'stamp') return stamp(store, opts);

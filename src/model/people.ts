@@ -240,8 +240,9 @@ export function pocsOf(loaded: Loaded, changeKey: string): Poc[] {
   };
   for (const n of nodes) for (const o of peopleOn(loaded, n)) take(o, n);
   for (const o of peopleOn(loaded, rec.key)) take(o, rec.key);
-  // the tickets and pull requests it binds: their assignee and author, through the accounts they name
-  for (const b of strings(rec.data.binds)) for (const o of peopleOn(loaded, b)) take(o, b);
+  // the ticket it binds and the pull requests that deliver it: their assignee and author, through the accounts they name
+  for (const b of [...strings(rec.data.binds), ...strings(rec.data.delivers)])
+    for (const o of peopleOn(loaded, b)) take(o, b);
   const rank = (t: string) => {
     const i = DEFAULT_STAKES.indexOf(t);
     return i < 0 ? DEFAULT_STAKES.length : i;

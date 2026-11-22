@@ -128,9 +128,12 @@ export function sourcesView(
   const standing = all.filter((f) => f.state === 'open').length;
   const files = ctx.sources.filter((s) => s.key.startsWith('file:'));
   const links = ctx.sources.filter((s) => !s.key.startsWith('file:'));
+  const primary = ctx.sources.find((s) => s.relation === 'binds');
+  const others = links.filter((s) => s !== primary);
   const sum = [
+    primary ? `index ${primary.key}` : '',
     ctx.branch ? `branch ${ctx.branch.name}` : '',
-    links.length ? plural(links.length, 'link') : '',
+    others.length ? plural(others.length, 'link') : '',
     standing ? plural(standing, 'open finding') : '',
     files.length ? plural(files.length, 'file') : 'no files yet',
   ]

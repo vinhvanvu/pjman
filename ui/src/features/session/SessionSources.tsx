@@ -5,7 +5,16 @@ import type { Lens, SessionFacts } from '@/data/contract';
 import { Label } from '@/components/chips/Chip';
 import { SourceChip } from '@/components/links/SourceChip';
 
-export function SessionSources({ sources, lens }: { sources: SessionFacts['sources']; lens: Lens }) {
+export function SessionSources({
+  sources,
+  primary,
+  lens,
+}: {
+  sources: SessionFacts['sources'];
+  /** The session's primary (change:source-edge-roles): its chip is marked as the session's index. */
+  primary?: string;
+  lens: Lens;
+}) {
   if (sources.length === 0) return null;
   return (
     <section className="flex flex-col gap-2">
@@ -13,6 +22,7 @@ export function SessionSources({ sources, lens }: { sources: SessionFacts['sourc
       <ul className="flex flex-wrap items-center gap-1.5">
         {sources.map((s) => (
           <li key={s.key} className="flex min-w-0 items-center gap-1.5">
+            {s.key === primary && <span className="text-meta text-ink-faint">index</span>}
             <SourceChip source={s} lens={lens} title={s.title} />
             {s.title && <span className="truncate text-meta text-ink-muted">{s.title}</span>}
           </li>

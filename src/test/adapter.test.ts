@@ -848,7 +848,7 @@ test("a session bound to one change and standing in another's worktree observes 
   assert.deepEqual(loadStore(g).byKey.get('session:sess-stack')![0].data.changes, ['change:stack/first-part']);
   assert.deepEqual(edges('sess-stack'), [
     'change:stack/second-part links branch:TICK-2/second-part',
-    'change:stack/second-part links github-pr:acme/app#22',
+    'change:stack/second-part delivers github-pr:acme/app#22',
   ]);
   const a = execFileSync(process.execPath, [BIN, 'context', 'change:first-part'], {
     cwd: stack,
@@ -868,7 +868,7 @@ test("a session bound to one change and standing in another's worktree observes 
   );
   assert.deepEqual(edges('sess-head'), [
     'change:stack/second-part links branch:TICK-2/second-part',
-    'change:stack/first-part links github-pr:acme/app#21',
+    'change:stack/first-part delivers github-pr:acme/app#21',
   ]);
 
   // a session resumed in b's worktree while bound to a: the start observes by the same rule, and writes nothing twice

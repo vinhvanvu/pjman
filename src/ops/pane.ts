@@ -27,6 +27,7 @@ import {
 } from '../model/view.js';
 import { nextStep, stepsOf } from '../model/foundation.js';
 import { ownSources } from './session-kinds.js';
+import { primaryOf } from '../model/roles.js';
 import { urlOf } from '../model/refs.js';
 
 export interface ViewOpts extends GetOpts {
@@ -78,6 +79,9 @@ export interface SessionFacts {
   /** The sources it read on its own, with no change bound (decision unbound-sessions/sources): the branch, the PR,
    *  the tickets, oldest first, each with the title and URL the store has for it. */
   sources: SessionSource[];
+  /** Its primary (change:source-edge-roles): its change's ticket when it is on one change, else the ticket or pull
+   *  request it was first seen on with no change bound; absent when there is none. */
+  primary?: string;
   /** Where it runs, when a host holds it: the host's name and version, and whether the adapter validated that version. */
   host?: SessionHostFacts;
   /** When the person last prompted it, while the dashboard that heard it runs; absent before the first prompt it heard. */
@@ -162,6 +166,7 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
     name: str(rec.data.name),
     kind,
     sources,
+    primary: primaryOf(loaded, rec) ?? undefined,
     host: hostFactsOf(rec.data, host),
     prompted: opts.prompted?.get(rec.key),
   };
@@ -187,7 +192,7 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
   const facts: string[] = [`**${c.change.status ?? '?'}**`];
   if (typeof d.project === 'string') facts.push(d.project);
   if (c.parent) facts.push(`part of \`${c.parent.key}\``);
-  for (const s of c.sources.filter((src) => src.relation === 'binds')) facts.push(`binds ${link(s.key, s.url)}`);
+  for (const s of c.sources.filter((src) => src.relation === 'binds')) facts.push(`index ${link(s.key, s.url)}`);
   out.push(facts.join(' · '));
   for (const l of readinessLines(c, 'change')) out.push(`\n> ${esc(l)}`);
   if (c.next) out.push(`\n> **next:** ${esc(nextLine(c.next))}`);
@@ -209,10 +214,12 @@ function changeDoc(c: ChangeContext, loaded: Loaded): string[] {
     out.push('\n### Children');
     for (const ch of c.children) out.push(`- \`${ch.key}\` **${ch.status ?? '?'}** — ${esc(lineOfRow(ch))}`);
   }
-  const links = c.sources.filter((s) => s.relation === 'links');
+  // each source but the primary (in the facts above), by the part it plays when that is more than a link
+  const links = c.sources.filter((s) => s.relation !== 'binds');
   if (links.length) {
     out.push('\n### Sources');
-    for (const s of links) out.push(`- ${link(s.key, s.url, s.record?.title)}`);
+    for (const s of links)
+      out.push(`- ${s.relation === 'links' ? '' : `${s.relation} `}${link(s.key, s.url, s.record?.title)}`);
   }
   if (c.observed.length) {
     out.push('\n### Files touched');
