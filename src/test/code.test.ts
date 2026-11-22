@@ -436,4 +436,37 @@ test('diffs fold oldest first: added then changed is added, added then deleted i
     ]).map((d) => `${d.status} ${d.from ?? ''}${d.from ? '→' : ''}${d.path}`),
     ['A a', 'M m', 'R x→z'],
   );
+  // renamed, deleted, then a new file at the renamed path: the original's deletion stands
+  assert.deepEqual(
+    foldDiffs([[{ status: 'R', path: 'b', from: 'a' }], [{ status: 'D', path: 'b' }], [{ status: 'A', path: 'b' }]])
+      .map((d) => `${d.status} ${d.path}`)
+      .toSorted(),
+    ['A b', 'D a'],
+  );
+});
+
+test("a link renamed into its capability's glob is counted there; links and the learned mark are one commit", () => {
+  write('src/scan/old-lens.ts');
+  commitAll('feat: an old lens');
+  codeLink(store, 'card-scan', ['src/scan/old-lens.ts'], asAgent);
+  change(store, 'lens-move', {
+    title: 'Lens move',
+    project: 'project:web',
+    features: ['changes feature:web/card-scan'],
+  });
+  const before = g('-C', store.root, 'rev-parse', 'HEAD');
+  const r = codeUpkeep(store, 'change:web/lens-move', {
+    diff: [{ status: 'R', path: 'src/scan/new-lens.ts', from: 'src/scan/old-lens.ts' }],
+  });
+  assert.equal(entriesAt('src/scan/old-lens.ts'), null);
+  assert.deepEqual(
+    entriesAt('src/scan/new-lens.ts')?.map((e) => [e.by, e.n]),
+    [['agent', 1]],
+    'moved and counted, though the glob covers it',
+  );
+  assert.equal(g('-C', store.root, 'rev-list', '--count', `${before}..HEAD`), '1', 'one commit');
+  assert.ok(r.commit);
+  undo(store, { commit: r.commit });
+  assert.equal(learnedOf(loadStore(store).byKey.get('change:web/lens-move')![0]), undefined, 'undo takes the mark too');
+  assert.equal(entriesAt('src/scan/old-lens.ts')?.[0].n, 0, 'and the links');
 });

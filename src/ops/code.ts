@@ -8,11 +8,11 @@
 // so `pjman undo` puts any of them back.
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Store } from '../store/config.js';
-import type { EventInput } from '../store/events.js';
+import { ownsRepository, type Store } from '../store/config.js';
+import { emit, type EventInput } from '../store/events.js';
 import { sourceFileSlug } from '../store/keys.js';
 import { baseBranch, mergedInto, tryGit, type Merged } from '../store/merged.js';
-import { toplevel } from '../store/git.js';
+import { git, toplevel } from '../store/git.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
 import { CliError, localDate, nowIso } from '../store/util.js';
 import { set } from './set.js';
@@ -31,7 +31,7 @@ import {
   type Linker,
 } from '../model/code.js';
 import { effectsOf, live } from '../model/tree.js';
-import { envelope, finishWrite, render, settleIndex, writeFile } from './write.js';
+import { beginBatch, commitStore, endBatch, envelope, finishWrite, render, settleIndex, writeFile } from './write.js';
 import { formatProblems, validate } from '../model/validate.js';
 
 export interface CodeOpts {
@@ -326,7 +326,12 @@ export function foldDiffs(diffs: DiffEntry[][]): DiffEntry[] {
         else at.set(d.path, { status: 'R', path: d.path, from: was?.status === 'R' && was.from ? was.from : d.from });
       } else if (d.status === 'D') {
         if (had?.status === 'A') at.delete(d.path);
-        else at.set(d.path, { status: 'D', path: had?.status === 'R' && had.from ? had.from : d.path });
+        else if (had?.status === 'R' && had.from) {
+          // renamed, then deleted: the file that went is the one it started as, kept under that path so a later file
+          // made at the new path does not hide the deletion
+          at.delete(d.path);
+          at.set(had.from, { status: 'D', path: had.from });
+        } else at.set(d.path, { status: 'D', path: d.path });
       } else if (!had || had.status === 'D')
         at.set(d.path, { status: had?.status === 'D' ? 'M' : d.status, path: d.path });
     }
@@ -432,9 +437,12 @@ export function codeUpkeep(
       const covered = underGlob(f);
       const hit = (key: string) => touched.has(key) || (globs.has(key) && covered.has(key));
       const keys = new Set([...(linked.get(f) ?? []), ...touched]);
+      // linked to this capability as the plan now stands: a link a rename above moved is read at its new path
+      const linkedNow = (key: string) =>
+        (get(key) ?? []).some((e) => (live(loaded, e.feature)?.key ?? e.feature) === f);
       for (const key of keys) {
-        // a path a glob of this capability already covers is counted on the glob
-        if (!globs.has(key) && covered.has(key) && !(linked.get(f) ?? []).includes(key)) continue;
+        // a path a glob of this capability already covers is counted on the glob, unless it is linked on its own
+        if (!globs.has(key) && covered.has(key) && !linkedNow(key)) continue;
         // a link that moved with a rename above is read at its new key
         const entries = get(key);
         if (entries === null) continue;
@@ -454,14 +462,31 @@ export function codeUpkeep(
       }
     }
   }
-  const w = writePlan(store, loaded, plan, `pjman: code learned from ${rec.key}`, opts);
-  // the change keeps that it was learned from, so a second merge or learn of it changes nothing; pjman undo of this
-  // write lets it be learned again
-  set(store, rec.key, [`ext.code.learned=${nowIso()}`], {
-    session: opts.session,
-    because: 'its merge was read into the code links of the capabilities it names',
-  });
-  return { change: rec.key, capabilities: caps, ...w };
+  // the links and the change's mark that it was learned from land as one commit, so pjman undo takes back both (and the
+  // change can be learned again) or neither; a refusal of either puts the store back as it was
+  const env = envelope(opts);
+  const head = ownsRepository(store) ? git(store.root, ['rev-parse', 'HEAD']) : null;
+  beginBatch();
+  let w: CodeWrite;
+  try {
+    w = writePlan(store, loaded, plan, '', opts);
+    set(store, rec.key, [`ext.code.learned=${nowIso()}`], {
+      session: env.session,
+      because: 'its merge was read into the code links of the capabilities it names',
+    });
+  } catch (e) {
+    endBatch();
+    if (head) {
+      git(store.root, ['reset', '-q', '--hard', head]);
+      git(store.root, ['clean', '-qfd', '--', '.']);
+    }
+    settleIndex(store);
+    throw e;
+  }
+  const held = endBatch();
+  const commit = commitStore(store, `pjman: code learned from ${rec.key}`, env.session);
+  emit(store, held, commit);
+  return { change: rec.key, capabilities: caps, ...w, commit };
 }
 
 /** When a change was learned from by the code links, if it was. */
