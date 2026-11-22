@@ -56,11 +56,21 @@ export function ofRepo(key: string, repo: string | undefined): boolean {
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
-/** The role an observed edge takes when the tool is handed a plain link: a pull request linked from a change delivers
- *  it; a session on no change binds the first ticket or pull request it is seen on. Anything else is as it was handed. */
-export function observedRole(sessionRec: Rec, edge: string, from: string, to: string): string {
+/** The role an observed edge takes when the tool is handed a plain link: a pull request of the change's own repository
+ *  (`repo`) linked from a change delivers it, one of another repository is cited; where the project names no repository,
+ *  the pull request of the branch the session stood on (`onBranch`) delivers it. A session on no change binds the first
+ *  ticket or pull request it is seen on. Anything else is as it was handed. */
+export function observedRole(
+  sessionRec: Rec,
+  edge: string,
+  from: string,
+  to: string,
+  repo?: string,
+  onBranch = false,
+): string {
   if (edge !== 'links') return edge;
-  if (from.startsWith('change:') && isPullRequest(to)) return 'delivers';
+  if (from.startsWith('change:') && isPullRequest(to))
+    return ofRepo(to, repo) || (!repo && onBranch) ? 'delivers' : edge;
   if (from === sessionRec.key && canBePrimary(to, 'session')) {
     const bound = strings(sessionRec.data.changes).length > 0;
     const has = (Array.isArray(sessionRec.data.observed) ? sessionRec.data.observed : []).some(

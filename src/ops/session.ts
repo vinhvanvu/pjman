@@ -9,6 +9,7 @@ import { CliError, localDate, nowIso, notFound } from '../store/util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from './write.js';
 import { EDGES } from '../model/validate.js';
 import { observedRole, SOURCE_ROLES } from '../model/roles.js';
+import { repoOf } from '../model/refs.js';
 import { readEvents, type EventInput } from '../store/events.js';
 import { SLUG_RE } from '../store/keys.js';
 import { nameProblem } from '../model/foundation.js';
@@ -564,22 +565,25 @@ export function sessionObserve(
     if (observed.some(held)) return { path: rec.path, commit: null, from: origin, added: false };
   }
   // the part the source plays (change:source-edge-roles): a host hands a plain link, the tool names the role
-  const role = observedRole(rec, edge, origin, target);
-  // a source already held between the two, in whichever role, is not observed twice
+  const project = loaded.byKey.get(origin)?.[0]?.data.project;
+  const role = observedRole(
+    rec,
+    edge,
+    origin,
+    target,
+    typeof project === 'string' ? repoOf(loaded, project) : undefined,
+    !!branch,
+  );
+  // a source already held between the two in a role is not observed again; a role is not added beside a plain link to
+  // the same source (a plain link seen twice is kept twice, as unobserve takes every copy back)
   const roles = SOURCE_ROLES as readonly string[];
   if (
-    roles.includes(edge) &&
+    roles.includes(role) &&
     observed.some((o) => {
       const e = o as { edge?: string; from?: string; to?: string };
-      return roles.includes(e?.edge ?? '') && e.edge !== 'links' && e.from === origin && e.to === target;
-    })
-  )
-    return { path: rec.path, commit: null, from: origin, added: false };
-  if (
-    role !== edge &&
-    observed.some((o) => {
-      const e = o as { edge?: string; from?: string; to?: string };
-      return e?.edge === role && e.from === origin && e.to === target;
+      const held =
+        role === 'links' ? e?.edge !== 'links' && roles.includes(e?.edge ?? '') : roles.includes(e?.edge ?? '');
+      return held && e.from === origin && e.to === target;
     })
   )
     return { path: rec.path, commit: null, from: origin, added: false };

@@ -120,10 +120,11 @@ interface RoleMove {
   data: Record<string, unknown>;
 }
 
-/** The records the source roles (change:source-edge-roles) rewrite: a change binds one primary (a tracker's ticket or a
- *  pull request) and links the rest (its Trail, checkpoints, files), and a pull request it names delivers it; a session's
- *  observed link from a change to a pull request delivers it, and the first ticket or pull request a session on no
- *  change was seen on binds it. */
+/** The records the source roles (change:source-edge-roles) rewrite: a change binds one primary (a tracker's ticket) and
+ *  links the rest (its Trail, checkpoints, files); a pull request of its project's repository that it bound or linked
+ *  delivers it, one of another repository stays linked. A session's observed link from a change to a pull request of
+ *  that change's repository delivers it, and the first ticket or pull request a session on no change was seen on binds
+ *  it. */
 export function sourceRoleMoves(loaded: ReturnType<typeof loadStore>): RoleMove[] {
   const moves: RoleMove[] = [];
   const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -136,8 +137,8 @@ export function sourceRoleMoves(loaded: ReturnType<typeof loadStore>): RoleMove[
       // the primary is the change's ticket; a pull request it bound delivers it; the rest it bound is linked
       const primary = binds.find((k) => canBePrimary(k));
       const unbound = binds.filter((k) => k !== primary);
-      const boundPrs = unbound.filter(isPullRequest);
       const repo = typeof rec.data.project === 'string' ? repoOf(loaded, rec.data.project) : undefined;
+      const boundPrs = unbound.filter((k) => isPullRequest(k) && ofRepo(k, repo));
       // a pull request it links delivers it when it is of the project's own repository; one elsewhere is cited
       const prs = links.filter((k) => isPullRequest(k) && ofRepo(k, repo));
       if (!unbound.length && !prs.length) continue;
@@ -162,7 +163,9 @@ export function sourceRoleMoves(loaded: ReturnType<typeof loadStore>): RoleMove[
       const observed = rec.data.observed.map((o) => {
         const e = o as Record<string, unknown>;
         if (!e || e.edge !== 'links' || typeof e.from !== 'string' || typeof e.to !== 'string') return o;
-        if (e.from.startsWith('change:') && isPullRequest(e.to)) {
+        const project = e.from.startsWith('change:') ? loaded.byKey.get(e.from)?.[0]?.data.project : undefined;
+        const repo = typeof project === 'string' ? repoOf(loaded, project) : undefined;
+        if (e.from.startsWith('change:') && isPullRequest(e.to) && ofRepo(e.to, repo)) {
           moved = true;
           return { ...e, edge: 'delivers' };
         }

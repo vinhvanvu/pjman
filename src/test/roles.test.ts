@@ -90,16 +90,22 @@ test('an observed link names its role: a pull request on a change delivers it; a
   newRecord(store, 'session', 's1', { agent: 'agent:claude-code' });
   sessionObserve(store, 's1', 'links', 'change:web/cart', 'github-pr:acme/web#10');
   sessionObserve(store, 's1', 'links', 'change:web/cart', 'branch:cart');
+  // another repository's pull request, seen on the change, is cited
+  sessionObserve(store, 's1', 'links', 'change:web/cart', 'github-pr:other/lib#5');
   assert.deepEqual(observed('s1'), [
     'delivers change:web/cart github-pr:acme/web#10',
     'links change:web/cart branch:cart',
+    'links change:web/cart github-pr:other/lib#5',
   ]);
   // the same plain link again is the edge already held
   assert.equal(sessionObserve(store, 's1', 'links', 'change:web/cart', 'github-pr:acme/web#10').added, false);
-  assert.equal(observed('s1').length, 2);
+  assert.equal(observed('s1').length, 3);
   // taken back by the plain link the host hands
   sessionUnobserve(store, 's1', 'links', 'change:web/cart', 'github-pr:acme/web#10');
-  assert.deepEqual(observed('s1'), ['links change:web/cart branch:cart']);
+  assert.deepEqual(observed('s1'), [
+    'links change:web/cart branch:cart',
+    'links change:web/cart github-pr:other/lib#5',
+  ]);
 
   newRecord(store, 'session', 's2', { agent: 'agent:claude-code' });
   sessionObserve(store, 's2', 'links', 'session:s2', 'github-pr:acme/web#11');
@@ -124,7 +130,7 @@ test("the source-roles move: trails out of binds into links, the project's pull 
       .readFileSync(file, 'utf8')
       .replace(
         /\nproject: project:web\n/,
-        '\nproject: project:web\nbinds:\n  - github-issue:acme/web#20\n  - entire-trail:gh/acme/20\n  - github-pr:acme/web#22\nlinks:\n  - github-pr:acme/web#21\n  - github-pr:other/lib#5\n  - url:https://example.com/doc\n',
+        '\nproject: project:web\nbinds:\n  - github-issue:acme/web#20\n  - entire-trail:gh/acme/20\n  - github-pr:acme/web#22\n  - github-pr:other/lib#6\nlinks:\n  - github-pr:acme/web#21\n  - github-pr:other/lib#5\n  - url:https://example.com/doc\n',
       ),
   );
   newRecord(store, 'session', 's3', { agent: 'agent:claude-code' });
@@ -135,7 +141,7 @@ test("the source-roles move: trails out of binds into links, the project's pull 
       .readFileSync(sfile, 'utf8')
       .replace(
         /\n---\n/,
-        '\nobserved:\n  - edge: links\n    from: change:web/old\n    to: github-pr:acme/web#21\n    at: 2026-11-22T00:00:00.000Z\n---\n',
+        '\nobserved:\n  - edge: links\n    from: change:web/old\n    to: github-pr:acme/web#21\n    at: 2026-11-22T00:00:00.000Z\n  - edge: links\n    from: change:web/old\n    to: github-pr:other/lib#7\n    at: 2026-11-22T00:00:00.000Z\n---\n',
       ),
   );
   execFileSync('git', ['add', '-A'], { cwd: store.root });
@@ -150,14 +156,26 @@ test("the source-roles move: trails out of binds into links, the project's pull 
   const d = rec('change:web/old')!.data;
   assert.deepEqual(d.binds, ['github-issue:acme/web#20']);
   assert.deepEqual(d.delivers, ['github-pr:acme/web#22', 'github-pr:acme/web#21']);
-  assert.deepEqual(d.links, ['github-pr:other/lib#5', 'url:https://example.com/doc', 'entire-trail:gh/acme/20']);
-  assert.deepEqual(observed('s3'), ['delivers change:web/old github-pr:acme/web#21']);
+  assert.deepEqual(d.links, [
+    'github-pr:other/lib#5',
+    'url:https://example.com/doc',
+    'entire-trail:gh/acme/20',
+    'github-pr:other/lib#6',
+  ]);
+  assert.deepEqual(observed('s3'), [
+    'delivers change:web/old github-pr:acme/web#21',
+    'links change:web/old github-pr:other/lib#7',
+  ]);
   assert.deepEqual(errors(), []);
   undo(old, { commit: r.commit });
   assert.deepEqual(rec('change:web/old')!.data.binds, [
     'github-issue:acme/web#20',
     'entire-trail:gh/acme/20',
     'github-pr:acme/web#22',
+    'github-pr:other/lib#6',
   ]);
-  assert.deepEqual(observed('s3'), ['links change:web/old github-pr:acme/web#21']);
+  assert.deepEqual(observed('s3'), [
+    'links change:web/old github-pr:acme/web#21',
+    'links change:web/old github-pr:other/lib#7',
+  ]);
 });
