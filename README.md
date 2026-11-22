@@ -4,11 +4,12 @@ pjman is a command-line tool and a Claude Code plugin. It keeps a record of your
 
 The agent reads the store at the start of each session and writes to it through the `pjman` command, so a new session starts from what earlier sessions recorded. A local dashboard shows the same files. pjman needs no account.
 
-The records link to each other, so the store is a graph. A change knows the part of the map it changes, the decisions made on it, and the tickets and sessions behind it. A capability knows the files of code that implement it. The links also cross the tree drawn below: one file can implement several capabilities, and one session or ticket can belong to several changes. The store holds these records:
+The records link to each other, so the store is a graph. A change knows the part of the map it changes, the decisions made on it, and the tickets and sessions behind it. A capability knows the files of code that implement it. A person knows the accounts they hold, their stakes on the map and their parts in the work. The links also cross the tree drawn below: one file can implement several capabilities, and one session or ticket can belong to several changes. The store holds these records:
 
 ```text
 product           pantry               what you are building
 └─ feature        shopping-list        what it does for a person
+   ├─ person      ada                  tied to it as owner, a stake the nodes beneath inherit
    └─ capability  share-a-list         one behaviour of that feature
       ├─ source   src/share/pdf.ts     a file that implements it: a source of kind code
       └─ change   list-as-pdf          one unit of work: origin, intent, done when, plan
@@ -174,6 +175,34 @@ Each file is a source of kind `code`, linked to the capability it implements. Li
 - **By the merge.** When a change in review lands, its diff updates each capability the change names. `pjman merge` does this when it merges. A pull request merged on GitHub is found by `pjman sync git`, which runs after any agent turn that pulls, while the branch is still in your checkout. A renamed file's links follow it, and each touched file counts once more. A link no person made drops after five merged changes to its capability pass without touching it.
 
 The count after a file is how many merged changes to the capability touched it. `pjman validate` names any linked path that no longer exists. In a repository with history, `pjman code seed` gives each capability its first links from past commits that each name a single change and touch at most 15 files.
+
+## People
+
+A person is a record that holds their role, the accounts they use (`github-user:ada`, `linear-user:ada`, `email:ada@example.com`) and their ties. A tie is a typed edge from the person: its type is the relationship. A tie to a node of the map is a stake, and every node beneath inherits it until a nearer node names its own. A tie to anything else is a part.
+
+```text
+person:ada   Ada · designer
+├─ owner     feature:shopping-list   a stake on the map
+└─ author    url:…/share-spec        a part on a doc
+
+linear-user:ada                      her account, not a tie
+└─ assignee  ABC-1234                a synced ticket names the account, which leads to her
+```
+
+The agent keeps people from the conversation:
+
+- **A name.** When you mention someone, the agent looks for their record by an account, the handle, an alias or the full name, and creates one only when no one matches. A first name alone lists the people it could be, so two people are never merged on a name.
+- **A tie.** When you say who owns or wrote something ("Ada owns the shopping list"), the agent records the tie as said. A passing mention ties no one. `pjman tie person:ada owner feature:shopping-list` sets it yourself, and replaces what was said.
+- **An account.** A ticket synced from GitHub or Linear names its assignee and author. Each reaches its person through the account, and an account no one holds shows as itself.
+
+Two reads use them:
+
+```bash
+pjman people change:list-as-pdf   # who to tag on its pull request: stakes on what it changes, its ties, its tickets' people
+pjman people person:ada           # her dossier: stakes, open changes she is on, tickets, decisions, last seen
+```
+
+The dossier is read from the store each time it is asked for. It holds keys and titles, never the text of a message or a doc.
 
 ## Read the store
 
