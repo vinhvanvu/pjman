@@ -4,12 +4,12 @@ pjman is a command-line tool and a Claude Code plugin. It keeps a record of your
 
 The agent reads the store at the start of each session and writes to it through the `pjman` command, so a new session starts from what earlier sessions recorded. A local dashboard shows the same files. pjman needs no account.
 
-The records link to each other, so the store is a graph. A change knows the part of the map it changes, the decisions made on it, and the tickets and sessions behind it. A capability knows the files of code that implement it. A person knows the accounts they hold and the parts of the map they own. The links also cross the tree drawn below: one file can implement several capabilities, and one session or ticket can belong to several changes. The store holds these records:
+The records link to each other, so the store is a graph. A change knows the part of the map it changes, the decisions made on it, and the tickets and sessions behind it. A capability knows the files of code that implement it. A person knows the accounts they hold, their stakes on the map and their parts in the work. The links also cross the tree drawn below: one file can implement several capabilities, and one session or ticket can belong to several changes. The store holds these records:
 
 ```text
 product           pantry               what you are building
 └─ feature        shopping-list        what it does for a person
-   ├─ person      ada                  its owner: a stake every node beneath inherits
+   ├─ person      ada                  tied to it as owner, a stake the nodes beneath inherit
    └─ capability  share-a-list         one behaviour of that feature
       ├─ source   src/share/pdf.ts     a file that implements it: a source of kind code
       └─ change   list-as-pdf          one unit of work: origin, intent, done when, plan
@@ -178,13 +178,15 @@ The count after a file is how many merged changes to the capability touched it. 
 
 ## People
 
-A person is a record that holds their role, the accounts they use (`github-user:ada`, `email:ada@example.com`) and their ties. A tie is a typed edge from the person: its type is the relationship. A tie to a node of the map is a stake, and every node beneath inherits it until a nearer node names its own. A tie to anything else is a part.
+A person is a record that holds their role, the accounts they use (`github-user:ada`, `linear-user:ada`, `email:ada@example.com`) and their ties. A tie is a typed edge from the person: its type is the relationship. A tie to a node of the map is a stake, and every node beneath inherits it until a nearer node names its own. A tie to anything else is a part.
 
 ```text
 person:ada   Ada · designer
 ├─ owner     feature:shopping-list   a stake on the map
-├─ author    url:…/share-spec        a part on a doc
-└─ assignee  ABC-1234                a synced ticket that names her account
+└─ author    url:…/share-spec        a part on a doc
+
+linear-user:ada                      her account, not a tie
+└─ assignee  ABC-1234                a synced ticket names the account, which leads to her
 ```
 
 The agent keeps people from the conversation:
@@ -196,7 +198,7 @@ The agent keeps people from the conversation:
 Two reads use them:
 
 ```bash
-pjman people change:list-as-pdf   # who to tag on its pull request: the stakes on what it changes
+pjman people change:list-as-pdf   # who to tag on its pull request: stakes on what it changes, its ties, its tickets' people
 pjman people person:ada           # her dossier: stakes, open changes she is on, tickets, decisions, last seen
 ```
 
