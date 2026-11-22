@@ -139,14 +139,65 @@ export function projectDirs(store: Store, cwdRoot?: string | null): Map<string, 
 export function isGone(dirs: Map<string, string[]>, project: string, file: string): boolean | undefined {
   const list = dirs.get(project);
   if (!list?.length) return undefined;
-  const glob = /[*?[]/.test(file);
-  return !list.some((d) => (glob ? globExists(d, file) : fs.existsSync(path.join(d, file))));
+  return !list.some((d) => (isGlob(file) ? globMatches(d, file) : fs.existsSync(path.join(d, file))));
 }
 
-function globExists(dir: string, pattern: string): boolean {
-  const base = pattern.split('/').findIndex((s) => /[*?[]/.test(s));
-  const fixed = pattern.split('/').slice(0, base).join('/');
-  return fs.existsSync(path.join(dir, fixed));
+/** Whether a linked path is a glob: a capability that owns a folder outright may be linked by one. */
+export const isGlob = (p: string): boolean => /[*?[]/.test(p);
+
+/** A glob as a regular expression over repository-relative paths: `**` any depth (`**\/` none too), `*` and `?` within
+ *  one segment, `[…]` a class. */
+export function globRegex(pattern: string): RegExp {
+  let re = '';
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === '*' && pattern[i + 1] === '*') {
+      i++;
+      if (pattern[i + 1] === '/') {
+        i++;
+        re += '(?:.*/)?';
+      } else re += '.*';
+    } else if (c === '*') re += '[^/]*';
+    else if (c === '?') re += '[^/]';
+    else if (c === '[') {
+      const end = pattern.indexOf(']', i + 1);
+      if (end < 0) re += '\\[';
+      else {
+        re += `[${pattern
+          .slice(i + 1, end)
+          .replace(/^!/, '^')
+          .replace(/\\/g, '\\\\')}]`;
+        i = end;
+      }
+    } else re += c.replace(/[.+^${}()|\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/** Folders a glob never reaches into. */
+const UNWALKED = new Set(['.git', 'node_modules']);
+
+/** Whether a glob matches at least one file in a checkout: walked from the part before its first wildcard. */
+export function globMatches(dir: string, pattern: string): boolean {
+  const segs = pattern.split('/');
+  const first = segs.findIndex((s) => isGlob(s));
+  const fixed = segs.slice(0, first < 0 ? segs.length : first).join('/');
+  const re = globRegex(pattern);
+  const walk = (rel: string): boolean => {
+    let names: fs.Dirent[];
+    try {
+      names = fs.readdirSync(path.join(dir, rel), { withFileTypes: true });
+    } catch {
+      return false;
+    }
+    for (const d of names) {
+      if (UNWALKED.has(d.name)) continue;
+      const p = rel ? `${rel}/${d.name}` : d.name;
+      if (d.isDirectory() ? walk(p) : re.test(p)) return true;
+    }
+    return false;
+  };
+  return walk(fixed);
 }
 
 /** A person's link first (they said so), then an agent's (it went looking and found it), then what merged work

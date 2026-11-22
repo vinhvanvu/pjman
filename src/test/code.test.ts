@@ -18,7 +18,9 @@ import {
   codeSeed,
   codeUnlink,
   codeUpkeep,
+  foldDiffs,
   isNoise,
+  learnedOf,
   mergedDiff,
   parseNameStatus,
 } from '../ops/code.js';
@@ -26,7 +28,15 @@ import { pendingMigration } from '../ops/migrate.js';
 import { findStore, writeStoreConfig, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { mergedInto, syncGit } from '../sync/git.js';
-import { codeOf, formatChangeCode, implementsOf, nodeCode, QUIET_LIMIT } from '../model/code.js';
+import {
+  codeOf,
+  formatChangeCode,
+  globMatches,
+  globRegex,
+  implementsOf,
+  nodeCode,
+  QUIET_LIMIT,
+} from '../model/code.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { validate } from '../model/validate.js';
 import { get } from '../model/graph.js';
@@ -301,4 +311,129 @@ test('a store without the code kind waits for the migration that adds it', () =>
   writeStoreConfig(copy, cfg);
   const old = findStore(tmp, copy)!;
   assert.equal(pendingMigration(old), 'code-kinds');
+});
+
+test('unlink and mv read a path as link does: relative to where they run', () => {
+  const sub = { ...asAgent, cwd: path.join(dir, 'src/pay') };
+  codeLink(store, 'card-scan', ['flash.ts'], sub); // already linked by the seed: nothing to write
+  codeUnlink(store, 'card-scan', ['./flash.ts'], sub);
+  assert.equal(entriesAt('src/pay/flash.ts'), null);
+  codeLink(store, 'card-scan', ['flash.ts'], sub);
+  g('mv', 'src/pay/flash.ts', 'src/pay/torch.ts');
+  commitAll('refactor: flash is a torch');
+  codeMove(store, './flash.ts', './torch.ts', sub);
+  assert.equal(entriesAt('src/pay/flash.ts'), null);
+  assert.equal(entriesAt('src/pay/torch.ts')?.[0].feature, 'feature:web/card-scan');
+});
+
+test('a glob is linked only when it matches a file, said gone when it matches none, and counts what falls under it', () => {
+  assert.ok(globRegex('src/**/*.ts').test('src/pay/card.ts'));
+  assert.ok(globRegex('src/**/*.ts').test('src/a.ts'), '**/ is any depth, none included');
+  assert.ok(!globRegex('src/*.ts').test('src/pay/card.ts'), '* stays in one segment');
+  assert.ok(globMatches(dir, 'src/pay/*.ts'));
+  assert.ok(!globMatches(dir, 'src/pay/*.tsx'));
+  assert.ok(!globMatches(dir, '**/nowhere.ts'));
+  assert.throws(() => codeLink(store, 'card-scan', ['src/pay/*.tsx'], asAgent), /the glob matches no file/);
+  write('src/scan/lens.ts');
+  write('src/scan/focus.ts');
+  commitAll('feat: a scan folder');
+  codeLink(store, 'card-scan', ['src/scan/*.ts'], asAgent);
+  change(store, 'lens-fix', { title: 'Lens fix', project: 'project:web', features: ['changes feature:web/card-scan'] });
+  codeUpkeep(store, 'change:web/lens-fix', { diff: [{ status: 'M', path: 'src/scan/lens.ts' }] });
+  assert.deepEqual(
+    entriesAt('src/scan/*.ts')?.map((e) => [e.n, e.quiet]),
+    [[1, undefined]],
+    'the glob was touched: counted, not quieter',
+  );
+  assert.equal(entriesAt('src/scan/lens.ts'), null, 'a path under the glob is not linked again on its own');
+  // validate: a glob that matches nothing is gone
+  fs.rmSync(path.join(dir, 'src/scan'), { recursive: true });
+  const gone = validate(loadStore(store)).filter((p) => /src\/scan\/\*\.ts is in no checkout/.test(p.message));
+  assert.equal(gone.length, 1);
+  g('checkout', '-q', '--', 'src/scan');
+});
+
+test('a deleted file loses the links merged work and agents made, and keeps a pinned one to relink', () => {
+  write('src/pay/old.ts');
+  commitAll('feat: an old file');
+  codeLink(store, 'saved-cards', ['src/pay/old.ts'], asPerson);
+  codeLink(store, 'card-scan', ['src/pay/old.ts'], asAgent);
+  change(store, 'drop-old', {
+    title: 'Drop old',
+    project: 'project:web',
+    features: ['changes feature:web/saved-cards'],
+  });
+  codeUpkeep(store, 'change:web/drop-old', { diff: [{ status: 'D', path: 'src/pay/old.ts' }] });
+  assert.deepEqual(
+    entriesAt('src/pay/old.ts')?.map((e) => [e.feature, e.by]),
+    [['feature:web/saved-cards', 'person']],
+  );
+});
+
+test('a change is learned from once, by the mark it keeps, even when it touched none of its files', () => {
+  change(store, 'once', { title: 'Once', project: 'project:web', features: ['changes feature:web/saved-cards'] });
+  // a merge that touched none of its capabilities' files is still learned from once
+  const first = codeUpkeep(store, 'change:web/once', { diff: [{ status: 'M', path: 'README.md' }] });
+  assert.equal(first.skipped, undefined);
+  assert.ok(learnedOf(loadStore(store).byKey.get('change:web/once')![0]));
+  const second = codeUpkeep(store, 'change:web/once', { diff: [{ status: 'M', path: 'src/pay/card.ts' }] });
+  assert.equal(second.skipped, 'already learned from');
+});
+
+test("a merged branch's diff is read however it merged, and a fast-forward reads its own commits alone", () => {
+  const on = (subject: string, files: Record<string, string>) => {
+    for (const [p, t] of Object.entries(files)) write(p, t);
+    commitAll(subject);
+  };
+  const diffOf = (branch: string, slug: string) => {
+    const m = mergedInto(dir, branch, { named: `change:${slug}` });
+    assert.ok(m, `${branch} is merged`);
+    return mergedDiff(dir, branch, m, `change:${slug}`)
+      .map((d) => `${d.status} ${d.from ? `${d.from}→` : ''}${d.path}`)
+      .toSorted();
+  };
+  // squash
+  g('switch', '-q', '-c', 'sq');
+  on('feat: sq one (change:sq)', { 'src/sq/a.ts': 'a\n' });
+  on('feat: sq two (change:sq)', { 'src/sq/b.ts': 'b\n' });
+  g('switch', '-q', 'main');
+  on('chore: main moves', { 'src/other.ts': 'o\n' });
+  g('merge', '-q', '--squash', 'sq');
+  g('commit', '-q', '-m', 'Squashed sq (#1)');
+  assert.deepEqual(diffOf('sq', 'sq'), ['A src/sq/a.ts', 'A src/sq/b.ts']);
+  // rebase
+  g('switch', '-q', '-c', 'rb');
+  on('feat: rb (change:rb)', { 'src/rb.ts': 'r\n' });
+  g('switch', '-q', 'main');
+  on('chore: main moves again', { 'src/other.ts': 'o2\n' });
+  g('cherry-pick', 'main..rb');
+  assert.deepEqual(diffOf('rb', 'rb'), ['A src/rb.ts']);
+  // fast-forward, with a commit of change:ff-more and one of another change between its own
+  g('switch', '-q', '-c', 'ff');
+  on('feat: ff one (change:ff)', { 'src/ff/a.ts': 'a\n' });
+  on('feat: not it (change:ff-more)', { 'src/ff/more.ts': 'm\n' });
+  on('feat: another (change:else)', { 'src/else.ts': 'e\n' });
+  on('feat: ff two (change:ff)', { 'src/ff/a.ts': 'a2\n', 'src/ff/b.ts': 'b\n' });
+  g('switch', '-q', 'main');
+  g('merge', '-q', '--ff-only', 'ff');
+  assert.deepEqual(diffOf('ff', 'ff'), ['A src/ff/a.ts', 'A src/ff/b.ts']);
+});
+
+test('diffs fold oldest first: added then changed is added, added then deleted is nothing, renamed twice is one rename', () => {
+  assert.deepEqual(
+    foldDiffs([
+      [
+        { status: 'A', path: 'a' },
+        { status: 'R', path: 'y', from: 'x' },
+        { status: 'M', path: 'm' },
+      ],
+      [
+        { status: 'M', path: 'a' },
+        { status: 'R', path: 'z', from: 'y' },
+        { status: 'A', path: 'tmp' },
+      ],
+      [{ status: 'D', path: 'tmp' }],
+    ]).map((d) => `${d.status} ${d.from ?? ''}${d.from ? '→' : ''}${d.path}`),
+    ['A a', 'M m', 'R x→z'],
+  );
 });

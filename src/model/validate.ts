@@ -10,6 +10,7 @@ import {
   SEVERITIES,
 } from '../store/config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
+import { toplevel } from '../store/git.js';
 import { CODE_KIND, isGone, isLeaf, LINKERS, projectDirs, splitCodeKey } from './code.js';
 import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug, VERSION_RE } from '../store/keys.js';
 import {
@@ -222,7 +223,8 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           err(r, `implements: ${n} is a count`);
       if (x.last !== undefined) checkRef(r, 'implements', x.last, ['change']);
     }
-    dirs ??= projectDirs(store);
+    // the checkout the command runs in counts too: a file made on a worktree's branch is not gone before it merges
+    dirs ??= projectDirs(store, toplevel(process.cwd()));
     if (isGone(dirs, k.project, k.path))
       warn(r, `${k.path} is in no checkout of project:${k.project} here: relink it once found (pjman code mv)`);
   };

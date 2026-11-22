@@ -14,12 +14,16 @@ import { sourceFileSlug } from '../store/keys.js';
 import { baseBranch, mergedInto, tryGit, type Merged } from '../store/merged.js';
 import { toplevel } from '../store/git.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
-import { CliError, localDate } from '../store/util.js';
+import { CliError, localDate, nowIso } from '../store/util.js';
+import { set } from './set.js';
 import {
   CODE_KIND,
   codeKey,
   codeRecords,
+  globMatches,
+  globRegex,
   implementsOf,
+  isGlob,
   isLeaf,
   QUIET_LIMIT,
   splitCodeKey,
@@ -75,15 +79,35 @@ function repoPath(store: Store, cwd: string, raw: string): { project: string; pa
   if (keyed) return keyed;
   const project = projectSlugOf(store.project);
   if (!project) throw new CliError('code paths are kept per project: run it inside a registered project');
-  const glob = /[*?[]/.test(raw);
+  const glob = isGlob(raw);
+  const there = (root: string, rel: string) => (glob ? globMatches(root, rel) : fs.existsSync(path.join(root, rel)));
+  for (const c of candidates(store, cwd, raw))
+    if (roots(store, cwd).some((root) => there(root, c))) return { project, path: c };
+  throw new CliError(
+    `${raw}: ${glob ? 'the glob matches no file' : 'no such file'} in this repository (a path relative to here or to its root${glob ? '' : ', or a glob'})`,
+  );
+}
+
+/** The repository-relative paths a path given on the command line may mean, in order: relative to where the command
+ *  runs (when that is inside the repository), then relative to the repository's root. */
+function candidates(store: Store, cwd: string, raw: string): string[] {
+  const out: string[] = [];
   for (const root of roots(store, cwd)) {
-    const abs = path.resolve(cwd, raw);
-    const rel = path.relative(root, abs);
-    if (!rel.startsWith('..') && !path.isAbsolute(rel) && (glob || fs.existsSync(abs)))
-      return { project, path: rel.split(path.sep).join('/') };
-    if (glob || fs.existsSync(path.join(root, raw))) return { project, path: raw.replace(/^\.\//, '') };
+    const rel = path.relative(root, path.resolve(cwd, raw));
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) out.push(rel.split(path.sep).join('/'));
   }
-  throw new CliError(`${raw}: no such file in this repository (a path relative to here or to its root, or a glob)`);
+  out.push(raw.replace(/^\.\//, ''));
+  return [...new Set(out)];
+}
+
+/** The code key a path names for a write that takes a link off (it may be gone from the checkout): the first reading of
+ *  it that the store holds a record for, else its reading relative to here. */
+function linkedKey(store: Store, loaded: Loaded, cwd: string, raw: string): string {
+  if (splitCodeKey(raw)) return raw;
+  const project = projectSlugOf(store.project);
+  if (!project) throw new CliError('run it inside a registered project, or name the file by its code key');
+  const keys = candidates(store, cwd, raw).map((p) => codeKey(project, p));
+  return keys.find((k) => entriesOf(loaded, k).length) ?? keys[0];
 }
 
 /** The capability a link names: a feature, live, and a leaf (a node with children shows theirs, holding none). */
@@ -191,12 +215,9 @@ export function codeUnlink(store: Store, featureRaw: string, raws: string[], opt
   const loaded = loadStore(store);
   // a link may be taken off any node, a leaf or one that has grown children since
   const f = capabilityOf(loaded, featureRaw, false);
-  const project = projectSlugOf(store.project);
   const plan: Plan = new Map();
   for (const raw of raws) {
-    const keyed = splitCodeKey(raw);
-    const key = keyed ? raw : project ? codeKey(project, raw.replace(/^\.\//, '')) : null;
-    if (!key) throw new CliError('run it inside a registered project, or name the file by its code key');
+    const key = linkedKey(store, loaded, opts.cwd ?? process.cwd(), raw);
     const entries = entriesOf(loaded, key);
     const kept = entries.filter((e) => live(loaded, e.feature)?.key !== f.key);
     if (kept.length === entries.length) throw new CliError(`${key} is not linked to ${f.key}`);
@@ -227,9 +248,7 @@ function mergeEntries(a: Implements[], b: Implements[], loaded: Loaded): Impleme
 /** A file moved: its links follow it to the new path (joining any it already had there). */
 export function codeMove(store: Store, fromRaw: string, toRaw: string, opts: CodeOpts = {}): CodeWrite {
   const loaded = loadStore(store);
-  const project = projectSlugOf(store.project);
-  const fromKey = splitCodeKey(fromRaw) ? fromRaw : project ? codeKey(project, fromRaw.replace(/^\.\//, '')) : null;
-  if (!fromKey) throw new CliError('run it inside a registered project, or name the file by its code key');
+  const fromKey = linkedKey(store, loaded, opts.cwd ?? process.cwd(), fromRaw);
   const from = entriesOf(loaded, fromKey);
   if (!from.length) throw new CliError(`${fromKey} is not linked to any capability`);
   const to = repoPath(store, opts.cwd ?? process.cwd(), toRaw);
@@ -279,15 +298,39 @@ export function mergedDiff(dir: string, branch: string, m: Merged, named: string
     const fork = tryGit(dir, ['merge-base', m.on, tip]);
     if (fork) return parseNameStatus(tryGit(dir, ['diff', '-M', '--name-status', fork, tip]));
   }
-  // forward (and anything unread above): the commits on the base that name the change, oldest first
-  const shas = tryGit(dir, ['log', '--reverse', '--format=%H', '-E', `--grep=${named}`, m.on])
+  // forward (and anything unread above): the commits on the base that name the change and no longer one
+  // (change:foo is not change:foo-bar), each read on its own and folded, oldest first, so a commit of another change
+  // between them brings nothing
+  const exact = `${named.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9-]|$)`;
+  const shas = tryGit(dir, ['log', '--reverse', '--no-merges', '--format=%H', '-E', `--grep=${exact}`, m.on])
     .split('\n')
     .filter(Boolean);
-  if (!shas.length) return [];
-  const first = shas[0];
-  const last = shas[shas.length - 1];
-  const parent = tryGit(dir, ['rev-parse', '--verify', '--quiet', `${first}^`]);
-  return parent ? parseNameStatus(tryGit(dir, ['diff', '-M', '--name-status', parent, last])) : [];
+  return foldDiffs(
+    shas.map((sha) =>
+      parseNameStatus(tryGit(dir, ['diff-tree', '-r', '-M', '--root', '--no-commit-id', '--name-status', sha])),
+    ),
+  );
+}
+
+/** Commits' diffs, oldest first, as one: a file added then changed is added, added then deleted is nothing, renamed
+ *  twice is one rename from where it started. */
+export function foldDiffs(diffs: DiffEntry[][]): DiffEntry[] {
+  const at = new Map<string, DiffEntry>();
+  for (const diff of diffs)
+    for (const d of diff) {
+      const had = at.get(d.path);
+      if (d.status === 'R' && d.from) {
+        const was = at.get(d.from);
+        at.delete(d.from);
+        if (was?.status === 'A') at.set(d.path, { status: 'A', path: d.path });
+        else at.set(d.path, { status: 'R', path: d.path, from: was?.status === 'R' && was.from ? was.from : d.from });
+      } else if (d.status === 'D') {
+        if (had?.status === 'A') at.delete(d.path);
+        else at.set(d.path, { status: 'D', path: had?.status === 'R' && had.from ? had.from : d.path });
+      } else if (!had || had.status === 'D')
+        at.set(d.path, { status: had?.status === 'D' ? 'M' : d.status, path: d.path });
+    }
+  return [...at.values()];
 }
 
 export interface UpkeepResult extends CodeWrite {
@@ -337,13 +380,13 @@ export function codeUpkeep(
     if (!branch || !m) return empty('its branch is not merged');
     diff = mergedDiff(dir, branch, m, named);
   }
-  // learned from already: a link that names it as the last change touching it
-  if (codeRecords(loaded).some((r) => implementsOf(r).some((e) => e.last === rec.key)))
-    return empty('already learned from', caps);
+  // learned from once: the change says so (ext.code.learned), set by the write below
+  if (learnedOf(rec)) return empty('already learned from', caps);
   const plan: Plan = new Map();
   const get = (key: string): Implements[] | null =>
     plan.has(key) ? plan.get(key)! : entriesOf(loaded, key).map((e) => ({ ...e }));
-  // the repository moved: renamed files carry their links, deleted ones go, whatever capability they implement
+  // the repository moved: renamed files carry their links, whatever capability they implement; a deleted file's links
+  // go, but a person's, which stays to be relinked (validate says it is gone)
   for (const d of diff) {
     if (d.status === 'R' && d.from) {
       const fromKey = codeKey(project, d.from);
@@ -354,12 +397,28 @@ export function codeUpkeep(
       }
     } else if (d.status === 'D') {
       const key = codeKey(project, d.path);
-      if (get(key)?.length) plan.set(key, null);
+      const entries = get(key);
+      if (entries?.length) {
+        const kept = entries.filter((e) => e.by === 'person');
+        if (kept.length !== entries.length) plan.set(key, kept.length ? kept : null);
+      }
     }
   }
-  const touched = new Set(
-    diff.filter((d) => d.status !== 'D' && !isNoise(d.path)).map((d) => codeKey(project, d.path)),
-  );
+  const touchedPaths = diff.filter((d) => d.status !== 'D' && !isNoise(d.path)).map((d) => d.path);
+  const touched = new Set(touchedPaths.map((p) => codeKey(project, p)));
+  // a glob link is touched when any touched path falls under it, and the paths under it are not linked again one by one
+  const globs = new Map<string, RegExp>();
+  for (const r of codeRecords(loaded)) {
+    const k = splitCodeKey(r.key);
+    if (k && k.project === project && isGlob(k.path)) globs.set(r.key, globRegex(k.path));
+  }
+  const underGlob = (f: string): Set<string> => {
+    const out = new Set<string>();
+    for (const [gk, re] of globs)
+      if (entriesOf(loaded, gk).some((e) => (live(loaded, e.feature)?.key ?? e.feature) === f))
+        for (const p of touchedPaths) if (re.test(p)) out.add(gk).add(codeKey(project, p));
+    return out;
+  };
   if (caps.length) {
     // each capability: what was touched counts once more (or joins), what was not grows quieter, and a link no person
     // wrote that QUIET_LIMIT merged changes passed by drops
@@ -370,13 +429,17 @@ export function codeUpkeep(
         if (f && caps.includes(f)) linked.set(f, [...(linked.get(f) ?? []), r.key]);
       }
     for (const f of caps) {
+      const covered = underGlob(f);
+      const hit = (key: string) => touched.has(key) || (globs.has(key) && covered.has(key));
       const keys = new Set([...(linked.get(f) ?? []), ...touched]);
       for (const key of keys) {
+        // a path a glob of this capability already covers is counted on the glob
+        if (!globs.has(key) && covered.has(key) && !(linked.get(f) ?? []).includes(key)) continue;
         // a link that moved with a rename above is read at its new key
         const entries = get(key);
         if (entries === null) continue;
         const e = entries.find((x) => (live(loaded, x.feature)?.key ?? x.feature) === f);
-        if (touched.has(key)) {
+        if (hit(key)) {
           if (e) {
             e.n += 1;
             e.last = rec.key;
@@ -392,7 +455,21 @@ export function codeUpkeep(
     }
   }
   const w = writePlan(store, loaded, plan, `pjman: code learned from ${rec.key}`, opts);
+  // the change keeps that it was learned from, so a second merge or learn of it changes nothing; pjman undo of this
+  // write lets it be learned again
+  set(store, rec.key, [`ext.code.learned=${nowIso()}`], {
+    session: opts.session,
+    because: 'its merge was read into the code links of the capabilities it names',
+  });
   return { change: rec.key, capabilities: caps, ...w };
+}
+
+/** When a change was learned from by the code links, if it was. */
+export function learnedOf(rec: Rec): string | undefined {
+  const ext = rec.data.ext;
+  const code = ext && typeof ext === 'object' ? (ext as Record<string, unknown>).code : undefined;
+  const at = code && typeof code === 'object' ? (code as Record<string, unknown>).learned : undefined;
+  return typeof at === 'string' ? at : undefined;
 }
 
 /** The upkeep a merge runs, said in a line, or nothing when there was nothing to learn. Never throws: a merge stands
