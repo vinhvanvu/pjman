@@ -259,6 +259,10 @@ inherited by every node beneath it until a nearer one names its own; a **part** 
 - **Who to reference:** `pjman people <change>` (also under People in its context) names the stakes on the nodes it
   names and the people tied to it: the ones to tag on its pull request and in messages. `pjman people <node|source|person>`
   reads the rest; a synced ticket's assignee and author reach their person through the account.
+- **Before tagging or messaging someone:** `pjman people person:<handle>` is their dossier, read live from what the
+  store holds (nothing ingested): their stakes, the open changes they are on and how, the tickets naming their
+  accounts, the decisions they took part in, when they last wrote. Open one source by its key only when the message
+  needs it.
 
 ## The product tree
 

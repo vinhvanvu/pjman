@@ -14,7 +14,8 @@ import { newRecord } from '../ops/new.js';
 import { set } from '../ops/set.js';
 import { rm } from '../ops/rm.js';
 import { personIntake, tie } from '../ops/people.js';
-import { findPerson, peopleOn, personAt, personView, pocsOf } from '../model/people.js';
+import { decision } from '../ops/decision.js';
+import { findPerson, formatPerson, peopleOn, personAt, personView, pocsOf } from '../model/people.js';
 import { get } from '../model/graph.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { validate } from '../model/validate.js';
@@ -292,4 +293,69 @@ test("a refused intake puts back the role it added to the store's words", () => 
   assert.throws(() => personIntake(store, 'Nobody New', { role: 'lawyer', aliases: ['!!!'] }), /makes no alias/);
   assert.equal(fs.readFileSync(path.join(store.root, 'pjman.yaml'), 'utf8'), before);
   assert.equal(store.config.roles?.includes('lawyer') ?? false, false);
+});
+
+// --- the dossier (change:person-dossier): read live from keys and titles the store holds, nothing ingested ---------
+
+test("a person's dossier: the open changes they are on and how, never from a stake on the product root alone", () => {
+  const loaded = loadStore(store);
+  const park = personView(loaded, rec('person:sam-park'));
+  assert.deepEqual(
+    park.onNow.filter((c) => c.key === 'change:shop/round-tax').map((c) => c.as),
+    [['owner on feature:shop/tax']],
+  );
+  const priya = personView(loaded, rec('person:priya-rao'));
+  assert.deepEqual(
+    priya.onNow.find((c) => c.key === 'change:shop/round-tax')?.as,
+    ['approver on change:shop/round-tax'],
+    'her stake on product:shop alone puts her on no change',
+  );
+  assert.equal(
+    priya.onNow.some((c) => c.key === 'change:shop/bare'),
+    false,
+  );
+  const lee = personView(loaded, rec('person:sam-lee'));
+  assert.deepEqual(lee.onNow.find((c) => c.key === 'change:shop/bare')?.as, [
+    'assignee on github-issue:acme/web#3',
+    'author on github-issue:acme/web#3',
+  ]);
+  assert.deepEqual(
+    lee.through.map((a) => [a.type, a.title]),
+    [
+      ['assignee', 'Tax rounds down'],
+      ['author', 'Tax rounds down'],
+    ],
+  );
+});
+
+test('a dossier names the decisions they decided, rejected or commented on, and when they last wrote', () => {
+  decision(store, 'round-tax/rounding', {
+    name: 'Rounding',
+    gist: 'How tax rounds',
+    entries: [
+      { type: 'question', text: 'Up or to the nearest cent?' },
+      { type: 'option', id: 'up', text: 'Up' },
+      { type: 'option', id: 'nearest', text: 'Nearest' },
+      { type: 'comment', text: 'up reads safer', by: 'person:priya-rao' },
+    ],
+  });
+  decision(store, 'round-tax/display', {
+    name: 'Display',
+    gist: 'How tax shows',
+    entries: [
+      { type: 'question', text: 'Line or total?' },
+      { type: 'option', id: 'line', text: 'Per line' },
+      { type: 'accept', option: 'line', by: 'person:priya-rao', text: 'per line' },
+    ],
+  });
+  const v = personView(loadStore(store), rec('person:priya-rao'));
+  assert.deepEqual(v.decided.map((d) => [d.how, d.key]).toSorted(), [
+    ['commented', 'decision:shop/round-tax/rounding'],
+    ['decided', 'decision:shop/round-tax/display'],
+  ]);
+  assert.ok(v.lastSeen?.key.startsWith('decision:shop/round-tax/'), JSON.stringify(v.lastSeen));
+  const text = formatPerson(v).join('\n');
+  assert.match(text, /## On now\n\n- change:shop\/round-tax/);
+  assert.match(text, /## Decided\n\n- /);
+  assert.match(text, /last seen \d{4}-\d{2}-\d{2} on decision:shop\/round-tax\//);
 });
