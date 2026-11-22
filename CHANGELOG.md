@@ -2,6 +2,20 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.9.0 — 2026-11-22
+
+### Added
+
+- **Capability code paths**: A capability names the files that implement it, so a session reads its code without searching for it (change:capability-code-paths)
+
+### Changed
+
+- **README graph**: The README presents the store as a graph of linked records, the code map among them (change:readme-graph)
+
+### Store
+
+- The code-kinds move: the files that implement a capability as a source kind (code). After installing, run `pjman migrate` until it reports nothing to migrate (each run makes one move; the stamp comes last).
+
 ## 0.8.0 — 2026-11-21
 
 ### Changed
