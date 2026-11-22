@@ -44,6 +44,8 @@ const SETTABLE: Record<RecordType, string[]> = {
     'aspects',
     'target',
     'binds',
+    'delivers',
+    'design',
     'links',
     ...Object.keys(SECTION_FIELDS),
   ],
@@ -56,7 +58,17 @@ const SETTABLE: Record<RecordType, string[]> = {
   session: [],
   'session-kind': ['name', 'gist', 'links'],
 };
-const LISTS = new Set(['binds', 'links', 'features', 'aspects', 'levels', 'depends_on', 'sequence']);
+const LISTS = new Set([
+  'binds',
+  'delivers',
+  'design',
+  'links',
+  'features',
+  'aspects',
+  'levels',
+  'depends_on',
+  'sequence',
+]);
 const SECTIONS: Record<string, string> = { summary: 'Summary', ...SECTION_FIELDS };
 /** What was a field once, and where its job went. */
 const RETIRED: Record<string, string> = {
@@ -256,7 +268,7 @@ export function set(
     promoted = promote(store, loaded, rec, data, env, { statusGiven: changed.includes('status') });
     if (promoted.children.length) changed.push('plan');
     if (data.status !== status) changed.push('status');
-    if (list(data.binds).length !== list(rec.data.binds).length && !changed.includes('binds')) changed.push('binds');
+    if (list(data.links).length !== list(rec.data.links).length && !changed.includes('links')) changed.push('links');
     notes.push(...promoted.notes);
   }
   if (rec.type === 'change' || rec.type === 'decision') {

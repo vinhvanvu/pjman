@@ -120,6 +120,8 @@ function edgesOnce(loaded: Loaded): Edge[] {
           if (e) edge(e.effect, r.key, live(e.key, s), r);
         }
         for (const k of list(d.binds)) edge('binds', r.key, k, r);
+        for (const k of list(d.delivers)) edge('delivers', r.key, k, r);
+        for (const k of list(d.design)) edge('design', r.key, k, r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'decision':
@@ -232,7 +234,8 @@ export interface Neighbourhood {
   changes: ChangeContext[];
   /** change key → how it was reached (`binds`, `decision:x/y links`, `session:… changes`, `self`). */
   via: Record<string, string>;
-  /** For a source: change key → how the change relates to it, the strongest that holds (binds over links over observed). */
+  /** For a source: change key → how the change relates to it, the strongest that holds (binds, delivers, design, links,
+   *  observed). */
   relation: Record<string, Relation>;
   /** A project's changes, a session's children, an actor's sessions: rows, not contexts. */
   members: Row[];
@@ -245,16 +248,23 @@ export interface Neighbourhood {
 
 /** How a change relates to a source in its reach: it binds it, it (or one of its decisions) links it, or a session
  *  observed it linking it. */
-export type Relation = 'binds' | 'links' | 'observed';
+export type Relation = 'binds' | 'delivers' | 'design' | 'links' | 'observed';
 const RELATION_RANK: Record<Relation, number> = {
   observed: 1,
   links: 2,
-  binds: 3,
+  design: 3,
+  delivers: 4,
+  binds: 5,
 };
 
-/** The relation an edge between a change (or its decision) and a source makes. */
+/** The relation an edge between a change (or its decision) and a source makes: its role (change:source-edge-roles),
+ *  or observed when a session saw it. */
 function relationOf(e: Edge): Relation {
-  return e.observed ? 'observed' : e.edge === 'binds' ? 'binds' : 'links';
+  return e.observed
+    ? 'observed'
+    : e.edge === 'binds' || e.edge === 'delivers' || e.edge === 'design'
+      ? e.edge
+      : 'links';
 }
 
 export interface GetOpts {

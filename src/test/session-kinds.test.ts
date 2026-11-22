@@ -79,8 +79,8 @@ test("a PR observed on the session itself names it review by inference, after th
   assert.equal(sessionName(store, 's1', {}).commit, null);
   const n = get(loadStore(store), 'github-pr:acme/web#7');
   assert.ok(
-    n.in.some((e) => e.from === 'session:s1' && e.edge === 'links' && e.observed),
-    'the PR is referenced by the session that read it',
+    n.in.some((e) => e.from === 'session:s1' && e.edge === 'binds' && e.observed),
+    'the PR is the primary of the session that read it, on no change',
   );
   assert.deepEqual(
     ls(store, { type: 'session', kind: 'review' }).map((r) => r.key),

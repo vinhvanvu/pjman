@@ -63,6 +63,8 @@ export interface NewFlags {
   blockedOn?: string;
   notes?: string;
   binds?: string[];
+  delivers?: string[];
+  design?: string[];
   links?: string[];
   decidedBy?: string;
   decidedOn?: string;
@@ -488,6 +490,8 @@ export function newChange(store: Store, ident: string, flags: NewFlags): NewResu
     aspects: listOrNone(flags.aspects),
     target: flags.target,
     binds: flags.binds?.length ? flags.binds : undefined,
+    delivers: flags.delivers?.length ? flags.delivers : undefined,
+    design: flags.design?.length ? flags.design : undefined,
     links: links.length ? links : undefined,
     plan: flags.steps?.length ? stepsFrom(flags.steps) : undefined,
     rungs_from: foundationHash(foundationOf('change', {}, parseSections(body))),

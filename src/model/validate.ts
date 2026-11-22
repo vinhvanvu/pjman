@@ -1,3 +1,4 @@
+import { roleRefusal } from './roles.js';
 import { FINDING_KINDS, FINDING_SEVERITIES, FINDING_STATES } from './findings.js';
 import { REVIEW_MODES, REVIEW_ROUNDS } from './review.js';
 import {
@@ -106,7 +107,7 @@ const LIST_FIELDS: Record<RecordType, string[]> = {
   aspect: ['owners', 'links'],
   place: ['links'],
   project: ['owners', 'links'],
-  change: ['depends_on', 'features', 'aspects', 'owners', 'binds', 'links', 'aliases'],
+  change: ['depends_on', 'features', 'aspects', 'owners', 'binds', 'delivers', 'design', 'links', 'aliases'],
   decision: ['links', 'depends_on'],
   release: ['ships', 'links'],
   source: ['links'],
@@ -131,7 +132,9 @@ const KNOWN_SECTIONS: Partial<Record<RecordType, readonly string[]>> = {
 
 /** Edge name → [from kinds, to kinds]. 'source' stands for any source kind. */
 export const EDGES: Record<string, [string[], string[]]> = {
-  binds: [['change'], ['source']],
+  binds: [['change', 'session'], ['source']], // a session: the ticket or pull request it works on with no change bound
+  delivers: [['change'], ['source']],
+  design: [['change'], ['source']],
   links: [['product', 'feature', 'aspect', 'project', 'change', 'decision', 'source', 'actor', 'session'], ['source']], // a session: a source it read with no change bound (decision unbound-sessions/sources)
   supersedes: [['decision'], ['decision']],
   parent: [
@@ -623,6 +626,16 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           else checkRef(r, 'aspects', e.key, ['aspect']);
         }
         for (const k of listOf(d.binds)) checkRef(r, 'binds', k, ['source']);
+        for (const k of listOf(d.delivers)) checkRef(r, 'delivers', k, ['source']);
+        for (const k of listOf(d.design)) checkRef(r, 'design', k, ['source']);
+        // the part a source plays (change:source-edge-roles): one primary, a pull request that delivers
+        if (listOf(d.binds).length > 1)
+          err(r, `binds names the primary, one source; ${listOf(d.binds).slice(1).join(', ')} go in links`);
+        for (const role of ['binds', 'delivers'] as const)
+          for (const k of listOf(d[role])) {
+            const why = roleRefusal(role, k);
+            if (why) err(r, why);
+          }
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
         // the plan: steps as data, each with its text and a state
         if (d.plan !== undefined) {

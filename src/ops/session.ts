@@ -8,6 +8,7 @@ import { findSession, forget, fullKey, loadStore, resolve, unresolvedError, type
 import { CliError, localDate, nowIso, notFound } from '../store/util.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from './write.js';
 import { EDGES } from '../model/validate.js';
+import { observedRole, SOURCE_ROLES } from '../model/roles.js';
 import { readEvents, type EventInput } from '../store/events.js';
 import { SLUG_RE } from '../store/keys.js';
 import { nameProblem } from '../model/foundation.js';
@@ -489,7 +490,10 @@ export function sessionUnobserve(store: Store, id: string, edge: string, from: s
     (Array.isArray(r.data.observed) ? (r.data.observed as Seen[]) : []).filter(
       (o) => typeof o?.from === 'string' && typeof o.to === 'string',
     );
-  const hit = (o: Seen) => o.edge === edge && same(o.from!, wantFrom) && same(o.to!, wantTo);
+  // a plain link names whatever role the tool gave the edge when it was observed (change:source-edge-roles)
+  const kindOk = (e?: string) =>
+    e === edge || (edge === 'links' && (SOURCE_ROLES as readonly string[]).includes(e ?? ''));
+  const hit = (o: Seen) => kindOk(o.edge) && same(o.from!, wantFrom) && same(o.to!, wantTo);
   const observed = Array.isArray(rec.data.observed) ? (rec.data.observed as Seen[]) : [];
   const taken = entries(rec).filter(hit);
   const others = loaded.records
@@ -559,6 +563,17 @@ export function sessionObserve(
     };
     if (observed.some(held)) return { path: rec.path, commit: null, from: origin, added: false };
   }
+  // the part the source plays (change:source-edge-roles): a host hands a plain link, the tool names the role
+  const role = observedRole(rec, edge, origin, target);
+  if (
+    role !== edge &&
+    observed.some((o) => {
+      const e = o as { edge?: string; from?: string; to?: string };
+      return e?.edge === role && e.from === origin && e.to === target;
+    })
+  )
+    return { path: rec.path, commit: null, from: origin, added: false };
+  edge = role;
   observed.push({
     edge,
     from: origin,

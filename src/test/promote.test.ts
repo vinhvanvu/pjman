@@ -195,30 +195,30 @@ test('the Trail on the branch goes with the child that takes the branch', () => 
   store = findStore(project)!;
   change(store, 'trailed', { title: 'Trailed', summary: 't', steps: ['Trailed part in work', 'Trailed later part'] });
   step(store, 'change:app/trailed', 'start', 1, {});
-  set(store, 'change:app/trailed', ['binds+=entire-trail:gh/acme/7'], {});
+  set(store, 'change:app/trailed', ['links+=entire-trail:gh/acme/7'], {});
   branchWithWork('trailed');
   const r = set(store, 'change:app/trailed', ['kind=milestone'], {});
-  assert.deepEqual(r.changed, ['kind', 'plan', 'status', 'binds']);
-  assert.equal(rec('change:app/trailed')!.data.binds, undefined, 'a milestone has no Trail of its own');
+  assert.deepEqual(r.changed, ['kind', 'plan', 'status', 'links']);
+  assert.equal(rec('change:app/trailed')!.data.links, undefined, 'a milestone has no Trail of its own');
   const child = rec('change:app/trailed-part-in-work')!;
-  assert.deepEqual(child.data.binds, ['entire-trail:gh/acme/7']);
-  assert.deepEqual(child.data.links, ['branch:trailed']);
+  assert.equal(child.data.binds, undefined);
+  assert.deepEqual(child.data.links, ['branch:trailed', 'entire-trail:gh/acme/7']);
   assert.match(r.notes.join('\n'), /takes the branch trailed and its Trail/);
   assert.deepEqual(errors(), []);
   undo(store, { commit: r.commit! });
-  assert.deepEqual(rec('change:app/trailed')!.data.binds, ['entire-trail:gh/acme/7']);
+  assert.deepEqual(rec('change:app/trailed')!.data.links, ['entire-trail:gh/acme/7']);
 });
 
 test('a branch whose work is already merged is not carried: no child links it and the Trail stays', () => {
   change(store, 'landed', { title: 'Landed', summary: 'l', steps: ['Landed part', 'What is left'] });
   step(store, 'change:app/landed', 'done', 1, {});
-  set(store, 'change:app/landed', ['binds+=entire-trail:gh/acme/8'], {});
+  set(store, 'change:app/landed', ['links+=entire-trail:gh/acme/8'], {});
   branchWithWork('landed');
   git('merge', '-q', '--no-ff', 'landed', '-m', "Merge branch 'landed'");
   set(store, 'change:app/landed', ['kind=milestone'], {});
   assert.equal(rec('change:app/what-is-left')!.data.links, undefined);
   assert.equal(rec('change:app/what-is-left')!.data.binds, undefined);
-  assert.deepEqual(rec('change:app/landed')!.data.binds, ['entire-trail:gh/acme/8']);
+  assert.deepEqual(rec('change:app/landed')!.data.links, ['entire-trail:gh/acme/8']);
   assert.deepEqual(errors(), []);
 });
 

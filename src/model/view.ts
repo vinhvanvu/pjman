@@ -1,3 +1,4 @@
+import { SOURCE_ROLES, type SourceRole } from './roles.js';
 import { formatPocs, pocsOf, type Poc } from './people.js';
 import fs from 'node:fs';
 import type { Store } from '../store/config.js';
@@ -247,7 +248,7 @@ export function branchOf(
   const on = observed.on.get(rec.key);
   const onName = on?.to.slice('branch:'.length);
   if (on?.own) return seen(onName!);
-  const linked = [...list(rec.data.binds), ...list(rec.data.links)]
+  const linked = list(rec.data.links)
     .filter((k) => k.startsWith('branch:'))
     .map((k) => ({
       name: k.slice('branch:'.length),
@@ -586,12 +587,12 @@ export interface ChangeContext {
   migrated?: string;
   decisions: DecisionRow[];
   /** Each source once: a key both bound and linked is listed as bound. `url` is where it opens outside the store. */
-  /** Each source the change binds or links, once, bound before linked; `relation` names which (decision
-   *  pjman-22/relation-field). */
+  /** Each source the change reaches, once, by the part it plays (change:source-edge-roles): the primary first, then the
+   *  pull requests that deliver it, its design, its links; `relation` names which (decision pjman-22/relation-field). */
   sources: {
     key: string;
     record?: Row;
-    relation: 'binds' | 'links';
+    relation: SourceRole;
     url?: string;
   }[];
   /** What a review found on the change's branch (pjman review), each with whether it still stands. */
@@ -779,12 +780,12 @@ export function decisionsOf(loaded: Loaded, changeKey: string): Rec[] {
   return contextIndex(loaded).decisions.get(changeKey) ?? [];
 }
 
-/** The sources a record binds and links, once each, the bound ones first: the key, its record when the store holds
- *  one, and the URL it opens. */
+/** The sources a record reaches, once each, by role (the primary first): the key, its record when the store holds one,
+ *  and the URL it opens. */
 export function sourcesOf(loaded: Loaded, rec: Rec): ChangeContext['sources'] {
   const sources: ChangeContext['sources'] = [];
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  for (const relation of ['binds', 'links'] as const) {
+  for (const relation of SOURCE_ROLES) {
     for (const k of list(rec.data[relation])) {
       if (sources.some((s) => s.key === k)) continue;
       const r = resolve(loaded, k);
@@ -918,7 +919,7 @@ export function changeContext(
       return `${mode === 'auto' ? 'auto' : 'on request'} · ${loopWords(loop)}${since}`;
     })(),
     trail: (() => {
-      const bound = sources.find((x) => x.relation === 'binds' && x.key.startsWith(`${TRAIL_KIND}:`));
+      const bound = sources.find((x) => x.key.startsWith(`${TRAIL_KIND}:`));
       const state = trailStateOf(bound?.record?.data);
       return state ? `${trailLine(state)}${state.url ? ` (${state.url})` : ''}` : undefined;
     })(),
@@ -1006,12 +1007,22 @@ function keyDecisionLines(c: ChangeContext): string[] {
   return out;
 }
 
+/** The primary and the design in the head of a context (change:source-edge-roles): what the change is, as its tracker
+ *  names it, and what it is built to, opened before building. */
+function roleLines(c: ChangeContext): string {
+  const say = (s: ChangeContext['sources'][number]) =>
+    `${s.key}${s.record?.title ? ` — ${s.record.title}` : ''}${s.url && s.url !== s.key.slice('url:'.length) ? ` (${s.url})` : ''}`;
+  const primary = c.sources.find((s) => s.relation === 'binds');
+  const design = c.sources.filter((s) => s.relation === 'design');
+  return `${primary ? `\nindex: ${say(primary)}` : ''}${design.map((s) => `\ndesign: ${say(s)} (open it before building)`).join('')}`;
+}
+
 export function formatChangeContext(c: ChangeContext): string {
   const out: string[] = [];
   const d = c.change.data;
   out.push(heading('#', c.change));
   out.push(
-    `status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.review ? `\nreview: ${c.review}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${branchNote(c.branch)}` : ''}`,
+    `status: ${c.change.status ?? '?'}${d.kind === 'bug' ? `\nkind: bug${d.severity ? ` · severity ${String(d.severity)}` : ''}` : d.kind === 'milestone' ? '\nkind: milestone (its children are its plan)' : ''}${d.project ? `\nproject: ${String(d.project)}` : ''}${c.parent ? `\nparent: ${c.parent.key} — ${c.parent.name ?? c.parent.title ?? ''}` : ''}${d.target ? `\ntarget: ${String(d.target)}` : ''}${c.next ? `\nnext: ${nextLine(c.next)}` : ''}${c.review ? `\nreview: ${c.review}` : ''}${c.branch ? `\nbranch: ${c.branch.name}${branchNote(c.branch)}` : ''}${roleLines(c)}`,
   );
   out.push(...readinessLines(c, 'change'));
   // the foundation in order of depth; the plan sits after Scope, where the work's shape ends and its steps begin

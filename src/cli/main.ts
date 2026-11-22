@@ -484,6 +484,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         ships: typedAll(flags.ships, 'ships'),
         links: typedAll(flags.links, 'links'),
         binds: typedAll(flags.binds, 'binds'),
+        delivers: typedAll(flags.delivers, 'delivers'),
+        design: typedAll(flags.design, 'design'),
       });
       // an origin that is one reference to a source (a ticket's URL or id, a key) is linked as the key it resolves to
       const origin = flags.origin?.trim();
@@ -1568,6 +1570,10 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         else if (r.kind === 'entire-kinds')
           out(
             `migrated: ${plural(r.rewritten, 'source kind')} added (introduced in ${r.since}): Entire's checkpoints and Trails, linked only by a project that opted in${reverts}`,
+          );
+        else if (r.kind === 'source-roles')
+          out(
+            `migrated: ${plural(r.changes ?? 0, 'change')} and ${plural(r.rewritten - (r.changes ?? 0), 'session')} rewritten (introduced in ${r.since}): each change binds one primary and links the rest, a pull request delivers its change${reverts}`,
           );
         else if (r.kind === 'session-kinds')
           out(

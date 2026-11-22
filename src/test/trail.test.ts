@@ -219,7 +219,7 @@ test('off: a project that has not opted in gets no Trail, and nothing of Entire 
   assert.match(off.out, /has not opted in to Entire/);
 });
 
-test('work starting creates the Trail from the change and binds it', () => {
+test('work starting creates the Trail from the change and links it', () => {
   set(store, 'project:web', ['ext.entire.enabled=true'], {});
   const r = reconcileTrail(store, 'change:web/cart', { entire: { bin } })!;
   assert.deepEqual(r.acts, ['created']);
@@ -633,9 +633,9 @@ test('a create that made the Trail and never answered is not followed by a secon
   // (taken off in the write that bound the Trail, and said so: the event names both fields)
   assert.deepEqual(
     readEvents(store)
-      .filter((e) => e.key === 'change:web/half' && e.fields?.includes('binds'))
+      .filter((e) => e.key === 'change:web/half' && e.fields?.includes('links'))
       .map((e) => e.fields),
-    [['binds', 'ext']],
+    [['links', 'ext']],
   );
   // a Trail of the change that already holds another branch is not the half-made one: it is left alone
   g('branch', 'half-two');

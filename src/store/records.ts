@@ -88,6 +88,8 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
     'findings',
     'reviews',
     'binds',
+    'delivers',
+    'design',
     'links',
     'aliases',
     'rungs_from',

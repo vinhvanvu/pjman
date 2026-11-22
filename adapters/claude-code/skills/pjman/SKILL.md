@@ -133,7 +133,10 @@ working it.
    On every prompt the harness hands you the brief: what others changed on your bound change, its milestone, its
    decisions and its dependencies since your last brief, and other live sessions near it. Act on what it says.
 6. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
-   `url:https://…`); a record for a source is optional. The code a capability is built from is a source of its own
+   `url:https://…`); a record for a source is optional. The key says what a source is; the field says the part it
+   plays on the change: `binds` the one primary (the ticket the change is, shown as its `index:`), `delivers` the pull
+   request that ships it, `design` what it is built to (its context says to open it before building), `links` the
+   rest. The code a capability is built from is a source of its own
    (`code:<project>/<path>`): a change's context lists, under Code, the files of the capabilities it names. Read
    those before searching. When a search finds a file that implements one of them, link it then
    (`pjman code link <capability> <path>…`); when a listed path is gone or wrong, fix it then (`pjman code mv <old>
@@ -310,7 +313,7 @@ pjman new product|feature …              the product tree: a root, then nested
 pjman tree [<product>|<feature>]         the product by features: levels, derived status, backlog by project
 pjman activity <ref> [--days 14]         the events beneath a node and what they say: last moved, done, new, blocked, waiting
 pjman history <change|feature> [--node] [--decisions] [--sources] [--all] [--match <words>] [--dropped]   what came before on that part of the product, as an index by node: the changes on the node and on each parent, their decisions and sources when asked for
-pjman set <ref>... field=value | list+=item | list-=item   authored fields: name, gist, status, links, binds; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; several records in one commit
+pjman set <ref>... field=value | list+=item | list-=item   authored fields: name, gist, status, links, binds, delivers, design; the sections origin, intent, done-when, scope, open-questions, blocked-on, notes; several records in one commit
 pjman rm <ref>... [--detach]             remove records created by mistake; refused while anything refers to one
 pjman mv <kind>:<old> <kind>:<new>       rename a change, a feature, an aspect, a decision… (the old slug stays an alias); every reference follows
 pjman whoami                             who the person is: the configured actor and their record

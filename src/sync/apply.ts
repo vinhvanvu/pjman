@@ -153,6 +153,9 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
     const rel = existing?.path ?? path.join('products', product, 'changes', t.slug, 'change.md');
     if (existing) {
       const binds = Array.isArray(existing.data.binds) ? (existing.data.binds as string[]) : [];
+      const links = Array.isArray(existing.data.links) ? (existing.data.links as string[]) : [];
+      // a change binds one primary (change:source-edge-roles): a second ticket for it, found by its slug, is linked
+      const second = binds.length > 0 && !binds.includes(sourceKey);
       write(
         existing,
         'change',
@@ -161,10 +164,12 @@ export function applyTickets(store: Store, opts: ApplyOpts): SyncResult {
         {
           ...existing.data,
           kind: existing.data.kind ?? t.kind,
-          binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey],
+          ...(second
+            ? { links: links.includes(sourceKey) ? links : [...links, sourceKey] }
+            : { binds: binds.includes(sourceKey) ? binds : [...binds, sourceKey] }),
         },
         existing.body,
-        ['kind', 'binds'],
+        ['kind', second ? 'links' : 'binds'],
       );
     } else {
       // the gist is a draft from the ticket's title; the name, intent and done-when are written by whoever first works it

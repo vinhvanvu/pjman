@@ -3,6 +3,7 @@
 // nearest first. Reached for on demand; a change's context carries none of it (decision branch-sources/level-cut). It
 // answers as an index (aspect:index-then-getter): the counts of every kind, the changes a line each, the decisions and
 // the sources only when asked for, narrowed by words; the depth of a record is its getter's.
+import type { SourceRole } from './roles.js';
 import { readEvents } from '../store/events.js';
 import { CliError, plural } from '../store/util.js';
 import type { Loaded, Rec } from '../store/records.js';
@@ -25,7 +26,7 @@ const RUN_KINDS = new Set(['entire-checkpoint', 'entire-trail']);
 
 export interface HistorySource {
   key: string;
-  relation: 'binds' | 'links';
+  relation: SourceRole;
   title?: string;
   url?: string;
 }

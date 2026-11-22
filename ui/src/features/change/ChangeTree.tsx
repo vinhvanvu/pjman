@@ -621,6 +621,14 @@ function Part({ children }: { children: React.ReactNode }) {
 
 type Source = ChangeContext['sources'][number];
 
+/** Each source's row says the part it plays (change:source-edge-roles): the primary as the change's index. */
+const ROLE_LABEL: Record<Source['relation'], string> = {
+  binds: 'index',
+  delivers: 'delivers',
+  design: 'design',
+  links: 'link',
+};
+
 /** The sources as rows: the branch and whether a session was seen on it, the links, the files. Wide they are out in
  *  the panel; folded the head alone, opening in place. */
 export function Sources({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: Lens; mode: Mode; wide: boolean }) {
@@ -635,16 +643,11 @@ export function Sources({ ctx, lens, mode, wide }: { ctx: ChangeContext; lens: L
         </SourceRow>
       )}
       {v.links.map((s) => (
-        <SourceRow key={s.key} label="link">
+        <SourceRow key={s.key} label={ROLE_LABEL[s.relation]}>
           <SourceLink s={s} lens={lens} mode={mode} />
-          <span className="text-meta text-ink-faint">
-            ·{' '}
-            {s.key.startsWith('entire-trail:') && ctx.trail
-              ? trailWords(ctx.trail)
-              : s.relation === 'binds'
-                ? 'bound'
-                : 'linked'}
-          </span>
+          {s.key.startsWith('entire-trail:') && ctx.trail && (
+            <span className="text-meta text-ink-faint">· {trailWords(ctx.trail)}</span>
+          )}
         </SourceRow>
       ))}
       {v.findings.map((f, i) => (

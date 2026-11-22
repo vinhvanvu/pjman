@@ -32,9 +32,10 @@ const obj = (v: unknown): Record<string, unknown> | undefined =>
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
-/** The Trail a change binds: its source key and what was last read of it. */
+/** The Trail a change links (one change, one Trail; its kind says it is the Trail): its source key and what was last
+ *  read of it. */
 export function trailOf(loaded: Loaded, rec: Rec): { key: string; src?: Rec; state?: TrailState } | undefined {
-  const key = arr(rec.data.binds).find((k): k is string => typeof k === 'string' && k.startsWith(`${TRAIL_KIND}:`));
+  const key = arr(rec.data.links).find((k): k is string => typeof k === 'string' && k.startsWith(`${TRAIL_KIND}:`));
   if (!key) return undefined;
   const src = loaded.byKey.get(key)?.[0];
   const state = obj(obj(src?.data.ext)?.entire) as TrailState | undefined;
@@ -562,7 +563,7 @@ export function reconcileTrail(
   if (!bound) {
     // the change as it stands now: Entire was asked in between, and a write made meanwhile is kept
     const now = loadStore(store).byKey.get(changeKey)?.[0] ?? rec;
-    const binds = arr(now.data.binds).filter((k): k is string => typeof k === 'string');
+    const links = arr(now.data.links).filter((k): k is string => typeof k === 'string');
     // (the change has its Trail: the mark of a create that went unanswered has done its work)
     const ext = { ...obj(now.data.ext) };
     const mine = { ...obj(ext.entire) };
@@ -570,23 +571,23 @@ export function reconcileTrail(
     delete mine.create_unanswered;
     if (Object.keys(mine).length) ext.entire = mine;
     else delete ext.entire;
-    if (!binds.includes(key))
+    if (!links.includes(key))
       writes.set(
         now.path,
         render(
           'change',
-          { ...now.data, binds: [...binds, key], ext: Object.keys(ext).length ? ext : undefined },
+          { ...now.data, links: [...links, key], ext: Object.keys(ext).length ? ext : undefined },
           now.body,
         ),
       );
-    if (!binds.includes(key))
+    if (!links.includes(key))
       events.push({
         op: 'set',
         key: rec.key,
         type: 'change',
         path: rec.path,
         // (the mark taken off is part of the write, and of what reverses it)
-        fields: marked ? ['binds', 'ext'] : ['binds'],
+        fields: marked ? ['links', 'ext'] : ['links'],
         writer: env.writer,
       });
   }

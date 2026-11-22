@@ -201,7 +201,7 @@ A thing outside the store: a ticket, a PR, a branch, a repo, a doc, a thread, a 
 | `url` | A | Optional |
 | `links` | A | Optional: source keys this source refers to |
 
-Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. What a sync observed of a ticket sits under `ext.<tracker>` (`ext.linear`, `ext.github`). Two kinds are Entire's, linked only in a project that opted in (`ext.entire.enabled` on the project): `entire-checkpoint:<id>`, the sessions behind one commit, written by `pjman sync entire` from the commit's `Entire-Checkpoint` trailer with the commit and the session ids under `ext.entire` and a `url` that opens it on entire.com; and `entire-trail:<forge>/<owner>/<number>`, a change's Trail (one change, one Trail), bound by the change (`binds`) and written by pjman as the change moves: under `ext.entire` its id, number, status (open, closed), phase, the branch and its state on the Trail (draft, open, merged, closed), the gates with their status, the open findings by severity, and what pjman last sent.
+Filename: `kind` lower-cased; key slugified (dots, slashes, spaces → hyphens, lower-cased); URL keys hashed to a short token. The verbatim key is in frontmatter. What a sync observed of a ticket sits under `ext.<tracker>` (`ext.linear`, `ext.github`). Two kinds are Entire's, linked only in a project that opted in (`ext.entire.enabled` on the project): `entire-checkpoint:<id>`, the sessions behind one commit, written by `pjman sync entire` from the commit's `Entire-Checkpoint` trailer with the commit and the session ids under `ext.entire` and a `url` that opens it on entire.com; and `entire-trail:<forge>/<owner>/<number>`, a change's Trail (one change, one Trail), linked by the change (`links`) and written by pjman as the change moves: under `ext.entire` its id, number, status (open, closed), phase, the branch and its state on the Trail (draft, open, merged, closed), the gates with their status, the open findings by severity, and what pjman last sent.
 
 ---
 
@@ -221,8 +221,10 @@ A change reads as a ladder (decision record-foundation/the-ladder): its `name`, 
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
 | `aspects` | A | Optional. The aspects or places this change adds, changes or removes, in the same form as `features`: `adds aspect:<slug>`, `aspect:<aspect>/<place>` (changes). Its context then carries the aspect whole (the base and every place). |
-| `binds` | A | Optional. Source keys this change *is*: `[linear:ABC-1234]`. A source binds at most one change; a second bind is a reported conflict |
-| `links` | A | Optional. Source keys: PRs, branches, docs, threads, files. The kind says what each is |
+| `binds` | A | Optional. The primary: the one source this change *is*, a tracker's ticket or a pull request: `[linear:ABC-1234]`. At most one; a source binds at most one change, a second bind is a reported conflict; a second ticket for the same work is linked |
+| `delivers` | A | Optional. The pull requests that ship this change (`github-pr:`) |
+| `design` | A | Optional. What the change is built to: a canvas, a design file, an artifact; its context says to open it before building |
+| `links` | A | Optional. Source keys: branches, docs, threads, files, the Trail, checkpoints. The kind says what each is |
 | `kind` | A | Optional. `bug`: a change against something live, reported rather than planned. `milestone`: a change whose plan is its children (decision milestone-kind/kind-not-children): named so at filing (`--kind milestone`), it takes no steps of its own and holds none open, and a change another change names as `parent` must be one, each refused otherwise. A change that has had a plan is made one where it stands by `pjman set <change> kind=milestone`, as one write that `pjman undo` reverts: each open step is filed as a child change and stays on the plan dropped, its note naming the child; the steps it finished or dropped stay as its earlier steps, history and never its plan or progress; the branch its work is on goes with one child (the step in work's, else the first open step's), which links it and takes its Trail, and with no open step unmerged work on the branch refuses the promotion; a status that followed the plan (planning, active, review) goes back to open. Absent means work. A sync sets `bug` from the tracker's own issue type or label and `milestone` on the change a sub-issue's parent ticket binds, unless that change holds an open step (the sync files no child from a step: it names the `pjman set` that does); it never sets the feature or the severity |
 | `severity` | A | A bug's only. Where on the tree the behaviour is lost, from worst: `product` (nobody can use it), `feature` (a feature's sentence is false), `capability` (one behaviour is gone; deeper nesting reads as capability), `nuisance` (it works with a workaround), `cosmetic` (nothing is lost). Set at intake from the level of the node the bug names, raised when the blast radius is wider. Orders the bug pool, worst first then oldest; never a priority beside the sequence |
 | `depends_on` | A | Optional list of change keys: what must land before this one. A cycle and a self-dependency are refused. The roadmap draws the edge on focus and checks it against the order; it warns and never reorders |
@@ -297,7 +299,9 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `parent` | change → change | change | the parent must exist; no cycles; any depth; any project |
 | `depends_on` | change → change | change | every key must exist; no cycles; a constraint on the order, never a scheduler |
 | `sequence` | product → change | product | the roadmap's order; every key must exist; no repeats |
-| `binds` | change → source | change | a source binds at most one change |
+| `binds` | change → source | change | the primary: at most one, a tracker's ticket or a pull request; a source binds at most one change |
+| `delivers` | change → source | change | a pull request |
+| `design` | change → source | change | — |
 | `product` | feature, project → product | the child | the fixed root of the product tree |
 | `adds`, `changes`, `removes` | change → feature | change | what the change does to the feature; derived state replays the done ones |
 | `adds`, `changes`, `removes` | change → aspect, place | change (`aspects`) | what the change does to the aspect; its context carries it whole |
@@ -309,7 +313,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `supersedes` | decision → decision (one or many) | decision | the target becomes `superseded`; a target already superseded by another decision is refused; no cycles |
 | `parent` | session → session | session | — |
 | `changes` | session → change | session | — |
-| observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule |
+| observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule. A host hands a plain `links`; the tool names the role: a pull request linked from a change `delivers` it, and the first ticket or pull request a session on no change is seen on `binds` the session (its primary) |
 
 Reverse edges (a project's changes, a change's children, a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
 
