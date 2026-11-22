@@ -4,16 +4,17 @@ pjman is a command-line tool and a Claude Code plugin. It keeps a record of your
 
 The agent reads the store at the start of each session and writes to it through the `pjman` command, so a new session starts from what earlier sessions recorded. A local dashboard shows the same files. pjman needs no account.
 
-The store holds these records:
+The records link to each other, so the store is a graph. A change knows the part of the map it changes, the decisions made on it, and the tickets and sessions behind it. A capability knows the files of code that implement it. The links also cross the tree drawn below: one file can implement several capabilities, and one session or ticket can belong to several changes. The store holds these records:
 
 ```text
-product           pantry            what you are building
-└─ feature        shopping-list     what it does for a person
-   └─ capability  share-a-list      one behaviour of that feature
-      └─ change   list-as-pdf       one unit of work: origin, intent, done when, plan
-         ├─ decision  page-size     a choice: options, one recommended, accepted by you
-         ├─ source    ABC-1234      a ticket, PR, doc or file the work points at
-         └─ session   2026-11-21    one agent run that worked on it
+product           pantry               what you are building
+└─ feature        shopping-list        what it does for a person
+   └─ capability  share-a-list         one behaviour of that feature
+      ├─ source   src/share/pdf.ts     a file that implements it: a source of kind code
+      └─ change   list-as-pdf          one unit of work: origin, intent, done when, plan
+         ├─ decision  page-size        a choice: options, one recommended, accepted by you
+         ├─ source    ABC-1234         a ticket, PR or doc the work points at
+         └─ session   2026-11-21       one agent run that worked on it
 ```
 
 Most state is derived from the records. A change becomes `planning` once its plan has a step and `active` once a step starts, and a capability is live once the change that adds it is done.
@@ -152,14 +153,37 @@ Accepted by-locale by person:ada on 2026-11-21: by locale, and let me change it 
 
 A session that wrote code for the change stops where the record says it can: at a decision that waits on you, at a recorded blocker, at a status you set, or with every step done and the work committed for review. If the agent tries to stop anywhere else, the plugin sends it back once.
 
+## Start from the code
+
+The record a session opens with lists the files of the capabilities the change names, so the agent reads those before it searches:
+
+```text
+## Code
+
+feature:share-a-list:
+- src/share/menu.ts (pinned)
+- src/share/pdf.ts (found)
+- src/share/ShareSheet.tsx (3×)
+- src/share/ShareSheet.test.tsx (2×)
+```
+
+Each file is a source of kind `code`, linked to the capability it implements. Links are made in three ways:
+
+- **By you.** `pjman code link share-a-list src/share/menu.ts` pins a file. A pinned link stays until you take it off.
+- **By the agent.** When a search turns up a file that implements the capability, the agent links it, so the next session skips that search. When a listed path is gone, it moves the link to where the file went.
+- **By the merge.** When a change in review lands, its diff updates each capability the change names. `pjman merge` does this when it merges. A pull request merged on GitHub is found by `pjman sync git`, which runs after any agent turn that pulls, while the branch is still in your checkout. A renamed file's links follow it, and each touched file counts once more. A link no person made drops after five merged changes to its capability pass without touching it.
+
+The count after a file is how many merged changes to the capability touched it. `pjman validate` names any linked path that no longer exists. In a repository with history, `pjman code seed` gives each capability its first links from past commits that each name a single change and touch at most 15 files.
+
 ## Read the store
 
-Every record is a file you can open. Three commands read the store for you:
+Every record is a file you can open. Four commands read the store for you:
 
 ```bash
 pjman context                     # what is in flight
 pjman context change:list-as-pdf  # one change in full
 pjman tree                        # the product map, with the state of each node
+pjman code shopping-list          # the files beneath a part of the map, rolled up from its capabilities
 ```
 
 `pjman open` opens the dashboard, a local page that draws the same store: what needs you now, the product map, the milestones and the roadmap. You can accept a decision there too.
