@@ -3,7 +3,8 @@
 // pure derivations. A milestone's children are its plan: in the milestone's order, the done folded under one line at
 // the top, the child in work opened, the next one marked. The milestone bar is the change bar read over everything
 // beneath: children done, who is on it beneath now, what waits and what is blocked beneath, last touched, target. The
-// index is the milestones in flight nearest to done first, each with the same figures, the done folded.
+// index is the milestones in flight nearest to done first, each with the same figures, the done folded; a milestone
+// beneath another is a stage of it, drawn on its parent's card.
 import type { ChangeContext, ChangeRow, LiveSession, WaitingDecision } from '@/data/contract';
 import type { Segment } from '@/features/change/model';
 import { waitsLine } from '@/features/change/model';
@@ -233,12 +234,18 @@ export interface MilestoneIndexRow extends MilestoneFigures {
   parent?: string;
   /** The child in work (a session on it), else the first child not done. */
   next?: { key: string; name: string; live: boolean };
+  /** Its stages, the milestones beneath it, in its order (change:nested-milestones); dropped ones left out. */
+  stages: MilestoneIndexRow[];
 }
 
 const share = (p: { done: number; total: number }) => (p.total ? p.done / p.total : 0);
+const inOrder = (a: ChangeRow, b: ChangeRow) =>
+  (a.position ?? Infinity) - (b.position ?? Infinity) || (a.created ?? '').localeCompare(b.created ?? '');
 
-/** The index (decision milestones-on-the-rail): every milestone in the product, the ones in flight nearest to done
- *  first, then by last touch; the done ones apart, latest first. Read from the roadmap's scope with the done shown. */
+/** The index (decision milestones-on-the-rail): the product's milestones at the top level, the ones in flight nearest to
+ *  done first, then by last touch; the done ones apart, latest first. A milestone beneath another is a stage of it
+ *  (decision nested-milestones/index-layout): listed on its parent, never on its own. Read from the roadmap's scope with
+ *  the done shown. */
 export function milestonesIndex(scope: {
   changes: readonly ChangeRow[];
   sessions: readonly Pick<LiveSession, 'on'>[];
@@ -249,29 +256,27 @@ export function milestonesIndex(scope: {
 } {
   const rows = new Map(scope.changes.map((r) => [r.key, r]));
   const on = new Set(scope.sessions.map((s) => s.on));
-  const list = scope.changes
-    .filter((r) => r.kind === 'milestone' && r.status !== 'dropped')
-    .map((r): MilestoneIndexRow => {
-      const kids = scope.changes
-        .filter((c) => c.parent === r.key && c.status !== 'dropped')
-        .toSorted(
-          (a, b) =>
-            (a.position ?? Infinity) - (b.position ?? Infinity) || (a.created ?? '').localeCompare(b.created ?? ''),
-        );
-      const inWork = kids.find((c) => c.status !== 'done' && (on.has(c.key) || c.live));
-      const first = inWork ?? kids.find((c) => c.status !== 'done');
-      return {
-        key: r.key,
-        name: r.name ?? r.gist ?? short(r.key),
-        gist: r.gist,
-        status: r.status ?? 'open',
-        parent: r.parent,
-        ...figuresOf(r.key, rows, scope.sessions, scope.waitingOn),
-        next: first
-          ? { key: first.key, name: first.name ?? first.gist ?? short(first.key), live: first === inWork }
-          : undefined,
-      };
-    });
+  const counted = scope.changes.filter((r) => r.kind === 'milestone' && r.status !== 'dropped');
+  const milestones = new Set(counted.map((r) => r.key));
+  const indexRow = (r: ChangeRow, seen: ReadonlySet<string>): MilestoneIndexRow => {
+    const kids = scope.changes.filter((c) => c.parent === r.key && c.status !== 'dropped').toSorted(inOrder);
+    const inWork = kids.find((c) => c.status !== 'done' && (on.has(c.key) || c.live));
+    const first = inWork ?? kids.find((c) => c.status !== 'done');
+    const within = new Set([...seen, r.key]);
+    return {
+      key: r.key,
+      name: r.name ?? r.gist ?? short(r.key),
+      gist: r.gist,
+      status: r.status ?? 'open',
+      parent: r.parent,
+      ...figuresOf(r.key, rows, scope.sessions, scope.waitingOn),
+      next: first
+        ? { key: first.key, name: first.name ?? first.gist ?? short(first.key), live: first === inWork }
+        : undefined,
+      stages: kids.filter((c) => milestones.has(c.key) && !within.has(c.key)).map((c) => indexRow(c, within)),
+    };
+  };
+  const list = counted.filter((r) => !milestones.has(r.parent ?? '')).map((r) => indexRow(r, new Set()));
   const byMoved = (a: MilestoneIndexRow, b: MilestoneIndexRow) => (b.moved ?? '').localeCompare(a.moved ?? '');
   return {
     inFlight: list
@@ -279,6 +284,15 @@ export function milestonesIndex(scope: {
       .toSorted((a, b) => share(b.progress) - share(a.progress) || byMoved(a, b) || a.name.localeCompare(b.name)),
     done: list.filter((m) => m.status === 'done').toSorted(byMoved),
   };
+}
+
+/** A milestone's stages as its card draws them (decision nested-milestones/index-layout): the ones not done in order,
+ *  the done folded under one line. */
+export function stagesFold(stages: readonly MilestoneIndexRow[]): {
+  shown: MilestoneIndexRow[];
+  done: MilestoneIndexRow[];
+} {
+  return { shown: stages.filter((s) => s.status !== 'done'), done: stages.filter((s) => s.status === 'done') };
 }
 
 /** The index's one figures line: "6 of 12 done · 2 sessions on it now · target …", then what waits and what is

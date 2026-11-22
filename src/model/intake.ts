@@ -5,7 +5,7 @@ import type { Store } from '../store/config.js';
 import { findReferences, type GetOpts } from './graph.js';
 import type { Loaded, Rec } from '../store/records.js';
 import { ahead, productOf } from './order.js';
-import { mapState, progressOf, type MapState } from './view.js';
+import { mapState, progressBeneath, type MapState } from './view.js';
 import { derivedStatus, effectsOf, levelOf, live, rootProductOf, structuralParent } from './tree.js';
 import { lineOf } from './foundation.js';
 
@@ -45,13 +45,15 @@ export interface Intake {
   done: ChangeCandidate[];
   /** Nodes of the map the request may alter, best first. */
   nodes: NodeCandidate[];
-  /** Milestones in flight: the changes of kind milestone not done, nearest to done first. */
+  /** Milestones in flight: the changes of kind milestone not done, nearest to done first, at the top level: one beneath
+   *  a milestone in flight is a stage of it, counted on its parent's line (`stages`, dropped ones left out). */
   milestones: {
     key: string;
     gist?: string;
     status?: string;
     progress?: { done: number; total: number };
     target?: string;
+    stages?: { total: number; inFlight: number };
   }[];
   /** The order's tail: the product, the last entries of its sequence, and how many open changes come after it as later. */
   tail: { product: string | null; sequence: string[]; later: number };
@@ -215,16 +217,26 @@ export function intake(store: Store, loaded: Loaded, text: string, opts: IntakeO
     .toSorted(rank)
     .slice(0, 8);
 
-  const childrenOf = (key: string) => changes.filter((c) => live(loaded, c.data.parent)?.key === key);
-  const milestones = changes
-    .filter((c) => isOpen(c) && c.data.kind === 'milestone')
-    .map((c) => ({
-      key: c.key,
-      gist: str(c.data.gist),
-      status: str(c.data.status),
-      progress: progressOf(childrenOf(c.key).map((k) => ({ status: str(k.data.status) }))),
-      target: str(c.data.target),
-    }))
+  // the top level only (change:nested-milestones): a milestone beneath one in flight is a stage of it,
+  // counted on its line
+  const inFlight = changes.filter((c) => isOpen(c) && c.data.kind === 'milestone');
+  const flying = new Set(inFlight.map((c) => c.key));
+  const parentOf = (c: Rec) => live(loaded, c.data.parent)?.key;
+  const milestones = inFlight
+    .filter((c) => !flying.has(parentOf(c) ?? ''))
+    .map((c) => {
+      const stages = changes.filter(
+        (k) => k.data.kind === 'milestone' && k.data.status !== 'dropped' && parentOf(k) === c.key,
+      );
+      return {
+        key: c.key,
+        gist: str(c.data.gist),
+        status: str(c.data.status),
+        progress: progressBeneath(loaded, c.key),
+        target: str(c.data.target),
+        ...(stages.length ? { stages: { total: stages.length, inFlight: stages.filter(isOpen).length } } : {}),
+      };
+    })
     .toSorted((a, b) => {
       const share = (p?: { done: number; total: number }) => (p?.total ? p.done / p.total : 0);
       return share(b.progress) - share(a.progress) || a.key.localeCompare(b.key);
@@ -300,7 +312,7 @@ export function formatIntake(i: Intake): string {
       ? i.milestones
           .map(
             (m) =>
-              `- ${m.key} [${m.status ?? '?'}]${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}${m.target ? ` · target ${m.target}` : ''} — ${m.gist ?? ''}`,
+              `- ${m.key} [${m.status ?? '?'}]${m.progress ? ` ${m.progress.done}/${m.progress.total}` : ''}${m.stages ? ` · ${m.stages.total} ${m.stages.total === 1 ? 'stage' : 'stages'}, ${m.stages.inFlight} in flight` : ''}${m.target ? ` · target ${m.target}` : ''} — ${m.gist ?? ''}`,
           )
           .join('\n')
       : '(none)',

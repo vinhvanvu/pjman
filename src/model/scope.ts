@@ -10,7 +10,8 @@ import {
   bugOrder,
   changeContext,
   keyedOf,
-  progressOf,
+  rollupNode,
+  rollupOf,
   row,
   type ChangeContext,
   type Keyed,
@@ -111,7 +112,8 @@ export interface ChangeRow {
   needs: string[];
   /** The name and gist were written from an earlier foundation. */
   stale: boolean;
-  /** A milestone's progress: done children over children not dropped; none on a change of another kind. */
+  /** A milestone's progress: the work beneath it done over the work beneath it, counted through the milestones beneath
+   *  it (decision nested-milestones/progress-rollup); none on a change of another kind. */
   progress?: { done: number; total: number };
   /** The features it names, then the features of the places it names (`viaPlace`), where the dashboard files it too. */
   features: { effect: EffectName; key: string; title?: string; viaPlace?: boolean }[];
@@ -617,7 +619,7 @@ class Index {
       // a milestone's bar, by its kind: a milestone with no child yet is a bar of none; a change of another kind has none
       progress:
         c.data.kind === 'milestone'
-          ? (progressOf(kids.map((k) => ({ status: str(k.data.status) }))) ?? { done: 0, total: 0 })
+          ? (rollupOf(c.key, (k) => (this.childrenOf.get(k) ?? []).map(rollupNode)) ?? { done: 0, total: 0 })
           : undefined,
       features: [
         ...effectsOf(c).map((e) => ({

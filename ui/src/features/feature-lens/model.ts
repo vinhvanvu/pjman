@@ -333,10 +333,13 @@ export const byMotion = (features: ScopeNode[]): ScopeNode[] =>
 
 const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
 
-/** Milestones in the scope that are not finished, nearest to done first. */
+/** Milestones in the scope that are not finished, nearest to done first, at the top level: one beneath a milestone in
+ *  flight is a stage of it (change:nested-milestones). */
 export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
-  return changes
-    .filter((r) => r.kind === 'milestone' && r.status !== 'done' && r.status !== 'dropped')
+  const flying = changes.filter((r) => r.kind === 'milestone' && r.status !== 'done' && r.status !== 'dropped');
+  const keys = new Set(flying.map((r) => r.key));
+  return flying
+    .filter((r) => !keys.has(r.parent ?? ''))
     .toSorted((a, b) => share(b) - share(a) || (a.gist ?? '').localeCompare(b.gist ?? ''));
 };
 
