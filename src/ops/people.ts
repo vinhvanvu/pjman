@@ -79,7 +79,9 @@ export function personIntake(store: Store, mention: string, opts: PersonOpts = {
   const notes: string[] = [];
   const prior = snapshot(store, ['pjman.yaml']);
   const words = wordsNow(store);
-  // a refusal anywhere past here puts back the role the write added to the store's words
+  // a refusal anywhere past here, up to the commit, puts back the role the write added to the store's words; once the
+  // write has validated, the record and its words stand or fall together with the commit
+  let committing = false;
   try {
     if (opts.role) {
       const n = ensureWord(store, 'roles', opts.role);
@@ -133,6 +135,7 @@ export function personIntake(store: Store, mention: string, opts: PersonOpts = {
       const before = snapshot(store, [rec.path]);
       fs.writeFileSync(rec.abs, render('actor', data, rec.body));
       undoOnRefusal(store, [rec.path, 'pjman.yaml'], [], new Map([...before, ...prior]), words);
+      committing = true;
       const commit = finishWrite(store, `pjman: person ${rec.key} (${added.join(', ')})`, env.session, [
         {
           op: 'set',
@@ -180,6 +183,7 @@ export function personIntake(store: Store, mention: string, opts: PersonOpts = {
     };
     writeFile(store, rel, render('actor', data, ''));
     undoOnRefusal(store, [rel, 'pjman.yaml'], [rel], prior, words);
+    committing = true;
     const commit = finishWrite(store, `pjman: new person:${handle}`, env.session, [
       {
         op: 'created',
@@ -198,7 +202,7 @@ export function personIntake(store: Store, mention: string, opts: PersonOpts = {
       commit,
     };
   } catch (e) {
-    restore(store, prior, words);
+    if (!committing) restore(store, prior, words);
     throw e;
   }
 }
