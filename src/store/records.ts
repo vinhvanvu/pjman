@@ -136,7 +136,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   ],
   // a session kind: what a session with no change is doing (review, backlog, chat, other, or one a person made), store-wide
   'session-kind': ['name', 'gist', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
-  actor: ['kind', 'name', 'url', 'links', 'aliases', 'writer', 'session', 'created', 'ext'],
+  actor: ['kind', 'name', 'role', 'url', 'links', 'ties', 'said', 'aliases', 'writer', 'session', 'created', 'ext'],
 };
 
 export const LAYER_OF: Record<RecordType, string> = {

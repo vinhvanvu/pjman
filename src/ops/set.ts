@@ -52,7 +52,7 @@ const SETTABLE: Record<RecordType, string[]> = {
   // a release's version, tag, level, instant, commit and what it ships are facts of the release; its URL and links may follow
   release: ['url', 'links'],
   source: ['title', 'url', 'links'],
-  actor: ['name', 'url', 'links'],
+  actor: ['name', 'role', 'url', 'links'],
   session: [],
   'session-kind': ['name', 'gist', 'links'],
 };

@@ -1,3 +1,4 @@
+import { formatPocs, pocsOf, type Poc } from './people.js';
 import fs from 'node:fs';
 import type { Store } from '../store/config.js';
 import { CANONICAL_STATUSES, CHANGE_KINDS, DECISION_STATUSES, readUserConfig, SEVERITIES } from '../store/config.js';
@@ -121,7 +122,12 @@ export function observedFrom(
       const from = resolve(loaded, e.from);
       const key = from.status === 'ok' || from.status === 'alias' ? from.rec.key : e.from;
       if (key !== fromKey) continue;
-      seen.push({ session: s.key, edge: e.edge, to: e.to, at: typeof e.at === 'string' ? e.at : '' });
+      seen.push({
+        session: s.key,
+        edge: e.edge,
+        to: e.to,
+        at: typeof e.at === 'string' ? e.at : '',
+      });
     }
   }
   return seen.toSorted((x, y) => x.at.localeCompare(y.at));
@@ -170,7 +176,10 @@ export interface ObservedBranches {
 }
 
 export function observedBranches(loaded: Loaded): ObservedBranches {
-  return memo(loaded, 'observed-branches', () => ({ on: observedBranchesOnce(loaded), loaded }));
+  return memo(loaded, 'observed-branches', () => ({
+    on: observedBranchesOnce(loaded),
+    loaded,
+  }));
 }
 
 function observedBranchesOnce(loaded: Loaded): ObservedBranches['on'] {
@@ -230,7 +239,11 @@ export function branchOf(
   local: () => LocalBranch[] = () => [],
 ): ChangeBranch {
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-  const seen = (name: string): ChangeBranch => ({ name, worktree: worktreeNameFor(rec.key), observed: true });
+  const seen = (name: string): ChangeBranch => ({
+    name,
+    worktree: worktreeNameFor(rec.key),
+    observed: true,
+  });
   const on = observed.on.get(rec.key);
   const onName = on?.to.slice('branch:'.length);
   if (on?.own) return seen(onName!);
@@ -256,7 +269,11 @@ export function branchOf(
         exists: true,
         checkedOut: !!found.worktree,
       }
-    : { name: branchNameFor(rec.key, prefix), worktree: worktreeNameFor(rec.key), observed: false };
+    : {
+        name: branchNameFor(rec.key, prefix),
+        worktree: worktreeNameFor(rec.key),
+        observed: false,
+      };
 }
 
 /** The branch line's words after the name: nothing for one a session was seen on. */
@@ -447,7 +464,10 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
   const heads = repoHeads(store);
   const withBranch = (r: Rec): Row =>
     r.type === 'change' && r.valid && observed
-      ? { ...row(r), branch: branchOf(r, observed, prefix, localBranchesFor(store, r, heads)) }
+      ? {
+          ...row(r),
+          branch: branchOf(r, observed, prefix, localBranchesFor(store, r, heads)),
+        }
       : r.type === 'feature'
         ? { ...row(r), status: statusOf(r) }
         : row(r);
@@ -456,8 +476,16 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
     return [...recs]
       .toSorted((a, b) =>
         bugOrder(
-          { severity: s(a.data.severity), created: s(a.data.created), key: a.key },
-          { severity: s(b.data.severity), created: s(b.data.created), key: b.key },
+          {
+            severity: s(a.data.severity),
+            created: s(a.data.created),
+            key: a.key,
+          },
+          {
+            severity: s(b.data.severity),
+            created: s(b.data.created),
+            key: b.key,
+          },
         ),
       )
       .map(withBranch);
@@ -560,7 +588,12 @@ export interface ChangeContext {
   /** Each source once: a key both bound and linked is listed as bound. `url` is where it opens outside the store. */
   /** Each source the change binds or links, once, bound before linked; `relation` names which (decision
    *  pjman-22/relation-field). */
-  sources: { key: string; record?: Row; relation: 'binds' | 'links'; url?: string }[];
+  sources: {
+    key: string;
+    record?: Row;
+    relation: 'binds' | 'links';
+    url?: string;
+  }[];
   /** What a review found on the change's branch (pjman review), each with whether it still stands. */
   findings: Finding[];
   /** How the change is reviewed and where its review stands, in a line: absent in a project that reviews on request
@@ -594,6 +627,9 @@ export interface ChangeContext {
   /** The files of the capabilities it names, each capability's own ranked, a feature's rolled up from beneath
    *  (change:capability-code-paths): what to read before searching. */
   code: NodeCode[];
+  /** Who to reference on its pull request and in messages (change:people-in-graph): the stakes on the nodes it names,
+   *  inherited from above, and the people tied to the change itself. */
+  pocs: Poc[];
 }
 
 export interface StoreContext {
@@ -634,7 +670,12 @@ export interface Keyed {
 /** The key mark on `key` when it is its change's key decision. */
 export function keyedOf(k: KeyDecision | undefined, key: string): Keyed | undefined {
   if (!k || k.key !== key) return undefined;
-  return { how: k.how, ...(k.why ? { why: k.why } : {}), dependents: k.dependents.length, line: keyLine(k) };
+  return {
+    how: k.how,
+    ...(k.why ? { why: k.why } : {}),
+    dependents: k.dependents.length,
+    line: keyLine(k),
+  };
 }
 
 export function decisionRow(r: Rec, supersededBy?: string, k?: KeyDecision): DecisionRow {
@@ -655,7 +696,10 @@ export function decisionRow(r: Rec, supersededBy?: string, k?: KeyDecision): Dec
 export function progressOf(children: { status?: string }[]): { done: number; total: number } | undefined {
   const counted = children.filter((c) => c.status !== 'dropped');
   return counted.length
-    ? { done: counted.filter((c) => c.status === 'done').length, total: counted.length }
+    ? {
+        done: counted.filter((c) => c.status === 'done').length,
+        total: counted.length,
+      }
     : undefined;
 }
 
@@ -745,7 +789,12 @@ export function sourcesOf(loaded: Loaded, rec: Rec): ChangeContext['sources'] {
       if (sources.some((s) => s.key === k)) continue;
       const r = resolve(loaded, k);
       const record = r.status === 'ok' || r.status === 'alias' || r.status === 'invalid' ? row(r.rec) : undefined;
-      sources.push({ key: k, relation, record, url: urlOf(k, record?.data.url) });
+      sources.push({
+        key: k,
+        relation,
+        record,
+        url: urlOf(k, record?.data.url),
+      });
     }
   }
   return sources;
@@ -885,6 +934,7 @@ export function changeContext(
     aspectCues: aspectCuesOf(loaded, rec),
     releases,
     code: changeCode(loaded, rec, projectDirs(store, toplevel(process.cwd()))),
+    pocs: pocsOf(loaded, rec.key),
   };
 }
 
@@ -986,6 +1036,8 @@ export function formatChangeContext(c: ChangeContext): string {
   if (c.aspectCues.length) out.push('\n' + formatAspectCues(c.aspectCues).join('\n'));
   // what the work reads first: the files of the capabilities it names
   if (c.code?.length) out.push(formatChangeCode(c.code).join('\n'));
+  // who to reference on its pull request and in messages
+  if (c.pocs?.length) out.push(`\n## People\n\n${formatPocs(c.pocs).join('\n')}`);
   if (c.findings.length)
     out.push(
       `\n## Findings${findingsLine(c.findings) ? ` (${findingsLine(c.findings)})` : ' (none open)'}\n\n${c.findings.map((f, i) => formatFinding(i + 1, f)).join('\n')}`,

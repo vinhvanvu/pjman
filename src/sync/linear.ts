@@ -17,6 +17,9 @@ export interface Issue {
   updatedAt?: string;
   team?: string;
   labels: string[];
+  /** The ids of the assignee and the creator, accounts a person may claim as linear-user:<id> (change:people-in-graph). */
+  assignee?: string;
+  creator?: string;
 }
 
 export interface SyncOpts {
@@ -64,6 +67,8 @@ export function toIssue(raw: unknown): Issue | null {
   const state = obj(r.state) ?? obj(r.status);
   const parent = obj(r.parent);
   const team = obj(r.team);
+  const assignee = obj(r.assignee);
+  const creator = obj(r.creator) ?? obj(r.createdBy);
   return {
     id,
     title,
@@ -73,6 +78,8 @@ export function toIssue(raw: unknown): Issue | null {
     parent: str(parent?.identifier) ?? str(r.parentIdentifier) ?? (typeof r.parent === 'string' ? r.parent : undefined),
     updatedAt: str(r.updatedAt),
     team: str(team?.key) ?? str(r.teamKey) ?? id.slice(0, id.indexOf('-')),
+    assignee: str(assignee?.id) ?? str(r.assigneeId),
+    creator: str(creator?.id) ?? str(r.creatorId) ?? str(r.createdById),
     labels: (Array.isArray(r.labels)
       ? (r.labels as unknown[])
       : Array.isArray(obj(r.labels)?.nodes)
@@ -117,7 +124,10 @@ export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
   const tickets: Ticket[] = [];
   for (const issue of issuesIn(data)) {
     if (issue.team !== team) {
-      skipped.push({ id: issue.id, reason: `team ${issue.team} is not ${team}` });
+      skipped.push({
+        id: issue.id,
+        reason: `team ${issue.team} is not ${team}`,
+      });
       continue;
     }
     tickets.push({
@@ -134,6 +144,8 @@ export function syncLinear(store: Store, opts: SyncOpts = {}): SyncResult {
         team: issue.team,
         parent: issue.parent,
         labels: issue.labels,
+        assignee: issue.assignee,
+        creator: issue.creator,
         updated_at: issue.updatedAt,
       },
     });

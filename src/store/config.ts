@@ -53,6 +53,11 @@ export interface StoreConfig {
   vocabulary: Record<string, string>;
   source_kinds: string[];
   tree_levels: string[];
+  /** Words a store added to pjman's roles (a person's job), stakes (on a map node) and parts (on anything else):
+   *  absent until one is added on first use (change:people-in-graph). */
+  roles?: string[];
+  stakes?: string[];
+  parts?: string[];
   /** The format the store is in: the pjman version that last initialised or migrated it, stamped by init and by
    *  `pjman migrate`, never by an ordinary write. Absent on a store from before the field (read as 0.1.0). */
   version?: string;
@@ -116,9 +121,16 @@ export function readUserConfig(): UserConfig {
     const projects = (Array.isArray(st.projects) ? st.projects : []).map((b): ProjectBinding =>
       typeof b === 'string'
         ? { path: b }
-        : { path: String((b as { path?: unknown }).path), project: (b as ProjectBinding).project },
+        : {
+            path: String((b as { path?: unknown }).path),
+            project: (b as ProjectBinding).project,
+          },
     );
-    return { name: String(st.name ?? ''), path: String(st.path ?? ''), projects };
+    return {
+      name: String(st.name ?? ''),
+      path: String(st.path ?? ''),
+      projects,
+    };
   });
   return {
     actor: typeof raw?.actor === 'string' ? raw.actor : undefined,
@@ -150,12 +162,17 @@ export function loadStoreConfig(root: string): StoreConfig {
     Array.isArray(raw.tree_levels) && raw.tree_levels.length ? raw.tree_levels.map(String) : [...DEFAULT_TREE_LEVELS];
   // kept as written, even when YAML read it as a number: validate refuses a stamp that is not semver
   const version = raw.version === undefined || raw.version === null ? undefined : String(raw.version);
+  const words = (k: string): Record<string, string[]> =>
+    Array.isArray(raw[k]) && (raw[k] as unknown[]).length ? { [k]: (raw[k] as unknown[]).map(String) } : {};
   return {
     name: typeof raw.name === 'string' ? raw.name : path.basename(root),
     layers,
     vocabulary,
     source_kinds,
     tree_levels,
+    ...words('roles'),
+    ...words('stakes'),
+    ...words('parts'),
     ...(version ? { version } : {}),
   };
 }
@@ -208,7 +225,11 @@ export function findStore(cwd: string, override?: string): Store | null {
     dir = parent;
   }
   const user = readUserConfig();
-  let best: { store: UserStore; binding: ProjectBinding; depth: number } | null = null;
+  let best: {
+    store: UserStore;
+    binding: ProjectBinding;
+    depth: number;
+  } | null = null;
   for (const s of user.stores) {
     for (const b of s.projects ?? []) {
       const abs = path.resolve(b.path);

@@ -15,6 +15,8 @@ export interface GhIssue {
   stateReason?: string;
   labels: string[];
   assignees: string[];
+  /** The login that opened it (change:people-in-graph). */
+  author?: string;
   milestone?: string;
   parent?: number;
   updatedAt?: string;
@@ -64,6 +66,10 @@ export function toGhIssue(raw: unknown): GhIssue | null {
     stateReason: str(r.stateReason) ?? str(r.state_reason) ?? undefined,
     labels,
     assignees,
+    author:
+      str(obj(r.author)?.login) ??
+      str(obj(r.user)?.login) ??
+      (typeof r.author === 'string' ? str(r.author) : undefined),
     milestone: str(obj(r.milestone)?.title),
     parent: typeof parent?.number === 'number' ? parent.number : undefined,
     updatedAt: str(r.updatedAt) ?? str(r.updated_at),
@@ -87,7 +93,7 @@ export function mapGhStatus(store: Store, i: GhIssue): string {
 /** The command that reads a repository's issues with their sub-issue parents: GitHub's GraphQL API through gh (gh issue list --json has no parent). */
 export function ghReadCommand(repo: string): string {
   const [owner, name] = repo.split('/');
-  const query = `query($endCursor:String){repository(owner:"${owner}",name:"${name}"){issues(first:100,after:$endCursor,states:[OPEN,CLOSED]){nodes{number title url state stateReason updatedAt labels(first:20){nodes{name}} assignees(first:10){nodes{login}} milestone{title} parent{number}} pageInfo{hasNextPage endCursor}}}}`;
+  const query = `query($endCursor:String){repository(owner:"${owner}",name:"${name}"){issues(first:100,after:$endCursor,states:[OPEN,CLOSED]){nodes{number title url state stateReason updatedAt labels(first:20){nodes{name}} assignees(first:10){nodes{login}} author{login} milestone{title} parent{number}} pageInfo{hasNextPage endCursor}}}}`;
   return `gh api graphql --paginate --slurp -H 'GraphQL-Features: sub_issues' -f query='${query}'`;
 }
 
@@ -126,7 +132,10 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
   const tickets: Ticket[] = [];
   for (const i of ghIssuesIn(data)) {
     if (i.repo && i.repo.toLowerCase() !== repo.toLowerCase()) {
-      skipped.push({ id: `${i.repo}#${i.number}`, reason: `repository ${i.repo} is not ${repo}` });
+      skipped.push({
+        id: `${i.repo}#${i.number}`,
+        reason: `repository ${i.repo} is not ${repo}`,
+      });
       continue;
     }
     tickets.push({
@@ -142,6 +151,7 @@ export function syncGithub(store: Store, opts: SyncOpts = {}): SyncResult {
         state_reason: i.stateReason,
         labels: i.labels,
         assignees: i.assignees,
+        author: i.author,
         milestone: i.milestone,
         parent: i.parent,
         updated_at: i.updatedAt,

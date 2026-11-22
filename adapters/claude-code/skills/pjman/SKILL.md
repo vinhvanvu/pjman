@@ -240,6 +240,26 @@ signs in anywhere. When a ticket is named, or the project's board should reflect
    its change when the store has one (for a GitHub issue the hook reads it with gh and syncs it itself); otherwise the
    hook tells you to read and sync it, and the sync creates the change. A pattern match alone never creates a record.
 
+## People
+
+A person is a record (`person:<handle>`), one per human: their role (their job), the accounts they hold
+(`github-user:`, `linear-user:`, `email:`, `git-author:`), and their ties, each a typed edge held on the person
+(decision people-in-graph/typed-ties): a **stake** on a product or feature (owner, contributor, reviewer, stakeholder),
+inherited by every node beneath it until a nearer one names its own; a **part** on a source, a change or a decision
+(author, assignee, reviewer, requested-by, mentioned). A word the store lacks is added on first use.
+
+- **Someone is named in the conversation:** `pjman person "<their name>" [--role <job>] [--account <account>]` finds
+  them (by an account, the handle, an alias or the full name) or creates them. When it lists candidates (several
+  people, or only a first name matching), name the one meant by key, or pass `--new` when it is someone else; ask the
+  person only when nothing said tells them apart.
+- **What is said ties them:** `pjman tie <person> <type> <key> --said` when the conversation states it ("Sam owns
+  checkout", "Priya wrote the design doc"), never from a passing mention ("ask Sam about checkout" ties no one). When
+  the person sets one outright, drop `--said`: a type set outright on a target overrides what was said of it there.
+  `--remove` takes a tie back; `pjman undo` reverts any write.
+- **Who to reference:** `pjman people <change>` (also under People in its context) names the stakes on the nodes it
+  names and the people tied to it: the ones to tag on its pull request and in messages. `pjman people <node|source|person>`
+  reads the rest; a synced ticket's assignee and author reach their person through the account.
+
 ## The product tree
 
 What the product *is* lives in a tree beside the work: a `product:<slug>` at the root, `feature:<slug>` records nested
@@ -292,6 +312,9 @@ pjman mv <kind>:<old> <kind>:<new>       rename a change, a feature, an aspect, 
 pjman whoami                             who the person is: the configured actor and their record
 pjman apply - --for <key>                many writes as one commit, the commands one per line on stdin; pjman undo reverts it
 pjman note <change|session:<id>> <text>  a note to whoever works a change, or to one session; it arrives in full in the next brief
+pjman person "<name>" [--role …] [--account …]   find the person a mention names, else create them
+pjman tie <person> <type> <key> [--said] [--remove]   a stake on a map node or a part on anything else, held on the person
+pjman people [<person|node|change|source>]   who is on it (a change: who to reference); a person read whole
 pjman validate                           run before committing a store that lives in the project
 ```
 

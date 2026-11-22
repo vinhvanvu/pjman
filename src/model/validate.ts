@@ -26,6 +26,10 @@ import {
 } from '../store/records.js';
 import { supersedesOf } from './supersede.js';
 import { parseAspectEffect } from './aspects.js';
+import { isMapNode, parseTie, wordsOf } from './people.js';
+
+/** What a part reaches: a source, or a record of the work (change:people-in-graph). */
+const TIE_TARGETS = ['source', 'change', 'decision', 'project', 'aspect', 'release', 'session'];
 import { isDateString, isTimestamp, localDate } from '../store/util.js';
 import {
   CHANGE_SECTIONS,
@@ -92,7 +96,7 @@ const STRING_FIELDS: Record<RecordType, string[]> = {
   source: ['kind', 'key', 'title', 'url', 'writer', 'session', 'created'],
   session: ['agent', 'on_behalf_of', 'started', 'parent', 'project', 'name', 'kind', 'writer', 'created'],
   'session-kind': ['name', 'gist', 'writer', 'session', 'created'],
-  actor: ['kind', 'name', 'url', 'writer', 'session', 'created'],
+  actor: ['kind', 'name', 'role', 'url', 'writer', 'session', 'created'],
 };
 
 // owners: no longer written or read (pjman is one person's); still a list here so older records that carry it validate
@@ -108,7 +112,7 @@ const LIST_FIELDS: Record<RecordType, string[]> = {
   source: ['links'],
   session: ['changes'],
   'session-kind': ['links', 'aliases'],
-  actor: ['links', 'aliases'],
+  actor: ['links', 'ties', 'said', 'aliases'],
 };
 
 /** The levels a release bumps the version by (semver). */
@@ -162,11 +166,23 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
   const canonical = new Set<string>(CANONICAL_STATUSES);
 
   const err = (r: Rec | string, message: string) =>
-    problems.push({ level: 'error', path: typeof r === 'string' ? r : r.path, message });
+    problems.push({
+      level: 'error',
+      path: typeof r === 'string' ? r : r.path,
+      message,
+    });
   const warn = (r: Rec | string, message: string) =>
-    problems.push({ level: 'warning', path: typeof r === 'string' ? r : r.path, message });
+    problems.push({
+      level: 'warning',
+      path: typeof r === 'string' ? r : r.path,
+      message,
+    });
   const info = (r: Rec | string, message: string) =>
-    problems.push({ level: 'info', path: typeof r === 'string' ? r : r.path, message });
+    problems.push({
+      level: 'info',
+      path: typeof r === 'string' ? r : r.path,
+      message,
+    });
   if (!store.config.version)
     info('pjman.yaml', 'the store names no format version (read as 0.1.0); pjman migrate stamps it');
   else if (!VERSION_RE.test(store.config.version))
@@ -944,6 +960,29 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
           if (!SLUG_RE.test(a)) err(r, `aliases: '${a}' is not a slug`);
           else if (loaded.byKey.has(`${String(d.kind)}:${a}`)) err(r, `aliases: '${a}' is also a live handle`);
         }
+        // a person's role and typed ties (change:people-in-graph): a stake on a map node, a part on anything else
+        if (d.role !== undefined && !wordsOf(loaded.store, 'roles').includes(String(d.role)))
+          err(
+            r,
+            `role '${String(d.role)}' is not one of the store's roles (${wordsOf(loaded.store, 'roles').join(', ')})`,
+          );
+        for (const field of ['ties', 'said'] as const) {
+          if (d[field] !== undefined && d.kind !== 'person') err(r, `${field}: only a person holds ties`);
+          for (const raw of listOf(d[field])) {
+            const t = parseTie(raw);
+            if (!t) {
+              err(r, `${field}: '${raw}' is not '<type> <key>'`);
+              continue;
+            }
+            const vocab = isMapNode(t.target) ? 'stakes' : 'parts';
+            if (!wordsOf(loaded.store, vocab).includes(t.type))
+              err(
+                r,
+                `${field}: '${t.type}' is not one of the store's ${vocab} (${wordsOf(loaded.store, vocab).join(', ')})`,
+              );
+            checkRef(r, field, t.target, isMapNode(t.target) ? ['product', 'feature'] : TIE_TARGETS);
+          }
+        }
         break;
       }
     }
@@ -1062,7 +1101,11 @@ function listOf(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
 }
 
-export function summarise(problems: Problem[]): { errors: number; warnings: number; infos: number } {
+export function summarise(problems: Problem[]): {
+  errors: number;
+  warnings: number;
+  infos: number;
+} {
   return {
     errors: problems.filter((p) => p.level === 'error').length,
     warnings: problems.filter((p) => p.level === 'warning').length,
