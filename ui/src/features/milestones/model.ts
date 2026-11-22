@@ -32,13 +32,17 @@ export interface ChildView {
   step?: ChangeRow['step'];
   moved?: string;
   position?: number;
+  /** Its place among its siblings in the order the work can run (decision milestone-order/order-rule). */
+  childOrder?: number;
   created?: string;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const BEHIND = new Set(['done', 'dropped']);
 
-/** The children in the milestone's order: the roadmap's position first, then creation; each read with the product's
+/** The children in the order the work can run (decision milestone-order/order-rule): what they depend on first, then
+ *  the roadmap's position, then creation. The server derives it: the product's rows carry it as childOrder, and the
+ *  change context lists the children in it, which stands when a child has no row here. Each read with the product's
  *  row for it when there is one, the sessions on it and the decisions waiting on it. */
 export function childrenInOrder(
   children: readonly Child[],
@@ -47,32 +51,28 @@ export function childrenInOrder(
   waiting: readonly Pick<WaitingDecision, 'change'>[] = [],
 ): ChildView[] {
   const on = new Set(sessions.map((s) => s.on).filter(Boolean));
-  return children
-    .map((c): ChildView => {
-      const r = rows.get(c.key);
-      const status = c.status ?? r?.status ?? 'open';
-      return {
-        key: c.key,
-        name: c.name ?? r?.name ?? c.gist ?? r?.gist ?? short(c.key),
-        status,
-        behind: BEHIND.has(status),
-        live: on.has(c.key) || !!r?.live,
-        waits: waiting.filter((d) => d.change === c.key).length || (r?.waiting ?? 0),
-        blockedOn: r?.blockedOn ?? str(c.data?.['blocked-on']),
-        milestone: r?.kind === 'milestone' ? r.progress : undefined,
-        plan: r?.plan,
-        step: r?.step,
-        moved: r?.moved,
-        position: r?.position,
-        created: c.created ?? r?.created,
-      };
-    })
-    .toSorted(
-      (a, b) =>
-        (a.position ?? Infinity) - (b.position ?? Infinity) ||
-        (a.created ?? '').localeCompare(b.created ?? '') ||
-        a.key.localeCompare(b.key),
-    );
+  const list = children.map((c): ChildView => {
+    const r = rows.get(c.key);
+    const status = c.status ?? r?.status ?? 'open';
+    return {
+      key: c.key,
+      name: c.name ?? r?.name ?? c.gist ?? r?.gist ?? short(c.key),
+      status,
+      behind: BEHIND.has(status),
+      live: on.has(c.key) || !!r?.live,
+      waits: waiting.filter((d) => d.change === c.key).length || (r?.waiting ?? 0),
+      blockedOn: r?.blockedOn ?? str(c.data?.['blocked-on']),
+      milestone: r?.kind === 'milestone' ? r.progress : undefined,
+      plan: r?.plan,
+      step: r?.step,
+      moved: r?.moved,
+      position: r?.position,
+      childOrder: r?.childOrder,
+      created: c.created ?? r?.created,
+    };
+  });
+  // every child with its place from the rows: read them (fresher than the context); one without, the context's order
+  return list.every((c) => c.childOrder !== undefined) ? list.toSorted((a, b) => a.childOrder! - b.childOrder!) : list;
 }
 
 /** The fold (decision children-in-order): what is behind the work, the done and the dropped, folds under one line at
@@ -240,7 +240,9 @@ export interface MilestoneIndexRow extends MilestoneFigures {
 
 const share = (p: { done: number; total: number }) => (p.total ? p.done / p.total : 0);
 const inOrder = (a: ChangeRow, b: ChangeRow) =>
-  (a.position ?? Infinity) - (b.position ?? Infinity) || (a.created ?? '').localeCompare(b.created ?? '');
+  (a.childOrder ?? Infinity) - (b.childOrder ?? Infinity) ||
+  (a.position ?? Infinity) - (b.position ?? Infinity) ||
+  (a.created ?? '').localeCompare(b.created ?? '');
 
 /** The index (decision milestones-on-the-rail): the product's milestones at the top level, the ones in flight nearest to
  *  done first, then by last touch; the done ones apart, latest first. A milestone beneath another is a stage of it

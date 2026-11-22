@@ -38,16 +38,18 @@ const rowsOf = (...rows: ChangeRow[]) => new Map(rows.map((r) => [r.key, r]));
 describe('the children as the plan', () => {
   const children = [child('b', 'active'), child('a', 'done', '2026-10-30'), child('c', 'open'), child('d', 'dropped')];
   const rows = rowsOf(
-    row('a', { status: 'done', position: 1, moved: '2026-11-07T00:00:00Z' }),
+    row('a', { status: 'done', position: 1, childOrder: 0, moved: '2026-11-07T00:00:00Z' }),
     row('b', {
       status: 'active',
       position: 3,
+      childOrder: 2,
       plan: { done: 1, total: 4 },
       step: { n: 2, text: 'draw', state: 'active' },
     }),
-    row('c', { status: 'open', position: 2, blockedOn: 'Public' }),
+    row('c', { status: 'open', position: 2, childOrder: 1, blockedOn: 'Public' }),
+    row('d', { status: 'dropped', childOrder: 3 }),
   );
-  it("orders the children by the roadmap, then by creation, and reads each with the product's row", () => {
+  it("orders the children by the rows' work order and reads each with the product's row", () => {
     const list = childrenInOrder(children, rows, [{ on: 'change:p/b' }], [{ change: 'change:p/c' }]);
     expect(list.map((c) => c.key.split('/')[1])).toEqual(['a', 'c', 'b', 'd']);
     const b = list.find((c) => c.key.endsWith('/b'))!;
@@ -55,6 +57,20 @@ describe('the children as the plan', () => {
     expect(b.step?.text).toBe('draw');
     expect(list.find((c) => c.key.endsWith('/c'))!.waits).toBe(1);
     expect(list.find((c) => c.key.endsWith('/c'))!.blockedOn).toBe('Public');
+  });
+  it('reads the order the work can run before the roadmap (decision milestone-order/order-rule)', () => {
+    const ordered = rowsOf(
+      row('a', { status: 'done', position: 1, childOrder: 2 }),
+      row('b', { status: 'active', position: 3, childOrder: 0 }),
+      row('c', { status: 'open', position: 2, childOrder: 1 }),
+      row('d', { status: 'dropped', childOrder: 3 }),
+    );
+    expect(childrenInOrder(children, ordered).map((c) => c.key.split('/')[1])).toEqual(['b', 'c', 'a', 'd']);
+  });
+  it("keeps the context's order when a child has no row to place it", () => {
+    const partial = rowsOf(row('a', { childOrder: 1 }), row('b', { childOrder: 0 }));
+    const given = [child('c', 'open'), child('a', 'open'), child('b', 'open')];
+    expect(childrenInOrder(given, partial).map((c) => c.key.split('/')[1])).toEqual(['c', 'a', 'b']);
   });
   it('folds what is behind the work under one line and marks the next child after the open one', () => {
     const list = childrenInOrder(children, rows);
@@ -222,6 +238,13 @@ describe('nested milestones in the index (change:nested-milestones)', () => {
     expect(ix.inFlight[0]!.stages.map((s) => s.name)).toEqual(['s2', 's1']);
     expect(ix.inFlight[0]!.stages[1]!.next?.name).toBe('w1');
     expect(ix.inFlight[1]!.stages).toEqual([]);
+  });
+  it('draws the stages in the order the work can run before the roadmap', () => {
+    const ordered = changes.map((r) =>
+      r.key === 'change:p/s1' ? { ...r, childOrder: 0 } : r.key === 'change:p/s2' ? { ...r, childOrder: 1 } : r,
+    );
+    const ix3 = milestonesIndex({ changes: ordered, sessions: [], waitingOn: [] });
+    expect(ix3.inFlight[0]!.stages.map((s) => s.name)).toEqual(['s1', 's2']);
   });
   it('folds the done stages', () => {
     const fold = stagesFold(ix.inFlight[0]!.stages);

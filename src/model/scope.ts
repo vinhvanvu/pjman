@@ -19,7 +19,7 @@ import {
   nextLine,
 } from './view.js';
 import { keyDecisionOf } from './key-decision.js';
-import { ahead, productOf } from './order.js';
+import { ahead, productOf, workOrder } from './order.js';
 import { violations, worstSeverity, type RoadmapRow, type Violation } from './roadmap.js';
 import {
   ancestorsOf,
@@ -141,6 +141,9 @@ export interface ChangeRow {
   aspects: string[];
   /** Its place in the product's sequence: its own index, else its nearest sequenced ancestor's; absent is later. */
   position?: number;
+  /** Its place among its parent's children in the order the work can run (decision milestone-order/order-rule);
+   *  absent with no parent. Lists of a milestone's children sort by it. */
+  childOrder?: number;
   /** When it first moved out of open (its first status change), and when it reached done. */
   began?: string;
   finished?: string;
@@ -648,6 +651,7 @@ class Index {
         .filter((k): k is string => !!k),
       aspects: aspectKeysOf(this.loaded, c),
       position: this.positionOf(c),
+      childOrder: workOrder(this.loaded).get(c.key),
       ...this.span(c),
     };
   }

@@ -61,6 +61,85 @@ export function ahead(loaded: Loaded, product: Rec): string[] {
   return planned(loaded, product).filter((k) => isAhead(loaded, k));
 }
 
+/** Every change's place among its parent's children, in the order the work can run (decision
+ *  milestone-order/order-rule): a child after each sibling it depends on, then, among those free to go, the roadmap's
+ *  position, then creation, then key. A child depends on a sibling when it or anything beneath it names the sibling or
+ *  anything beneath the sibling in depends_on, directly or through changes outside the milestone. A loop (validate refuses one) leaves the rest by position. Every view
+ *  that lists a milestone's children reads it: change key → index among its siblings. */
+export function workOrder(loaded: Loaded): Map<string, number> {
+  return memo(loaded, 'work-order', () => {
+    const changes = ofType(loaded, 'change').filter((r) => r.valid);
+    const byKey = new Map(changes.map((r) => [r.key, r]));
+    const dependsOnOf = (r: Rec | undefined): string[] =>
+      (Array.isArray(r?.data.depends_on) ? r.data.depends_on : [])
+        .map((d) => live(loaded, d)?.key)
+        .filter((k): k is string => !!k);
+    const parentOf = new Map<string, string | undefined>();
+    for (const r of changes) parentOf.set(r.key, live(loaded, r.data.parent)?.key);
+    const kids = new Map<string, Rec[]>();
+    for (const r of changes) {
+      const p = parentOf.get(r.key);
+      if (p) kids.set(p, [...(kids.get(p) ?? []), r]);
+    }
+    const index = new Map<string, Map<string, number>>();
+    const positionOf = (r: Rec): number => {
+      const product = productOf(loaded, r);
+      if (!product) return Infinity;
+      let m = index.get(product.key);
+      if (!m) index.set(product.key, (m = new Map(planned(loaded, product).map((k, i) => [k, i]))));
+      return m.get(r.key) ?? Infinity;
+    };
+    const createdOf = (r: Rec) => (typeof r.data.created === 'string' ? r.data.created : (r.fileDate ?? ''));
+    const subtree = (r: Rec, seen = new Set<string>()): Rec[] => {
+      if (seen.has(r.key)) return [];
+      seen.add(r.key);
+      return [r, ...(kids.get(r.key) ?? []).flatMap((k) => subtree(k, seen))];
+    };
+    const out = new Map<string, number>();
+    for (const [parent, siblings] of kids) {
+      const mine = new Set(siblings.map((s) => s.key));
+      // where a key sits: under a sibling (that sibling), the parent itself, or outside the milestone
+      const placeOf = (key: string): { sibling: string } | 'parent' | 'outside' => {
+        const seen = new Set<string>();
+        for (let k: string | undefined = key; k && !seen.has(k); k = parentOf.get(k)) {
+          if (mine.has(k)) return { sibling: k };
+          if (k === parent) return 'parent';
+          seen.add(k);
+        }
+        return 'outside';
+      };
+      const after = new Map<string, Set<string>>();
+      for (const s of siblings) {
+        const deps = new Set<string>();
+        // a dependency on a change outside the milestone is followed through its own depends_on until it reaches a
+        // sibling: B on X and X on A puts B after A
+        const queue = subtree(s).flatMap(dependsOnOf);
+        const seen = new Set<string>();
+        while (queue.length) {
+          const k = queue.shift()!;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          const at = placeOf(k);
+          if (at === 'outside') queue.push(...dependsOnOf(byKey.get(k)));
+          else if (at !== 'parent' && at.sibling !== s.key) deps.add(at.sibling);
+        }
+        after.set(s.key, deps);
+      }
+      const rank = (a: Rec, b: Rec) =>
+        positionOf(a) - positionOf(b) || createdOf(a).localeCompare(createdOf(b)) || a.key.localeCompare(b.key);
+      const left = siblings.toSorted(rank);
+      const placed = new Set<string>();
+      while (left.length) {
+        const i = left.findIndex((s) => [...after.get(s.key)!].every((d) => placed.has(d)));
+        const [next] = left.splice(i === -1 ? 0 : i, 1);
+        out.set(next.key, placed.size);
+        placed.add(next.key);
+      }
+    }
+    return out;
+  });
+}
+
 /** The order as it reads now: what is ahead in the product's sequence, and how many open changes come after it as
  *  later. `ref` names the product (or a change or feature under it); none, the current project's product. */
 export function sequenceOf(loaded: Loaded, ref: string | null): { product: string; sequence: string[]; later: number } {

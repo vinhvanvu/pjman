@@ -344,7 +344,8 @@ export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
 };
 
 /** The milestones in flight as the picker lists them: the top level nearest to done first, each followed by its
- *  stages in flight in the scope's order, indented by depth (change:nested-milestones). */
+ *  stages in flight in the order the work can run (decision milestone-order/order-rule), indented by depth
+ *  (change:nested-milestones). */
 export const inFlightTree = (changes: ChangeRow[]): { row: ChangeRow; depth: number }[] => {
   const flying = changes.filter((r) => r.kind === 'milestone' && r.status !== 'done' && r.status !== 'dropped');
   const out: { row: ChangeRow; depth: number }[] = [];
@@ -353,7 +354,10 @@ export const inFlightTree = (changes: ChangeRow[]): { row: ChangeRow; depth: num
     if (seen.has(r.key)) return;
     seen.add(r.key);
     out.push({ row: r, depth });
-    for (const k of flying.filter((c) => c.parent === r.key)) walk(k, depth + 1);
+    for (const k of flying
+      .filter((c) => c.parent === r.key)
+      .toSorted((a, b) => (a.childOrder ?? Infinity) - (b.childOrder ?? Infinity)))
+      walk(k, depth + 1);
   };
   for (const r of inFlight(changes)) walk(r, 0);
   return out;
