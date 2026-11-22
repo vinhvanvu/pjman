@@ -8,7 +8,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse, stringify } from 'yaml';
-import { ENTIRE_KINDS, IDENTITY_KINDS, ownsRepository, writeStoreConfig, type Store } from '../store/config.js';
+import {
+  CODE_KINDS,
+  ENTIRE_KINDS,
+  IDENTITY_KINDS,
+  ownsRepository,
+  writeStoreConfig,
+  type Store,
+} from '../store/config.js';
 import { emit } from '../store/events.js';
 import { commitAll, git, gitMv, isTracked, toplevel } from '../store/git.js';
 import { loadLegacy } from '../store/legacy.js';
@@ -26,7 +33,7 @@ import { missingSessionKinds, seedSessionKinds } from './session-kinds.js';
  *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
  *  since they predate the stamp and a store from then carries no version; a move from here on checks the stamp
  *  (`compareVersions(storeVersion(store), since) < 0`). */
-export type MigrationName = 'layout' | 'foundation' | 'kinds' | 'session-kinds' | 'entire-kinds';
+export type MigrationName = 'layout' | 'foundation' | 'kinds' | 'session-kinds' | 'entire-kinds' | 'code-kinds';
 
 export interface Migration {
   name: MigrationName;
@@ -79,15 +86,31 @@ export const MIGRATIONS: readonly Migration[] = [
     run: (store, opts) => migrateEntireKinds(store, opts),
     about: "Entire's checkpoints and Trails as source kinds",
   },
+  {
+    name: 'code-kinds',
+    since: '0.9.0',
+    pending: (store) =>
+      compareVersions(storeVersion(store), '0.9.0') < 0 &&
+      CODE_KINDS.some((k) => !store.config.source_kinds.includes(k)),
+    run: (store, opts) => migrateEntireKinds(store, opts, CODE_KINDS, 'code-kinds', '0.9.0'),
+    about: 'the files that implement a capability as a source kind (code)',
+  },
 ];
 
-/** Entire's source kinds (change:checkpoint-link): `entire-checkpoint` and `entire-trail` join the store's list, so a
- *  project that opts in to Entire can link them. One commit, one event; a store that lists its own kinds keeps them. */
-export function migrateEntireKinds(store: Store, opts: { session?: string; writer?: string } = {}): MigrateResult {
+/** Source kinds the store's list lacks join it: Entire's (change:checkpoint-link), `entire-checkpoint` and
+ *  `entire-trail`, so a project that opts in to Entire can link them; the code a capability is built from
+ *  (change:capability-code-paths). One commit, one event; a store that lists its own kinds keeps them. */
+export function migrateEntireKinds(
+  store: Store,
+  opts: { session?: string; writer?: string } = {},
+  kinds: string[] = ENTIRE_KINDS,
+  name: MigrationName = 'entire-kinds',
+  since = '0.7.0',
+): MigrateResult {
   const root = store.root;
   if (ownsRepository(store) && git(root, ['status', '--porcelain', '--', '.']))
     throw new CliError('the store has uncommitted changes; commit or discard them first');
-  const added = ENTIRE_KINDS.filter((k) => !store.config.source_kinds.includes(k));
+  const added = kinds.filter((k) => !store.config.source_kinds.includes(k));
   store.config.source_kinds = [...store.config.source_kinds, ...added];
   writeStoreConfig(root, store.config);
   const env = envelope(opts);
@@ -109,7 +132,7 @@ export function migrateEntireKinds(store: Store, opts: { session?: string; write
     ],
     commit,
   );
-  return { kind: 'entire-kinds', since: '0.7.0', products: 0, moved: 0, rewritten: added.length, commit };
+  return { kind: name, since, products: 0, moved: 0, rewritten: added.length, commit };
 }
 
 /** The session kinds (decision unbound-sessions/kinds): the four defaults the store lacks are created, one write each. */

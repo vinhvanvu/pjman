@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { before, test } from 'node:test';
 import { init } from '../cli/init.js';
-import { MIGRATIONS, migrate, pendingMigration } from '../ops/migrate.js';
+import { FORMAT_VERSION, MIGRATIONS, migrate, pendingMigration } from '../ops/migrate.js';
 import { newRecord } from '../ops/new.js';
 import { set } from '../ops/set.js';
 import { findStore, loadStoreConfig, openStore, writeStoreConfig, type Store } from '../store/config.js';
@@ -244,6 +244,7 @@ test('the entire-kinds move: a store from before 0.7.0 gains the two source kind
     'entire-trail',
   ]);
   assert.equal(pendingMigration(openStore(oldRoot)), 'stamp');
-  assert.equal(migrate(openStore(oldRoot)).version, '0.7.0');
+  // (its kinds already list code, so the next move is the stamp, to the format this pjman writes)
+  assert.equal(migrate(openStore(oldRoot)).version, FORMAT_VERSION);
   assert.equal(pendingMigration(openStore(oldRoot)), null);
 });

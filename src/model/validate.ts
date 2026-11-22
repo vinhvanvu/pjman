@@ -10,6 +10,8 @@ import {
   SEVERITIES,
 } from '../store/config.js';
 import { EFFECTS, FEATURE_STATUSES, parseEffect } from './tree.js';
+import { toplevel } from '../store/git.js';
+import { CODE_KIND, isGone, isLeaf, LINKERS, projectDirs, splitCodeKey } from './code.js';
 import { isActorKey, parseKey, productOfKey, SLUG_RE, slugify, sourceFileSlug, VERSION_RE } from '../store/keys.js';
 import {
   FIELD_ORDER,
@@ -179,6 +181,52 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
   const liveKey = (r: Rec, raw: unknown): string | undefined => {
     const x = res(r, raw);
     return x.status === 'ok' || x.status === 'alias' ? x.rec.key : undefined;
+  };
+
+  /** A code source (change:capability-code-paths): keyed `<project>/<path>` in a project the store holds, each entry a
+   *  capability it implements with who linked it and the counts merged work keeps; a path no checkout on this machine
+   *  holds is said, to be relinked once found. */
+  let dirs: Map<string, string[]> | undefined;
+  const checkCode = (r: Rec): void => {
+    const d = r.data;
+    const k = typeof d.key === 'string' ? splitCodeKey(`${CODE_KIND}:${d.key}`) : null;
+    if (!k) {
+      err(r, `a code source is keyed <project>/<path> ('${String(d.key)}')`);
+      return;
+    }
+    if (k.path.startsWith('/') || k.path.split('/').includes('..'))
+      err(r, `'${k.path}' is not a path inside the repository`);
+    if (!loaded.byKey.has(`project:${k.project}`)) warn(r, `project:${k.project} is not a project in the store`);
+    if (!Array.isArray(d.implements) || !d.implements.length) {
+      err(
+        r,
+        `'implements' names no capability: a code source is kept for what it implements (pjman code unlink removes it)`,
+      );
+      return;
+    }
+    const seen = new Set<string>();
+    for (const e of d.implements as unknown[]) {
+      const x = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>;
+      if (typeof x.feature !== 'string') {
+        err(r, `implements: each entry names a feature`);
+        continue;
+      }
+      checkRef(r, 'implements', x.feature, ['feature']);
+      const f = liveKey(r, x.feature) ?? x.feature;
+      if (seen.has(f)) err(r, `implements: ${f} twice`);
+      else if (loaded.byKey.has(f) && !isLeaf(loaded, f))
+        warn(r, `implements: ${f} has capabilities beneath it; link the file to the one it implements`);
+      seen.add(f);
+      if (!(LINKERS as readonly unknown[]).includes(x.by)) err(r, `implements: by is ${LINKERS.join(', ')}`);
+      for (const n of ['n', 'quiet'])
+        if (x[n] !== undefined && !(Number.isInteger(x[n]) && (x[n] as number) >= 0))
+          err(r, `implements: ${n} is a count`);
+      if (x.last !== undefined) checkRef(r, 'implements', x.last, ['change']);
+    }
+    // the checkout the command runs in counts too: a file made on a worktree's branch is not gone before it merges
+    dirs ??= projectDirs(store, toplevel(process.cwd()));
+    if (isGone(dirs, k.project, k.path))
+      warn(r, `${k.path} is in no checkout of project:${k.project} here: relink it once found (pjman code mv)`);
   };
 
   /** Check one reference. `expect` is a list of kinds ('source' covers any source kind). */
@@ -778,6 +826,8 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
         if (d.url !== undefined && typeof d.url === 'string' && !/^[a-z][a-z0-9+.-]*:/.test(d.url))
           err(r, `'url' is not a URL`);
         for (const k of listOf(d.links)) checkRef(r, 'links', k, ['source']);
+        if (kind === CODE_KIND) checkCode(r);
+        else if (d.implements !== undefined) err(r, `'implements' is held by a code source alone`);
         break;
       }
       case 'session': {

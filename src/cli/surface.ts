@@ -541,6 +541,22 @@ export const COMMANDS: Command[] = [
     args: 1,
   },
   {
+    name: 'code',
+    group: 'records',
+    line: 'the files a capability is built from: read, link, unlink, follow a move, learn from a merge, seed',
+    about:
+      "the code a capability is built from (decision capability-code-paths/code-field): each file is a source of kind code, keyed by its project and its path in that repository (code:<project>/<path>), whose record says which capabilities it implements, who linked it (a person: pinned; an agent that found it; a merge whose diff touched it), how many merged changes to that capability touched it and the last of them. With a node it reads: a capability's own files ranked (most touched first, a person's before the rest), then for a feature or the product the files beneath it rolled up, never stored on them; a file in no checkout of its project on this machine is said gone, to relink once found; --all lists every file. A change's context lists the files of the capabilities it names, and pjman get and pjman context on a feature or product carry them too. link, as the agent does on finding a file by search or as a person does to pin one, adds files (paths relative to here or to the repository's root; a glob where a capability owns a folder); unlink takes them off, and a file that implements nothing else goes; mv follows a file that moved, its links joining any at the new path. The merge keeps the rest (decision capability-code-paths/upkeep): once a change's branch is on the base, by pjman merge or as pjman sync git finds it (a pull request merged on GitHub, a squash, a rebase), its diff is read: a renamed file's links follow it, a deleted file's go, every file it touched joins or counts once more on each capability the change names, and a link no person wrote drops once five merged changes to its capability pass without touching it. learn runs that by hand for one change (--branch when its branch is not found). seed gives a project its first links from its history: each commit naming one change and touching at most 15 files gives those files, where they still exist, to the capabilities that change names; --check prints what it would give. Every write is one commit, pjman undo puts it back",
+    usage: [
+      'pjman code <capability|feature|product> [--all] [--json]',
+      'pjman code link <capability> <path>…',
+      'pjman code unlink <capability> <path>…',
+      'pjman code mv <old path> <new path>',
+      'pjman code learn <change> [--branch <branch>]',
+      'pjman code seed [--check]',
+    ],
+    flags: ['all', 'branch', 'check'],
+  },
+  {
     name: 'rest',
     group: 'reading',
     line: 'whether a stop on a change is one the record allows (exit 1 when not)',

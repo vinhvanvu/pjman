@@ -133,7 +133,11 @@ working it.
    On every prompt the harness hands you the brief: what others changed on your bound change, its milestone, its
    decisions and its dependencies since your last brief, and other live sessions near it. Act on what it says.
 6. **Things outside the store are sources:** link them by key (`--links file:path`, `github-pr:owner/repo#1`,
-   `url:https://…`); a record for a source is optional.
+   `url:https://…`); a record for a source is optional. The code a capability is built from is a source of its own
+   (`code:<project>/<path>`): a change's context lists, under Code, the files of the capabilities it names. Read
+   those before searching. When a search finds a file that implements one of them, link it then
+   (`pjman code link <capability> <path>…`); when a listed path is gone or wrong, fix it then (`pjman code mv <old>
+   <new>`, `pjman code unlink <capability> <path>`). The merge keeps the counts; you keep what you found.
 7. **Nothing harness-specific in a record.** No tool names, model names or session mechanics in titles, summaries or
    decisions. Those belong to this adapter.
 8. **One worktree per change; the harness makes it, you name it, you clean it up.** Before the first edit on a change,

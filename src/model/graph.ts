@@ -117,6 +117,11 @@ function edgesOnce(loaded: Loaded): Edge[] {
         break;
       case 'source':
         for (const k of list(d.links)) edge('links', r.key, k, r);
+        // a code file to each capability it implements (change:capability-code-paths)
+        if (Array.isArray(d.implements))
+          for (const e of d.implements)
+            if (e && typeof e === 'object' && typeof (e as { feature?: unknown }).feature === 'string')
+              edge('implements', r.key, live((e as { feature: string }).feature), r);
         break;
       case 'session':
         if (typeof d.parent === 'string') edge('parent', r.key, d.parent, r);
@@ -491,7 +496,8 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
         ? ` (observed by ${e.on.replace(/^sessions\/(\d{4}-\d{2}-\d{2}-)?/, 'session:').replace(/\.md$/, '')}${e.at ? ` at ${e.at.slice(0, 10)}` : ''})`
         : ''
     }`;
-  const inbound = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
+  // the files a node is built from are said under its Code, ranked, not as edges here
+  const inbound = n.in.filter((e) => e.edge !== 'writer' && e.edge !== 'session' && e.edge !== 'implements');
   const outbound = n.out.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   if (inbound.length) out.push(`\nreferenced by:\n${inbound.map((e) => line(e, e.from)).join('\n')}`);
   if (outbound.length) out.push(`\nrefers to:\n${outbound.map((e) => line(e, e.to)).join('\n')}`);

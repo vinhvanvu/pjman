@@ -31,6 +31,8 @@ import {
   type ChangeAspects,
 } from './aspects.js';
 import { urlOf } from './refs.js';
+import { changeCode, formatChangeCode, projectDirs, type NodeCode } from './code.js';
+import { toplevel } from '../store/git.js';
 import { findingsLine, findingsOf, formatFinding, type Finding } from './findings.js';
 import { loopOf, loopWords, reviewMode, roundsOf } from './review.js';
 import { TRAIL_KIND, trailLine, trailStateOf } from '../entire/trail.js';
@@ -589,6 +591,9 @@ export interface ChangeContext {
   aspectCues: AspectCue[];
   /** The releases that shipped it, oldest first: a change can ship in part in one and finish in a later one. */
   releases: { key: string; version: string; at?: string; url?: string }[];
+  /** The files of the capabilities it names, each capability's own ranked, a feature's rolled up from beneath
+   *  (change:capability-code-paths): what to read before searching. */
+  code: NodeCode[];
 }
 
 export interface StoreContext {
@@ -879,6 +884,7 @@ export function changeContext(
     aspects,
     aspectCues: aspectCuesOf(loaded, rec),
     releases,
+    code: changeCode(loaded, rec, projectDirs(store, toplevel(process.cwd()))),
   };
 }
 
@@ -978,6 +984,8 @@ export function formatChangeContext(c: ChangeContext): string {
   // the contract the change works under, after what was decided on it
   if (c.aspects) out.push('\n' + formatChangeAspects(c.aspects).join('\n').trimEnd());
   if (c.aspectCues.length) out.push('\n' + formatAspectCues(c.aspectCues).join('\n'));
+  // what the work reads first: the files of the capabilities it names
+  if (c.code?.length) out.push(formatChangeCode(c.code).join('\n'));
   if (c.findings.length)
     out.push(
       `\n## Findings${findingsLine(c.findings) ? ` (${findingsLine(c.findings)})` : ' (none open)'}\n\n${c.findings.map((f, i) => formatFinding(i + 1, f)).join('\n')}`,
