@@ -38,16 +38,18 @@ const rowsOf = (...rows: ChangeRow[]) => new Map(rows.map((r) => [r.key, r]));
 describe('the children as the plan', () => {
   const children = [child('b', 'active'), child('a', 'done', '2026-10-30'), child('c', 'open'), child('d', 'dropped')];
   const rows = rowsOf(
-    row('a', { status: 'done', position: 1, moved: '2026-11-07T00:00:00Z' }),
+    row('a', { status: 'done', position: 1, childOrder: 0, moved: '2026-11-07T00:00:00Z' }),
     row('b', {
       status: 'active',
       position: 3,
+      childOrder: 2,
       plan: { done: 1, total: 4 },
       step: { n: 2, text: 'draw', state: 'active' },
     }),
-    row('c', { status: 'open', position: 2, blockedOn: 'Public' }),
+    row('c', { status: 'open', position: 2, childOrder: 1, blockedOn: 'Public' }),
+    row('d', { status: 'dropped', childOrder: 3 }),
   );
-  it("orders the children by the roadmap, then by creation, and reads each with the product's row", () => {
+  it("orders the children by the rows' work order and reads each with the product's row", () => {
     const list = childrenInOrder(children, rows, [{ on: 'change:p/b' }], [{ change: 'change:p/c' }]);
     expect(list.map((c) => c.key.split('/')[1])).toEqual(['a', 'c', 'b', 'd']);
     const b = list.find((c) => c.key.endsWith('/b'))!;
@@ -61,8 +63,14 @@ describe('the children as the plan', () => {
       row('a', { status: 'done', position: 1, childOrder: 2 }),
       row('b', { status: 'active', position: 3, childOrder: 0 }),
       row('c', { status: 'open', position: 2, childOrder: 1 }),
+      row('d', { status: 'dropped', childOrder: 3 }),
     );
     expect(childrenInOrder(children, ordered).map((c) => c.key.split('/')[1])).toEqual(['b', 'c', 'a', 'd']);
+  });
+  it("keeps the context's order when a child has no row to place it", () => {
+    const partial = rowsOf(row('a', { childOrder: 1 }), row('b', { childOrder: 0 }));
+    const given = [child('c', 'open'), child('a', 'open'), child('b', 'open')];
+    expect(childrenInOrder(given, partial).map((c) => c.key.split('/')[1])).toEqual(['c', 'a', 'b']);
   });
   it('folds what is behind the work under one line and marks the next child after the open one', () => {
     const list = childrenInOrder(children, rows);

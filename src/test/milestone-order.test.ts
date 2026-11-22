@@ -98,3 +98,19 @@ test('the roadmap orders only what the dependencies leave free', () => {
   order(store, 'change:balance', { first: true }); // waits on both: stays last
   assert.deepEqual(ranked(), ['walk', 'work', 'judge', 'shell', 'weather', 'balance']);
 });
+
+test('a dependency through a change outside the milestone still orders the siblings', () => {
+  // late depends on bridge, outside the loop; bridge depends on early: late after early
+  change(store, 'other', { title: 'other goal', kind: 'milestone', status: 'open', created: '2026-01-01' });
+  change(store, 'early', { title: 'early', parent: 'change:other', status: 'open', created: '2026-02-02' });
+  change(store, 'bridge', { title: 'bridge', status: 'open', created: '2026-02-01', dependsOn: ['change:early'] });
+  change(store, 'late', {
+    title: 'late',
+    parent: 'change:other',
+    status: 'open',
+    created: '2026-01-15',
+    dependsOn: ['change:bridge'],
+  });
+  const o = workOrder(loadStore(store));
+  assert.ok(o.get('change:game/early')! < o.get('change:game/late')!);
+});
