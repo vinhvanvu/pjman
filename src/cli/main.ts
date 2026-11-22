@@ -24,7 +24,11 @@ import { formatProblems, summarise, validate } from '../model/validate.js';
 import { trackerOf } from '../model/refs.js';
 import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
-import { syncGit } from '../sync/git.js';
+import { branchesOf, syncGit } from '../sync/git.js';
+import { localHeads } from '../store/merged.js';
+import { toplevel } from '../store/git.js';
+import { codeLink, codeMove, codeSeed, codeUnlink, codeUpkeep, upkeepLine, type CodeWrite } from '../ops/code.js';
+import { formatNodeCode, nodeCode, projectDirs, SHOWN } from '../model/code.js';
 import { mergeChange } from '../sync/merge.js';
 import {
   addFinding,
@@ -845,7 +849,16 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         const nodes = tree(loaded, pos[1]);
         if (!nodes.length) throw notFound(pos[1], { as: 'product or feature' });
         const a = activity(store, loaded, nodes[0].key, {});
-        v.json ? json({ tree: nodes[0], activity: a }) : out(formatTree(nodes) + '\n' + formatActivity(a, formatEvent));
+        // the node's code: its own files, its children's rolled up (change:capability-code-paths)
+        const code = nodeCode(loaded, nodes[0].key, projectDirs(store, toplevel(cwd)));
+        v.json
+          ? json({ tree: nodes[0], activity: a, code })
+          : out(
+              formatTree(nodes) +
+                '\n' +
+                formatActivity(a, formatEvent) +
+                (code.own.length || code.rolled.length ? `\n\n## Code\n\n${formatNodeCode(code).join('\n')}` : ''),
+            );
         return 0;
       }
       if (pos[1] && !pos[1].startsWith('project:')) {
@@ -882,9 +895,22 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     case 'get': {
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw usageError('usage: pjman get <ref>');
-      const n = get(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project });
+      const loaded = loadStore(store);
+      const n = get(loaded, pos[1], { cwd, projectDir: store.projectDir, project: store.project });
       if (n.resolution.status === 'none') throw notFound(pos[1], { tried: n.resolution.tried });
-      v.json ? json(n) : out(formatNeighbourhood(n, formatChangeContext));
+      // a feature or the product: its code, its own and rolled up from beneath (change:capability-code-paths)
+      const code =
+        n.record && (n.record.type === 'feature' || n.record.type === 'product')
+          ? nodeCode(loaded, n.record.key, projectDirs(store, toplevel(cwd)))
+          : undefined;
+      const hasCode = !!code && (code.own.length > 0 || code.rolled.length > 0);
+      v.json
+        ? json(hasCode ? { ...n, code } : n)
+        : out(
+            formatNeighbourhood(n, formatChangeContext).trimEnd() +
+              (hasCode ? `\n\n## Code\n\n${formatNodeCode(code).join('\n')}` : '') +
+              '\n',
+          );
       return 0;
     }
     case 'intake': {
@@ -1088,6 +1114,80 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             ? `applied ${plural(r.writes, 'write')} from ${plural(r.lines, 'line')} as one commit${r.for ? ` for ${r.for}` : ''}${r.commit ? ` (committed ${r.commit}; pjman undo reverts it)` : ''}`
             : `nothing to write in ${plural(r.lines, 'line')}`,
         );
+      return 0;
+    }
+    case 'code': {
+      const store = scoped(requireStore(cwd, v.store));
+      const verb = pos[1];
+      const opts = { cwd, session: v.session, writer: v.writer };
+      const wrote = (w: CodeWrite, what: string) => {
+        const parts = [
+          w.created.length ? `${w.created.length} created` : '',
+          w.updated.length ? `${w.updated.length} updated` : '',
+          w.removed.length ? `${w.removed.length} removed` : '',
+        ].filter(Boolean);
+        out(`${what}: ${parts.join(', ') || 'nothing to write'}${w.commit ? ` (committed ${w.commit})` : ''}`);
+      };
+      if (verb === 'link' || verb === 'unlink') {
+        if (!pos[2] || pos.length < 4) throw usageError(`usage: pjman code ${verb} <capability> <path>…`);
+        const w = (verb === 'link' ? codeLink : codeUnlink)(store, pos[2], pos.slice(3), opts);
+        v.json
+          ? json(w)
+          : wrote(
+              w,
+              `${verb}ed ${pos.slice(3).length} on ${printed(live(loadStore(store), pos[2].startsWith('feature:') ? pos[2] : `feature:${pos[2]}`)?.key ?? pos[2])}`,
+            );
+        return 0;
+      }
+      if (verb === 'mv') {
+        if (!pos[2] || !pos[3]) throw usageError('usage: pjman code mv <old path> <new path>');
+        const w = codeMove(store, pos[2], pos[3], opts);
+        v.json ? json(w) : wrote(w, `moved ${pos[2]} → ${pos[3]}`);
+        return 0;
+      }
+      if (verb === 'learn') {
+        if (!pos[2]) throw usageError('usage: pjman code learn <change> [--branch <branch>]');
+        const loaded = loadStore(store);
+        const rec = resolveArg(loaded, pos[2], { kinds: ['change'] });
+        const branch =
+          v.branch ??
+          (store.projectDir
+            ? branchesOf(live(loaded, rec)!, observedBranches(loaded), localHeads(store.projectDir))[0]
+            : undefined);
+        const r = codeUpkeep(store, rec, { ...opts, branch });
+        v.json
+          ? json(r)
+          : out(upkeepLine(r) ?? `nothing learned from ${printed(r.change)}${r.skipped ? ` (${r.skipped})` : ''}`);
+        return 0;
+      }
+      if (verb === 'seed') {
+        const r = codeSeed(store, { ...opts, write: !v.check });
+        if (v.json) json(r);
+        else {
+          for (const c of r.capabilities)
+            out(
+              `${printed(c.feature)}: ${c.files.length} file${c.files.length === 1 ? '' : 's'}${
+                c.files.length
+                  ? ` (${c.files
+                      .slice(0, 3)
+                      .map((f) => `${f.path} ${f.n}×`)
+                      .join(', ')}${c.files.length > 3 ? ', …' : ''})`
+                  : ''
+              }`,
+            );
+          v.check ? out('(--check: nothing written)') : wrote(r, 'seeded');
+        }
+        return 0;
+      }
+      if (!verb) throw usageError('usage: pjman code <node> [--all] | link | unlink | mv | learn | seed');
+      // a read: a capability's files, a feature's and the product's rolled up from beneath
+      const loaded = loadStore(store);
+      const node = live(loaded, verb.includes(':') ? verb : `feature:${verb}`);
+      if (!node || (node.type !== 'feature' && node.type !== 'product'))
+        throw notFound(verb, { as: 'feature or product' });
+      const dirs = projectDirs(store, toplevel(cwd));
+      const n = nodeCode(loaded, node.key, dirs);
+      v.json ? json(n) : out([printed(n.key), ...formatNodeCode(n, { limit: v.all ? Infinity : SHOWN })].join('\n'));
       return 0;
     }
     case 'rest': {
@@ -1528,6 +1628,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           );
           for (const d of r.done)
             out(`  ${printed(d.change)}: ${d.branch} (${d.how})${d.commit ? ` (committed ${d.commit})` : ''}`);
+          for (const line of r.code ?? []) out(`  ${line}`);
           for (const t of trails) for (const line of trailLines(t, printed)) out(line);
         }
         return 0;

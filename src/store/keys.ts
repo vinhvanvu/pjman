@@ -110,6 +110,9 @@ export function sourceFileSlug(kind: string, key: string): string {
   if (kind.toLowerCase() === 'url') {
     return 'u-' + createHash('sha256').update(canonicalUrl(key)).digest('hex').slice(0, 12);
   }
+  // a code path keeps its shape apart from its slug: `a-b.ts` and `a/b.ts` slug alike, so a short hash of the key follows
+  if (kind.toLowerCase() === 'code')
+    return `${slugify(key)}-${createHash('sha256').update(key).digest('hex').slice(0, 6)}`;
   return slugify(key);
 }
 

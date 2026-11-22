@@ -15,6 +15,7 @@ import { CliError } from '../store/util.js';
 import { branchOf, observedBranches, ownBranches, type LocalBranch } from '../model/view.js';
 import { branchNameFor, worktreeNameFor } from '../model/branch.js';
 import { set } from '../ops/set.js';
+import { learnCode } from '../ops/code.js';
 
 export { baseBranch, baseRefs, mergedBranch, mergedInto, type Merged, type MergedHow } from '../store/merged.js';
 
@@ -39,6 +40,8 @@ export interface GitSyncResult {
   done: { change: string; branch: string; how: MergedHow; on: string; commit: string | null }[];
   /** Done changes whose branch still exists locally and is merged: safe to remove with its worktree. */
   merged: { change: string; branch: string; how: MergedHow }[];
+  /** What each merge taught the capabilities its change names, a line each (change:capability-code-paths). */
+  code?: string[];
 }
 
 /** Follow the repository: every change of the project in review whose branch has been merged into the base is set
@@ -77,6 +80,11 @@ export function syncGit(store: Store, opts: { session?: string; write?: boolean 
           }).commit;
     result.done.push({ change: rec.key, branch, how: m.how, on: m.on, commit: commit ?? null });
     result.merged.push({ change: rec.key, branch, how: m.how });
+    // what the merge teaches the capabilities the change names (decision capability-code-paths/upkeep)
+    if (opts.write !== false) {
+      const learned = learnCode(store, rec.key, branch, opts.session);
+      if (learned) (result.code ??= []).push(`${rec.key}: ${learned}`);
+    }
   }
   return result;
 }

@@ -116,7 +116,7 @@ export const FIELD_ORDER: Record<RecordType, readonly string[]> = {
   ],
   // a release: the version a product shipped, when, from which commit, at what level, and the changes it ships in order
   release: ['version', 'tag', 'level', 'at', 'commit', 'url', 'ships', 'links', 'writer', 'session', 'created', 'ext'],
-  source: ['kind', 'key', 'title', 'url', 'links', 'writer', 'session', 'created', 'ext'],
+  source: ['kind', 'key', 'title', 'url', 'links', 'implements', 'writer', 'session', 'created', 'ext'],
   session: [
     'agent',
     'on_behalf_of',

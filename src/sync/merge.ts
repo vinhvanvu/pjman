@@ -15,6 +15,7 @@ import { observedBranches } from '../model/view.js';
 import { localHeads } from '../store/merged.js';
 import { baseBranch, branchesOf, mergedInto } from './git.js';
 import { formatLoop, readFindings, reviewLoop } from './review.js';
+import { learnCode } from '../ops/code.js';
 
 export interface MergeResult {
   change: string;
@@ -55,17 +56,16 @@ export function mergeChange(
   if (!branch) throw new CliError(`${rec.key} has no branch in this repository to merge`);
   const named = `change:${rec.changeSlug}`;
   const notes: string[] = [];
-  const done = (by: MergeResult['by'], because: string): MergeResult => ({
-    change: rec.key,
-    branch,
-    base,
-    by,
-    notes,
-    commit:
+  const done = (by: MergeResult['by'], because: string): MergeResult => {
+    const commit =
       rec.data.status === 'done'
         ? null
-        : set(store, rec.key, ['status=done'], { session: opts.session, because }).commit,
-  });
+        : set(store, rec.key, ['status=done'], { session: opts.session, because }).commit;
+    // what the merge teaches the capabilities the change names (decision capability-code-paths/upkeep)
+    const learned = learnCode(store, rec.key, branch, opts.session);
+    if (learned) notes.push(learned);
+    return { change: rec.key, branch, base, by, notes, commit };
+  };
 
   const already = mergedInto(dir, branch, { base, named });
   if (already) return done('already', `${branch} is merged into ${already.on} (${already.how})`);
