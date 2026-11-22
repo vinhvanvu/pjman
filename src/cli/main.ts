@@ -1360,7 +1360,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const owner = personAt(loaded, key);
       if (owner) {
         const view = personView(loaded, owner);
-        v.json ? json(view) : out(formatPerson(view).join('\n'));
+        v.json ? json(view) : out(formatPerson(view, { all: v.all }).join('\n'));
         return 0;
       }
       if (key.startsWith('change:')) {

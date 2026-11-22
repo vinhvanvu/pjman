@@ -9,6 +9,7 @@ import { IDENTITY_KINDS, type Store } from '../store/config.js';
 import { memo, recordOf, type Loaded, type Rec } from '../store/records.js';
 import { parseKey, slugify } from '../store/keys.js';
 import { personOf } from './refs.js';
+import { eventsByKey, readEvents, type StoreEvent } from '../store/events.js';
 import { ancestorsOf, live, rootProductOf } from './tree.js';
 
 /** The roles pjman starts a store with: a person's job. */
@@ -256,13 +257,106 @@ export interface PersonView {
   aliases: string[];
   accounts: string[];
   ties: Tie[];
-  /** Sources that name one of their accounts. */
-  through: AccountPart[];
+  /** Sources that name one of their accounts, with the title and state the sync keeps. */
+  through: (AccountPart & { title?: string; state?: string })[];
+  /** The dossier (change:person-dossier), read live from keys and titles the store holds, nothing ingested: the open
+   *  changes they are on, by how (a stake on a feature the change names, a tie to it, a ticket it binds naming them). */
+  onNow: { key: string; name?: string; status?: string; as: string[] }[];
+  /** The decisions they took part in, newest first: decided (their acceptance stands), reopened (they accepted it and
+   *  it was reopened or decided again by someone else since), rejected (an option), commented. */
+  decided: { key: string; name?: string; how: 'decided' | 'reopened' | 'rejected' | 'commented'; at?: string }[];
+  /** The last time they were in the store: a write of theirs in the event stream, or a word of theirs on a decision's
+   *  thread, with the session that wrote it. */
+  lastSeen?: { at: string; key: string; session?: string };
 }
+
+const OPEN = (status: unknown) => status !== 'done' && status !== 'dropped';
+
+/** The store's event stream, read once per load; a store without one reads as empty. */
+function storeEvents(loaded: Loaded): StoreEvent[] {
+  return memo(loaded, 'people-events', () => {
+    try {
+      return readEvents(loaded.store);
+    } catch {
+      return [];
+    }
+  });
+}
+const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 
 export function personView(loaded: Loaded, rec: Rec): PersonView {
   const accounts = strings(rec.data.links);
   const own = new Set(accounts.map((a) => a.toLowerCase()));
+  const through = accountParts(loaded)
+    .filter((a) => own.has(a.account.toLowerCase()))
+    .map((a) => {
+      const src = recordOf(loaded, a.source);
+      const ext = (src?.data.ext ?? {}) as Record<string, Record<string, unknown> | undefined>;
+      const state = str(ext.github?.state) ?? str(ext.linear?.state);
+      const title = str(src?.data.title);
+      return { ...a, ...(title ? { title } : {}), ...(state ? { state } : {}) };
+    });
+
+  // on now: each open change, by the POCs it names; a stake held on the product root says nothing about one change
+  const onNow: PersonView['onNow'] = [];
+  for (const c of loaded.records) {
+    if (c.type !== 'change' || !c.valid || !OPEN(c.data.status)) continue;
+    const as = pocsOf(loaded, c.key)
+      .filter((p) => p.who === rec.key)
+      .flatMap((p) => p.on.filter((on) => !on.startsWith('product:')).map((on) => `${p.type} on ${on}`));
+    if (as.length)
+      onNow.push({
+        key: c.key,
+        ...(str(c.data.name) ? { name: str(c.data.name) } : {}),
+        ...(str(c.data.status) ? { status: str(c.data.status) } : {}),
+        as,
+      });
+  }
+
+  // decided: the threads they spoke on; last seen: their newest write in the event stream or word on a thread
+  const events = storeEvents(loaded);
+  const byKey = memo(loaded, 'people-events-by-key', () => eventsByKey(events));
+  const decided: PersonView['decided'] = [];
+  let lastSeen: PersonView['lastSeen'];
+  const seen = (at: unknown, key: string, session?: string) => {
+    if (typeof at === 'string' && (!lastSeen || at > lastSeen.at))
+      lastSeen = { at, key, ...(session ? { session } : {}) };
+  };
+  for (const e of events) if (e.writer === rec.key) seen(e.at, e.key, e.session);
+  for (const r of loaded.records) {
+    if (!r.valid) continue;
+    // a store with no event stream still has the records' own stamps
+    if (!events.length && r.data.writer === rec.key) seen(r.data.created, r.key, str(r.data.session));
+    if (r.type !== 'decision') continue;
+    const said = (Array.isArray(r.data.thread) ? (r.data.thread as Record<string, unknown>[]) : []).filter(
+      (e) => e && e.by === rec.key,
+    );
+    // the session that wrote a word of theirs: the write on this decision at that moment or just after it
+    for (const e of said)
+      if (typeof e.at === 'string') {
+        const at = e.at;
+        seen(at, r.key, (byKey.get(r.key) ?? []).find((ev) => ev.at >= at)?.session);
+      }
+    const kinds = new Set(said.map((e) => e.type));
+    const stands = r.data.status === 'decided' && r.data.decided_by === rec.key;
+    const how = stands
+      ? 'decided'
+      : kinds.has('accept')
+        ? 'reopened'
+        : kinds.has('reject')
+          ? 'rejected'
+          : kinds.has('comment')
+            ? 'commented'
+            : undefined;
+    if (how) {
+      const at = said
+        .map((e) => e.at)
+        .filter((x): x is string => typeof x === 'string')
+        .toSorted()
+        .at(-1);
+      decided.push({ key: r.key, ...(str(r.data.name) ? { name: str(r.data.name) } : {}), how, ...(at ? { at } : {}) });
+    }
+  }
   return {
     key: rec.key,
     ...(typeof rec.data.name === 'string' ? { name: rec.data.name } : {}),
@@ -270,7 +364,10 @@ export function personView(loaded: Loaded, rec: Rec): PersonView {
     aliases: strings(rec.data.aliases),
     accounts,
     ties: personTies(loaded, rec),
-    through: accountParts(loaded).filter((a) => own.has(a.account.toLowerCase())),
+    through,
+    onNow,
+    decided: decided.toSorted((a, b) => (b.at ?? '').localeCompare(a.at ?? '')),
+    ...(lastSeen ? { lastSeen } : {}),
   };
 }
 
@@ -407,7 +504,10 @@ export function formatPocs(list: Poc[]): string[] {
   return list.map((p) => `- ${p.type}: ${whoLabel(p)}${p.said ? ' · said' : ''} · on ${p.on.join(', ')}`);
 }
 
-export function formatPerson(v: PersonView): string[] {
+/** The decisions a person read shows by default, newest first; --all shows every one. */
+export const DECIDED_SHOWN = 10;
+
+export function formatPerson(v: PersonView, opts: { all?: boolean } = {}): string[] {
   const out = [`${v.key}${v.name ? ` — ${v.name}` : ''}${v.role ? ` · ${v.role}` : ''}`];
   if (v.aliases.length) out.push(`aliases: ${v.aliases.join(', ')}`);
   out.push('', '## Accounts', '', ...(v.accounts.length ? v.accounts.map((a) => `- ${a}`) : ['(none)']));
@@ -417,6 +517,39 @@ export function formatPerson(v: PersonView): string[] {
   out.push('', '## Stakes', '', ...(stakes.length ? stakes.map(tie) : ['(none)']));
   out.push('', '## Parts', '', ...(parts.length ? parts.map(tie) : ['(none)']));
   if (v.through.length)
-    out.push('', '## Through their accounts', '', ...v.through.map((a) => `- ${a.type} ${a.source} · as ${a.account}`));
+    out.push(
+      '',
+      '## Through their accounts',
+      '',
+      ...v.through.map(
+        (a) =>
+          `- ${a.type} ${a.source}${a.title ? ` — ${a.title}` : ''}${a.state ? ` [${a.state}]` : ''} · as ${a.account}`,
+      ),
+    );
+  if (v.onNow.length)
+    out.push(
+      '',
+      '## On now',
+      '',
+      ...v.onNow.map(
+        (c) => `- ${c.key}${c.name ? ` — ${c.name}` : ''}${c.status ? ` [${c.status}]` : ''} · ${c.as.join(', ')}`,
+      ),
+    );
+  if (v.decided.length) {
+    const shown = opts.all ? v.decided : v.decided.slice(0, DECIDED_SHOWN);
+    const left = v.decided.length - shown.length;
+    out.push(
+      '',
+      '## Decided',
+      '',
+      ...shown.map((d) => `- ${d.how} ${d.key}${d.name ? ` — ${d.name}` : ''}${d.at ? ` · ${d.at.slice(0, 10)}` : ''}`),
+      ...(left > 0 ? [`(${left} more: --all)`] : []),
+    );
+  }
+  if (v.lastSeen)
+    out.push(
+      '',
+      `last seen ${v.lastSeen.at.slice(0, 10)} on ${v.lastSeen.key}${v.lastSeen.session ? ` in ${v.lastSeen.session}` : ''}`,
+    );
   return out;
 }

@@ -125,7 +125,7 @@ export function entriesFromFlags(
     out.push({ type: 'comment', text: f.comment.trim(), by, ...(f.on ? { option: f.on } : {}) });
   for (const r of f.reject ?? []) {
     const { id, text } = idText(r, '--reject', false);
-    out.push({ type: 'reject', option: id, text, by: writer });
+    out.push({ type: 'reject', option: id, text, by });
   }
   if (f.recommend) {
     const { id, text } = idText(f.recommend, '--recommend', false);
