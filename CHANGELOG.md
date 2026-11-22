@@ -2,6 +2,17 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.10.0 — 2026-11-22
+
+### Added
+
+- **People and stakes**: One record per person, holding their role, accounts, stakes on map nodes and ties to sources, kept from conversation and named by every getter (change:people-in-graph)
+
+### Changed
+
+- **Person dossier**: Reading a person gathers what the graph knows about them, so an agent can brief itself before tagging or messaging them (change:person-dossier)
+- **README people**: The README shows people as part of the graph: accounts, typed ties, who to reference and the dossier (change:readme-people)
+
 ## 0.9.0 — 2026-11-22
 
 ### Added

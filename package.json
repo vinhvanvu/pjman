@@ -1,6 +1,6 @@
 {
   "name": "@vinhvanvu/pjman",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "A command-line tool and Claude Code plugin that keeps a record of your product work for coding agents, as Markdown files in a git repository.",
   "keywords": [
     "context-graph",
