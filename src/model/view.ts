@@ -516,14 +516,37 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
     .map(withBranch);
 }
 
-export function formatLs(rows: Row[]): string {
+export function formatLs(rows: Row[], liveKey: (key: string) => string | undefined = (k) => k): string {
   if (rows.length === 0) return '(no records)';
-  const w = Math.min(48, Math.max(...rows.map((r) => r.key.length)));
+  // a change whose parent is listed prints beneath it, indented, in the listing's order (decision
+  // nested-milestones/ls-nesting); the JSON stays flat, each row with its parent
+  const listed = new Set(rows.map((r) => r.key));
+  const parentOf = (r: Row) => {
+    const p = r.type === 'change' && typeof r.data.parent === 'string' ? liveKey(r.data.parent) : undefined;
+    return p && listed.has(p) ? p : undefined;
+  };
+  const kids = new Map<string, Row[]>();
+  for (const r of rows) {
+    const p = parentOf(r);
+    if (p) push(kids, p, r);
+  }
+  const nested: { r: Row; depth: number }[] = [];
+  const placed = new Set<string>();
+  const place = (r: Row, depth: number) => {
+    if (placed.has(r.key)) return;
+    placed.add(r.key);
+    nested.push({ r, depth });
+    for (const k of kids.get(r.key) ?? []) place(k, depth + 1);
+  };
+  for (const r of rows) if (!parentOf(r)) place(r, 0);
+  for (const r of rows) place(r, 0); // a parent loop: what is left, at the top
+  const keyOf = ({ r, depth }: { r: Row; depth: number }) => `${'  '.repeat(depth)}${r.key}`;
+  const w = Math.min(48, Math.max(...nested.map((n) => keyOf(n).length)));
   const dateOf = (r: Row) => r.created ?? (typeof r.data.started === 'string' ? r.data.started.slice(0, 10) : '');
-  return rows
+  return nested
     .map(
-      (r) =>
-        `${r.type.padEnd(8)} ${dateOf(r).padEnd(10)}  ${r.key.padEnd(w)}  ${(r.status ?? '').padEnd(10)} ${r.gist ?? r.title ?? (r.valid ? '' : '(invalid)')}`,
+      (n) =>
+        `${n.r.type.padEnd(8)} ${dateOf(n.r).padEnd(10)}  ${keyOf(n).padEnd(w)}  ${(n.r.status ?? '').padEnd(10)} ${n.r.gist ?? n.r.title ?? (n.r.valid ? '' : '(invalid)')}`,
     )
     .join('\n');
 }
@@ -612,7 +635,8 @@ export interface ChangeContext {
   /** What must land before this change, resolved; and the changes that say they need this one. */
   dependsOn: Row[];
   neededBy: Row[];
-  /** A parent change is a milestone: done children over children, dropped excluded. */
+  /** A parent change is a milestone: the work beneath it done over the work beneath it, counted through the milestones
+   *  beneath it (decision nested-milestones/progress-rollup), dropped excluded. */
   progress?: { done: number; total: number };
   /** Edges sessions observed from this change (the files it touched), with the session that saw each. */
   observed: { edge: string; to: string; session: string; at?: string }[];
@@ -645,6 +669,8 @@ export interface StoreContext {
   mapPrompt?: string;
   /** One line when the product's map has grown past the shape a proposal would have: a regrouping to offer, never to run unasked. */
   regroupPrompt?: string;
+  /** Each milestone on the board, its progress rolled up through the store (done work included). */
+  progress?: Record<string, { done: number; total: number }>;
 }
 
 /** A decision as a change's context carries it: its rungs on the row, the thread read as its current state, and what it
@@ -702,6 +728,52 @@ export function progressOf(children: { status?: string }[]): { done: number; tot
         total: counted.length,
       }
     : undefined;
+}
+
+/** A change as the roll-up reads it: its key, status and kind. */
+export interface RollupNode {
+  key: string;
+  status?: string;
+  kind?: string;
+}
+
+/** A milestone's progress counted through the milestones beneath it (decision nested-milestones/progress-rollup): the
+ *  work beneath, every change under it that is not a milestone, with a milestone that has no child yet counting as one;
+ *  a dropped change and everything beneath it are left out. Undefined with nothing to count. */
+export function rollupOf(
+  key: string,
+  kidsOf: (key: string) => readonly RollupNode[],
+): { done: number; total: number } | undefined {
+  let done = 0;
+  let total = 0;
+  const seen = new Set([key]);
+  const counted = (k: string) => kidsOf(k).filter((c) => c.status !== 'dropped' && !seen.has(c.key));
+  const walk = (k: string) => {
+    for (const c of counted(k)) {
+      if (seen.has(c.key)) continue;
+      seen.add(c.key);
+      if (c.kind === 'milestone' && counted(c.key).length) walk(c.key);
+      else {
+        total++;
+        if (c.status === 'done') done++;
+      }
+    }
+  };
+  walk(key);
+  return total ? { done, total } : undefined;
+}
+
+/** The roll-up's reading of stored changes. */
+export const rollupNode = (r: Rec): RollupNode => ({
+  key: r.key,
+  status: typeof r.data.status === 'string' ? r.data.status : undefined,
+  kind: typeof r.data.kind === 'string' ? r.data.kind : undefined,
+});
+
+/** A milestone's progress in the store, rolled up through the milestones beneath it. */
+export function progressBeneath(loaded: Loaded, key: string): { done: number; total: number } | undefined {
+  const { children } = contextIndex(loaded);
+  return rollupOf(key, (k) => (children.get(k) ?? []).map(rollupNode));
 }
 
 function sessionsOf(loaded: Loaded, changeKey: string): Rec[] {
@@ -927,7 +999,7 @@ export function changeContext(
     sessions,
     parent,
     children,
-    progress: progressOf(children),
+    progress: rec.data.kind === 'milestone' ? progressBeneath(loaded, rec.key) : progressOf(children),
     dependsOn,
     neededBy,
     observed,
@@ -1064,7 +1136,9 @@ export function formatChangeContext(c: ChangeContext): string {
   }
   const line = (ch: Row) => `- ${ch.key} [${ch.status ?? '?'}] — ${nameAndLine(ch)}`;
   if (c.children.length) {
-    out.push(`\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} done)` : ''}`);
+    out.push(
+      `\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} ${c.children.some((k) => k.data.kind === 'milestone' && k.status !== 'dropped') ? 'of the work beneath ' : ''}done)` : ''}`,
+    );
     for (const ch of c.children) out.push(line(ch));
   }
   if (c.dependsOn.length) {
@@ -1125,6 +1199,14 @@ export function storeContext(
     counts,
     mapPrompt: map?.prompt,
     regroupPrompt: project ? regroupPrompt(loaded, project) : undefined,
+    progress: Object.fromEntries(
+      changes
+        .filter((r) => r.data.kind === 'milestone')
+        .flatMap((r) => {
+          const p = progressBeneath(loaded, r.key);
+          return p ? [[r.key, p]] : [];
+        }),
+    ),
   };
 }
 
@@ -1203,7 +1285,7 @@ export function formatStoreContext(c: StoreContext): string {
     const pad = '  '.repeat(depth);
     const status = depth ? ` [${r.status ?? '?'}]` : '';
     const kids = childrenOf(r.key);
-    const p = progressOf(kids);
+    const p = c.progress?.[r.key] ?? progressOf(kids);
     const next = nextLine(nextStep(stepsOf(r.data)));
     const line = `${pad}- ${r.key}${status} — ${nameAndLine(r)}${tag(r)}${p ? ` · ${p.done}/${p.total} done` : ''}${next ? `\n${pad}  next: ${next}` : ''}`;
     return [line, ...childrenOf(r.key).map((ch) => item(ch, depth + 1))].join('\n');

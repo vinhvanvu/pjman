@@ -19,7 +19,7 @@ import {
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { MapFilter } from './model';
-import { aspectOutline, inFlight, isFiltering, nameOf } from './model';
+import { aspectOutline, inFlightTree, isFiltering, nameOf } from './model';
 
 const STATES = ['live', 'building', 'planned', 'retired'] as const;
 
@@ -39,7 +39,7 @@ const toggle = (list: string[] | undefined, v: string) =>
   list?.includes(v) ? list.filter((x) => x !== v) : [...(list ?? []), v];
 
 export function FilterBar({ filter, onChange, matched, changes, aspects, className }: FilterBarProps) {
-  const milestones = inFlight(changes);
+  const milestones = inFlightTree(changes);
   const chosen = filter.milestone ? changes.find((r) => r.key === filter.milestone) : undefined;
   const active = isFiltering(filter);
   return (
@@ -123,11 +123,12 @@ export function FilterBar({ filter, onChange, matched, changes, aspects, classNa
               <DropdownMenuLabel className="text-meta text-ink-faint">
                 Milestones in flight · nearest to done first
               </DropdownMenuLabel>
-              {milestones.map((m) => (
+              {milestones.map(({ row: m, depth }) => (
                 <DropdownMenuItem
                   key={m.key}
                   onSelect={() => onChange({ ...filter, milestone: m.key })}
-                  className="gap-2"
+                  className={cn('gap-2', depth > 0 && 'text-ink-muted')}
+                  style={depth ? { paddingLeft: `${0.5 + depth * 1}rem` } : undefined}
                 >
                   <span className="min-w-0 flex-1 truncate">{m.gist ?? short(m.key)}</span>
                   {m.progress && (

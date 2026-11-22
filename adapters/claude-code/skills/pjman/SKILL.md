@@ -284,7 +284,7 @@ or removes: `--features "adds feature:<slug>"`, `"feature:<slug>"` (changes), `"
 specific node, the capability rather than the feature above it; state rolls up. A feature's state is derived from those
 changes (live once an adding change is done, retired once a removing one is), so prefer the verb to writing a status.
 A milestone is a change of kind milestone (`--kind milestone`), named so at filing: its children (`--parent` on each) are its plan, its
-progress is its children done, it takes no steps of its own, and a change named as a parent must be one (a change that has grown into a goal is made one
+progress is the work beneath it done (counted through any milestones among its children), it takes no steps of its own, and a change named as a parent must be one (a change that has grown into a goal is made one
 where it stands: `pjman set <change> kind=milestone` files each open step as a child change, which then needs its name,
 intent and done-when, and keeps the finished steps as its earlier steps); goals such as a release or a
 second user are milestones, not features. `pjman tree [product:…|feature:…]` renders the tree with roll-ups; `pjman activity <key>` the events
