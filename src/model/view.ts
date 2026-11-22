@@ -516,13 +516,15 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
     .map(withBranch);
 }
 
-export function formatLs(rows: Row[]): string {
+export function formatLs(rows: Row[], liveKey: (key: string) => string | undefined = (k) => k): string {
   if (rows.length === 0) return '(no records)';
   // a change whose parent is listed prints beneath it, indented, in the listing's order (decision
   // nested-milestones/ls-nesting); the JSON stays flat, each row with its parent
   const listed = new Set(rows.map((r) => r.key));
-  const parentOf = (r: Row) =>
-    r.type === 'change' && typeof r.data.parent === 'string' && listed.has(r.data.parent) ? r.data.parent : undefined;
+  const parentOf = (r: Row) => {
+    const p = r.type === 'change' && typeof r.data.parent === 'string' ? liveKey(r.data.parent) : undefined;
+    return p && listed.has(p) ? p : undefined;
+  };
   const kids = new Map<string, Row[]>();
   for (const r of rows) {
     const p = parentOf(r);
@@ -1134,7 +1136,9 @@ export function formatChangeContext(c: ChangeContext): string {
   }
   const line = (ch: Row) => `- ${ch.key} [${ch.status ?? '?'}] — ${nameAndLine(ch)}`;
   if (c.children.length) {
-    out.push(`\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} done)` : ''}`);
+    out.push(
+      `\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} ${c.children.some((k) => k.data.kind === 'milestone') ? 'of the work beneath ' : ''}done)` : ''}`,
+    );
     for (const ch of c.children) out.push(line(ch));
   }
   if (c.dependsOn.length) {

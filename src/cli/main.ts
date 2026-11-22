@@ -844,7 +844,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         feature: at(v.feature, ['feature']),
         here: v.all ? null : hereProduct(store),
       });
-      v.json ? json(rows.map((r) => ({ ...r, printed: printed(r.key) }))) : out(formatLs(rows));
+      v.json
+        ? json(rows.map((r) => ({ ...r, printed: printed(r.key) })))
+        : out(formatLs(rows, (k) => live(loaded, k)?.key));
       return 0;
     }
     case 'tree': {

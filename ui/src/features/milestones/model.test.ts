@@ -14,7 +14,7 @@ import {
   stagesFold,
   stepSegments,
 } from './model';
-import { inFlight } from '@/features/feature-lens/model';
+import { inFlight, inFlightTree } from '@/features/feature-lens/model';
 
 type Child = ChangeContext['children'][number];
 const child = (key: string, status: string, created = '2026-11-01'): Child =>
@@ -228,7 +228,24 @@ describe('nested milestones in the index (change:nested-milestones)', () => {
     expect(fold.shown.map((s) => s.name)).toEqual(['s1']);
     expect(fold.done.map((s) => s.name)).toEqual(['s2']);
   });
-  it("the filter's milestones in flight are the top level", () => {
+  it("the filter's milestones in flight are the top level; its picker lists the stages beneath, indented", () => {
     expect(inFlight(changes).map((r) => r.name)).toEqual(['loop', 'older']);
+    expect(inFlightTree(changes).map(({ row: r, depth }) => [r.name, depth])).toEqual([
+      ['loop', 0],
+      ['s1', 1],
+      ['older', 0],
+    ]);
+  });
+  it('an open stage under a done parent is a goal of its own; a stage two deep sits on its stage', () => {
+    const more = [
+      ...changes,
+      row('late', { kind: 'milestone', parent: 'change:p/done-goal' }),
+      row('deep', { kind: 'milestone', parent: 'change:p/s1' }),
+    ];
+    const ix2 = milestonesIndex({ changes: more, sessions: [], waitingOn: [] });
+    expect(ix2.inFlight.map((m) => m.name)).toContain('late');
+    expect(ix2.done.find((m) => m.name === 'done-goal')!.stages.map((s) => s.name)).toEqual(['d1']);
+    const s1 = ix2.inFlight.find((m) => m.name === 'loop')!.stages.find((s) => s.name === 's1')!;
+    expect(s1.stages.map((s) => s.name)).toEqual(['deep']);
   });
 });

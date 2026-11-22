@@ -176,10 +176,25 @@ function Stages({ stages, lens }: { stages: MilestoneIndexRow[]; lens: Lens }) {
         {[...(doneOpen ? done : []), ...shown].map((st) => (
           <li key={st.key}>
             <StageLine st={st} lens={lens} />
+            {st.stages.length > 0 && <SubStages stages={st.stages} lens={lens} />}
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+/** A stage's own stages, beneath its line and indented, all of them in order, and theirs beneath them. */
+function SubStages({ stages, lens }: { stages: MilestoneIndexRow[]; lens: Lens }) {
+  return (
+    <ul className="flex flex-col border-l border-line pl-4 ml-[7px]">
+      {stages.map((st) => (
+        <li key={st.key}>
+          <StageLine st={st} lens={lens} />
+          {st.stages.length > 0 && <SubStages stages={st.stages} lens={lens} />}
+        </li>
+      ))}
+    </ul>
   );
 }
 

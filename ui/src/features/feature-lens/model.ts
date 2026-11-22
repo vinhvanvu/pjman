@@ -334,13 +334,29 @@ export const byMotion = (features: ScopeNode[]): ScopeNode[] =>
 const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
 
 /** Milestones in the scope that are not finished, nearest to done first, at the top level: one beneath a milestone in
- *  flight is a stage of it (change:nested-milestones). */
+ *  flight is a stage of it (change:nested-milestones), read with `stagesOf`. */
 export const inFlight = (changes: ChangeRow[]): ChangeRow[] => {
   const flying = changes.filter((r) => r.kind === 'milestone' && r.status !== 'done' && r.status !== 'dropped');
   const keys = new Set(flying.map((r) => r.key));
   return flying
     .filter((r) => !keys.has(r.parent ?? ''))
     .toSorted((a, b) => share(b) - share(a) || (a.gist ?? '').localeCompare(b.gist ?? ''));
+};
+
+/** The milestones in flight as the picker lists them: the top level nearest to done first, each followed by its
+ *  stages in flight in the scope's order, indented by depth (change:nested-milestones). */
+export const inFlightTree = (changes: ChangeRow[]): { row: ChangeRow; depth: number }[] => {
+  const flying = changes.filter((r) => r.kind === 'milestone' && r.status !== 'done' && r.status !== 'dropped');
+  const out: { row: ChangeRow; depth: number }[] = [];
+  const seen = new Set<string>();
+  const walk = (r: ChangeRow, depth: number) => {
+    if (seen.has(r.key)) return;
+    seen.add(r.key);
+    out.push({ row: r, depth });
+    for (const k of flying.filter((c) => c.parent === r.key)) walk(k, depth + 1);
+  };
+  for (const r of inFlight(changes)) walk(r, 0);
+  return out;
 };
 
 /** What a change does to this node, when it names it. */

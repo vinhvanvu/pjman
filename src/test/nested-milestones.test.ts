@@ -12,7 +12,7 @@ import { findStore, type Store } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { formatIntake, intake } from '../model/intake.js';
 import { scope } from '../model/scope.js';
-import { changeContext, formatLs, ls, rollupOf } from '../model/view.js';
+import { changeContext, formatChangeContext, formatLs, ls, rollupOf } from '../model/view.js';
 import { change } from './shape.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-nested-'));
@@ -102,4 +102,20 @@ test('ls prints a stage beneath its listed parent, indented; the JSON rows stay 
   }
   assert.ok(!text.includes('    change:game/loop'));
   assert.ok(!text.includes('    change:game/older'));
+  // a parent stored under an alias nests through the resolver
+  const aliased = rows.map((r) =>
+    r.key === 'change:game/stage-a' ? { ...r, data: { ...r.data, parent: 'change:game/old-loop' } } : r,
+  );
+  assert.ok(!formatLs(aliased).includes('    change:game/stage-a'));
+  assert.ok(
+    formatLs(aliased, (k) => (k === 'change:game/old-loop' ? 'change:game/loop' : k)).includes(
+      '    change:game/stage-a',
+    ),
+  );
+  // the context names the work beneath when stages count
+  const loaded = loadStore(store);
+  assert.match(
+    formatChangeContext(changeContext(store, 'change:loop', loaded)),
+    /## Children \(2\/4 of the work beneath done\)/,
+  );
 });

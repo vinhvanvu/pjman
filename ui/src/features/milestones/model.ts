@@ -257,7 +257,13 @@ export function milestonesIndex(scope: {
   const rows = new Map(scope.changes.map((r) => [r.key, r]));
   const on = new Set(scope.sessions.map((s) => s.on));
   const counted = scope.changes.filter((r) => r.kind === 'milestone' && r.status !== 'dropped');
-  const milestones = new Set(counted.map((r) => r.key));
+  const milestones = new Map(counted.map((r) => [r.key, r]));
+  // a stage of its parent while the parent is in flight; under a done parent only a done stage is (an open one is a
+  // goal of its own again, as intake and the filter read it)
+  const nested = (r: ChangeRow) => {
+    const p = milestones.get(r.parent ?? '');
+    return !!p && (p.status !== 'done' || r.status === 'done');
+  };
   const indexRow = (r: ChangeRow, seen: ReadonlySet<string>): MilestoneIndexRow => {
     const kids = scope.changes.filter((c) => c.parent === r.key && c.status !== 'dropped').toSorted(inOrder);
     const inWork = kids.find((c) => c.status !== 'done' && (on.has(c.key) || c.live));
@@ -273,10 +279,12 @@ export function milestonesIndex(scope: {
       next: first
         ? { key: first.key, name: first.name ?? first.gist ?? short(first.key), live: first === inWork }
         : undefined,
-      stages: kids.filter((c) => milestones.has(c.key) && !within.has(c.key)).map((c) => indexRow(c, within)),
+      stages: kids
+        .filter((c) => milestones.has(c.key) && nested(c) && !within.has(c.key))
+        .map((c) => indexRow(c, within)),
     };
   };
-  const list = counted.filter((r) => !milestones.has(r.parent ?? '')).map((r) => indexRow(r, new Set()));
+  const list = counted.filter((r) => !nested(r)).map((r) => indexRow(r, new Set()));
   const byMoved = (a: MilestoneIndexRow, b: MilestoneIndexRow) => (b.moved ?? '').localeCompare(a.moved ?? '');
   return {
     inFlight: list

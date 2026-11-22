@@ -607,12 +607,15 @@ test('a change may have a parent change: any depth, no cycles, children derived,
     board,
     /^- change:project\/epic — Epic · 0\/1 done\n  - change:project\/epic-a \[open\] — A · 0\/1 done\n    - change:project\/epic-a-1 \[open\] — A1$/m,
   );
-  // a parent change is a milestone: progress is its children done, dropped excluded
+  // a parent change is a milestone: progress is the work beneath it done, counted through epic-a, dropped excluded
   change(store, 'epic-b', { title: 'B', summary: 's', parent: 'change:project/epic', status: 'done' });
   change(store, 'epic-c', { title: 'C', summary: 's', parent: 'change:project/epic', status: 'dropped' });
   assert.deepEqual(changeContext(store, 'change:project/epic').progress, { done: 1, total: 2 });
   assert.equal(changeContext(store, 'change:project/epic-a-1').progress, undefined);
-  assert.match(formatChangeContext(changeContext(store, 'change:project/epic')), /## Children \(1\/2 done\)/);
+  assert.match(
+    formatChangeContext(changeContext(store, 'change:project/epic')),
+    /## Children \(1\/2 of the work beneath done\)/,
+  ); // epic-a is a stage: counted through it
   const n = get(loadStore(store), 'change:project/epic-a');
   assert.equal(n.via['change:project/epic'], 'parent');
   assert.equal(n.via['change:project/epic-a-1'], 'parent');
