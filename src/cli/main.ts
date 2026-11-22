@@ -21,8 +21,17 @@ import { loadStore, resolve, storeScope, unresolvedError } from '../store/record
 import { ambiguous, CliError, notFound, plural, usageError } from '../store/util.js';
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from '../model/validate.js';
-import { personOf, trackerOf } from '../model/refs.js';
-import { formatPeopleOn, formatPerson, formatPocs, people, peopleOn, personView, pocsOf } from '../model/people.js';
+import { trackerOf } from '../model/refs.js';
+import {
+  formatPeopleOn,
+  formatPerson,
+  formatPocs,
+  people,
+  peopleOn,
+  personAt,
+  personView,
+  pocsOf,
+} from '../model/people.js';
 import { personIntake, tie } from '../ops/people.js';
 import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
@@ -1348,8 +1357,8 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           });
       const key = res.key;
       if (res.status === 'none' || !key) throw notFound(pos[1], { tried: res.tried });
-      const owner = key.startsWith('person:') ? live(loaded, key) : live(loaded, personOf(loaded, key) ?? '');
-      if (owner && owner.type === 'actor' && owner.data.kind === 'person') {
+      const owner = personAt(loaded, key);
+      if (owner) {
         const view = personView(loaded, owner);
         v.json ? json(view) : out(formatPerson(view).join('\n'));
         return 0;

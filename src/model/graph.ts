@@ -9,7 +9,15 @@ import { memo, push, resolve, type Loaded, type Rec } from '../store/records.js'
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { parseAspectEffect } from './aspects.js';
-import { accountParts, formatPeopleOn, peopleOn, personTies, type PersonOn } from './people.js';
+import {
+  accountParts,
+  formatPeopleOn,
+  peopleOn,
+  personView,
+  tiesByTarget,
+  type AccountPart,
+  type PersonOn,
+} from './people.js';
 import { changeContext, lineOfRow, repoHeads, row, type ChangeContext, type Row } from './view.js';
 
 // --- edges ---------------------------------------------------------------------------------------
@@ -158,14 +166,19 @@ function edgesOnce(loaded: Loaded): Edge[] {
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'actor':
-        // a person's typed ties (change:people-in-graph): the edge's type is the relationship
-        if (d.kind === 'person') for (const t of personTies(loaded, r)) edge(t.type, r.key, live(t.target), r);
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
     }
     if (typeof d.writer === 'string') edge('writer', r.key, d.writer, r);
     if (typeof d.session === 'string') edge('session', r.key, d.session, r);
   }
+  // a person's typed ties (change:people-in-graph): the edge's type is the relationship, as the ties stand across
+  // people (a said tie another person's outright one shadows is no edge)
+  for (const [target, ties] of tiesByTarget(loaded))
+    for (const t of ties) {
+      const p = loaded.byKey.get(t.person)?.[0];
+      if (p) edge(t.type, t.person, target, p);
+    }
   // the accounts a synced ticket names, by the part each plays on it: observed, so a resync backs them out
   for (const a of accountParts(loaded))
     out.push({
@@ -224,8 +237,10 @@ export interface Neighbourhood {
   /** A project's changes, a session's children, an actor's sessions: rows, not contexts. */
   members: Row[];
   /** Who is on it (change:people-in-graph): the ties that reach it, the accounts a source names, a map node's stakes
-   *  inherited from above; on a person, their accounts' sources. */
+   *  inherited from above. */
   people: PersonOn[];
+  /** On a person: the sources that name one of their accounts, by the part each plays there. */
+  through: AccountPart[];
 }
 
 /** How a change relates to a source in its reach: it binds it, it (or one of its decisions) links it, or a session
@@ -461,6 +476,7 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
     relation: {},
     members: [],
     people: [],
+    through: [],
   };
   if (resolution.status === 'none' || !resolution.key) return result;
   const key = resolution.key;
@@ -524,6 +540,7 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
   if (rec?.type === 'actor')
     result.members = loaded.records.filter((r) => r.type === 'session' && r.data.agent === key).map(row);
   if (rec?.type !== 'actor' && !key.startsWith('session:')) result.people = peopleOn(loaded, key);
+  if (rec?.type === 'actor' && rec.data.kind === 'person') result.through = personView(loaded, rec).through;
   return result;
 }
 
@@ -557,6 +574,10 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
   if (inbound.length) out.push(`\nreferenced by:\n${inbound.map((e) => line(e, e.from)).join('\n')}`);
   if (outbound.length) out.push(`\nrefers to:\n${outbound.map((e) => line(e, e.to)).join('\n')}`);
   if (n.people?.length) out.push(`\npeople:\n${formatPeopleOn(n.people).join('\n')}`);
+  if (n.through?.length)
+    out.push(
+      `\nthrough their accounts:\n${n.through.map((a) => `- ${a.type} ${a.source} · as ${a.account}`).join('\n')}`,
+    );
   if (n.members.length)
     out.push(
       `\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${lineOfRow(m) ? ` — ${lineOfRow(m)}` : ''}`).join('\n')}`,

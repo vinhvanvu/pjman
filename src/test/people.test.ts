@@ -14,7 +14,7 @@ import { newRecord } from '../ops/new.js';
 import { set } from '../ops/set.js';
 import { rm } from '../ops/rm.js';
 import { personIntake, tie } from '../ops/people.js';
-import { peopleOn, personView, pocsOf } from '../model/people.js';
+import { findPerson, peopleOn, personAt, personView, pocsOf } from '../model/people.js';
 import { get } from '../model/graph.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { validate } from '../model/validate.js';
@@ -235,4 +235,61 @@ test('validate refuses a tie of a word the store lacks, and a stake word off the
   assert.match(msgs, /'overlord' is not one of the store's stakes/);
   assert.match(msgs, /'owner' is not one of the store's parts/);
   fs.writeFileSync(p.abs, before);
+});
+
+test("the graph's tie edges are the ties as they stand: a said tie another person's outright one shadows is no edge", () => {
+  tie(store, 'priya-rao', 'owner', 'feature:shop/search', { said: true });
+  tie(store, 'sam-park', 'owner', 'feature:shop/search');
+  const n = get(loadStore(store), 'feature:shop/search');
+  assert.deepEqual(
+    n.in.filter((e) => e.edge === 'owner').map((e) => e.from),
+    ['person:sam-park'],
+  );
+});
+
+test('a key reads as a person only when it is the person or an account they hold, never a source they link', () => {
+  set(store, 'person:sam-lee', ['links+=url:https://example.com/portfolio'], {});
+  const loaded = loadStore(store);
+  assert.equal(personAt(loaded, 'github-user:samlee')?.key, 'person:sam-lee');
+  assert.equal(personAt(loaded, 'person:sam-lee')?.key, 'person:sam-lee');
+  assert.equal(personAt(loaded, 'url:https://example.com/portfolio'), undefined);
+});
+
+test('a handle or alias beside others whose name holds the word offers candidates; a full name is the person', () => {
+  personIntake(store, 'Alice');
+  personIntake(store, 'Alice Jones', { new: true });
+  const loaded = loadStore(store);
+  const r = findPerson(loaded, 'alice');
+  assert.equal(r.status, 'candidates');
+  assert.deepEqual(r.candidates.map((c) => c.key).toSorted(), ['person:alice', 'person:alice-jones']);
+  assert.equal(findPerson(loaded, 'Alice Jones').match?.key, 'person:alice-jones');
+  assert.equal(findPerson(loaded, 'person:alice').match?.key, 'person:alice');
+});
+
+test("a change that names no node is the product's: its stakes are the ones to reference; a bound ticket's people join", () => {
+  change(store, 'bare', { title: 'No node named', summary: 's', project: 'project:web' });
+  set(store, 'change:shop/bare', ['binds+=github-issue:acme/web#3'], {});
+  const seen = pocsOf(loadStore(store), 'change:shop/bare').map((p) => `${p.type} ${p.who} ${p.on.join(',')}`);
+  for (const want of [
+    'stakeholder person:priya-rao product:shop',
+    'assignee person:sam-lee github-issue:acme/web#3',
+    'author person:sam-lee github-issue:acme/web#3',
+    'assignee github-user:stranger github-issue:acme/web#3',
+  ])
+    assert.ok(seen.includes(want), `${want} in\n${seen.join('\n')}`);
+});
+
+test('get on a person lists the sources that name their accounts', () => {
+  const n = get(loadStore(store), 'person:sam-lee');
+  assert.deepEqual(
+    n.through.map((a) => `${a.type} ${a.source}`),
+    ['assignee github-issue:acme/web#3', 'author github-issue:acme/web#3'],
+  );
+});
+
+test("a refused intake puts back the role it added to the store's words", () => {
+  const before = fs.readFileSync(path.join(store.root, 'pjman.yaml'), 'utf8');
+  assert.throws(() => personIntake(store, 'Nobody New', { role: 'lawyer', aliases: ['!!!'] }), /makes no alias/);
+  assert.equal(fs.readFileSync(path.join(store.root, 'pjman.yaml'), 'utf8'), before);
+  assert.equal(store.config.roles?.includes('lawyer') ?? false, false);
 });

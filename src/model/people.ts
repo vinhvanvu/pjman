@@ -9,7 +9,7 @@ import { IDENTITY_KINDS, type Store } from '../store/config.js';
 import { memo, recordOf, type Loaded, type Rec } from '../store/records.js';
 import { parseKey, slugify } from '../store/keys.js';
 import { personOf } from './refs.js';
-import { ancestorsOf, live } from './tree.js';
+import { ancestorsOf, live, rootProductOf } from './tree.js';
 
 /** The roles pjman starts a store with: a person's job. */
 export const DEFAULT_ROLES = ['engineer', 'designer', 'product', 'research', 'data', 'leadership'];
@@ -213,12 +213,14 @@ export interface Poc {
 export function pocsOf(loaded: Loaded, changeKey: string): Poc[] {
   const rec = recordOf(loaded, changeKey);
   if (!rec) return [];
-  const nodes = strings(rec.data.features)
+  const named = strings(rec.data.features)
     .map((f) => f.replace(/^(adds|changes|removes)\s+/, ''))
     .map((k) => live(loaded, k)?.key ?? k);
+  // a change that names no node is the product's: its stakes are the ones to reference
+  const root = named.length ? undefined : rootProductOf(loaded, rec)?.key;
+  const nodes = root ? [root] : named;
   const acc = new Map<string, Poc>();
   const take = (o: PersonOn, on: string) => {
-    if (o.via === 'account' && !o.who.startsWith('person:')) return;
     const id = `${o.who} ${o.type}`;
     const was = acc.get(id);
     const at = o.from ?? on;
@@ -237,6 +239,8 @@ export function pocsOf(loaded: Loaded, changeKey: string): Poc[] {
   };
   for (const n of nodes) for (const o of peopleOn(loaded, n)) take(o, n);
   for (const o of peopleOn(loaded, rec.key)) take(o, rec.key);
+  // the tickets and pull requests it binds: their assignee and author, through the accounts they name
+  for (const b of strings(rec.data.binds)) for (const o of peopleOn(loaded, b)) take(o, b);
   const rank = (t: string) => {
     const i = DEFAULT_STAKES.indexOf(t);
     return i < 0 ? DEFAULT_STAKES.length : i;
@@ -268,6 +272,17 @@ export function personView(loaded: Loaded, rec: Rec): PersonView {
     ties: personTies(loaded, rec),
     through: accountParts(loaded).filter((a) => own.has(a.account.toLowerCase())),
   };
+}
+
+/** The person a key reads as: the person themselves, or the one who holds an account; any other key (a source a
+ *  person merely links) is not a person. */
+export function personAt(loaded: Loaded, key: string): Rec | undefined {
+  const rec = key.startsWith('person:')
+    ? live(loaded, key)
+    : accountKind(key)
+      ? live(loaded, personOf(loaded, key) ?? '')
+      : undefined;
+  return rec && rec.type === 'actor' && rec.data.kind === 'person' ? rec : undefined;
 }
 
 // --- intake: a mention to its person ---------------------------------------------------------------------------
@@ -361,7 +376,10 @@ export function findPerson(loaded: Loaded, mention: string, accounts: string[] =
       candidates: [],
     };
   }
-  if (exact.length === 1) return { status: 'found', match: exact[0], candidates: [] };
+  // a full name is the person; a handle or an alias beside others whose name holds the word is not decided here
+  if (exact.length === 1 && (exact[0].by === 'name' || !partial.length))
+    return { status: 'found', match: exact[0], candidates: [] };
+  if (exact.length === 1) return { status: 'candidates', candidates: [...exact, ...partial] };
   if (exact.length > 1) return { status: 'candidates', candidates: exact };
   if (partial.length) return { status: 'candidates', candidates: partial };
   return { status: 'none', candidates: [] };

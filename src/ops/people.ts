@@ -79,45 +79,70 @@ export function personIntake(store: Store, mention: string, opts: PersonOpts = {
   const notes: string[] = [];
   const prior = snapshot(store, ['pjman.yaml']);
   const words = wordsNow(store);
-  if (opts.role) {
-    const n = ensureWord(store, 'roles', opts.role);
-    if (n) notes.push(n);
-  }
-  const aliases = (opts.aliases ?? []).map((a) => {
-    const s = slugify(a);
-    if (!s) throw new CliError(`'${a}' makes no alias`);
-    return s;
-  });
+  // a refusal anywhere past here puts back the role the write added to the store's words
+  try {
+    if (opts.role) {
+      const n = ensureWord(store, 'roles', opts.role);
+      if (n) notes.push(n);
+    }
+    const aliases = (opts.aliases ?? []).map((a) => {
+      const s = slugify(a);
+      if (!s) throw new CliError(`'${a}' makes no alias`);
+      return s;
+    });
 
-  if (found.status === 'found' && found.match) {
-    const rec = live(loaded, found.match.key) as Rec;
-    if (rec.data.kind !== 'person') throw new CliError(`${rec.key} is an agent, not a person`);
-    const data: Record<string, unknown> = { ...rec.data };
-    const added: string[] = [];
-    if (opts.role && data.role !== opts.role) {
-      data.role = opts.role;
-      added.push(`role ${opts.role}`);
-    }
-    if (opts.name && !data.name) {
-      data.name = opts.name;
-      added.push(`name ${opts.name}`);
-    }
-    const links = strings(data.links);
-    for (const a of accounts)
-      if (!links.some((l) => l.toLowerCase() === a.toLowerCase())) {
-        links.push(a);
-        added.push(a);
+    if (found.status === 'found' && found.match) {
+      const rec = live(loaded, found.match.key) as Rec;
+      if (rec.data.kind !== 'person') throw new CliError(`${rec.key} is an agent, not a person`);
+      const data: Record<string, unknown> = { ...rec.data };
+      const added: string[] = [];
+      if (opts.role && data.role !== opts.role) {
+        data.role = opts.role;
+        added.push(`role ${opts.role}`);
       }
-    if (links.length) data.links = links;
-    const al = strings(data.aliases);
-    for (const a of aliases)
-      if (!al.includes(a) && a !== rec.key.slice('person:'.length)) {
-        al.push(a);
-        added.push(`alias ${a}`);
+      if (opts.name && !data.name) {
+        data.name = opts.name;
+        added.push(`name ${opts.name}`);
       }
-    if (al.length) data.aliases = al;
-    if (!added.length) {
-      restore(store, prior, words);
+      const links = strings(data.links);
+      for (const a of accounts)
+        if (!links.some((l) => l.toLowerCase() === a.toLowerCase())) {
+          links.push(a);
+          added.push(a);
+        }
+      if (links.length) data.links = links;
+      const al = strings(data.aliases);
+      for (const a of aliases)
+        if (!al.includes(a) && a !== rec.key.slice('person:'.length)) {
+          al.push(a);
+          added.push(`alias ${a}`);
+        }
+      if (al.length) data.aliases = al;
+      if (!added.length) {
+        restore(store, prior, words);
+        return {
+          status: 'found',
+          key: rec.key,
+          by: found.match.by,
+          candidates: [],
+          added,
+          notes,
+          commit: null,
+        };
+      }
+      const before = snapshot(store, [rec.path]);
+      fs.writeFileSync(rec.abs, render('actor', data, rec.body));
+      undoOnRefusal(store, [rec.path, 'pjman.yaml'], [], new Map([...before, ...prior]), words);
+      const commit = finishWrite(store, `pjman: person ${rec.key} (${added.join(', ')})`, env.session, [
+        {
+          op: 'set',
+          key: rec.key,
+          type: 'actor',
+          path: rec.path,
+          fields: ['person'],
+          writer: env.writer,
+        },
+      ]);
       return {
         status: 'found',
         key: rec.key,
@@ -125,76 +150,57 @@ export function personIntake(store: Store, mention: string, opts: PersonOpts = {
         candidates: [],
         added,
         notes,
-        commit: null,
+        commit,
       };
     }
-    const before = snapshot(store, [rec.path]);
-    fs.writeFileSync(rec.abs, render('actor', data, rec.body));
-    undoOnRefusal(store, [rec.path, 'pjman.yaml'], [], new Map([...before, ...prior]), words);
-    const commit = finishWrite(store, `pjman: person ${rec.key} (${added.join(', ')})`, env.session, [
+
+    // no one answers: a new person, named by the mention unless it is a key or an account
+    const name = opts.name ?? (mentionIsAccount || mention.includes(':') ? undefined : mention.trim());
+    const handle =
+      opts.handle ??
+      (name
+        ? slugify(name)
+        : mentionIsAccount
+          ? slugify(parseKey(mention)!.rest.split('@')[0])
+          : slugify(mention.replace(/^person:/, '')));
+    if (!handle || !SLUG_RE.test(handle)) throw new CliError(`no handle can be made from '${mention}'; pass --handle`);
+    loaded = loadStore(store);
+    if (loaded.byKey.has(`person:${handle}`) || loaded.aliases.has(`person:${handle}`))
+      throw new CliError(`person:${handle} is taken by someone else; pass --handle <another>`);
+    const rel = path.join('actors', `${handle}.md`);
+    const data: Record<string, unknown> = {
+      kind: 'person',
+      name,
+      role: opts.role,
+      links: accounts.length ? [...new Set(accounts)] : undefined,
+      aliases: aliases.filter((a) => a !== handle).length ? aliases.filter((a) => a !== handle) : undefined,
+      writer: env.writer,
+      session: env.session,
+      created: new Date().toISOString().slice(0, 10),
+    };
+    writeFile(store, rel, render('actor', data, ''));
+    undoOnRefusal(store, [rel, 'pjman.yaml'], [rel], prior, words);
+    const commit = finishWrite(store, `pjman: new person:${handle}`, env.session, [
       {
-        op: 'set',
-        key: rec.key,
+        op: 'created',
+        key: `person:${handle}`,
         type: 'actor',
-        path: rec.path,
-        fields: ['person'],
+        path: rel,
         writer: env.writer,
       },
     ]);
     return {
-      status: 'found',
-      key: rec.key,
-      by: found.match.by,
+      status: 'created',
+      key: `person:${handle}`,
       candidates: [],
-      added,
+      added: [],
       notes,
       commit,
     };
+  } catch (e) {
+    restore(store, prior, words);
+    throw e;
   }
-
-  // no one answers: a new person, named by the mention unless it is a key or an account
-  const name = opts.name ?? (mentionIsAccount || mention.includes(':') ? undefined : mention.trim());
-  const handle =
-    opts.handle ??
-    (name
-      ? slugify(name)
-      : mentionIsAccount
-        ? slugify(parseKey(mention)!.rest.split('@')[0])
-        : slugify(mention.replace(/^person:/, '')));
-  if (!handle || !SLUG_RE.test(handle)) throw new CliError(`no handle can be made from '${mention}'; pass --handle`);
-  loaded = loadStore(store);
-  if (loaded.byKey.has(`person:${handle}`) || loaded.aliases.has(`person:${handle}`))
-    throw new CliError(`person:${handle} is taken by someone else; pass --handle <another>`);
-  const rel = path.join('actors', `${handle}.md`);
-  const data: Record<string, unknown> = {
-    kind: 'person',
-    name,
-    role: opts.role,
-    links: accounts.length ? [...new Set(accounts)] : undefined,
-    aliases: aliases.filter((a) => a !== handle).length ? aliases.filter((a) => a !== handle) : undefined,
-    writer: env.writer,
-    session: env.session,
-    created: new Date().toISOString().slice(0, 10),
-  };
-  writeFile(store, rel, render('actor', data, ''));
-  undoOnRefusal(store, [rel, 'pjman.yaml'], [rel], prior, words);
-  const commit = finishWrite(store, `pjman: new person:${handle}`, env.session, [
-    {
-      op: 'created',
-      key: `person:${handle}`,
-      type: 'actor',
-      path: rel,
-      writer: env.writer,
-    },
-  ]);
-  return {
-    status: 'created',
-    key: `person:${handle}`,
-    candidates: [],
-    added: [],
-    notes,
-    commit,
-  };
 }
 
 type Words = Pick<Store['config'], Vocab>;
