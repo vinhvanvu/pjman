@@ -105,13 +105,14 @@ import { formatHistory, history, HISTORY_KINDS } from '../model/history.js';
 import { set } from '../ops/set.js';
 import { decision, entriesFromFlags, entriesFromJson } from '../ops/decision.js';
 import { formatPlan, step } from '../ops/step.js';
-import { sequenceOf } from '../model/order.js';
+import { sequenceOf, workOrder } from '../model/order.js';
 import { order } from '../ops/order.js';
 import { formatIntake, intake } from '../model/intake.js';
 import {
   changeContext,
   formatChangeContext,
   formatLs,
+  siblingsInWorkOrder,
   formatStoreContext,
   ls,
   row,
@@ -834,7 +835,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const loaded = loadStore(store);
       const at = (raw: string | undefined, kinds: string[]) =>
         raw === undefined ? undefined : resolveArg(loaded, raw, { kinds });
-      const rows = ls(store, {
+      const listed = ls(store, {
         type: pos[1],
         status: v.status,
         kind: v.kind,
@@ -844,6 +845,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         feature: at(v.feature, ['feature']),
         here: v.all ? null : hereProduct(store),
       });
+      const rows = siblingsInWorkOrder(listed, workOrder(loaded), (k) => live(loaded, k)?.key);
       v.json
         ? json(rows.map((r) => ({ ...r, printed: printed(r.key) })))
         : out(formatLs(rows, (k) => live(loaded, k)?.key));

@@ -56,6 +56,14 @@ describe('the children as the plan', () => {
     expect(list.find((c) => c.key.endsWith('/c'))!.waits).toBe(1);
     expect(list.find((c) => c.key.endsWith('/c'))!.blockedOn).toBe('Public');
   });
+  it('reads the order the work can run before the roadmap (decision milestone-order/order-rule)', () => {
+    const ordered = rowsOf(
+      row('a', { status: 'done', position: 1, childOrder: 2 }),
+      row('b', { status: 'active', position: 3, childOrder: 0 }),
+      row('c', { status: 'open', position: 2, childOrder: 1 }),
+    );
+    expect(childrenInOrder(children, ordered).map((c) => c.key.split('/')[1])).toEqual(['b', 'c', 'a', 'd']);
+  });
   it('folds what is behind the work under one line and marks the next child after the open one', () => {
     const list = childrenInOrder(children, rows);
     const fold = childrenFold(list, 'change:p/b', Date.parse('2026-11-08T00:00:00Z'));
@@ -222,6 +230,13 @@ describe('nested milestones in the index (change:nested-milestones)', () => {
     expect(ix.inFlight[0]!.stages.map((s) => s.name)).toEqual(['s2', 's1']);
     expect(ix.inFlight[0]!.stages[1]!.next?.name).toBe('w1');
     expect(ix.inFlight[1]!.stages).toEqual([]);
+  });
+  it('draws the stages in the order the work can run before the roadmap', () => {
+    const ordered = changes.map((r) =>
+      r.key === 'change:p/s1' ? { ...r, childOrder: 0 } : r.key === 'change:p/s2' ? { ...r, childOrder: 1 } : r,
+    );
+    const ix3 = milestonesIndex({ changes: ordered, sessions: [], waitingOn: [] });
+    expect(ix3.inFlight[0]!.stages.map((s) => s.name)).toEqual(['s1', 's2']);
   });
   it('folds the done stages', () => {
     const fold = stagesFold(ix.inFlight[0]!.stages);

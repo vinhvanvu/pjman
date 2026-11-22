@@ -33,6 +33,7 @@ import {
   type ChangeAspects,
 } from './aspects.js';
 import { urlOf } from './refs.js';
+import { workOrder } from './order.js';
 import { changeCode, formatChangeCode, projectDirs, type NodeCode } from './code.js';
 import { toplevel } from '../store/git.js';
 import { findingsLine, findingsOf, formatFinding, type Finding } from './findings.js';
@@ -516,6 +517,26 @@ export function ls(store: Store, opts: LsOpts, loaded: Loaded = loadStore(store)
     .map(withBranch);
 }
 
+/** A listing with each parent's children in the order the work can run (decision milestone-order/order-rule): the slots
+ *  the children of one parent hold are kept, refilled in that order; the rest of the listing stays as it was. */
+export function siblingsInWorkOrder<R extends Pick<Row, 'key' | 'type' | 'data'>>(
+  rows: readonly R[],
+  order: ReadonlyMap<string, number>,
+  liveKey: (key: string) => string | undefined = (k) => k,
+): R[] {
+  const groups = new Map<string, number[]>();
+  rows.forEach((r, i) => {
+    const p = r.type === 'change' && typeof r.data.parent === 'string' ? liveKey(r.data.parent) : undefined;
+    if (p && order.has(r.key)) push(groups, p, i);
+  });
+  const out = [...rows];
+  for (const slots of groups.values()) {
+    const sorted = slots.map((i) => rows[i]).toSorted((a, b) => order.get(a.key)! - order.get(b.key)!);
+    slots.forEach((i, n) => (out[i] = sorted[n]));
+  }
+  return out;
+}
+
 export function formatLs(rows: Row[], liveKey: (key: string) => string | undefined = (k) => k): string {
   if (rows.length === 0) return '(no records)';
   // a change whose parent is listed prints beneath it, indented, in the listing's order (decision
@@ -671,6 +692,9 @@ export interface StoreContext {
   regroupPrompt?: string;
   /** Each milestone on the board, its progress rolled up through the store (done work included). */
   progress?: Record<string, { done: number; total: number }>;
+  /** Each change's place among its parent's children in the order the work can run (decision
+   *  milestone-order/order-rule): a milestone's children are listed in it. */
+  childOrder?: Record<string, number>;
 }
 
 /** A decision as a change's context carries it: its rungs on the row, the thread read as its current state, and what it
@@ -935,7 +959,10 @@ export function changeContext(
   const parentRes = typeof rec.data.parent === 'string' ? resolve(loaded, rec.data.parent) : null;
   const parent =
     parentRes && (parentRes.status === 'ok' || parentRes.status === 'alias') ? row(parentRes.rec) : undefined;
-  const children = (cx.children.get(rec.key) ?? []).map(row);
+  const order = workOrder(loaded);
+  const children = (cx.children.get(rec.key) ?? [])
+    .toSorted((a, b) => (order.get(a.key) ?? 0) - (order.get(b.key) ?? 0))
+    .map(row);
   const liveKey = (k: unknown): string | undefined => {
     const r = typeof k === 'string' ? resolve(loaded, k) : null;
     return r && (r.status === 'ok' || r.status === 'alias') ? r.rec.key : undefined;
@@ -1199,6 +1226,10 @@ export function storeContext(
     counts,
     mapPrompt: map?.prompt,
     regroupPrompt: project ? regroupPrompt(loaded, project) : undefined,
+    childOrder: (() => {
+      const order = workOrder(loaded);
+      return Object.fromEntries(changes.flatMap((r) => (order.has(r.key) ? [[r.key, order.get(r.key)!]] : [])));
+    })(),
     progress: Object.fromEntries(
       changes
         .filter((r) => r.data.kind === 'milestone')
@@ -1280,7 +1311,10 @@ export function formatStoreContext(c: StoreContext): string {
   const tag = (r: Row) => (!c.project && r.data.project ? ` [${String(r.data.project)}]` : '');
   const order = ['active', 'blocked', 'review', 'planning', 'open'];
   const onBoard = new Set(c.changes.map((r) => r.key));
-  const childrenOf = (key: string) => c.changes.filter((r) => r.data.parent === key);
+  const childrenOf = (key: string) =>
+    c.changes
+      .filter((r) => r.data.parent === key)
+      .toSorted((a, b) => (c.childOrder?.[a.key] ?? 0) - (c.childOrder?.[b.key] ?? 0));
   const item = (r: Row, depth: number): string => {
     const pad = '  '.repeat(depth);
     const status = depth ? ` [${r.status ?? '?'}]` : '';

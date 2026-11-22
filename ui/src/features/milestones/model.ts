@@ -32,13 +32,16 @@ export interface ChildView {
   step?: ChangeRow['step'];
   moved?: string;
   position?: number;
+  /** Its place among its siblings in the order the work can run (decision milestone-order/order-rule). */
+  childOrder?: number;
   created?: string;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const BEHIND = new Set(['done', 'dropped']);
 
-/** The children in the milestone's order: the roadmap's position first, then creation; each read with the product's
+/** The children in the order the work can run (decision milestone-order/order-rule): what they depend on first, then
+ *  the roadmap's position, then creation, as the product's rows carry it; each read with the product's
  *  row for it when there is one, the sessions on it and the decisions waiting on it. */
 export function childrenInOrder(
   children: readonly Child[],
@@ -64,11 +67,13 @@ export function childrenInOrder(
         step: r?.step,
         moved: r?.moved,
         position: r?.position,
+        childOrder: r?.childOrder,
         created: c.created ?? r?.created,
       };
     })
     .toSorted(
       (a, b) =>
+        (a.childOrder ?? Infinity) - (b.childOrder ?? Infinity) ||
         (a.position ?? Infinity) - (b.position ?? Infinity) ||
         (a.created ?? '').localeCompare(b.created ?? '') ||
         a.key.localeCompare(b.key),
@@ -240,7 +245,9 @@ export interface MilestoneIndexRow extends MilestoneFigures {
 
 const share = (p: { done: number; total: number }) => (p.total ? p.done / p.total : 0);
 const inOrder = (a: ChangeRow, b: ChangeRow) =>
-  (a.position ?? Infinity) - (b.position ?? Infinity) || (a.created ?? '').localeCompare(b.created ?? '');
+  (a.childOrder ?? Infinity) - (b.childOrder ?? Infinity) ||
+  (a.position ?? Infinity) - (b.position ?? Infinity) ||
+  (a.created ?? '').localeCompare(b.created ?? '');
 
 /** The index (decision milestones-on-the-rail): the product's milestones at the top level, the ones in flight nearest to
  *  done first, then by last touch; the done ones apart, latest first. A milestone beneath another is a stage of it
