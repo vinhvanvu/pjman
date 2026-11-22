@@ -2,6 +2,16 @@
 
 Every release, derived from the record: one line per change shipped, in the words the change was written in.
 
+## 0.11.0 — 2026-11-22
+
+### Changed
+
+- **Source edge roles**: An edge to a source says the part it plays: the primary index, the pull request that delivers, the design, a link (change:source-edge-roles)
+
+### Store
+
+- The source-roles move: each source by the part it plays: one primary bound, pull requests delivering, the rest linked. After installing, run `pjman migrate` until it reports nothing to migrate (each run makes one move; the stamp comes last).
+
 ## 0.10.0 — 2026-11-22
 
 ### Added
