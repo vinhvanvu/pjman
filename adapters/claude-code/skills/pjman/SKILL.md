@@ -261,7 +261,7 @@ inherited by every node beneath it until a nearer one names its own; a **part** 
   reads the rest; a synced ticket's assignee and author reach their person through the account.
 - **Before tagging or messaging someone:** `pjman people person:<handle>` is their dossier, read live from what the
   store holds (nothing ingested): their stakes, the open changes they are on and how, the tickets naming their
-  accounts, the decisions they took part in, when they last wrote. Open one source by its key only when the message
+  accounts, the decisions they took part in, when they were last in the store. Open one source by its key only when the message
   needs it.
 
 ## The product tree

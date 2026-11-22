@@ -14,8 +14,8 @@ import { newRecord } from '../ops/new.js';
 import { set } from '../ops/set.js';
 import { rm } from '../ops/rm.js';
 import { personIntake, tie } from '../ops/people.js';
-import { decision } from '../ops/decision.js';
-import { findPerson, formatPerson, peopleOn, personAt, personView, pocsOf } from '../model/people.js';
+import { decision, entriesFromFlags, reopen } from '../ops/decision.js';
+import { DECIDED_SHOWN, findPerson, formatPerson, peopleOn, personAt, personView, pocsOf } from '../model/people.js';
 import { get } from '../model/graph.js';
 import { changeContext, formatChangeContext } from '../model/view.js';
 import { validate } from '../model/validate.js';
@@ -353,9 +353,56 @@ test('a dossier names the decisions they decided, rejected or commented on, and 
     ['commented', 'decision:shop/round-tax/rounding'],
     ['decided', 'decision:shop/round-tax/display'],
   ]);
-  assert.ok(v.lastSeen?.key.startsWith('decision:shop/round-tax/'), JSON.stringify(v.lastSeen));
+  // her newest word is the acceptance on display, written after the comment on rounding
+  assert.equal(v.lastSeen?.key, 'decision:shop/round-tax/display');
   const text = formatPerson(v).join('\n');
   assert.match(text, /## On now\n\n- change:shop\/round-tax/);
   assert.match(text, /## Decided\n\n- /);
-  assert.match(text, /last seen \d{4}-\d{2}-\d{2} on decision:shop\/round-tax\//);
+  assert.match(text, /last seen \d{4}-\d{2}-\d{2} on decision:shop\/round-tax\/display/);
+});
+
+test('a rejection is credited to the person it is --by; an acceptance reopened since reads as reopened', () => {
+  const entries = entriesFromFlags({ reject: ['nearest=too fine'], by: 'person:sam-park' }, 'agent:claude-code');
+  assert.deepEqual(
+    entries.map((e) => [e.type, e.by]),
+    [['reject', 'person:sam-park']],
+  );
+  decision(store, 'round-tax/rounding', { entries });
+  assert.deepEqual(
+    personView(loadStore(store), rec('person:sam-park')).decided.map((d) => [d.how, d.key]),
+    [['rejected', 'decision:shop/round-tax/rounding']],
+  );
+  reopen(store, 'decision:shop/round-tax/display');
+  assert.deepEqual(
+    personView(loadStore(store), rec('person:priya-rao'))
+      .decided.filter((d) => d.key === 'decision:shop/round-tax/display')
+      .map((d) => d.how),
+    ['reopened'],
+  );
+});
+
+test('a ticket naming their account carries the state the sync keeps; the decided list shows ten, --all every one', () => {
+  fs.writeFileSync(
+    rec('github-issue:acme/web#3').abs,
+    `---\nkind: github-issue\nkey: "acme/web#3"\ntitle: Tax rounds down\next:\n  github:\n    state: open\n    assignees:\n      - samlee\n      - stranger\n    author: samlee\n---\n`,
+  );
+  const lee = personView(loadStore(store), rec('person:sam-lee'));
+  assert.deepEqual(
+    lee.through.map((a) => a.state),
+    ['open', 'open'],
+  );
+  assert.match(formatPerson(lee).join('\n'), /- assignee github-issue:acme\/web#3 — Tax rounds down \[open\]/);
+  const many = {
+    ...lee,
+    decided: Array.from({ length: DECIDED_SHOWN + 2 }, (_, i) => ({
+      key: `decision:shop/x/d${i}`,
+      how: 'decided' as const,
+    })),
+  };
+  const capped = formatPerson(many).join('\n');
+  assert.match(capped, /\(2 more: --all\)/);
+  assert.equal(capped.match(/^- decided decision:/gm)?.length, DECIDED_SHOWN);
+  const all = formatPerson(many, { all: true }).join('\n');
+  assert.equal(all.match(/^- decided decision:/gm)?.length, DECIDED_SHOWN + 2);
+  assert.ok(!/more: --all/.test(all));
 });

@@ -9,6 +9,7 @@ import { IDENTITY_KINDS, type Store } from '../store/config.js';
 import { memo, recordOf, type Loaded, type Rec } from '../store/records.js';
 import { parseKey, slugify } from '../store/keys.js';
 import { personOf } from './refs.js';
+import { eventsByKey, readEvents, type StoreEvent } from '../store/events.js';
 import { ancestorsOf, live, rootProductOf } from './tree.js';
 
 /** The roles pjman starts a store with: a person's job. */
@@ -261,13 +262,26 @@ export interface PersonView {
   /** The dossier (change:person-dossier), read live from keys and titles the store holds, nothing ingested: the open
    *  changes they are on, by how (a stake on a feature the change names, a tie to it, a ticket it binds naming them). */
   onNow: { key: string; name?: string; status?: string; as: string[] }[];
-  /** The decisions they accepted, rejected or commented on, newest first. */
-  decided: { key: string; name?: string; how: 'decided' | 'commented' | 'rejected'; at?: string }[];
-  /** The last thing they wrote in the store: a record or a word on a decision's thread. */
-  lastSeen?: { at: string; key: string };
+  /** The decisions they took part in, newest first: decided (their acceptance stands), reopened (they accepted it and
+   *  it was reopened or decided again by someone else since), rejected (an option), commented. */
+  decided: { key: string; name?: string; how: 'decided' | 'reopened' | 'rejected' | 'commented'; at?: string }[];
+  /** The last time they were in the store: a write of theirs in the event stream, or a word of theirs on a decision's
+   *  thread, with the session that wrote it. */
+  lastSeen?: { at: string; key: string; session?: string };
 }
 
 const OPEN = (status: unknown) => status !== 'done' && status !== 'dropped';
+
+/** The store's event stream, read once per load; a store without one reads as empty. */
+function storeEvents(loaded: Loaded): StoreEvent[] {
+  return memo(loaded, 'people-events', () => {
+    try {
+      return readEvents(loaded.store);
+    } catch {
+      return [];
+    }
+  });
+}
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 
 export function personView(loaded: Loaded, rec: Rec): PersonView {
@@ -299,24 +313,36 @@ export function personView(loaded: Loaded, rec: Rec): PersonView {
       });
   }
 
-  // decided: the threads they spoke on, and the last thing they wrote anywhere
+  // decided: the threads they spoke on; last seen: their newest write in the event stream or word on a thread
+  const events = storeEvents(loaded);
+  const byKey = memo(loaded, 'people-events-by-key', () => eventsByKey(events));
   const decided: PersonView['decided'] = [];
   let lastSeen: PersonView['lastSeen'];
-  const seen = (at: unknown, key: string) => {
-    if (typeof at === 'string' && (!lastSeen || at > lastSeen.at)) lastSeen = { at, key };
+  const seen = (at: unknown, key: string, session?: string) => {
+    if (typeof at === 'string' && (!lastSeen || at > lastSeen.at))
+      lastSeen = { at, key, ...(session ? { session } : {}) };
   };
+  for (const e of events) if (e.writer === rec.key) seen(e.at, e.key, e.session);
   for (const r of loaded.records) {
     if (!r.valid) continue;
-    if (r.data.writer === rec.key) seen(r.data.created, r.key);
+    // a store with no event stream still has the records' own stamps
+    if (!events.length && r.data.writer === rec.key) seen(r.data.created, r.key, str(r.data.session));
     if (r.type !== 'decision') continue;
     const said = (Array.isArray(r.data.thread) ? (r.data.thread as Record<string, unknown>[]) : []).filter(
       (e) => e && e.by === rec.key,
     );
-    for (const e of said) seen(e.at, r.key);
+    // the session that wrote a word of theirs: the write on this decision at that moment or just after it
+    for (const e of said)
+      if (typeof e.at === 'string') {
+        const at = e.at;
+        seen(at, r.key, (byKey.get(r.key) ?? []).find((ev) => ev.at >= at)?.session);
+      }
     const kinds = new Set(said.map((e) => e.type));
-    const how =
-      kinds.has('accept') || r.data.decided_by === rec.key
-        ? 'decided'
+    const stands = r.data.status === 'decided' && r.data.decided_by === rec.key;
+    const how = stands
+      ? 'decided'
+      : kinds.has('accept')
+        ? 'reopened'
         : kinds.has('reject')
           ? 'rejected'
           : kinds.has('comment')
@@ -520,6 +546,10 @@ export function formatPerson(v: PersonView, opts: { all?: boolean } = {}): strin
       ...(left > 0 ? [`(${left} more: --all)`] : []),
     );
   }
-  if (v.lastSeen) out.push('', `last seen ${v.lastSeen.at.slice(0, 10)} on ${v.lastSeen.key}`);
+  if (v.lastSeen)
+    out.push(
+      '',
+      `last seen ${v.lastSeen.at.slice(0, 10)} on ${v.lastSeen.key}${v.lastSeen.session ? ` in ${v.lastSeen.session}` : ''}`,
+    );
   return out;
 }
