@@ -2,8 +2,8 @@
 // its kind, the prefix of its key, written once. The part it plays lives on the edge that reaches it, and only where
 // one kind plays several parts and a reader tells them apart (decisions source-edge-roles/where-type-lives,
 // role-vocabulary, design-role):
-// - binds: the primary, the source the change *is* (a tracker's ticket, or a pull request): at most one per change;
-//   a session reads its change's, or, on no change, the one it observed binding itself
+// - binds: the primary, the source the change *is* (a tracker's ticket): at most one per change;
+//   a session reads its change's, or, on no change, the ticket or pull request it observed binding itself
 // - delivers: a pull request that ships the change
 // - design: what the change is built to (a canvas, a design file, an artifact)
 // - links: everything else; the kind says whether it is a trail, a branch, a file or a checkpoint
@@ -23,19 +23,35 @@ const kindOf = (key: string): string | null => parseKey(key)?.kind ?? null;
 /** A key a pull request is keyed by. */
 export const isPullRequest = (key: string): boolean => PULL_REQUEST_KINDS.includes(kindOf(key) ?? '');
 
-/** A key that can be a primary: a tracker's ticket, or a pull request (a change filed from one, a review of one). */
-export function canBePrimary(key: string): boolean {
+/** The tracker kinds: a ticket of any tracker pjman knows, whether or not it has a short form to scan for. */
+export const TRACKER_KINDS = new Set(['github-issue', 'linear', 'jira']);
+
+/** A tracker's ticket. */
+export function isTicket(key: string): boolean {
   const kind = kindOf(key);
-  return !!kind && (PULL_REQUEST_KINDS.includes(kind) || grammarOf(kind)?.ticket === true);
+  return !!kind && (TRACKER_KINDS.has(kind) || grammarOf(kind)?.ticket === true);
+}
+
+/** A key that can be a primary: of a change, a tracker's ticket (decision role-vocabulary); of a session on no change,
+ *  a ticket or the pull request it reviews. */
+export function canBePrimary(key: string, of: 'change' | 'session' = 'change'): boolean {
+  return isTicket(key) || (of === 'session' && isPullRequest(key));
 }
 
 /** Why a key cannot play a role on a change, or null when it can. */
 export function roleRefusal(role: SourceRole, key: string): string | null {
   if (role === 'binds' && !canBePrimary(key))
-    return `binds names the primary, a tracker's ticket or a pull request; ${key} is a ${kindOf(key) ?? 'key'}: link it`;
+    return `binds names the primary, a tracker's ticket; ${key} is a ${kindOf(key) ?? 'key'}: ${isPullRequest(key) ? 'it delivers' : 'link it'}`;
   if (role === 'delivers' && !isPullRequest(key))
     return `delivers names a pull request (${PULL_REQUEST_KINDS.join(', ')}); ${key} is a ${kindOf(key) ?? 'key'}`;
   return null;
+}
+
+/** Whether a pull request is of the repository a change's project names: one of another repository is cited, not
+ *  delivered. Unknown either way, it is not counted as delivering. */
+export function ofRepo(key: string, repo: string | undefined): boolean {
+  const rest = parseKey(key)?.rest ?? '';
+  return !!repo && rest.toLowerCase().startsWith(`${repo.toLowerCase()}#`);
 }
 
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
@@ -45,7 +61,7 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 export function observedRole(sessionRec: Rec, edge: string, from: string, to: string): string {
   if (edge !== 'links') return edge;
   if (from.startsWith('change:') && isPullRequest(to)) return 'delivers';
-  if (from === sessionRec.key && canBePrimary(to)) {
+  if (from === sessionRec.key && canBePrimary(to, 'session')) {
     const bound = strings(sessionRec.data.changes).length > 0;
     const has = (Array.isArray(sessionRec.data.observed) ? sessionRec.data.observed : []).some(
       (o) => (o as { edge?: string; from?: string })?.edge === 'binds' && (o as { from?: string }).from === from,

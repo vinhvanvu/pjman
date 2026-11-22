@@ -28,7 +28,8 @@ import { sections as parseSections } from '../store/frontmatter.js';
 import { compareVersions, UNSTAMPED_VERSION } from '../store/version.js';
 import { noteReshaping } from '../store/store-index.js';
 import { missingSessionKinds, seedSessionKinds } from './session-kinds.js';
-import { canBePrimary, isPullRequest } from '../model/roles.js';
+import { canBePrimary, isPullRequest, ofRepo } from '../model/roles.js';
+import { repoOf } from '../model/refs.js';
 
 /** A move the store's format has made, with the pjman version that introduced it. In order: the first whose check says
  *  the store still needs it is the one `pjman migrate` makes. The layout and the foundation check the store's shape,
@@ -132,12 +133,19 @@ export function sourceRoleMoves(loaded: ReturnType<typeof loadStore>): RoleMove[
       const binds = strs(rec.data.binds);
       const links = strs(rec.data.links);
       const delivers = strs(rec.data.delivers);
-      const primary = binds.find(canBePrimary);
+      // the primary is the change's ticket; a pull request it bound delivers it; the rest it bound is linked
+      const primary = binds.find((k) => canBePrimary(k));
       const unbound = binds.filter((k) => k !== primary);
-      const prs = links.filter(isPullRequest);
+      const boundPrs = unbound.filter(isPullRequest);
+      const repo = typeof rec.data.project === 'string' ? repoOf(loaded, rec.data.project) : undefined;
+      // a pull request it links delivers it when it is of the project's own repository; one elsewhere is cited
+      const prs = links.filter((k) => isPullRequest(k) && ofRepo(k, repo));
       if (!unbound.length && !prs.length) continue;
-      const nextLinks = [...links.filter((k) => !prs.includes(k)), ...unbound.filter((k) => !links.includes(k))];
-      const nextDelivers = [...delivers, ...prs.filter((k) => !delivers.includes(k))];
+      const nextLinks = [
+        ...links.filter((k) => !prs.includes(k)),
+        ...unbound.filter((k) => !boundPrs.includes(k) && !links.includes(k)),
+      ];
+      const nextDelivers = [...new Set([...delivers, ...boundPrs, ...prs])];
       const data: Record<string, unknown> = { ...rec.data };
       if (primary) data.binds = [primary];
       else delete data.binds;
@@ -158,7 +166,7 @@ export function sourceRoleMoves(loaded: ReturnType<typeof loadStore>): RoleMove[
           moved = true;
           return { ...e, edge: 'delivers' };
         }
-        if (e.from === rec.key && !onChange && !bound && canBePrimary(e.to)) {
+        if (e.from === rec.key && !onChange && !bound && canBePrimary(e.to, 'session')) {
           moved = bound = true;
           return { ...e, edge: 'binds' };
         }

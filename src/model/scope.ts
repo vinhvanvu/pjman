@@ -2,6 +2,7 @@
 // same changes group under; a node narrows to a subtree; a view (tree, lanes) is the client's business. The result is
 // one tree of structure nodes with change rows, the flat list of the same changes for lanes, and the health,
 // live sessions and activity of the node stood on. Everything here is derived from the records and the event stream.
+import { TRACKER_KINDS } from './roles.js';
 import type { Store } from '../store/config.js';
 import { eventsByKey, readEvents, type StoreEvent } from '../store/events.js';
 import { eventKeysOf, memo, ofType, push, resolve, type Loaded, type Rec } from '../store/records.js';
@@ -295,7 +296,6 @@ export interface ScopeOpts {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
-const TRACKER_KINDS = new Set(['github-issue', 'linear', 'jira']);
 
 function ticketOf(loaded: Loaded, rec: Rec): ChangeRow['ticket'] {
   for (const k of list(rec.data.binds)) {

@@ -219,7 +219,7 @@ export function SessionTree({
                 : 'The page moves to the change the moment this session binds one: name it in a prompt, or start on its branch.'}
             </p>
           </div>
-          <SessionSources sources={session.sources} lens={lens} />
+          <SessionSources sources={session.sources} primary={session.primary} lens={lens} />
           {!wide && rail}
         </section>
         {wide && (

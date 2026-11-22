@@ -221,7 +221,7 @@ A change reads as a ladder (decision record-foundation/the-ladder): its `name`, 
 | `project` | A | Project key: the repository the change belongs to. Filled by the tool from the directory the command runs in |
 | `features` | A | Optional. The features this change adds, changes or removes: `adds feature:<slug>`, `feature:<slug>` (changes), `removes feature:<slug>`. Name the most specific node; state rolls up. A feature's derived state and the tree at any release come from these. |
 | `aspects` | A | Optional. The aspects or places this change adds, changes or removes, in the same form as `features`: `adds aspect:<slug>`, `aspect:<aspect>/<place>` (changes). Its context then carries the aspect whole (the base and every place). |
-| `binds` | A | Optional. The primary: the one source this change *is*, a tracker's ticket or a pull request: `[linear:ABC-1234]`. At most one; a source binds at most one change, a second bind is a reported conflict; a second ticket for the same work is linked |
+| `binds` | A | Optional. The primary: the one source this change *is*, a tracker's ticket (Linear, GitHub issue, Jira): `[linear:ABC-1234]`. At most one; a source binds at most one change, a second bind is a reported conflict; a second ticket for the same work is linked |
 | `delivers` | A | Optional. The pull requests that ship this change (`github-pr:`) |
 | `design` | A | Optional. What the change is built to: a canvas, a design file, an artifact; its context says to open it before building |
 | `links` | A | Optional. Source keys: branches, docs, threads, files, the Trail, checkpoints. The kind says what each is |
@@ -299,7 +299,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `parent` | change → change | change | the parent must exist; no cycles; any depth; any project |
 | `depends_on` | change → change | change | every key must exist; no cycles; a constraint on the order, never a scheduler |
 | `sequence` | product → change | product | the roadmap's order; every key must exist; no repeats |
-| `binds` | change → source | change | the primary: at most one, a tracker's ticket or a pull request; a source binds at most one change |
+| `binds` | change → source | change | the primary: at most one, a tracker's ticket; a source binds at most one change. A session on no change binds the ticket or pull request it works on (observed) |
 | `delivers` | change → source | change | a pull request |
 | `design` | change → source | change | — |
 | `product` | feature, project → product | the child | the fixed root of the product tree |
@@ -313,7 +313,7 @@ The canonical word is what is written in the file. `vocabulary:` in `pjman.yaml`
 | `supersedes` | decision → decision (one or many) | decision | the target becomes `superseded`; a target already superseded by another decision is refused; no cycles |
 | `parent` | session → session | session | — |
 | `changes` | session → change | session | — |
-| observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule. A host hands a plain `links`; the tool names the role: a pull request linked from a change `delivers` it, and the first ticket or pull request a session on no change is seen on `binds` the session (its primary) |
+| observed `{edge, from, to, at}` | session → an edge of any type above | session | evidence only; never satisfies or violates a rule. A host hands a plain `links`; the tool names the role: a pull request observed on a change's branch `delivers` it, and the first ticket or pull request a session on no change is seen on `binds` the session (its primary) |
 
 Reverse edges (a project's changes, a change's children, a change's decisions, a source's change, a change's sessions, a decision's superseded-by) are never written; the index derives them.
 

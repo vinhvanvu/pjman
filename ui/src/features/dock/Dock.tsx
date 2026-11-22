@@ -131,7 +131,7 @@ function DockFresh({
         </p>
       </header>
 
-      {named && session && <SessionSources sources={session.sources} lens={lens} />}
+      {named && session && <SessionSources sources={session.sources} primary={session.primary} lens={lens} />}
 
       {!named && (
         <section className="flex flex-col gap-3">

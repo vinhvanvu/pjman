@@ -27,6 +27,7 @@ import {
 } from '../model/view.js';
 import { nextStep, stepsOf } from '../model/foundation.js';
 import { ownSources } from './session-kinds.js';
+import { primaryOf } from '../model/roles.js';
 import { urlOf } from '../model/refs.js';
 
 export interface ViewOpts extends GetOpts {
@@ -78,6 +79,9 @@ export interface SessionFacts {
   /** The sources it read on its own, with no change bound (decision unbound-sessions/sources): the branch, the PR,
    *  the tickets, oldest first, each with the title and URL the store has for it. */
   sources: SessionSource[];
+  /** Its primary (change:source-edge-roles): its change's ticket when it is on one change, else the ticket or pull
+   *  request it was first seen on with no change bound; absent when there is none. */
+  primary?: string;
   /** Where it runs, when a host holds it: the host's name and version, and whether the adapter validated that version. */
   host?: SessionHostFacts;
   /** When the person last prompted it, while the dashboard that heard it runs; absent before the first prompt it heard. */
@@ -162,6 +166,7 @@ export function sessionFacts(store: Store, loaded: Loaded, rec: Rec, opts: ViewO
     name: str(rec.data.name),
     kind,
     sources,
+    primary: primaryOf(loaded, rec) ?? undefined,
     host: hostFactsOf(rec.data, host),
     prompted: opts.prompted?.get(rec.key),
   };

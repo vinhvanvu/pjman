@@ -1,4 +1,4 @@
-import { roleRefusal } from './roles.js';
+import { canBePrimary, isPullRequest, roleRefusal } from './roles.js';
 import { FINDING_KINDS, FINDING_SEVERITIES, FINDING_STATES } from './findings.js';
 import { REVIEW_MODES, REVIEW_ROUNDS } from './review.js';
 import {
@@ -895,7 +895,18 @@ export function validate(loaded: Loaded, opts: { only?: Set<string> } = {}): Pro
               if (e.at !== undefined && !isTimestamp(e.at)) err(r, `observed[${i}].at must be a timestamp`);
               for (const f of Object.keys(e))
                 if (!['edge', 'from', 'to', 'at'].includes(f)) warn(r, `observed[${i}]: unknown field '${f}'`);
+              // the role an observation names (change:source-edge-roles): evidence, so a wrong one is a warning
+              const to = typeof e.to === 'string' ? e.to : '';
+              if (edge === 'binds' && e.from === r.key && !canBePrimary(to, 'session'))
+                warn(r, `observed[${i}]: a session binds a ticket or a pull request; ${to} is not one`);
+              if (edge === 'delivers' && !isPullRequest(to))
+                warn(r, `observed[${i}]: delivers names a pull request; ${to} is not one`);
             });
+            const own = d.observed.filter(
+              (o) => (o as { edge?: unknown })?.edge === 'binds' && (o as { from?: unknown }).from === r.key,
+            );
+            if (own.length > 1)
+              warn(r, `observed: a session binds one primary; ${own.length} binds edges from it, the first is read`);
           }
         }
         // focus: the change the session last read the context of; briefed: how far its brief has reached in the stream

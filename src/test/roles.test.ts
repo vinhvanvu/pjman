@@ -39,7 +39,7 @@ before(() => {
   execFileSync('git', ['init', '-q'], { cwd: dir });
   init({ cwd: dir, name: 'web' });
   store = findStore(dir)!;
-  const kinds = ['entire-trail', 'github-issue', 'github-pr', 'url'];
+  const kinds = ['entire-trail', 'github-issue', 'github-pr', 'url', 'jira', 'git-repo'];
   writeStoreConfig(store.root, {
     ...store.config,
     source_kinds: [...new Set([...store.config.source_kinds, ...kinds])],
@@ -47,13 +47,20 @@ before(() => {
   execFileSync('git', ['commit', '-qam', 'test: kinds', '--allow-empty'], { cwd: store.root });
   store = findStore(dir)!;
   change(store, 'cart', { title: 'The cart', summary: 's', project: 'project:web' });
+  set(store, 'project:web', ['links+=git-repo:acme/web'], {});
 });
 
-test('a change binds one primary, a ticket or a pull request; delivers names a pull request; design takes any source', () => {
+test("a change binds one primary, a tracker's ticket of any tracker; delivers names a pull request; design takes any source", () => {
   assert.throws(
     () => set(store, 'change:web/cart', ['binds+=entire-trail:gh/acme/1'], {}),
-    /binds names the primary, a tracker's ticket or a pull request; entire-trail:gh\/acme\/1 is a entire-trail: link it/,
+    /binds names the primary, a tracker's ticket; entire-trail:gh\/acme\/1 is a entire-trail: link it/,
   );
+  assert.throws(
+    () => set(store, 'change:web/cart', ['binds+=github-pr:acme/web#1'], {}),
+    /binds names the primary, a tracker's ticket; github-pr:acme\/web#1 is a github-pr: it delivers/,
+  );
+  // a tracker with no short form to scan for is a tracker all the same
+  change(store, 'jira-work', { title: 'Jira work', summary: 's', project: 'project:web', binds: ['jira:ABC-1234'] });
   set(store, 'change:web/cart', ['binds+=github-issue:acme/web#3'], {});
   assert.throws(
     () => set(store, 'change:web/cart', ['binds+=github-issue:acme/web#4'], {}),
@@ -89,6 +96,7 @@ test('an observed link names its role: a pull request on a change delivers it; a
   ]);
   // the same plain link again is the edge already held
   assert.equal(sessionObserve(store, 's1', 'links', 'change:web/cart', 'github-pr:acme/web#10').added, false);
+  assert.equal(observed('s1').length, 2);
   // taken back by the plain link the host hands
   sessionUnobserve(store, 's1', 'links', 'change:web/cart', 'github-pr:acme/web#10');
   assert.deepEqual(observed('s1'), ['links change:web/cart branch:cart']);
@@ -100,11 +108,14 @@ test('an observed link names its role: a pull request on a change delivers it; a
     'binds session:s2 github-pr:acme/web#11',
     'links session:s2 github-pr:acme/web#12',
   ]);
+  // its own primary seen again is not a second edge beside it
+  assert.equal(sessionObserve(store, 's2', 'links', 'session:s2', 'github-pr:acme/web#11').added, false);
+  assert.equal(observed('s2').length, 2);
   assert.equal(primaryOf(loadStore(store), findSession(loadStore(store), 's2')!), 'github-pr:acme/web#11');
   assert.deepEqual(errors(), []);
 });
 
-test('the source-roles move: trails and other sources out of binds into links, pull requests into delivers, on changes and sessions; undo reverts it', () => {
+test("the source-roles move: trails out of binds into links, the project's pull requests into delivers (another repository's stay cited), on changes and sessions; undo reverts it", () => {
   change(store, 'old', { title: 'Old shape', summary: 's', project: 'project:web' });
   const file = rec('change:web/old')!.abs;
   fs.writeFileSync(
@@ -113,7 +124,7 @@ test('the source-roles move: trails and other sources out of binds into links, p
       .readFileSync(file, 'utf8')
       .replace(
         /\nproject: project:web\n/,
-        '\nproject: project:web\nbinds:\n  - github-issue:acme/web#20\n  - entire-trail:gh/acme/20\nlinks:\n  - github-pr:acme/web#21\n  - url:https://example.com/doc\n',
+        '\nproject: project:web\nbinds:\n  - github-issue:acme/web#20\n  - entire-trail:gh/acme/20\n  - github-pr:acme/web#22\nlinks:\n  - github-pr:acme/web#21\n  - github-pr:other/lib#5\n  - url:https://example.com/doc\n',
       ),
   );
   newRecord(store, 'session', 's3', { agent: 'agent:claude-code' });
@@ -138,11 +149,15 @@ test('the source-roles move: trails and other sources out of binds into links, p
   assert.ok(r.commit);
   const d = rec('change:web/old')!.data;
   assert.deepEqual(d.binds, ['github-issue:acme/web#20']);
-  assert.deepEqual(d.delivers, ['github-pr:acme/web#21']);
-  assert.deepEqual(d.links, ['url:https://example.com/doc', 'entire-trail:gh/acme/20']);
+  assert.deepEqual(d.delivers, ['github-pr:acme/web#22', 'github-pr:acme/web#21']);
+  assert.deepEqual(d.links, ['github-pr:other/lib#5', 'url:https://example.com/doc', 'entire-trail:gh/acme/20']);
   assert.deepEqual(observed('s3'), ['delivers change:web/old github-pr:acme/web#21']);
   assert.deepEqual(errors(), []);
   undo(old, { commit: r.commit });
-  assert.deepEqual(rec('change:web/old')!.data.binds, ['github-issue:acme/web#20', 'entire-trail:gh/acme/20']);
+  assert.deepEqual(rec('change:web/old')!.data.binds, [
+    'github-issue:acme/web#20',
+    'entire-trail:gh/acme/20',
+    'github-pr:acme/web#22',
+  ]);
   assert.deepEqual(observed('s3'), ['links change:web/old github-pr:acme/web#21']);
 });

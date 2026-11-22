@@ -565,6 +565,16 @@ export function sessionObserve(
   }
   // the part the source plays (change:source-edge-roles): a host hands a plain link, the tool names the role
   const role = observedRole(rec, edge, origin, target);
+  // a source already held between the two, in whichever role, is not observed twice
+  const roles = SOURCE_ROLES as readonly string[];
+  if (
+    roles.includes(edge) &&
+    observed.some((o) => {
+      const e = o as { edge?: string; from?: string; to?: string };
+      return roles.includes(e?.edge ?? '') && e.edge !== 'links' && e.from === origin && e.to === target;
+    })
+  )
+    return { path: rec.path, commit: null, from: origin, added: false };
   if (
     role !== edge &&
     observed.some((o) => {
