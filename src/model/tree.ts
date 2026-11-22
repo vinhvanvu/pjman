@@ -1,6 +1,7 @@
 // The product tree: products at the root, features (one nestable kind, levels labelled from the template) beneath,
 // projects attached at the root, changes pointing at the features they affect with an effect. Everything here is
 // derived from the records; nothing is stored.
+import { tiesByTarget } from './people.js';
 import type { Store } from '../store/config.js';
 import { parseKey } from '../store/keys.js';
 import { memo, ofType, push, resolve, type Loaded, type Rec } from '../store/records.js';
@@ -21,7 +22,10 @@ export function parseEffect(raw: unknown): Effect | null {
   if (!m) return null;
   const key = parseKey(m[2]);
   if (!key || key.kind !== 'feature') return null;
-  return { effect: (m[1] as EffectName | undefined) ?? 'changes', key: key.raw };
+  return {
+    effect: (m[1] as EffectName | undefined) ?? 'changes',
+    key: key.raw,
+  };
 }
 
 /** The effects a change declares on features. */
@@ -265,15 +269,27 @@ function derivedStatusOnce(loaded: Loaded, key: string): DerivedStatus {
       (r) => r.data.status === 'done' && effectsOf(r).some((x) => x.effect === e && live(loaded, x.key)?.key === key),
     );
   const removed = done('removes');
-  if (removed.length) return { status: 'retired', because: `${removed[removed.length - 1].key} (removes) is done` };
+  if (removed.length)
+    return {
+      status: 'retired',
+      because: `${removed[removed.length - 1].key} (removes) is done`,
+    };
   const added = done('adds');
   if (added.length) return { status: 'live', because: `${added[0].key} (adds) is done` };
   // a change to a node is a change to something that exists
   const changed = done('changes');
-  if (changed.length) return { status: 'live', because: `${changed[changed.length - 1].key} (changes) is done` };
+  if (changed.length)
+    return {
+      status: 'live',
+      because: `${changed[changed.length - 1].key} (changes) is done`,
+    };
   // in flight means someone is building: active, review or blocked. planning is thinking; open is a backlog line.
   const inFlight = affecting.filter((r) => ['active', 'review', 'blocked'].includes(String(r.data.status)));
-  if (inFlight.length) return { status: 'building', because: `${inFlight.map((r) => r.key).join(', ')} in flight` };
+  if (inFlight.length)
+    return {
+      status: 'building',
+      because: `${inFlight.map((r) => r.key).join(', ')} in flight`,
+    };
   const children = ix.parented.get(key) ?? [];
   const childStates = new Set(children.map((c) => derivedStatus(loaded, c.key).status));
   if (childStates.has('live')) return { status: 'live', because: 'a child is live' };
@@ -308,6 +324,8 @@ export interface TreeNode {
   projects: string[];
   /** On a product: changes under its projects that name no feature. */
   unassigned?: number;
+  /** The stakes held on this node itself (change:people-in-graph); the nodes beneath inherit them. */
+  stakes?: { who: string; type: string; said: boolean }[];
 }
 
 /** The tree below a product or a feature (every product when no root is given), with roll-ups. */
@@ -339,6 +357,13 @@ export function tree(loaded: Loaded, rootKey?: string): TreeNode[] {
       backlog,
       projects,
     };
+    const held = tiesByTarget(loaded).get(rec.key);
+    if (held?.length)
+      n.stakes = held.map((t) => ({
+        who: t.person,
+        type: t.type,
+        said: t.said,
+      }));
     if (rec.type === 'product') {
       const projectKeys = ofType(loaded, 'project')
         .filter((p) => p.valid && rootProductOf(loaded, p)?.key === rec.key)
@@ -371,7 +396,7 @@ export function formatTree(nodes: TreeNode[], depth = 0): string {
         ? ` [${n.status ?? n.derived?.status}${n.status && n.derived && n.status !== n.derived.status ? `; derived ${n.derived.status}` : ''}]`
         : '';
     out.push(
-      `${pad}- ${n.key} (${n.level})${state} — ${n.title ?? ''}${backlog ? `\n${pad}  changes: ${backlog}${n.projects.length ? ` in ${n.projects.join(', ')}` : ''}` : ''}${n.unassigned ? `\n${pad}  ${n.unassigned} open change${n.unassigned === 1 ? '' : 's'} under its projects name no feature` : ''}`,
+      `${pad}- ${n.key} (${n.level})${state} — ${n.title ?? ''}${backlog ? `\n${pad}  changes: ${backlog}${n.projects.length ? ` in ${n.projects.join(', ')}` : ''}` : ''}${n.unassigned ? `\n${pad}  ${n.unassigned} open change${n.unassigned === 1 ? '' : 's'} under its projects name no feature` : ''}${n.stakes?.length ? `\n${pad}  people: ${n.stakes.map((t) => `${t.type} ${t.who}${t.said ? ' (said)' : ''}`).join(' · ')}` : ''}`,
     );
     if (n.children.length) out.push(formatTree(n.children, depth + 1).trimEnd());
   }

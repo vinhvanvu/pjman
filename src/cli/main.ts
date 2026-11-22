@@ -22,6 +22,17 @@ import { ambiguous, CliError, notFound, plural, usageError } from '../store/util
 import { argsFor, commandOf, FLAG_TYPES, flagsFor, GLOBAL_FLAGS, helpFor, overview, RETIRED_FLAGS } from './surface.js';
 import { formatProblems, summarise, validate } from '../model/validate.js';
 import { trackerOf } from '../model/refs.js';
+import {
+  formatPeopleOn,
+  formatPerson,
+  formatPocs,
+  people,
+  peopleOn,
+  personAt,
+  personView,
+  pocsOf,
+} from '../model/people.js';
+import { personIntake, tie } from '../ops/people.js';
 import { entireOn, pendingLine } from '../entire/entire.js';
 import { syncEntire } from '../sync/entire.js';
 import { branchesOf, syncGit } from '../sync/git.js';
@@ -49,7 +60,15 @@ import {
 import { formatFinding } from '../model/findings.js';
 import { formatWhy, parseWhere, searchPast, why } from '../sync/why.js';
 import { reconcileTrail, trailLines, type TrailReconcile } from '../sync/trail.js';
-import { fieldRef, findReferences, formatNeighbourhood, formatReferences, get, resolveArg } from '../model/graph.js';
+import {
+  fieldRef,
+  findReferences,
+  formatNeighbourhood,
+  formatReferences,
+  get,
+  resolveArg,
+  resolveRef,
+} from '../model/graph.js';
 import { renderView, watchStore } from '../ops/pane.js';
 import { follow, formatEvent, lastSeq, readEvents, rebuildEvents } from '../store/events.js';
 import { installedTool, readServeAddress, startServer } from '../server/server.js';
@@ -150,7 +169,12 @@ function roundLines(r: RoundResult, printed: (key: string) => string): string[] 
 function parse(args: string[]) {
   let parsed;
   try {
-    parsed = parseArgs({ args, allowPositionals: true, strict: true, options: PARSE_OPTIONS });
+    parsed = parseArgs({
+      args,
+      allowPositionals: true,
+      strict: true,
+      options: PARSE_OPTIONS,
+    });
   } catch (e) {
     throw usageError(
       `${(e as Error).message.split('\n')[0].replace(/\. To specify a positional argument.*$/, '')} (a value that starts with a dash is passed as --flag=value)`,
@@ -218,7 +242,13 @@ function followTrail(store: Store, key: string, session?: string, through = fals
     // (`through`: the command merged the branch through the Trail, whose gates Entire checked)
     return reconcileTrail(store, key, { session, budget: 12_000, through });
   } catch (e) {
-    return { change: key, acts: [], moved: [], pending: [(e as Error).message.split('\n')[0]], commit: null };
+    return {
+      change: key,
+      acts: [],
+      moved: [],
+      pending: [(e as Error).message.split('\n')[0]],
+      commit: null,
+    };
   }
 }
 /** The map a change just filed brings: its project's product has none, the project did not say skip, and the
@@ -242,7 +272,10 @@ function decisionBySlug(loaded: ReturnType<typeof loadStore>, slug: string): str
   const hits = loaded.records.filter((r) => r.type === 'decision' && r.decisionSlug === slug).map((r) => r.key);
   if (hits.length === 1) return hits[0];
   if (hits.length > 1) throw ambiguous(slug, hits);
-  throw notFound(slug, { as: 'decision', hint: 'a new decision is keyed <change>/<slug>' });
+  throw notFound(slug, {
+    as: 'decision',
+    hint: 'a new decision is keyed <change>/<slug>',
+  });
 }
 
 /** The same act over several records as one commit and one undo (decision interface-audit/bulk-writes): the lines
@@ -436,7 +469,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (!kind) return value;
         if (kind !== 'source') return typedRef(value!, kind);
         refLoaded ??= loadStore(store);
-        return fieldRef(refLoaded, kind, value!, { cwd, projectDir: store.projectDir, project: store.project });
+        return fieldRef(refLoaded, kind, value!, {
+          cwd,
+          projectDir: store.projectDir,
+          project: store.project,
+        });
       };
       const typedAll = (vs: string[] | undefined, field: string) => vs?.map((x) => typed(x, field)!);
       Object.assign(flags, {
@@ -587,7 +624,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       // the last step done, in a project that reviews every change: the review is due, said by the command that made
       // it so (a turn that ran only commands meets no stop hook)
       const review = verb === 'done' && !r.next ? reviewDue(store, r.key) : undefined;
-      if (v.json) json({ ...r, ...(trail ? { trail } : {}), ...(review ? { review } : {}) });
+      if (v.json)
+        json({
+          ...r,
+          ...(trail ? { trail } : {}),
+          ...(review ? { review } : {}),
+        });
       else
         out(
           `${r.key} step ${r.numbers.join(',')} ${r.verb}${r.progress ? ` · ${r.progress.done}/${r.progress.total} done` : ''}${r.next ? ` · next: ${r.next.n}. ${r.next.step.text}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}\n${formatPlan(r.steps)}${trail ? `\n${trailLines(trail, printed).join('\n')}` : ''}${review ? `\n${formatLoop(review, printed)}` : ''}`,
@@ -723,7 +765,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         store,
         ref.startsWith('session:')
           ? ref
-          : resolveArg(loadStore(store), ref, { cwd, projectDir: store.projectDir, project: store.project }),
+          : resolveArg(loadStore(store), ref, {
+              cwd,
+              projectDir: store.projectDir,
+              project: store.project,
+            }),
         rest.join(' '),
         { writer: v.writer, session: v.session },
       );
@@ -753,7 +799,13 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const loaded = loadStore(store);
       const problems = validate(loaded);
       const s = summarise(problems);
-      if (v.json) json({ store: store.root, records: loaded.records.length, ...s, problems });
+      if (v.json)
+        json({
+          store: store.root,
+          records: loaded.records.length,
+          ...s,
+          problems,
+        });
       else {
         if (problems.length) out(formatProblems(problems));
         out(
@@ -811,10 +863,17 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw usageError('usage: pjman activity <key> [--days 14]');
       const loaded = loadStore(store);
-      const key = resolveArg(loaded, pos[1], { cwd, projectDir: store.projectDir, project: store.project });
+      const key = resolveArg(loaded, pos[1], {
+        cwd,
+        projectDir: store.projectDir,
+        project: store.project,
+      });
       const res = resolve(loaded, key);
       if (res.status !== 'ok' && res.status !== 'alias') throw unresolvedError(res, pos[1]);
-      const a = activity(store, loaded, res.rec.key, { days: v.days ? Number(v.days) : undefined, since: v.since });
+      const a = activity(store, loaded, res.rec.key, {
+        days: v.days ? Number(v.days) : undefined,
+        since: v.since,
+      });
       v.json ? json(a) : out(formatActivity(a, formatEvent));
       return 0;
     }
@@ -887,7 +946,9 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           }
         }
       } else {
-        const c = storeContext(store, { project: v.all ? null : (pos[1] ?? v.project ?? store.project ?? null) });
+        const c = storeContext(store, {
+          project: v.all ? null : (pos[1] ?? v.project ?? store.project ?? null),
+        });
         v.json ? json(c) : out(formatStoreContext(c));
       }
       return 0;
@@ -896,7 +957,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw usageError('usage: pjman get <ref>');
       const loaded = loadStore(store);
-      const n = get(loaded, pos[1], { cwd, projectDir: store.projectDir, project: store.project });
+      const n = get(loaded, pos[1], {
+        cwd,
+        projectDir: store.projectDir,
+        project: store.project,
+      });
       if (n.resolution.status === 'none') throw notFound(pos[1], { tried: n.resolution.tried });
       // a feature or the product: its code, its own and rolled up from beneath (change:capability-code-paths)
       const code =
@@ -944,7 +1009,12 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'view': {
       const store = scoped(requireStore(cwd, v.store));
-      const opts = { ref: pos[1], cwd, projectDir: store.projectDir, project: store.project };
+      const opts = {
+        ref: pos[1],
+        cwd,
+        projectDir: store.projectDir,
+        project: store.project,
+      };
       const render = () => {
         const view = renderView(store, opts);
         view.markdown = shortenText(view.markdown, scopeProduct); // read by a person inside the project
@@ -976,10 +1046,18 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (!pos[1]) throw usageError('usage: pjman show <key>');
       const r = show(
         store,
-        resolveArg(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project }),
+        resolveArg(loadStore(store), pos[1], {
+          cwd,
+          projectDir: store.projectDir,
+          project: store.project,
+        }),
       );
       v.json
-        ? json({ ...row(r.rec), body: r.rec.body, ...(r.keyDecision ? { keyDecision: r.keyDecision } : {}) })
+        ? json({
+            ...row(r.rec),
+            body: r.rec.body,
+            ...(r.keyDecision ? { keyDecision: r.keyDecision } : {}),
+          })
         : out(`# ${r.rec.path}\n${r.text}`);
       return 0;
     }
@@ -1006,7 +1084,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       );
       const loaded = loadStore(store);
       const keys = refs.map((r) =>
-        resolveArg(loaded, r, { cwd, projectDir: store.projectDir, project: store.project }),
+        resolveArg(loaded, r, {
+          cwd,
+          projectDir: store.projectDir,
+          project: store.project,
+        }),
       );
       if (keys.length === 1) {
         const r = set(store, keys[0], stdinPairs, { session: v.session });
@@ -1041,7 +1123,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         const loaded = loadStore(store);
         const o = sequenceOf(
           loaded,
-          pos[1] ? resolveArg(loaded, pos[1], { kinds: ['product', 'change', 'feature'] }) : null,
+          pos[1]
+            ? resolveArg(loaded, pos[1], {
+                kinds: ['product', 'change', 'feature'],
+              })
+            : null,
         );
         v.json
           ? json(o)
@@ -1077,7 +1163,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (!pos[1] || !pos[2]) throw usageError('usage: pjman mv <key> <new key>  (change, project or decision)');
       const r = mv(
         store,
-        resolveArg(loadStore(store), pos[1], { cwd, projectDir: store.projectDir, project: store.project }),
+        resolveArg(loadStore(store), pos[1], {
+          cwd,
+          projectDir: store.projectDir,
+          project: store.project,
+        }),
         pos[2],
         { session: v.session },
       );
@@ -1188,6 +1278,110 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const dirs = projectDirs(store, toplevel(cwd));
       const n = nodeCode(loaded, node.key, dirs);
       v.json ? json(n) : out([printed(n.key), ...formatNodeCode(n, { limit: v.all ? Infinity : SHOWN })].join('\n'));
+      return 0;
+    }
+    case 'person': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1]) throw usageError(commandOf('person')!.usage[0]);
+      const r = personIntake(store, pos[1], {
+        name: v.name,
+        role: v.role,
+        accounts: v.account,
+        aliases: v.alias,
+        new: v.new,
+        handle: v.handle,
+        writer: v.writer,
+        session: v.session,
+      });
+      if (v.json) json(r);
+      else {
+        if (r.status === 'created') out(`created ${r.key}${r.commit ? ` (committed ${r.commit})` : ''}`);
+        else if (r.status === 'found')
+          out(
+            `found ${r.key} (by ${r.by})${r.added.length ? `: added ${r.added.join(', ')}` : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+          );
+        else {
+          out(
+            r.status === 'conflict'
+              ? `${pos[1]}: the accounts given and the name point at different people; nothing written`
+              : r.candidates.length > 1
+                ? `${pos[1]}: more than one person may be meant; nothing written`
+                : `${pos[1]}: only part of a name matches; nothing written`,
+          );
+          for (const c of r.candidates) out(`- ${c.key}${c.name ? ` (${c.name})` : ''} · by ${c.by}`);
+          out('name one by its key (pjman person person:<handle> …), or pass --new when it is someone else');
+        }
+        for (const n of r.notes) out(`note: ${n}`);
+      }
+      return r.status === 'found' || r.status === 'created' ? 0 : 1;
+    }
+    case 'tie': {
+      const store = scoped(requireStore(cwd, v.store));
+      if (!pos[1] || !pos[2] || !pos[3]) throw usageError(commandOf('tie')!.usage[0]);
+      const r = tie(store, pos[1], pos[2], pos[3], {
+        said: v.said,
+        remove: v.remove,
+        writer: v.writer,
+        session: v.session,
+      });
+      if (v.json) json(r);
+      else {
+        out(
+          `${r.op === 'unchanged' ? 'unchanged:' : r.op} ${printed(r.person)} ${r.type} ${printed(r.target)}${v.said ? ' (said)' : ''}${r.commit ? ` (committed ${r.commit})` : ''}`,
+        );
+        for (const n of r.notes) out(`note: ${n}`);
+      }
+      return 0;
+    }
+    case 'people': {
+      const store = scoped(requireStore(cwd, v.store));
+      const loaded = loadStore(store);
+      if (!pos[1]) {
+        const rows = people(loaded).map((p) => ({ ...personView(loaded, p) }));
+        if (v.json) json(rows);
+        else if (!rows.length) out('no people');
+        else
+          for (const p of rows)
+            out(
+              `${printed(p.key)}${p.name ? ` — ${p.name}` : ''}${p.role ? ` · ${p.role}` : ''} · ${plural(p.accounts.length, 'account')} · ${plural(p.ties.length, 'tie')}`,
+            );
+        return 0;
+      }
+      const asPerson = !pos[1].includes(':') ? live(loaded, `person:${pos[1]}`) : undefined;
+      const res = asPerson
+        ? { status: 'record' as const, key: asPerson.key, tried: [] }
+        : resolveRef(loaded, pos[1], {
+            cwd,
+            projectDir: store.projectDir,
+            project: store.project,
+          });
+      const key = res.key;
+      if (res.status === 'none' || !key) throw notFound(pos[1], { tried: res.tried });
+      const owner = personAt(loaded, key);
+      if (owner) {
+        const view = personView(loaded, owner);
+        v.json ? json(view) : out(formatPerson(view).join('\n'));
+        return 0;
+      }
+      if (key.startsWith('change:')) {
+        const pocs = pocsOf(loaded, key);
+        v.json
+          ? json({ key, pocs })
+          : out(
+              [
+                `${printed(key)} — who to reference`,
+                '',
+                ...(pocs.length
+                  ? formatPocs(pocs)
+                  : ['(no one: no stake on the nodes it names, and no one tied to it)']),
+              ].join('\n'),
+            );
+        return 0;
+      }
+      const on = peopleOn(loaded, key);
+      v.json
+        ? json({ key, people: on })
+        : out([printed(key), '', ...(on.length ? formatPeopleOn(on) : ['(no one)'])].join('\n'));
       return 0;
     }
     case 'rest': {
@@ -1390,7 +1584,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'undo': {
       const store = scoped(requireStore(cwd, v.store));
-      const r = undo(store, { commit: pos[1], session: v.session, writer: v.writer });
+      const r = undo(store, {
+        commit: pos[1],
+        session: v.session,
+        writer: v.writer,
+      });
       if (v.json) json(r);
       else
         out(
@@ -1402,13 +1600,21 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       const store = scoped(requireStore(cwd, v.store));
       if (!pos[1]) throw usageError('usage: pjman rm <ref>... [--detach]');
       const loaded = loadStore(store);
-      const keys = pos
-        .slice(1)
-        .map((r) => resolveArg(loaded, r, { cwd, projectDir: store.projectDir, project: store.project }));
+      const keys = pos.slice(1).map((r) =>
+        resolveArg(loaded, r, {
+          cwd,
+          projectDir: store.projectDir,
+          project: store.project,
+        }),
+      );
       const said = (r: ReturnType<typeof rm>) =>
         `removed ${r.key} (${plural(r.removed.length, 'file')})${r.detached.length ? `; detached from ${r.detached.map((d) => `${d.key} ${d.fields.join(',')}`).join(', ')}` : ''}`;
       if (keys.length === 1) {
-        const r = rm(store, keys[0], { detach: v.detach, session: v.session, writer: v.writer });
+        const r = rm(store, keys[0], {
+          detach: v.detach,
+          session: v.session,
+          writer: v.writer,
+        });
         v.json ? json(r) : out(`${said(r)}${r.commit ? ` (committed ${r.commit})` : ''}`);
         return 0;
       }
@@ -1417,7 +1623,14 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         store,
         v,
         keys.map((k) => ['rm', k]),
-        (line) => results.push(rm(store, line[1], { detach: v.detach, session: v.session, writer: v.writer })),
+        (line) =>
+          results.push(
+            rm(store, line[1], {
+              detach: v.detach,
+              session: v.session,
+              writer: v.writer,
+            }),
+          ),
       );
       v.json
         ? json({ results, commit: b.commit })
@@ -1436,10 +1649,16 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       if (pos[1])
         throw usageError('usage: pjman events [--since <seq>] [--session <key>] [--receipt] | pjman events rebuild');
       if (v.receipt) {
-        const r = receipt(store, { since: v.since ? Number(v.since) : 0, session: v.session });
+        const r = receipt(store, {
+          since: v.since ? Number(v.since) : 0,
+          session: v.session,
+        });
         // its lines are read by the person inside the project: printed as every key is
         v.json
-          ? json({ ...r, lines: r.lines.map((l) => shortenText(l, scopeProduct)) })
+          ? json({
+              ...r,
+              lines: r.lines.map((l) => shortenText(l, scopeProduct)),
+            })
           : out(formatReceipt(r) || '(nothing recorded)');
         return 0;
       }
@@ -1456,7 +1675,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       return 0; // the watcher keeps the process alive until it is interrupted
     }
     case 'start': {
-      const s = start({ cwd, port: v.port ? Number(v.port) : undefined, log: out });
+      const s = start({
+        cwd,
+        port: v.port ? Number(v.port) : undefined,
+        log: out,
+      });
       out(
         `dashboard: ${s.address.url}${s.started ? '' : ' (already running)'}${s.ui ? '' : ' (API only: no built app)'}`,
       );
@@ -1570,7 +1793,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       // the text is what the agent reads, so it names records as the context does inside the product; the rest of the
       // JSON keeps full keys
       if (v.json)
-        json({ ...b, text: shortenText(b.text, scopeProduct), ...(b.change ? { printed: printed(b.change) } : {}) });
+        json({
+          ...b,
+          text: shortenText(b.text, scopeProduct),
+          ...(b.change ? { printed: printed(b.change) } : {}),
+        });
       else if (b.mode === 'none') out('(nothing new for this session)');
       else
         out(`${b.text}
@@ -1637,7 +1864,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         if (v.start !== undefined && !v.start.trim())
           throw usageError('usage: pjman sync entire --start <change>   (--start was given no change)');
         // the name goes on as it was typed: the sync says the opt-in first, then resolves it as any command's argument
-        const r = syncEntire(store, { session: v.session, wake: v.wake, start: v.start });
+        const r = syncEntire(store, {
+          session: v.session,
+          wake: v.wake,
+          start: v.start,
+        });
         if (v.json) json(r);
         else {
           out(
@@ -1654,8 +1885,18 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
       }
       const r =
         pos[1] === 'linear'
-          ? syncLinear(store, { project: v.project, team: v.team, from: v.from, session: v.session })
-          : syncGithub(store, { project: v.project, repo: v.repo, from: v.from, session: v.session });
+          ? syncLinear(store, {
+              project: v.project,
+              team: v.team,
+              from: v.from,
+              session: v.session,
+            })
+          : syncGithub(store, {
+              project: v.project,
+              repo: v.repo,
+              from: v.from,
+              session: v.session,
+            });
       // the change a sync creates is the running session's work, as one it files is: it binds with reason created
       // (change:pjman-21). Only a single one: a sync that creates several is an import, and binds none
       // (decision pjman-21/sync-binds-one, proposed)
@@ -1715,7 +1956,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'doctor': {
       const findings = doctor();
-      if (v.json) json({ findings, off: findings.filter((f) => f.level !== 'ok').length });
+      if (v.json)
+        json({
+          findings,
+          off: findings.filter((f) => f.level !== 'ok').length,
+        });
       else for (const line of formatFindings(findings, v.all)) out(line);
       return findings.some((f) => f.level !== 'ok') ? 1 : 0;
     }
@@ -1739,7 +1984,13 @@ try {
     // shape on stdout, where a program reading the answer looks
     const argv = process.argv.slice(2);
     if (argv.includes('--json'))
-      json({ error: { code: e.code, message: e.message, ...(e.tried ? { tried: e.tried } : {}) } });
+      json({
+        error: {
+          code: e.code,
+          message: e.message,
+          ...(e.tried ? { tried: e.tried } : {}),
+        },
+      });
     else process.stderr.write(`pjman: ${shortenText(e.message, scopeProduct)}\n`);
     process.exitCode = e.exitCode;
   } else {

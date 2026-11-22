@@ -128,6 +128,13 @@ export const FLAG_TYPES = {
   node: { type: 'boolean' },
   match: { type: 'string' },
   dropped: { type: 'boolean' },
+  role: { type: 'string' },
+  account: { type: 'string', multiple: true },
+  alias: { type: 'string', multiple: true },
+  handle: { type: 'string' },
+  new: { type: 'boolean' },
+  said: { type: 'boolean' },
+  remove: { type: 'boolean' },
 } as const satisfies Record<string, { type: 'string' | 'boolean'; multiple?: boolean; short?: string }>;
 
 /** Flags of models since replaced: refused wherever they are given, with where their job went. */
@@ -557,6 +564,38 @@ export const COMMANDS: Command[] = [
     flags: ['all', 'branch', 'check'],
   },
   {
+    name: 'person',
+    group: 'records',
+    line: 'person intake: find the person a mention names, else create them; add their role, accounts and aliases',
+    about:
+      "person intake (decision people-in-graph/person-intake): a mention (a name, person:<handle>, or an account such as github-user:<login> or email:<address>) is matched against the store's people, so each human is one record. An account given is exact and wins; then the handle, an alias or the full name. One match is used, and what is given is added to them: --role (their job), --account (an account they hold; one account is one person's), --alias. No match creates the person, named by the mention (--handle to choose the handle). Several matches, or only part of a name (a first name alone), are listed as candidates and nothing is written: name one by its key, or pass --new when the person is someone else. A role new to the store is added to its roles. Every write is one commit, pjman undo puts it back",
+    usage: [
+      'pjman person <name | person:<handle> | account> [--name <full name>] [--role <role>] [--account <account>]... [--alias <alias>]... [--new] [--handle <handle>] [--json]',
+    ],
+    flags: ['name', 'role', 'account', 'alias', 'new', 'handle'],
+    args: 1,
+  },
+  {
+    name: 'tie',
+    group: 'records',
+    line: 'tie a person to a node or a source by a typed edge: a stake on the map, a part anywhere else',
+    about:
+      "a person's typed tie (decisions people-in-graph/typed-ties, where-ties-live): an edge from the person whose type is the relationship, held on the person's record. To a product or feature it is a stake (owner, contributor, reviewer, stakeholder), inherited by every node beneath it until a nearer node names its own; to anything else (a source, a change, a decision) it is a part (author, assignee, reviewer, requested-by, mentioned). A word new to the store is added to its stakes or parts. --said records what was said in conversation (decision people-in-graph/ownership-from): a tie set without it is set outright and replaces what was said of the same type and target; on a target, a type set outright by anyone shadows what was said of that type there, and a later --said changes nothing. --remove takes the tie back, said or set. Every write is one commit, pjman undo puts it back",
+    usage: ['pjman tie <person> <type> <node | source | record> [--said] [--remove] [--json]'],
+    flags: ['said', 'remove'],
+    args: 3,
+  },
+  {
+    name: 'people',
+    group: 'reading',
+    line: "who is on something (its stakes, parts and the POCs to reference), or a person read whole; the store's people with none",
+    about:
+      "with a person (or an account they hold): their role, accounts, stakes on the map, parts, and the sources that name their accounts. With a map node: the people with a stake on it, held there or inherited from above (the nearest node naming a stake wins it). With a change: its POCs, the people with a stake on the nodes it names and those tied to the change itself, the ones to reference on its pull request and in messages. With a source: the people tied to it and those its accounts name (a ticket's assignee and author, as synced), an account no person claims shown as itself. With nothing: the store's people, each with their role and how many ties they hold. Writes nothing",
+    usage: ['pjman people [<person | node | change | source>] [--json]'],
+    flags: [],
+    args: 1,
+  },
+  {
     name: 'rest',
     group: 'reading',
     line: 'whether a stop on a change is one the record allows (exit 1 when not)',
@@ -620,7 +659,16 @@ export const COMMANDS: Command[] = [
       project: [],
       name: ['kind'],
     },
-    args: { start: 1, bind: 2, unbind: 2, observe: 4, unobserve: 4, focus: 2, project: 2, name: 2 },
+    args: {
+      start: 1,
+      bind: 2,
+      unbind: 2,
+      observe: 4,
+      unobserve: 4,
+      focus: 2,
+      project: 2,
+      name: 2,
+    },
   },
   {
     name: 'brief',
@@ -997,9 +1045,14 @@ export const ENTITIES: Entity[] = [
         'create',
         'pjman new actor person:<handle> | agent:<handle> [--links github-user:<login>]...   (pjman init makes yours)',
       ],
-      ['read', 'pjman whoami · pjman show person:<handle>'],
-      ['list', 'pjman ls actor'],
-      ['update', 'pjman set person:<handle> name=… links+=email:<address>'],
+      ['find or create', 'pjman person "<name>" [--role …] [--account …]   (person intake: one human, one record)'],
+      ['read', 'pjman people person:<handle> · pjman whoami · pjman show person:<handle>'],
+      ['list', 'pjman people · pjman ls actor'],
+      [
+        'update',
+        'pjman person <person> --role … --account … · pjman set person:<handle> name=… role=… links+=email:<address>',
+      ],
+      ['tie', 'pjman tie <person> <stake|part> <node|source> [--said] [--remove]   (a typed edge held on the person)'],
       ['rename', 'pjman mv person:<old> person:<new>   (the old handle stays an alias)'],
       ['delete', 'pjman rm person:<handle>   (refused while it wrote anything)'],
     ],

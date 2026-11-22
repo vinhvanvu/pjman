@@ -9,6 +9,15 @@ import { memo, push, resolve, type Loaded, type Rec } from '../store/records.js'
 import { supersedesOf } from './supersede.js';
 import { parseEffect } from './tree.js';
 import { parseAspectEffect } from './aspects.js';
+import {
+  accountParts,
+  formatPeopleOn,
+  peopleOn,
+  personView,
+  tiesByTarget,
+  type AccountPart,
+  type PersonOn,
+} from './people.js';
 import { changeContext, lineOfRow, repoHeads, row, type ChangeContext, type Row } from './view.js';
 
 // --- edges ---------------------------------------------------------------------------------------
@@ -39,7 +48,10 @@ export function allEdges(loaded: Loaded): Edge[] {
 }
 
 /** The edges by the key they leave and the key they reach. */
-export function edgesAt(loaded: Loaded): { from: Map<string, Edge[]>; to: Map<string, Edge[]> } {
+export function edgesAt(loaded: Loaded): {
+  from: Map<string, Edge[]>;
+  to: Map<string, Edge[]>;
+} {
   return memo(loaded, 'edges-at', () => {
     const from = new Map<string, Edge[]>();
     const to = new Map<string, Edge[]>();
@@ -54,7 +66,14 @@ export function edgesAt(loaded: Loaded): { from: Map<string, Edge[]>; to: Map<st
 function edgesOnce(loaded: Loaded): Edge[] {
   const out: Edge[] = [];
   const edge = (name: string, from: string, to: string, on: Rec) =>
-    out.push({ edge: name, from, to: canon(to), on: on.path, observed: false, at: null });
+    out.push({
+      edge: name,
+      from,
+      to: canon(to),
+      on: on.path,
+      observed: false,
+      at: null,
+    });
   const live = (raw: string, scope?: string | null): string => {
     const res = resolve(loaded, raw, scope);
     return res.status === 'ok' || res.status === 'alias' ? res.rec.key : raw;
@@ -147,11 +166,29 @@ function edgesOnce(loaded: Loaded): Edge[] {
         for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
       case 'actor':
+        for (const k of list(d.links)) edge('links', r.key, k, r);
         break;
     }
     if (typeof d.writer === 'string') edge('writer', r.key, d.writer, r);
     if (typeof d.session === 'string') edge('session', r.key, d.session, r);
   }
+  // a person's typed ties (change:people-in-graph): the edge's type is the relationship, as the ties stand across
+  // people (a said tie another person's outright one shadows is no edge)
+  for (const [target, ties] of tiesByTarget(loaded))
+    for (const t of ties) {
+      const p = loaded.byKey.get(t.person)?.[0];
+      if (p) edge(t.type, t.person, target, p);
+    }
+  // the accounts a synced ticket names, by the part each plays on it: observed, so a resync backs them out
+  for (const a of accountParts(loaded))
+    out.push({
+      edge: a.type,
+      from: a.account,
+      to: a.source,
+      on: loaded.byKey.get(a.source)?.[0]?.path ?? '',
+      observed: false,
+      at: null,
+    });
   return out;
 }
 
@@ -199,12 +236,21 @@ export interface Neighbourhood {
   relation: Record<string, Relation>;
   /** A project's changes, a session's children, an actor's sessions: rows, not contexts. */
   members: Row[];
+  /** Who is on it (change:people-in-graph): the ties that reach it, the accounts a source names, a map node's stakes
+   *  inherited from above. */
+  people: PersonOn[];
+  /** On a person: the sources that name one of their accounts, by the part each plays there. */
+  through: AccountPart[];
 }
 
 /** How a change relates to a source in its reach: it binds it, it (or one of its decisions) links it, or a session
  *  observed it linking it. */
 export type Relation = 'binds' | 'links' | 'observed';
-const RELATION_RANK: Record<Relation, number> = { observed: 1, links: 2, binds: 3 };
+const RELATION_RANK: Record<Relation, number> = {
+  observed: 1,
+  links: 2,
+  binds: 3,
+};
 
 /** The relation an edge between a change (or its decision) and a source makes. */
 function relationOf(e: Edge): Relation {
@@ -281,12 +327,24 @@ export function resolveRef(loaded: Loaded, input: string, opts: ResolveOpts = {}
     tried.push('url');
     const u = canonicalUrl(ref);
     const direct = loaded.byKey.get(`url:${u}`)?.[0];
-    if (direct) return { status: direct.valid ? 'record' : 'invalid', key: direct.key, shape: 'url', tried };
+    if (direct)
+      return {
+        status: direct.valid ? 'record' : 'invalid',
+        key: direct.key,
+        shape: 'url',
+        tried,
+      };
     const byField = loaded.records.find(
       (r) => r.type === 'source' && typeof r.data.url === 'string' && canonicalUrl(r.data.url) === u,
     );
     if (byField)
-      return { status: byField.valid ? 'record' : 'invalid', key: byField.key, via: `url:${u}`, shape: 'url', tried };
+      return {
+        status: byField.valid ? 'record' : 'invalid',
+        key: byField.key,
+        via: `url:${u}`,
+        shape: 'url',
+        tried,
+      };
     const vendor = keyFromUrl(u);
     if (vendor) return { ...sourceKey(vendor, 'url'), via: `url:${u}` };
     return sourceKey(`url:${u}`, 'url');
@@ -360,13 +418,23 @@ export function resolveRef(loaded: Loaded, input: string, opts: ResolveOpts = {}
       `a decision named ${ref}${decisions.length > 1 ? ` (${decisions.length} match: ${decisions.map((r) => r.key).join(', ')})` : ''}`,
     );
     if (decisions.length === 1)
-      return { status: decisions[0].valid ? 'record' : 'invalid', key: decisions[0].key, shape: 'slug', tried };
+      return {
+        status: decisions[0].valid ? 'record' : 'invalid',
+        key: decisions[0].key,
+        shape: 'slug',
+        tried,
+      };
   }
   if (ref.length >= 6 && /^[A-Za-z0-9._-]+$/.test(ref)) {
     const sessions = loaded.records.filter((r) => r.type === 'session' && r.sessionId?.startsWith(ref));
     tried.push(`a session id starting ${ref}${sessions.length > 1 ? ` (${sessions.length} match)` : ''}`);
     if (sessions.length === 1)
-      return { status: sessions[0].valid ? 'record' : 'invalid', key: sessions[0].key, shape: 'slug', tried };
+      return {
+        status: sessions[0].valid ? 'record' : 'invalid',
+        key: sessions[0].key,
+        shape: 'slug',
+        tried,
+      };
   }
   return { status: 'none', tried };
 }
@@ -407,6 +475,8 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
     via: {},
     relation: {},
     members: [],
+    people: [],
+    through: [],
   };
   if (resolution.status === 'none' || !resolution.key) return result;
   const key = resolution.key;
@@ -469,6 +539,8 @@ export function get(loaded: Loaded, input: string, opts: GetOpts = {}): Neighbou
     result.members = loaded.records.filter((r) => r.type === 'session' && r.data.parent === key).map(row);
   if (rec?.type === 'actor')
     result.members = loaded.records.filter((r) => r.type === 'session' && r.data.agent === key).map(row);
+  if (rec?.type !== 'actor' && !key.startsWith('session:')) result.people = peopleOn(loaded, key);
+  if (rec?.type === 'actor' && rec.data.kind === 'person') result.through = personView(loaded, rec).through;
   return result;
 }
 
@@ -501,6 +573,11 @@ export function formatNeighbourhood(n: Neighbourhood, formatChange: (c: ChangeCo
   const outbound = n.out.filter((e) => e.edge !== 'writer' && e.edge !== 'session');
   if (inbound.length) out.push(`\nreferenced by:\n${inbound.map((e) => line(e, e.from)).join('\n')}`);
   if (outbound.length) out.push(`\nrefers to:\n${outbound.map((e) => line(e, e.to)).join('\n')}`);
+  if (n.people?.length) out.push(`\npeople:\n${formatPeopleOn(n.people).join('\n')}`);
+  if (n.through?.length)
+    out.push(
+      `\nthrough their accounts:\n${n.through.map((a) => `- ${a.type} ${a.source} · as ${a.account}`).join('\n')}`,
+    );
   if (n.members.length)
     out.push(
       `\nmembers:\n${n.members.map((m) => `- ${m.key}${m.status ? ` [${m.status}]` : ''}${lineOfRow(m) ? ` — ${lineOfRow(m)}` : ''}`).join('\n')}`,

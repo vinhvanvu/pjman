@@ -166,9 +166,11 @@ A person or an agent, with their accounts.
 | operation | command |
 |---|---|
 | create | `pjman new actor person:<handle> \| agent:<handle> [--links github-user:<login>]...   (pjman init makes yours)` |
-| read | `pjman whoami · pjman show person:<handle>` |
-| list | `pjman ls actor` |
-| update | `pjman set person:<handle> name=… links+=email:<address>` |
+| find or create | `pjman person "<name>" [--role …] [--account …]   (person intake: one human, one record)` |
+| read | `pjman people person:<handle> · pjman whoami · pjman show person:<handle>` |
+| list | `pjman people · pjman ls actor` |
+| update | `pjman person <person> --role … --account … · pjman set person:<handle> name=… role=… links+=email:<address>` |
+| tie | `pjman tie <person> <stake\|part> <node\|source> [--said] [--remove]   (a typed edge held on the person)` |
 | rename | `pjman mv person:<old> person:<new>   (the old handle stays an alias)` |
 | delete | `pjman rm person:<handle>   (refused while it wrote anything)` |
 
@@ -222,6 +224,7 @@ A version the product shipped.
 - `pjman refs`: every reference in a text and the change it leads to
 - `pjman view`: one reference as a Markdown document
 - `pjman why`: why a line of code exists: its commit, session, change, intent and decisions
+- `pjman people`: who is on something (its stakes, parts and the POCs to reference), or a person read whole; the store's people with none
 - `pjman rest`: whether a stop on a change is one the record allows (exit 1 when not)
 - `pjman events`: the store's event stream, one event per write
 - `pjman follow`: print events as they are appended
@@ -377,6 +380,15 @@ pjman code mv <old path> <new path>
 pjman code learn <change> [--branch <branch>]
 pjman code seed [--check]
     the code a capability is built from (decision capability-code-paths/code-field): each file is a source of kind code, keyed by its project and its path in that repository (code:<project>/<path>), whose record says which capabilities it implements, who linked it (a person: pinned; an agent that found it; a merge whose diff touched it), how many merged changes to that capability touched it and the last of them. With a node it reads: a capability's own files ranked (most touched first, a person's before the rest), then for a feature or the product the files beneath it rolled up, never stored on them; a file in no checkout of its project on this machine is said gone, to relink once found; --all lists every file. A change's context lists the files of the capabilities it names, and pjman get and pjman context on a feature or product carry them too. link, as the agent does on finding a file by search or as a person does to pin one, adds files (paths relative to here or to the repository's root; a glob where a capability owns a folder); unlink takes them off, and a file that implements nothing else goes; mv follows a file that moved, its links joining any at the new path. The merge keeps the rest (decision capability-code-paths/upkeep): once a change's branch is on the base, by pjman merge or as pjman sync git finds it (a pull request merged on GitHub, a squash, a rebase), its diff is read: a renamed file's links follow it, a deleted file's go, every file it touched joins or counts once more on each capability the change names, and a link no person wrote drops once five merged changes to its capability pass without touching it. learn runs that by hand for one change (--branch when its branch is not found). seed gives a project its first links from its history: each commit naming one change and touching at most 15 files gives those files, where they still exist, to the capabilities that change names; --check prints what it would give. Every write is one commit, pjman undo puts it back
+
+pjman person <name | person:<handle> | account> [--name <full name>] [--role <role>] [--account <account>]... [--alias <alias>]... [--new] [--handle <handle>] [--json]
+    person intake (decision people-in-graph/person-intake): a mention (a name, person:<handle>, or an account such as github-user:<login> or email:<address>) is matched against the store's people, so each human is one record. An account given is exact and wins; then the handle, an alias or the full name. One match is used, and what is given is added to them: --role (their job), --account (an account they hold; one account is one person's), --alias. No match creates the person, named by the mention (--handle to choose the handle). Several matches, or only part of a name (a first name alone), are listed as candidates and nothing is written: name one by its key, or pass --new when the person is someone else. A role new to the store is added to its roles. Every write is one commit, pjman undo puts it back
+
+pjman tie <person> <type> <node | source | record> [--said] [--remove] [--json]
+    a person's typed tie (decisions people-in-graph/typed-ties, where-ties-live): an edge from the person whose type is the relationship, held on the person's record. To a product or feature it is a stake (owner, contributor, reviewer, stakeholder), inherited by every node beneath it until a nearer node names its own; to anything else (a source, a change, a decision) it is a part (author, assignee, reviewer, requested-by, mentioned). A word new to the store is added to its stakes or parts. --said records what was said in conversation (decision people-in-graph/ownership-from): a tie set without it is set outright and replaces what was said of the same type and target; on a target, a type set outright by anyone shadows what was said of that type there, and a later --said changes nothing. --remove takes the tie back, said or set. Every write is one commit, pjman undo puts it back
+
+pjman people [<person | node | change | source>] [--json]
+    with a person (or an account they hold): their role, accounts, stakes on the map, parts, and the sources that name their accounts. With a map node: the people with a stake on it, held there or inherited from above (the nearest node naming a stake wins it). With a change: its POCs, the people with a stake on the nodes it names and those tied to the change itself, the ones to reference on its pull request and in messages. With a source: the people tied to it and those its accounts name (a ticket's assignee and author, as synced), an account no person claims shown as itself. With nothing: the store's people, each with their role and how many ties they hold. Writes nothing
 
 pjman rest <change> [--json]
     where a change may rest: whether a stop on it is one the record allows, and why. It rests when a decision on it is proposed, a blocker is recorded (blocked-on, a dependency not done), a person set it blocked, review, done or dropped, or its plan has run to its end; with steps still open and none of those it does not rest, and the open steps are listed (exit 1). In a project that reviews every change (ext.review.mode=auto) a change in review does not rest until its review has ended: what moves the review on is printed. The adapter's stop hook reads this; never writes
