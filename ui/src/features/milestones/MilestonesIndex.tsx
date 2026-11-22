@@ -64,15 +64,18 @@ export function MilestonesIndex({ scope, lens, className }: { scope: Scope; lens
           {doneOpen && (
             <ul className="flex flex-col">
               {done.map((m) => (
-                <li key={m.key} className="flex items-center gap-2 py-1.5 text-body text-ink-muted">
-                  <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', TONE.done.bg)} />
-                  <NodeLink to={m.key} lens={lens} mode="focus" className="min-w-0 truncate hover:text-primary">
-                    {m.name}
-                  </NodeLink>
-                  <span className="text-meta text-ink-faint">
-                    {m.progress.done} of {m.progress.total}
-                  </span>
-                  {m.moved && <span className="ml-auto text-[11px] text-ink-faint">{agoWords(m.moved)}</span>}
+                <li key={m.key} className="flex flex-col">
+                  <div className="flex items-center gap-2 py-1.5 text-body text-ink-muted">
+                    <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-full', TONE.done.bg)} />
+                    <NodeLink to={m.key} lens={lens} mode="focus" className="min-w-0 truncate hover:text-primary">
+                      {m.name}
+                    </NodeLink>
+                    <span className="text-meta text-ink-faint">
+                      {m.progress.done} of {m.progress.total}
+                    </span>
+                    {m.moved && <span className="ml-auto text-[11px] text-ink-faint">{agoWords(m.moved)}</span>}
+                  </div>
+                  {m.stages.length > 0 && <SubStages stages={m.stages} lens={lens} />}
                 </li>
               ))}
             </ul>
@@ -184,17 +187,36 @@ function Stages({ stages, lens }: { stages: MilestoneIndexRow[]; lens: Lens }) {
   );
 }
 
-/** A stage's own stages, beneath its line and indented, all of them in order, and theirs beneath them. */
+/** A stage's own stages, beneath its line and indented: the ones not done in order, the done folded under one line
+ *  that opens in place (with nothing in flight, all of them), and theirs beneath them. */
 function SubStages({ stages, lens }: { stages: MilestoneIndexRow[]; lens: Lens }) {
+  const { shown, done } = stagesFold(stages);
+  const [doneOpen, setDoneOpen] = useState(shown.length === 0);
   return (
-    <ul className="flex flex-col border-l border-line pl-4 ml-[7px]">
-      {stages.map((st) => (
-        <li key={st.key}>
-          <StageLine st={st} lens={lens} />
-          {st.stages.length > 0 && <SubStages stages={st.stages} lens={lens} />}
-        </li>
-      ))}
-    </ul>
+    <div className="ml-[7px] flex flex-col border-l border-line pl-4">
+      {done.length > 0 && shown.length > 0 && (
+        <button
+          type="button"
+          aria-expanded={doneOpen}
+          onClick={() => setDoneOpen((v) => !v)}
+          className="flex items-center gap-2 py-1 text-left text-xs text-ink-faint hover:text-ink"
+        >
+          <ChevronRight
+            className={cn('size-3.5 shrink-0 transition-transform duration-200', doneOpen && 'rotate-90')}
+            aria-hidden="true"
+          />
+          {doneOpen ? 'fold the done' : `${done.length} done`}
+        </button>
+      )}
+      <ul className="flex flex-col">
+        {[...(doneOpen ? done : []), ...shown].map((st) => (
+          <li key={st.key}>
+            <StageLine st={st} lens={lens} />
+            {st.stages.length > 0 && <SubStages stages={st.stages} lens={lens} />}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

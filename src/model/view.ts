@@ -1137,7 +1137,7 @@ export function formatChangeContext(c: ChangeContext): string {
   const line = (ch: Row) => `- ${ch.key} [${ch.status ?? '?'}] — ${nameAndLine(ch)}`;
   if (c.children.length) {
     out.push(
-      `\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} ${c.children.some((k) => k.data.kind === 'milestone') ? 'of the work beneath ' : ''}done)` : ''}`,
+      `\n## Children${c.progress ? ` (${c.progress.done}/${c.progress.total} ${c.children.some((k) => k.data.kind === 'milestone' && k.status !== 'dropped') ? 'of the work beneath ' : ''}done)` : ''}`,
     );
     for (const ch of c.children) out.push(line(ch));
   }
