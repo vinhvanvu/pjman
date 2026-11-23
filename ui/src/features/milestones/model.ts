@@ -25,7 +25,7 @@ export interface ChildView {
   /** Decisions waiting on the person on it. */
   waits: number;
   blockedOn?: string;
-  /** The child is itself a milestone: its children done over its children. */
+  /** The child is itself a milestone: the work beneath it done over the work beneath it, or itself (progressOfRow). */
   milestone?: { done: number; total: number };
   /** The plan's progress and the step the work stands on, as the product's rows carry them. */
   plan?: { done: number; total: number };
@@ -62,7 +62,7 @@ export function childrenInOrder(
       live: on.has(c.key) || !!r?.live,
       waits: waiting.filter((d) => d.change === c.key).length || (r?.waiting ?? 0),
       blockedOn: r?.blockedOn ?? str(c.data?.['blocked-on']),
-      milestone: r?.kind === 'milestone' ? progressOfRow(r) : undefined,
+      milestone: r?.kind === 'milestone' ? progressOfRow({ ...r, status }) : undefined,
       plan: r?.plan,
       step: r?.step,
       moved: r?.moved,
@@ -184,20 +184,22 @@ export function figuresOf(
   const children = [...beneath].map((k) => rows.get(k)).filter((r): r is ChangeRow => !!r && r.parent === key);
   const counted = children.filter((r) => r.status !== 'dropped');
   const under = (k: string | undefined) => !!k && (k === key || beneath.has(k));
+  // nothing counted beneath it: the count and the wording both read the milestone itself (progressOfRow)
+  const alone = !!own && !own.progress?.total && !counted.length && own.status !== 'dropped';
   const moved = [own?.moved, ...[...beneath].map((k) => rows.get(k)?.moved)]
     .filter((t): t is string => !!t)
     .toSorted()
     .at(-1);
   return {
-    progress: own
+    progress: alone
       ? progressOfRow(own)
-      : { done: counted.filter((r) => r.status === 'done').length, total: counted.length },
+      : (own?.progress ?? { done: counted.filter((r) => r.status === 'done').length, total: counted.length }),
     live: sessions.filter((s) => under(s.on)).length,
     waits: waiting.filter((d) => under(d.change)).length,
     blocked: children.filter((r) => r.status === 'blocked').length,
     moved,
     target: own?.target,
-    ...(own && !own.progress?.total && own.status !== 'dropped' ? { alone: true } : {}),
+    ...(alone ? { alone: true } : {}),
   };
 }
 
