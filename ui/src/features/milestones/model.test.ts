@@ -170,6 +170,17 @@ describe('what is beneath a milestone', () => {
       'nobody on it now',
     ]);
   });
+  it('counts a milestone with nothing beneath it as itself', () => {
+    const lone = rowsOf(
+      row('done', { kind: 'milestone', status: 'done' }),
+      row('open', { kind: 'milestone' }),
+      row('emptied', { kind: 'milestone', status: 'done' }),
+      row('gone', { parent: 'change:p/emptied', status: 'dropped' }),
+    );
+    expect(figuresOf('change:p/done', lone, [], []).progress).toEqual({ done: 1, total: 1 });
+    expect(figuresOf('change:p/open', lone, [], []).progress).toEqual({ done: 0, total: 1 });
+    expect(figuresOf('change:p/emptied', lone, [], []).progress).toEqual({ done: 1, total: 1 });
+  });
   it('frames a session by the last milestone it bound that stands over the shown change', () => {
     expect(frameOf(['change:p/m'], 'change:p/g', rows)).toBe('change:p/m');
     expect(frameOf(['change:p/m', 'change:p/n'], 'change:p/g', rows)).toBe('change:p/n');
