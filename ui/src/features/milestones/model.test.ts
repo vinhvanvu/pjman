@@ -198,6 +198,10 @@ describe('what is beneath a milestone', () => {
     const list = childrenInOrder(kids, lone);
     expect(list.find((c) => c.key === 'change:p/ms-done')!.milestone).toEqual({ done: 1, total: 1 });
     expect(list.find((c) => c.key === 'change:p/ms-open')!.milestone).toEqual({ done: 0, total: 1 });
+    // the page's fresh status stands over the product's row; the Children head counts none as words
+    expect(figuresOf('change:p/ms-open', lone, [], [], 'done').progress).toEqual({ done: 1, total: 1 });
+    expect(childrenHead([])).toBe('no children yet');
+    expect(childrenHead(childrenInOrder([child('x', 'dropped')], new Map()))).toBe('no children but 1 dropped one');
   });
   it('frames a session by the last milestone it bound that stands over the shown change', () => {
     expect(frameOf(['change:p/m'], 'change:p/g', rows)).toBe('change:p/m');

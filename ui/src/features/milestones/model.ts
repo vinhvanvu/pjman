@@ -109,6 +109,8 @@ export function childrenHead(list: readonly ChildView[], open?: string, next?: s
   const counted = list.filter((c) => c.status !== 'dropped');
   const done = counted.filter((c) => c.status === 'done').length;
   const nextName = next ? list.find((c) => c.key === next)?.name : undefined;
+  // nothing counted: no count of none, which would read against the bar's count of the milestone itself
+  if (!counted.length) return list.length ? `no children but ${plural(list.length, 'dropped one')}` : 'no children yet';
   return [
     `${done} of ${counted.length} done`,
     open ? 'the one in work open' : '',
@@ -156,8 +158,9 @@ export function beneathOf(key: string, rows: Iterable<Pick<ChangeRow, 'key' | 'p
 export const progressOfRow = (r: Pick<ChangeRow, 'status' | 'progress'>): { done: number; total: number } =>
   milestoneProgress({ status: r.status, progress: r.progress ?? { done: 0, total: 0 } })!;
 
-/** The figures a milestone is read by, over everything beneath it: children done, sessions on it beneath now,
- *  decisions waiting beneath, children blocked, last touched beneath, the target. */
+/** The figures a milestone is read by, over everything beneath it: the work beneath done (with nothing beneath, the
+ *  milestone itself, by lib/milestone), sessions on it beneath now, decisions waiting beneath, children blocked, last
+ *  touched beneath, the target. `status` is the milestone's own as the page read it fresh, over the product's row. */
 export interface MilestoneFigures {
   progress: { done: number; total: number };
   live: number;
@@ -174,9 +177,11 @@ export function figuresOf(
   rows: ReadonlyMap<string, ChangeRow>,
   sessions: readonly Pick<LiveSession, 'on'>[],
   waiting: readonly Pick<WaitingDecision, 'change'>[],
+  status?: string,
 ): MilestoneFigures {
   const beneath = beneathOf(key, rows.values());
-  const own = rows.get(key);
+  const row = rows.get(key);
+  const own = row && status ? { ...row, status } : row;
   const children = [...beneath].map((k) => rows.get(k)).filter((r): r is ChangeRow => !!r && r.parent === key);
   const counted = children.filter((r) => r.status !== 'dropped');
   const under = (k: string | undefined) => !!k && (k === key || beneath.has(k));

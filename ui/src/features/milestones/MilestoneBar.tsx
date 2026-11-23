@@ -1,5 +1,6 @@
 // The milestone bar (decision milestone-detail/milestone-body): the change bar read over everything beneath a
-// milestone, its first line wherever the milestone is the subject. The ring of the work beneath done leads (counted through the milestones beneath it); then who is on it
+// milestone, its first line wherever the milestone is the subject. The ring of the work beneath done leads (counted through the milestones beneath it;
+// with nothing beneath, the milestone itself, by lib/milestone); then who is on it
 // beneath now with the live pulse, what is blocked beneath, when it was last touched, the target; what waits last, in
 // the waits colour when something does. A separator travels with the word after it.
 import { cn } from 'cn';
