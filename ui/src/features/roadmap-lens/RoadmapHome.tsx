@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { pct, plural, truncate } from '@/lib/format';
 import { short } from '@/lib/keys';
+import { milestoneProgress } from '@/lib/milestone';
 import { Chip, Label, StatusChip } from '@/components/chips/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { NodeLink } from '@/components/links/NodeLink';
@@ -148,7 +149,7 @@ export function RoadmapHome({ scope, lens }: { scope: Scope; lens: Lens }) {
           <ul className="flex flex-col divide-y divide-line rounded-card border border-line bg-surface">
             {later.groups.slice(0, 8).map((g) => {
               const r = g.row;
-              const p = r.progress;
+              const p = milestoneProgress(r);
               return (
                 <li key={r.key} className="flex flex-col">
                   <div className="flex items-center hover:bg-raised">

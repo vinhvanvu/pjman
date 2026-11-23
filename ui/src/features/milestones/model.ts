@@ -10,6 +10,7 @@ import type { Segment } from '@/features/change/model';
 import { waitsLine } from '@/features/change/model';
 import { agoWords, plural } from '@/lib/format';
 import { short } from '@/lib/keys';
+import { isAlone, milestoneProgress } from '@/lib/milestone';
 
 type Child = ChangeContext['children'][number];
 
@@ -151,14 +152,9 @@ export function beneathOf(key: string, rows: Iterable<Pick<ChangeRow, 'key' | 'p
   return out;
 }
 
-/** A milestone's progress as the milestones view reads it (change:childless-milestone-progress): the work beneath it,
- *  or, with nothing counted beneath it, the milestone itself as one piece of work, the way its parent's roll-up counts
- *  it (decision nested-milestones/progress-rollup): a done one 1 of 1, an open one 0 of 1. A dropped one counts none. */
-export function progressOfRow(r: Pick<ChangeRow, 'status' | 'progress'>): { done: number; total: number } {
-  if (r.progress?.total) return r.progress;
-  if (r.status === 'dropped') return { done: 0, total: 0 };
-  return { done: r.status === 'done' ? 1 : 0, total: 1 };
-}
+/** A milestone row's progress by the one rule (lib/milestone), a row that carries none read as nothing beneath it. */
+export const progressOfRow = (r: Pick<ChangeRow, 'status' | 'progress'>): { done: number; total: number } =>
+  milestoneProgress({ status: r.status, progress: r.progress ?? { done: 0, total: 0 } })!;
 
 /** The figures a milestone is read by, over everything beneath it: children done, sessions on it beneath now,
  *  decisions waiting beneath, children blocked, last touched beneath, the target. */
@@ -185,7 +181,8 @@ export function figuresOf(
   const counted = children.filter((r) => r.status !== 'dropped');
   const under = (k: string | undefined) => !!k && (k === key || beneath.has(k));
   // nothing counted beneath it: the count and the wording both read the milestone itself (progressOfRow)
-  const alone = !!own && !own.progress?.total && !counted.length && own.status !== 'dropped';
+  const alone =
+    !!own && !counted.length && isAlone({ status: own.status, progress: own.progress ?? { done: 0, total: 0 } });
   const moved = [own?.moved, ...[...beneath].map((k) => rows.get(k)?.moved)]
     .filter((t): t is string => !!t)
     .toSorted()

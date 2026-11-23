@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import type { ScopeNode } from '@/data/contract';
 import { short } from '@/lib/keys';
+import { milestoneProgress } from '@/lib/milestone';
 import { Chip, Label, StatusChip } from '@/components/chips/Chip';
 import { Pulse } from '@/components/presence/Presence';
 import { Tree } from './Tree';
@@ -107,11 +108,16 @@ function StructureRow({ node: n, showProject }: { node: ScopeNode; showProject?:
           </Chip>
         )}
         {r.waiting > 0 && <Chip tone="quiet">○ {r.waiting}</Chip>}
-        {r.progress && (
-          <Chip tone="quiet">
-            {r.progress.done} / {r.progress.total}
-          </Chip>
-        )}
+        {(() => {
+          const p = milestoneProgress(r);
+          return (
+            p && (
+              <Chip tone="quiet">
+                {p.done} / {p.total}
+              </Chip>
+            )
+          );
+        })()}
         {showProject && r.project && <span className="text-meta text-ink-faint">{short(r.project)}</span>}
       </div>
     );

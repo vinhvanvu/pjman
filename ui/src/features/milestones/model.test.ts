@@ -189,6 +189,16 @@ describe('what is beneath a milestone', () => {
     expect(figuresOf('change:p/solo', new Map(), [], [])).toMatchObject({ progress: { done: 0, total: 0 } });
     expect(figuresOf('change:p/solo', new Map(), [], []).alone).toBeUndefined();
   });
+  it('draws a childless milestone child on its parent by its own status', () => {
+    const kids = [child('ms-done', 'done'), child('ms-open', 'open')];
+    const lone = rowsOf(
+      row('ms-done', { kind: 'milestone', status: 'done', progress: { done: 0, total: 0 } }),
+      row('ms-open', { kind: 'milestone', progress: { done: 0, total: 0 } }),
+    );
+    const list = childrenInOrder(kids, lone);
+    expect(list.find((c) => c.key === 'change:p/ms-done')!.milestone).toEqual({ done: 1, total: 1 });
+    expect(list.find((c) => c.key === 'change:p/ms-open')!.milestone).toEqual({ done: 0, total: 1 });
+  });
   it('frames a session by the last milestone it bound that stands over the shown change', () => {
     expect(frameOf(['change:p/m'], 'change:p/g', rows)).toBe('change:p/m');
     expect(frameOf(['change:p/m', 'change:p/n'], 'change:p/g', rows)).toBe('change:p/n');

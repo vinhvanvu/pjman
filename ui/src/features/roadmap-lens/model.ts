@@ -3,6 +3,7 @@
 // sequence, then later), the past's span and ticks, and which rows draw as bars. Nothing here knows pixels except the
 // scale it is handed.
 import type { ChangeRow, Scope, ScopeAspect, ScopeNode, Violation } from '@/data/contract';
+import { milestoneProgress } from '@/lib/milestone';
 import { aspectOf, short } from '@/lib/keys';
 
 /** The aspects an entry works on, by name, for its diamond (change:aspect-work-on-the-roadmap): each aspect it names,
@@ -129,7 +130,7 @@ export function columns(scope: Scope): Column[] {
       key,
       row,
       title: row?.gist ?? short(key),
-      progress: row?.progress,
+      progress: row && milestoneProgress(row),
       target: row?.target,
       entries: milestone ? beneath : row && isWork(row) ? [row] : [],
       violations: violationsOn(key),

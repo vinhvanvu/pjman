@@ -4,6 +4,7 @@
 import { cn } from 'cn';
 import type { ChangeRow, Lens } from '@/data/contract';
 import { short } from '@/lib/keys';
+import { milestoneProgress } from '@/lib/milestone';
 import { ago, truncate } from '@/lib/format';
 import { Chip, StatusChip } from '@/components/chips/Chip';
 import { NodeLink } from '@/components/links/NodeLink';
@@ -39,6 +40,7 @@ export function ChangeMeta({
   const first = here ?? row.features[0];
   const shown = allFeatures ? row.features : first ? [first] : [];
   const others = allFeatures ? 0 : row.features.length - shown.length;
+  const progress = milestoneProgress(row);
   return (
     <div className={cn('flex flex-wrap items-center gap-1.5', className)}>
       {showStatus && <StatusChip status={row.status} />}
@@ -48,9 +50,9 @@ export function ChangeMeta({
         </Chip>
       )}
       {row.waiting > 0 && <Chip tone="quiet">○ {row.waiting} waiting</Chip>}
-      {row.progress && (
+      {progress && (
         <Chip tone="quiet">
-          {row.progress.done} / {row.progress.total}
+          {progress.done} / {progress.total}
         </Chip>
       )}
       {showMilestone && row.parent && <Chip tone="quiet">↳ {short(row.parent)}</Chip>}
