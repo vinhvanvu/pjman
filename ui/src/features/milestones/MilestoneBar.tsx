@@ -19,7 +19,7 @@ export function MilestoneBar({ figures, className }: { figures: MilestoneFigures
           <b className="font-semibold text-ink">
             {p.done} of {p.total}
           </b>{' '}
-          done beneath
+          {figures.alone ? 'done' : 'done beneath'}
         </span>
       </span>
       {bar.parts.map((part, i) => (

@@ -619,10 +619,14 @@ class Index {
       stale: rungsOf(c).stale,
       step: next ? { n: next.n, text: next.step.text, state: next.step.state, note: next.step.note } : undefined,
       blockedOn: blockedOn || undefined,
-      // a milestone's bar, by its kind: a milestone with no child yet is a bar of none; a change of another kind has none
+      // a milestone's bar, by its kind: a milestone with nothing beneath it counts as one piece of work, its own, as its
+      // parent's roll-up counts it (change:childless-milestone-progress); a change of another kind has none
       progress:
         c.data.kind === 'milestone'
-          ? (rollupOf(c.key, (k) => (this.childrenOf.get(k) ?? []).map(rollupNode)) ?? { done: 0, total: 0 })
+          ? (rollupOf(c.key, (k) => (this.childrenOf.get(k) ?? []).map(rollupNode)) ?? {
+              done: c.data.status === 'done' ? 1 : 0,
+              total: 1,
+            })
           : undefined,
       features: [
         ...effectsOf(c).map((e) => ({

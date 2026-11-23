@@ -160,6 +160,8 @@ export interface MilestoneFigures {
   blocked: number;
   moved?: string;
   target?: string;
+  /** Nothing counted beneath it: the progress is the milestone's own (change:childless-milestone-progress). */
+  alone?: boolean;
 }
 
 export function figuresOf(
@@ -177,20 +179,14 @@ export function figuresOf(
     .filter((t): t is string => !!t)
     .toSorted()
     .at(-1);
-  // a milestone with nothing beneath it counts as one piece of work, its own, as its parent's roll-up counts it
-  // (change:childless-milestone-progress): a done one reads 1 of 1, not 0 of 0
-  const progress =
-    own?.progress ??
-    (counted.length
-      ? { done: counted.filter((r) => r.status === 'done').length, total: counted.length }
-      : { done: own?.status === 'done' ? 1 : 0, total: 1 });
   return {
-    progress,
+    progress: own?.progress ?? { done: counted.filter((r) => r.status === 'done').length, total: counted.length },
     live: sessions.filter((s) => under(s.on)).length,
     waits: waiting.filter((d) => under(d.change)).length,
     blocked: children.filter((r) => r.status === 'blocked').length,
     moved,
     target: own?.target,
+    ...(counted.length ? {} : { alone: true }),
   };
 }
 

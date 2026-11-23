@@ -170,16 +170,15 @@ describe('what is beneath a milestone', () => {
       'nobody on it now',
     ]);
   });
-  it('counts a milestone with nothing beneath it as itself', () => {
+  it('marks a milestone with nothing counted beneath it as alone, its progress its own', () => {
     const lone = rowsOf(
-      row('done', { kind: 'milestone', status: 'done' }),
-      row('open', { kind: 'milestone' }),
-      row('emptied', { kind: 'milestone', status: 'done' }),
-      row('gone', { parent: 'change:p/emptied', status: 'dropped' }),
+      row('solo', { kind: 'milestone', status: 'done', progress: { done: 1, total: 1 } }),
+      row('gone', { parent: 'change:p/solo', status: 'dropped' }),
     );
-    expect(figuresOf('change:p/done', lone, [], []).progress).toEqual({ done: 1, total: 1 });
-    expect(figuresOf('change:p/open', lone, [], []).progress).toEqual({ done: 0, total: 1 });
-    expect(figuresOf('change:p/emptied', lone, [], []).progress).toEqual({ done: 1, total: 1 });
+    const f = figuresOf('change:p/solo', lone, [], []);
+    expect(f.progress).toEqual({ done: 1, total: 1 });
+    expect(f.alone).toBe(true);
+    expect(figuresOf('change:p/m', rows, [], []).alone).toBeUndefined();
   });
   it('frames a session by the last milestone it bound that stands over the shown change', () => {
     expect(frameOf(['change:p/m'], 'change:p/g', rows)).toBe('change:p/m');
