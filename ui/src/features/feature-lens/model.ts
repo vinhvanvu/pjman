@@ -1,6 +1,7 @@
 // The feature lens's pure derivations over a scope: the product map is the features with the changes at their
 // leaves (decision feature-detail/change-at-three-depths), the unassigned changes one group at the foot.
 import type { ChangeRow, Health, Scope, ScopeAspect, ScopeNode } from '@/data/contract';
+import { milestoneProgress } from '@/lib/milestone';
 
 export const MAP_ROOT = '__map__';
 /** The group of changes the lens could not place: a folder at the foot of the map. */
@@ -331,7 +332,10 @@ export const byMotion = (features: ScopeNode[]): ScopeNode[] =>
     return lb.localeCompare(la) || (a.name ?? a.key).localeCompare(b.name ?? b.key);
   });
 
-const share = (r: ChangeRow) => (r.progress?.total ? r.progress.done / r.progress.total : 0);
+const share = (r: ChangeRow) => {
+  const p = milestoneProgress(r);
+  return p?.total ? p.done / p.total : 0;
+};
 
 /** Milestones in the scope that are not finished, nearest to done first, at the top level: one beneath a milestone in
  *  flight is a stage of it (change:nested-milestones), read with `stagesOf`. */

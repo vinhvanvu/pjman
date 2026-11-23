@@ -6,6 +6,7 @@ import { cn } from 'cn';
 import { Bug, ChevronDown, Diamond, Flag, Search, X } from 'lucide-react';
 import { useState } from 'react';
 import type { ChangeRow, ScopeAspect } from '@/data/contract';
+import { milestoneProgress } from '@/lib/milestone';
 import { pct } from '@/lib/format';
 import { short } from '@/lib/keys';
 import { StateDot } from '@/components/chips/Chip';
@@ -41,6 +42,7 @@ const toggle = (list: string[] | undefined, v: string) =>
 export function FilterBar({ filter, onChange, matched, changes, aspects, className }: FilterBarProps) {
   const milestones = inFlightTree(changes);
   const chosen = filter.milestone ? changes.find((r) => r.key === filter.milestone) : undefined;
+  const chosenProgress = chosen && milestoneProgress(chosen);
   const active = isFiltering(filter);
   return (
     <div className={cn('flex flex-wrap items-center gap-2 px-5 pb-2', className)}>
@@ -101,9 +103,9 @@ export function FilterBar({ filter, onChange, matched, changes, aspects, classNa
         >
           <Flag className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
           <span className="min-w-0 truncate">{chosen?.gist ?? short(filter.milestone)}</span>
-          {chosen?.progress && (
+          {chosenProgress && (
             <span className="shrink-0 text-ink-faint">
-              {chosen.progress.done}/{chosen.progress.total}
+              {chosenProgress.done}/{chosenProgress.total}
             </span>
           )}
           <X className="size-3.5 shrink-0 text-ink-faint" aria-hidden="true" />
@@ -131,9 +133,10 @@ export function FilterBar({ filter, onChange, matched, changes, aspects, classNa
                   style={depth ? { paddingLeft: `${0.5 + depth * 1}rem` } : undefined}
                 >
                   <span className="min-w-0 flex-1 truncate">{m.gist ?? short(m.key)}</span>
-                  {m.progress && (
-                    <span className="shrink-0 text-meta text-ink-faint">{pct(m.progress.done, m.progress.total)}%</span>
-                  )}
+                  {(() => {
+                    const p = milestoneProgress(m);
+                    return p && <span className="shrink-0 text-meta text-ink-faint">{pct(p.done, p.total)}%</span>;
+                  })()}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

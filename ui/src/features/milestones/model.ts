@@ -10,6 +10,7 @@ import type { Segment } from '@/features/change/model';
 import { waitsLine } from '@/features/change/model';
 import { agoWords, plural } from '@/lib/format';
 import { short } from '@/lib/keys';
+import { isAlone, milestoneProgress } from '@/lib/milestone';
 
 type Child = ChangeContext['children'][number];
 
@@ -25,7 +26,7 @@ export interface ChildView {
   /** Decisions waiting on the person on it. */
   waits: number;
   blockedOn?: string;
-  /** The child is itself a milestone: its children done over its children. */
+  /** The child is itself a milestone: the work beneath it done over the work beneath it, or itself (progressOfRow). */
   milestone?: { done: number; total: number };
   /** The plan's progress and the step the work stands on, as the product's rows carry them. */
   plan?: { done: number; total: number };
@@ -62,7 +63,7 @@ export function childrenInOrder(
       live: on.has(c.key) || !!r?.live,
       waits: waiting.filter((d) => d.change === c.key).length || (r?.waiting ?? 0),
       blockedOn: r?.blockedOn ?? str(c.data?.['blocked-on']),
-      milestone: r?.kind === 'milestone' ? r.progress : undefined,
+      milestone: r?.kind === 'milestone' ? progressOfRow({ ...r, status }) : undefined,
       plan: r?.plan,
       step: r?.step,
       moved: r?.moved,
@@ -108,6 +109,8 @@ export function childrenHead(list: readonly ChildView[], open?: string, next?: s
   const counted = list.filter((c) => c.status !== 'dropped');
   const done = counted.filter((c) => c.status === 'done').length;
   const nextName = next ? list.find((c) => c.key === next)?.name : undefined;
+  // nothing counted: no count of none, which would read against the bar's count of the milestone itself
+  if (!counted.length) return list.length ? `no children but ${plural(list.length, 'dropped one')}` : 'no children yet';
   return [
     `${done} of ${counted.length} done`,
     open ? 'the one in work open' : '',
@@ -151,8 +154,13 @@ export function beneathOf(key: string, rows: Iterable<Pick<ChangeRow, 'key' | 'p
   return out;
 }
 
-/** The figures a milestone is read by, over everything beneath it: children done, sessions on it beneath now,
- *  decisions waiting beneath, children blocked, last touched beneath, the target. */
+/** A milestone row's progress by the one rule (lib/milestone), a row that carries none read as nothing beneath it. */
+export const progressOfRow = (r: Pick<ChangeRow, 'status' | 'progress'>): { done: number; total: number } =>
+  milestoneProgress({ status: r.status, progress: r.progress ?? { done: 0, total: 0 } })!;
+
+/** The figures a milestone is read by, over everything beneath it: the work beneath done (with nothing beneath, the
+ *  milestone itself, by lib/milestone), sessions on it beneath now, decisions waiting beneath, children blocked, last
+ *  touched beneath, the target. `status` is the milestone's own as the page read it fresh, over the product's row. */
 export interface MilestoneFigures {
   progress: { done: number; total: number };
   live: number;
@@ -160,6 +168,8 @@ export interface MilestoneFigures {
   blocked: number;
   moved?: string;
   target?: string;
+  /** Nothing counted beneath it: the progress is the milestone's own (change:childless-milestone-progress). */
+  alone?: boolean;
 }
 
 export function figuresOf(
@@ -167,23 +177,31 @@ export function figuresOf(
   rows: ReadonlyMap<string, ChangeRow>,
   sessions: readonly Pick<LiveSession, 'on'>[],
   waiting: readonly Pick<WaitingDecision, 'change'>[],
+  status?: string,
 ): MilestoneFigures {
   const beneath = beneathOf(key, rows.values());
-  const own = rows.get(key);
+  const row = rows.get(key);
+  const own = row && status ? { ...row, status } : row;
   const children = [...beneath].map((k) => rows.get(k)).filter((r): r is ChangeRow => !!r && r.parent === key);
   const counted = children.filter((r) => r.status !== 'dropped');
   const under = (k: string | undefined) => !!k && (k === key || beneath.has(k));
+  // nothing counted beneath it: the count and the wording both read the milestone itself (progressOfRow)
+  const alone =
+    !!own && !counted.length && isAlone({ status: own.status, progress: own.progress ?? { done: 0, total: 0 } });
   const moved = [own?.moved, ...[...beneath].map((k) => rows.get(k)?.moved)]
     .filter((t): t is string => !!t)
     .toSorted()
     .at(-1);
   return {
-    progress: own?.progress ?? { done: counted.filter((r) => r.status === 'done').length, total: counted.length },
+    progress: alone
+      ? progressOfRow(own)
+      : (own?.progress ?? { done: counted.filter((r) => r.status === 'done').length, total: counted.length }),
     live: sessions.filter((s) => under(s.on)).length,
     waits: waiting.filter((d) => under(d.change)).length,
     blocked: children.filter((r) => r.status === 'blocked').length,
     moved,
     target: own?.target,
+    ...(alone ? { alone: true } : {}),
   };
 }
 
@@ -194,13 +212,8 @@ export function milestoneBar(
   now = Date.now(),
 ): { parts: string[]; live: boolean; waits: string; alarm: boolean } {
   const parts: string[] = [];
-  parts.push(
-    f.live === 0
-      ? 'nobody on it now'
-      : f.live === 1
-        ? '1 session on it beneath now'
-        : `${f.live} sessions on it beneath now`,
-  );
+  const where = f.alone ? 'on it now' : 'on it beneath now';
+  parts.push(f.live === 0 ? 'nobody on it now' : `${plural(f.live, 'session')} ${where}`);
   if (f.blocked) parts.push(`${f.blocked} blocked beneath`);
   if (f.moved) parts.push(`last touched ${agoWords(f.moved, now)}`);
   if (f.target) parts.push(`target ${f.target}`);

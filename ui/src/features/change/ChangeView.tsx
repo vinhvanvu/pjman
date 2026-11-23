@@ -76,7 +76,13 @@ export function ChangeView({
   const waitingBeneath = (product.data?.waitingOn ?? scope.waitingOn).filter((d) => beneath.has(d.change));
   const open = scope.sessions.find((s) => s.on && beneath.has(s.on))?.on;
   const frame = { rows, sessions: scope.sessions, waiting: waitingBeneath, open };
-  const figures = figuresOf(c.key, rows, scope.sessions, waitingBeneath);
+  const figures = figuresOf(
+    c.key,
+    rows,
+    scope.sessions,
+    waitingBeneath,
+    typeof c.data.status === 'string' ? c.data.status : undefined,
+  );
   const tree = (
     <ChangeTree
       key={c.key}
