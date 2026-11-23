@@ -70,9 +70,7 @@ test('a milestone of stages counts its progress through them, in the context and
   const s = scope(store, loaded, { lens: 'roadmap', node: 'product:game', done: true });
   const row = (k: string) => s.changes.find((c) => c.key === k);
   assert.deepEqual(row('change:game/loop')?.progress, { done: 2, total: 4 });
-  // a milestone with nothing beneath it counts as itself (change:childless-milestone-progress): open 0 of 1, done 1 of 1
-  assert.deepEqual(row('change:game/stage-d')?.progress, { done: 0, total: 1 });
-  assert.deepEqual(row('change:game/stage-b')?.progress, { done: 1, total: 1 });
+  assert.deepEqual(row('change:game/stage-d')?.progress, { done: 0, total: 0 }); // a milestone with no child yet
 });
 
 test('intake lists the top level, each with its stages counted', () => {

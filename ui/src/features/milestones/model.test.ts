@@ -170,15 +170,24 @@ describe('what is beneath a milestone', () => {
       'nobody on it now',
     ]);
   });
-  it('marks a milestone with nothing counted beneath it as alone, its progress its own', () => {
+  it('reads a milestone with nothing beneath it as itself, from the row the server sends', () => {
+    // the scope row of a milestone with no child, or only dropped ones, carries 0 of 0
     const lone = rowsOf(
-      row('solo', { kind: 'milestone', status: 'done', progress: { done: 1, total: 1 } }),
+      row('solo', { kind: 'milestone', status: 'done', progress: { done: 0, total: 0 } }),
       row('gone', { parent: 'change:p/solo', status: 'dropped' }),
+      row('empty', { kind: 'milestone', progress: { done: 0, total: 0 } }),
+      row('off', { kind: 'milestone', status: 'dropped', progress: { done: 0, total: 0 } }),
     );
-    const f = figuresOf('change:p/solo', lone, [], []);
+    const f = figuresOf('change:p/solo', lone, [{ on: 'change:p/solo' }], []);
     expect(f.progress).toEqual({ done: 1, total: 1 });
     expect(f.alone).toBe(true);
+    expect(milestoneBar(f).parts[0]).toBe('1 session on it now');
+    expect(figuresOf('change:p/empty', lone, [], []).progress).toEqual({ done: 0, total: 1 });
+    expect(figuresOf('change:p/off', lone, [], []).progress).toEqual({ done: 0, total: 0 });
     expect(figuresOf('change:p/m', rows, [], []).alone).toBeUndefined();
+    // a page read before the product's rows arrive says nothing of the milestone itself
+    expect(figuresOf('change:p/solo', new Map(), [], [])).toMatchObject({ progress: { done: 0, total: 0 } });
+    expect(figuresOf('change:p/solo', new Map(), [], []).alone).toBeUndefined();
   });
   it('frames a session by the last milestone it bound that stands over the shown change', () => {
     expect(frameOf(['change:p/m'], 'change:p/g', rows)).toBe('change:p/m');
@@ -233,8 +242,14 @@ describe('the index', () => {
 describe('nested milestones in the index (change:nested-milestones)', () => {
   const changes = [
     row('loop', { kind: 'milestone', progress: { done: 2, total: 4 } }),
-    row('s1', { kind: 'milestone', parent: 'change:p/loop', position: 2 }),
-    row('s2', { kind: 'milestone', parent: 'change:p/loop', status: 'done', position: 1 }),
+    row('s1', { kind: 'milestone', parent: 'change:p/loop', position: 2, progress: { done: 0, total: 1 } }),
+    row('s2', {
+      kind: 'milestone',
+      parent: 'change:p/loop',
+      status: 'done',
+      position: 1,
+      progress: { done: 0, total: 0 },
+    }),
     row('s3', { kind: 'milestone', parent: 'change:p/loop', status: 'dropped' }),
     row('w1', { parent: 'change:p/s1' }),
     row('older', { kind: 'milestone' }),
@@ -248,6 +263,11 @@ describe('nested milestones in the index (change:nested-milestones)', () => {
     expect(ix.inFlight[0]!.stages.map((s) => s.name)).toEqual(['s2', 's1']);
     expect(ix.inFlight[0]!.stages[1]!.next?.name).toBe('w1');
     expect(ix.inFlight[1]!.stages).toEqual([]);
+    // a done stage with nothing beneath it reads 1 of 1, an open one with nothing beneath it 0 of 1
+    expect(ix.inFlight[0]!.stages.map((s) => [s.name, s.progress])).toEqual([
+      ['s2', { done: 1, total: 1 }],
+      ['s1', { done: 0, total: 1 }],
+    ]);
   });
   it('draws the stages in the order the work can run before the roadmap', () => {
     const ordered = changes.map((r) =>

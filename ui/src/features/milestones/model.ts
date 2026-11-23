@@ -62,7 +62,7 @@ export function childrenInOrder(
       live: on.has(c.key) || !!r?.live,
       waits: waiting.filter((d) => d.change === c.key).length || (r?.waiting ?? 0),
       blockedOn: r?.blockedOn ?? str(c.data?.['blocked-on']),
-      milestone: r?.kind === 'milestone' ? r.progress : undefined,
+      milestone: r?.kind === 'milestone' ? progressOfRow(r) : undefined,
       plan: r?.plan,
       step: r?.step,
       moved: r?.moved,
@@ -151,6 +151,15 @@ export function beneathOf(key: string, rows: Iterable<Pick<ChangeRow, 'key' | 'p
   return out;
 }
 
+/** A milestone's progress as the milestones view reads it (change:childless-milestone-progress): the work beneath it,
+ *  or, with nothing counted beneath it, the milestone itself as one piece of work, the way its parent's roll-up counts
+ *  it (decision nested-milestones/progress-rollup): a done one 1 of 1, an open one 0 of 1. A dropped one counts none. */
+export function progressOfRow(r: Pick<ChangeRow, 'status' | 'progress'>): { done: number; total: number } {
+  if (r.progress?.total) return r.progress;
+  if (r.status === 'dropped') return { done: 0, total: 0 };
+  return { done: r.status === 'done' ? 1 : 0, total: 1 };
+}
+
 /** The figures a milestone is read by, over everything beneath it: children done, sessions on it beneath now,
  *  decisions waiting beneath, children blocked, last touched beneath, the target. */
 export interface MilestoneFigures {
@@ -180,13 +189,15 @@ export function figuresOf(
     .toSorted()
     .at(-1);
   return {
-    progress: own?.progress ?? { done: counted.filter((r) => r.status === 'done').length, total: counted.length },
+    progress: own
+      ? progressOfRow(own)
+      : { done: counted.filter((r) => r.status === 'done').length, total: counted.length },
     live: sessions.filter((s) => under(s.on)).length,
     waits: waiting.filter((d) => under(d.change)).length,
     blocked: children.filter((r) => r.status === 'blocked').length,
     moved,
     target: own?.target,
-    ...(counted.length ? {} : { alone: true }),
+    ...(own && !own.progress?.total && own.status !== 'dropped' ? { alone: true } : {}),
   };
 }
 
@@ -197,13 +208,8 @@ export function milestoneBar(
   now = Date.now(),
 ): { parts: string[]; live: boolean; waits: string; alarm: boolean } {
   const parts: string[] = [];
-  parts.push(
-    f.live === 0
-      ? 'nobody on it now'
-      : f.live === 1
-        ? '1 session on it beneath now'
-        : `${f.live} sessions on it beneath now`,
-  );
+  const where = f.alone ? 'on it now' : 'on it beneath now';
+  parts.push(f.live === 0 ? 'nobody on it now' : `${plural(f.live, 'session')} ${where}`);
   if (f.blocked) parts.push(`${f.blocked} blocked beneath`);
   if (f.moved) parts.push(`last touched ${agoWords(f.moved, now)}`);
   if (f.target) parts.push(`target ${f.target}`);
