@@ -138,8 +138,25 @@ test('init --surfaces does what configure does: clears the dock switches, rewrit
 test('a configure run that answers nothing keeps the dock switches of a config an earlier pjman wrote', () => {
   const text = cfgText().replace(/^surfaces:.*\n/m, '') + 'dock: false\n';
   fs.writeFileSync(userConfigPath(), text);
-  const r = configure({ ask: true });
-  assert.deepEqual([r.surfaces, r.cleared], ['dock', []]);
+  // Enter keeps the dock an earlier pjman ran, and its switches with it
+  const kept = configure({ ask: true, read: () => '\n' });
+  assert.deepEqual([kept.surfaces, kept.cleared], ['dock', []]);
   assert.match(cfgText(), /^dock: false$/m);
+  // the dock typed is the whole dock, even when it was the answer already
+  const typed = configure({ ask: true, read: () => '3\n' });
+  assert.deepEqual([typed.surfaces, typed.cleared], ['dock', ['dock: false']]);
+  // typed over a lower rung too, by name; a wrong answer is asked again
   configure({ surfaces: 'store' });
+  fs.writeFileSync(userConfigPath(), cfgText() + 'follow_window: false\n');
+  const answers = ['all\n', 'dock\n'];
+  const up = configure({ ask: true, read: () => answers.shift() ?? null });
+  assert.deepEqual([up.was, up.surfaces, up.cleared], ['store', 'dock', ['follow_window: false']]);
+  configure({ surfaces: 'store' });
+});
+
+test('init --surfaces with --brief says the brief once', () => {
+  installBrief('claude-md');
+  const lines = init({ cwd: project, surfaces: 'dashboard', brief: 'claude-md', adapter: false });
+  assert.equal(lines.filter((l) => / the brief in /.test(l)).length, 1);
+  init({ cwd: project, surfaces: 'store' });
 });

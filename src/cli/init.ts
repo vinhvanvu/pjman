@@ -240,7 +240,7 @@ export function init(opts: InitOpts): string[] {
   const configured = opts.surfaces ? configureLines(configure({ surfaces: opts.surfaces })) : [];
   if (!opts.surfaces && !fs.existsSync(userConfigPath())) {
     const u = readUserConfig();
-    u.surfaces = askSurfaces('store');
+    u.surfaces = process.stdin.isTTY ? askSurfaces('store').surfaces : 'store';
     writeUserConfig(u);
   }
   const who = ensureActor();
@@ -346,7 +346,9 @@ export function init(opts: InitOpts): string[] {
   if (opts.adapter) out.push(installClaudeAdapter());
   if (opts.brief) {
     const b = installBrief(opts.brief);
-    out.push(`${b.changed ? 'wrote' : 'kept'} the brief in ${b.path}`);
+    // the answer given just rewrote it: said once
+    if (!configured.includes(`rewrote the brief in ${b.path}`))
+      out.push(`${b.changed ? 'wrote' : 'kept'} the brief in ${b.path}`);
   }
   if (opts.start && surfacesReach(surfaces, 'dashboard')) {
     try {
