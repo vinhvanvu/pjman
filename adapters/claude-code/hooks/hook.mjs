@@ -260,7 +260,10 @@ function checkoutOf(dir) {
 /** The user config's text, or null when there is none. Read as text: the hook has no YAML parser. */
 function userConfigText() {
   try {
-    return fs.readFileSync(path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml'), 'utf8');
+    return fs.readFileSync(
+      path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml'),
+      'utf8',
+    );
   } catch {
     return null;
   }

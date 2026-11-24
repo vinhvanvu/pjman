@@ -154,7 +154,7 @@ export function readUserConfig(): UserConfig {
   return {
     actor: typeof raw?.actor === 'string' ? raw.actor : undefined,
     // a config an earlier pjman wrote has no answer: it ran the dashboard and the dock, so it keeps them
-    surfaces: raw?.surfaces === undefined ? 'dock' : surfacesOf(raw.surfaces) ?? 'store',
+    surfaces: raw?.surfaces === undefined ? 'dock' : (surfacesOf(raw.surfaces) ?? 'store'),
     stores,
     auto_register: raw?.auto_register,
     branch_prefix: typeof raw?.branch_prefix === 'string' ? raw.branch_prefix : undefined,

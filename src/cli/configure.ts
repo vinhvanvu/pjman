@@ -2,7 +2,14 @@
 // the dashboard and the dock are opted into here or at init (decision store-first-surfaces/dock-and-dashboard).
 
 import fs from 'node:fs';
-import { SURFACES, type Surfaces, readUserConfig, surfacesOf, userConfigPath, writeUserConfig } from '../store/config.js';
+import {
+  SURFACES,
+  type Surfaces,
+  readUserConfig,
+  surfacesOf,
+  userConfigPath,
+  writeUserConfig,
+} from '../store/config.js';
 import { CliError } from '../store/util.js';
 import { refreshInstalledBriefs } from './brief.js';
 
@@ -18,9 +25,7 @@ export function askSurfaces(dflt: Surfaces): Surfaces {
   if (!process.stdin.isTTY) return dflt;
   const lines = SURFACES.map((s, i) => `  ${i + 1}. ${s.padEnd(9)} ${SURFACE_LINES[s]}`);
   for (;;) {
-    process.stdout.write(
-      `What runs beside the store?\n${lines.join('\n')}\nChoose [${SURFACES.indexOf(dflt) + 1}]: `,
-    );
+    process.stdout.write(`What runs beside the store?\n${lines.join('\n')}\nChoose [${SURFACES.indexOf(dflt) + 1}]: `);
     const buf = Buffer.alloc(256);
     let n = 0;
     try {
