@@ -59,6 +59,24 @@ export function briefTargetPath(target: BriefTarget): string {
   throw new Error(`unknown brief target ${String(target)}`);
 }
 
+/** Rewrite the brief where an earlier install put it, after the answer it reads changed; a file with no brief is left as
+ *  it is. Returns the path when it changed. */
+export function refreshInstalledBriefs(): string[] {
+  const changed: string[] = [];
+  for (const target of ['claude-md'] as const) {
+    let text = '';
+    try {
+      text = fs.readFileSync(briefTargetPath(target), 'utf8');
+    } catch {
+      continue;
+    }
+    if (!text.includes(OPEN) || !text.includes(CLOSE)) continue;
+    const r = installBrief(target);
+    if (r.changed) changed.push(r.path);
+  }
+  return changed;
+}
+
 /** Put the brief in a harness's always-on file, between markers; a later install replaces it. Returns the path and whether it changed. */
 export function installBrief(target: BriefTarget): { path: string; changed: boolean } {
   const file = briefTargetPath(target);

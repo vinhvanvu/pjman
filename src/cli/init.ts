@@ -233,8 +233,13 @@ export function init(opts: InitOpts): string[] {
     tree_levels: [...DEFAULT_TREE_LEVELS],
     version: FORMAT_VERSION,
   });
-  // the first init on this machine asks what runs beside the store; a later one keeps the answer (pjman configure changes it)
-  const firstRun = !fs.existsSync(userConfigPath());
+  // the first init on this machine asks what runs beside the store; a later one keeps the answer (pjman configure changes
+  // it). The answer is written before anything else, so an init that fails further on never leaves a config that skips it.
+  if (opts.surfaces || !fs.existsSync(userConfigPath())) {
+    const u = readUserConfig();
+    u.surfaces = opts.surfaces ?? askSurfaces('store');
+    writeUserConfig(u);
+  }
   const who = ensureActor();
   const actor = who.actor;
 
@@ -256,8 +261,6 @@ export function init(opts: InitOpts): string[] {
     out.push(`global store at ${root}`);
   }
   const user = readUserConfig();
-  if (opts.surfaces) user.surfaces = opts.surfaces;
-  else if (firstRun) user.surfaces = askSurfaces('store');
   const surfaces = user.surfaces ?? 'store';
   let entry: UserStore | undefined = user.stores.find((s) => path.resolve(s.path) === root);
   if (!entry) {

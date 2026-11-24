@@ -274,7 +274,8 @@ function surfaces() {
   if (text === null) return 'store';
   const m = /^surfaces:\s*(.*?)\s*$/m.exec(text);
   if (!m) return 'dock';
-  const v = m[1].replace(/^['"]|['"]$/g, '');
+  // a trailing YAML comment is no part of the answer, as the tool's YAML parser reads it
+  const v = m[1].replace(/\s+#.*$/, '').replace(/^['"]|['"]$/g, '');
   return ['store', 'dashboard', 'dock'].includes(v) ? v : 'store';
 }
 

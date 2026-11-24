@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import { SURFACES, type Surfaces, readUserConfig, surfacesOf, userConfigPath, writeUserConfig } from '../store/config.js';
 import { CliError } from '../store/util.js';
+import { refreshInstalledBriefs } from './brief.js';
 
 /** What each rung runs, one line each, as the question and the report print them. */
 export const SURFACE_LINES: Record<Surfaces, string> = {
@@ -45,6 +46,10 @@ export function surfacesFlag(v: string | undefined): Surfaces | undefined {
 
 export interface ConfigureResult {
   surfaces: Surfaces;
+  /** The finer switches an earlier config held that the dock answer cleared (`dock: false`, `follow_window: false`). */
+  cleared: string[];
+  /** The always-on files whose brief was rewritten for the new answer. */
+  briefs: string[];
   /** The answer before this run. */
   was: Surfaces;
   changed: boolean;
@@ -57,11 +62,31 @@ export function configure(opts: { surfaces?: Surfaces; ask?: boolean }): Configu
   const was = user.surfaces ?? 'store';
   const asked = !opts.surfaces && opts.ask && process.stdin.isTTY;
   const surfaces = opts.surfaces ?? (asked ? askSurfaces(was) : was);
+  // the dock answered in so many words is the whole dock: the finer switches an earlier config turned off go with it
+  const cleared: string[] = [];
+  if (surfaces === 'dock' && (opts.surfaces || asked)) {
+    if (user.dock === false) {
+      delete user.dock;
+      cleared.push('dock: false');
+    }
+    if (user.follow_window === false) {
+      delete user.follow_window;
+      cleared.push('follow_window: false');
+    }
+  }
   // written even when unchanged, so a config an earlier pjman wrote gets its answer down in words; but a read with no
   // answer never creates the config, so the first init still asks
   if (opts.surfaces || asked || fs.existsSync(userConfigPath())) {
     user.surfaces = surfaces;
     writeUserConfig(user);
   }
-  return { surfaces, was, changed: surfaces !== was, config: userConfigPath() };
+  const changed = surfaces !== was;
+  return {
+    surfaces,
+    was,
+    changed,
+    cleared,
+    briefs: changed ? refreshInstalledBriefs() : [],
+    config: userConfigPath(),
+  };
 }

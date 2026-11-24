@@ -9,6 +9,7 @@ import { before, test } from 'node:test';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-surfaces-'));
 const home = path.join(tmp, 'home');
+process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const project = path.join(tmp, 'project');
 process.env.PJMAN_HOME = home;
 process.env.PJMAN_WRITER = 'person:tester';
@@ -18,7 +19,7 @@ delete process.env.PJMAN_STORE;
 const { readUserConfig, surfacesReach, userConfigPath } = await import('../store/config.js');
 const { init } = await import('../cli/init.js');
 const { configure, surfacesFlag } = await import('../cli/configure.js');
-const { BRIEF, briefFor } = await import('../cli/brief.js');
+const { BRIEF, briefFor, installBrief } = await import('../cli/brief.js');
 const { doctor } = await import('../cli/doctor.js');
 
 const cfgText = () => fs.readFileSync(userConfigPath(), 'utf8');
@@ -40,6 +41,12 @@ test('the ladder: each rung holds the ones below it', () => {
 
 test('no config reads the store alone', () => {
   assert.equal(readUserConfig().surfaces, 'store');
+});
+
+test('the first init writes its answer before anything that can fail, so a failed init does not lose it', () => {
+  assert.throws(() => init({ cwd: project, name: '!!!', surfaces: 'dashboard' }), /does not make a project slug/);
+  assert.match(cfgText(), /^surfaces: dashboard$/m);
+  fs.rmSync(userConfigPath());
 });
 
 test('a first init with no answer (no terminal) is the store alone and starts no dashboard', () => {
@@ -96,4 +103,23 @@ test('--surfaces takes only the rungs', () => {
   assert.equal(surfacesFlag(undefined), undefined);
   assert.equal(surfacesFlag('dock'), 'dock');
   assert.throws(() => surfacesFlag('all'), /--surfaces takes store, dashboard, dock/);
+});
+
+test('the dock answered clears the finer switches an earlier config turned off', () => {
+  fs.writeFileSync(userConfigPath(), cfgText() + 'dock: false\nfollow_window: false\n');
+  const r = configure({ surfaces: 'dock' });
+  assert.deepEqual(r.cleared, ['dock: false', 'follow_window: false']);
+  assert.doesNotMatch(cfgText(), /^(dock|follow_window): false$/m);
+  configure({ surfaces: 'store' });
+});
+
+test('a changed answer rewrites a brief an earlier init put in the always-on file', () => {
+  const file = installBrief('claude-md').path;
+  assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /pjman start/);
+  const up = configure({ surfaces: 'dashboard' });
+  assert.deepEqual(up.briefs, [file]);
+  assert.match(fs.readFileSync(file, 'utf8'), /the dashboard: `pjman start`/);
+  assert.deepEqual(configure({ surfaces: 'dashboard' }).briefs, [], 'an unchanged answer leaves it');
+  configure({ surfaces: 'store' });
+  assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /pjman start/);
 });

@@ -428,10 +428,20 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         }
       }
       if (v.json) {
-        json({ surfaces: r.surfaces, was: r.was, changed: r.changed, config: r.config, dashboard });
+        json({
+          surfaces: r.surfaces,
+          was: r.was,
+          changed: r.changed,
+          cleared: r.cleared,
+          briefs: r.briefs,
+          config: r.config,
+          dashboard,
+        });
         return 0;
       }
       out(`surfaces: ${r.surfaces}, ${SURFACE_LINES[r.surfaces]}${r.changed ? ` (was ${r.was})` : ''}`);
+      if (r.cleared.length) out(`cleared ${r.cleared.join(', ')}: the dock answer turns the whole dock on`);
+      for (const b of r.briefs) out(`rewrote the brief in ${b}`);
       if (dashboard) out(`dashboard: ${dashboard}`);
       if (r.changed && !surfacesReach(r.surfaces, 'dashboard') && readServeAddress())
         out('a dashboard is still running; pjman stop stops it');
