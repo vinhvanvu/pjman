@@ -736,7 +736,7 @@ test('start brings the dashboard up detached and is idempotent; stop takes it do
   assert.ok(!again.started);
   assert.equal(again.address.url, first.address.url);
   assert.equal(readServeAddress()?.pid, first.address.pid);
-  const lines = init({ cwd: project, start: true });
+  const lines = init({ cwd: project, start: true, surfaces: 'dashboard' });
   assert.ok(
     lines.some(
       (l) =>

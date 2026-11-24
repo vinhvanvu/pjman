@@ -39,7 +39,9 @@
 //   SessionEnd        a closing log line; the view's pane is closed, or parked on the bridge when the session was cleared, from
 //                     whatever page the person had browsed it to (one already on the bridge keeps its pins)
 //
-//   The view beside the session. In cmux: the dashboard (pjman serve, started if none is running) is docked in a browser pane
+//   The view beside the session, only when the person's surfaces reach the dock (`surfaces: dock` in ~/.pjman/config.yaml,
+//   set by `pjman init` or `pjman configure`; change:store-first-surfaces). With the store alone or the dashboard, nothing
+//   here starts a server or opens a pane. In cmux: the dashboard (pjman serve, started if none is running) is docked in a browser pane
 //   beside the workspace's sessions, one pane per workspace (decision pjman-24/shared-pane): opened on the product's bridge by
 //   the first session to start there, and moved to a session's page when the person prompts a session that holds a change
 //   (or, while it is parked, when a session takes its first change from its branch or the agent's own bind). When the
@@ -253,6 +255,31 @@ function checkoutOf(dir) {
     }
   };
   return { top: real(top), common: real(common) };
+}
+
+/** The user config's text, or null when there is none. Read as text: the hook has no YAML parser. */
+function userConfigText() {
+  try {
+    return fs.readFileSync(
+      path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml'),
+      'utf8',
+    );
+  } catch {
+    return null;
+  }
+}
+/** What runs beside the store (change:store-first-surfaces), read as the tool reads it (src/store/config.ts): no config
+ *  is the store alone, a config with no answer was written by an earlier pjman and keeps the dock, an answer that is none
+ *  of the rungs is the store alone. Only the dock rung starts anything from here: the pane, the follow window, and the
+ *  dashboard they draw. */
+function surfaces() {
+  const text = userConfigText();
+  if (text === null) return 'store';
+  const m = /^surfaces:\s*(.*?)\s*$/m.exec(text);
+  if (!m) return 'dock';
+  // a trailing YAML comment is no part of the answer, as the tool's YAML parser reads it
+  const v = m[1].replace(/\s+#.*$/, '').replace(/^['"]|['"]$/g, '');
+  return ['store', 'dashboard', 'dock'].includes(v) ? v : 'store';
 }
 
 /** The user config says auto_register: false. Read as text: the hook has no YAML parser. */
@@ -496,14 +523,9 @@ async function postServer(server, route, body, ms = 1500) {
 /** Claude Code's desktop app, which runs its sessions under its own entrypoint: a mod pane there draws only the mod
  * elements, never the dock's page, so the view is the follow window (decision desktop-app/desktop-view). */
 const inDesktop = () => process.env.CLAUDE_CODE_ENTRYPOINT === 'claude-desktop';
-/** The user config says follow_window: false. Read as text: the hook has no YAML parser. */
+/** The follow window is off: the surfaces stop short of the dock, or the user config says follow_window: false. */
 function followWindowOff() {
-  try {
-    const file = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml');
-    return /^follow_window:\s*false\s*$/m.test(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return false;
-  }
+  return surfaces() !== 'dock' || /^follow_window:\s*false\s*$/m.test(userConfigText() ?? '');
 }
 /** The person is on this session (they prompted it): a running dashboard moves the follow window to it. */
 async function followPrompted(sid) {
@@ -576,14 +598,9 @@ function dockFile() {
   const w = workspace();
   return w ? path.join(dockDir(), `${w.replace(/[^\w.-]/g, '_')}.json`) : null;
 }
-/** The user config says dock: false. Read as text: the hook has no YAML parser. */
+/** The cmux dock is off: the surfaces stop short of the dock, or the user config says dock: false. */
 function dockOff() {
-  try {
-    const file = path.join(process.env.PJMAN_HOME || path.join(os.homedir(), '.pjman'), 'config.yaml');
-    return /^dock:\s*false\s*$/m.test(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return false;
-  }
+  return surfaces() !== 'dock' || /^dock:\s*false\s*$/m.test(userConfigText() ?? '');
 }
 const dockOn = () => inCmux() && !dockOff() && Boolean(dockFile());
 function readDock() {
@@ -1191,7 +1208,7 @@ async function sessionStart(input, store, sid, env, st, cwd) {
   if (isMain && (source === 'startup' || source === 'clear')) text += refreshPlugin();
   // the dock is said once, the first time it can open, with the line that turns it off (decision pjman-24/dock-off-switch)
   if (isMain && dockOn() && store.project && !fs.existsSync(path.join(dockDir(), '.told'))) {
-    text += `pjman docks its dashboard in a pane beside this cmux workspace, one pane shared by the workspace's sessions. Tell the person once, in passing: \`dock: false\` in ~/.pjman/config.yaml turns it off, and \`pjman open\` brings a closed pane back.\n\n`;
+    text += `pjman docks its dashboard in a pane beside this cmux workspace, one pane shared by the workspace's sessions. Tell the person once, in passing: \`pjman configure --surfaces dashboard\` turns it off, and \`pjman open\` brings a closed pane back.\n\n`;
     try {
       fs.mkdirSync(dockDir(), { recursive: true });
       fs.writeFileSync(path.join(dockDir(), '.told'), new Date().toISOString() + '\n');

@@ -13,7 +13,9 @@ import {
   userDir,
   writeStoreConfig,
   writeUserConfig,
+  surfacesReach,
   type StoreConfig,
+  type Surfaces,
   type UserStore,
 } from '../store/config.js';
 import { git, gitUserEmail, gitUserName, hasGit, toplevel } from '../store/git.js';
@@ -24,6 +26,7 @@ import { newActor, newProduct, newProject } from '../ops/new.js';
 import { seedSessionKinds } from '../ops/session-kinds.js';
 import { set } from '../ops/set.js';
 import { installBrief, type BriefTarget } from './brief.js';
+import { askSurfaces, configure, configureLines, SURFACE_LINES } from './configure.js';
 import { FORMAT_VERSION } from '../ops/migrate.js';
 import { stableRoot, start } from './start.js';
 import { installedTool } from '../server/server.js';
@@ -37,8 +40,11 @@ export interface InitOpts {
   name?: string;
   /** Install the harness adapter found on the machine (the CLI's default; the library's is false). */
   adapter?: boolean;
-  /** Run pjman start at the end (the CLI's default; the library's is false). */
+  /** Run pjman start at the end when the surfaces reach the dashboard (the CLI's default; the library's is false). */
   start?: boolean;
+  /** What runs beside the store; undefined asks on a terminal the first time (else the store alone), and keeps the
+   *  answer on a later run. */
+  surfaces?: Surfaces;
   /** Also put the brief in a harness's always-on file. */
   brief?: BriefTarget;
   port?: number;
@@ -227,6 +233,16 @@ export function init(opts: InitOpts): string[] {
     tree_levels: [...DEFAULT_TREE_LEVELS],
     version: FORMAT_VERSION,
   });
+  // the first init on this machine asks what runs beside the store; a later one keeps the answer (pjman configure changes
+  // it). The answer is written before anything else, so an init that fails further on never leaves a config that skips it.
+  // An answer given goes through configure, so init does what configure would with it (the dock's switches cleared, an
+  // installed brief rewritten, a dashboard left running said).
+  const configured = opts.surfaces ? configureLines(configure({ surfaces: opts.surfaces })) : [];
+  if (!opts.surfaces && !fs.existsSync(userConfigPath())) {
+    const u = readUserConfig();
+    u.surfaces = process.stdin.isTTY ? askSurfaces('store').surfaces : 'store';
+    writeUserConfig(u);
+  }
   const who = ensureActor();
   const actor = who.actor;
 
@@ -248,6 +264,7 @@ export function init(opts: InitOpts): string[] {
     out.push(`global store at ${root}`);
   }
   const user = readUserConfig();
+  const surfaces = user.surfaces ?? 'store';
   let entry: UserStore | undefined = user.stores.find((s) => path.resolve(s.path) === root);
   if (!entry) {
     entry = { name: 'global', path: root, projects: [] };
@@ -323,14 +340,17 @@ export function init(opts: InitOpts): string[] {
   writeUserConfig(user);
   out.push(`${project} → ${key} in ${userConfigPath()}`);
   out.push('the tool commits every write it makes here');
+  out.push(`surfaces: ${surfaces}, ${SURFACE_LINES[surfaces]} (pjman configure changes it)`, ...configured);
   // who you are: the same read as pjman whoami
   out.push(...formatIdentity(identity(openStore(globalStorePath()))));
   if (opts.adapter) out.push(installClaudeAdapter());
   if (opts.brief) {
     const b = installBrief(opts.brief);
-    out.push(`${b.changed ? 'wrote' : 'kept'} the brief in ${b.path}`);
+    // the answer given just rewrote it: said once
+    if (!configured.includes(`rewrote the brief in ${b.path}`))
+      out.push(`${b.changed ? 'wrote' : 'kept'} the brief in ${b.path}`);
   }
-  if (opts.start) {
+  if (opts.start && surfacesReach(surfaces, 'dashboard')) {
     try {
       const s = start({ cwd: opts.cwd, port: opts.port, log: (l) => out.push(l) });
       out.push(

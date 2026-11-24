@@ -1340,6 +1340,35 @@ esac
     } finally {
       fs.writeFileSync(cfg, saved);
     }
+    // surfaces short of the dock open nothing either (change:store-first-surfaces), nor does no config at all
+    for (const text of [saved.replace(/^surfaces:.*$/m, '') + 'surfaces: dashboard\n', null]) {
+      if (text === null) fs.rmSync(cfg);
+      else fs.writeFileSync(cfg, text);
+      try {
+        atW('W1a', 'SessionStart', { session_id: 'w-6', source: 'startup' });
+        atW('W1a', 'UserPromptSubmit', { session_id: 'w-6', prompt: 'work on change:eight-week-test' });
+        assert.equal(seen().length, mark + 9, `${text ? 'surfaces: dashboard' : 'no config'} opens no pane`);
+      } finally {
+        fs.writeFileSync(cfg, saved);
+      }
+    }
+    // the hook reads the answer as the tool does: a trailing comment is no part of it, and a config with no answer (an
+    // earlier pjman's) keeps the dock
+    const noAnswer = saved.replace(/^surfaces:.*\n/m, '');
+    for (const [text, what] of [
+      [noAnswer + 'surfaces: dock # the whole dock\n', 'an answer with a comment'],
+      [noAnswer, 'a config with no answer'],
+    ]) {
+      fs.writeFileSync(cfg, text);
+      const n = seen().length;
+      try {
+        atW('W1a', 'SessionStart', { session_id: 'w-7', source: 'startup' });
+        assert.ok(seen().length > n, `${what} docks`);
+      } finally {
+        atW('W1a', 'SessionEnd', { session_id: 'w-7', reason: 'prompt_input_exit' });
+        fs.writeFileSync(cfg, saved);
+      }
+    }
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });
