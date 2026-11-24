@@ -26,7 +26,7 @@ import { newActor, newProduct, newProject } from '../ops/new.js';
 import { seedSessionKinds } from '../ops/session-kinds.js';
 import { set } from '../ops/set.js';
 import { installBrief, type BriefTarget } from './brief.js';
-import { askSurfaces, SURFACE_LINES } from './configure.js';
+import { askSurfaces, configure, configureLines, SURFACE_LINES } from './configure.js';
 import { FORMAT_VERSION } from '../ops/migrate.js';
 import { stableRoot, start } from './start.js';
 import { installedTool } from '../server/server.js';
@@ -235,9 +235,12 @@ export function init(opts: InitOpts): string[] {
   });
   // the first init on this machine asks what runs beside the store; a later one keeps the answer (pjman configure changes
   // it). The answer is written before anything else, so an init that fails further on never leaves a config that skips it.
-  if (opts.surfaces || !fs.existsSync(userConfigPath())) {
+  // An answer given goes through configure, so init does what configure would with it (the dock's switches cleared, an
+  // installed brief rewritten, a dashboard left running said).
+  const configured = opts.surfaces ? configureLines(configure({ surfaces: opts.surfaces })) : [];
+  if (!opts.surfaces && !fs.existsSync(userConfigPath())) {
     const u = readUserConfig();
-    u.surfaces = opts.surfaces ?? askSurfaces('store');
+    u.surfaces = askSurfaces('store');
     writeUserConfig(u);
   }
   const who = ensureActor();
@@ -337,7 +340,7 @@ export function init(opts: InitOpts): string[] {
   writeUserConfig(user);
   out.push(`${project} → ${key} in ${userConfigPath()}`);
   out.push('the tool commits every write it makes here');
-  out.push(`surfaces: ${surfaces}, ${SURFACE_LINES[surfaces]} (pjman configure changes it)`);
+  out.push(`surfaces: ${surfaces}, ${SURFACE_LINES[surfaces]} (pjman configure changes it)`, ...configured);
   // who you are: the same read as pjman whoami
   out.push(...formatIdentity(identity(openStore(globalStorePath()))));
   if (opts.adapter) out.push(installClaudeAdapter());

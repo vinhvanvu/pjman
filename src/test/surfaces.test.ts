@@ -123,3 +123,23 @@ test('a changed answer rewrites a brief an earlier init put in the always-on fil
   configure({ surfaces: 'store' });
   assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /pjman start/);
 });
+
+test('init --surfaces does what configure does: clears the dock switches, rewrites the brief', () => {
+  const file = installBrief('claude-md').path;
+  fs.writeFileSync(userConfigPath(), cfgText() + 'dock: false\n');
+  const lines = init({ cwd: project, surfaces: 'dock' });
+  assert.ok(lines.includes('cleared dock: false: the dock answer turns the whole dock on'));
+  assert.ok(lines.includes(`rewrote the brief in ${file}`));
+  assert.match(fs.readFileSync(file, 'utf8'), /the dashboard: `pjman start`/);
+  init({ cwd: project, surfaces: 'store' });
+  assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /pjman start/);
+});
+
+test('a configure run that answers nothing keeps the dock switches of a config an earlier pjman wrote', () => {
+  const text = cfgText().replace(/^surfaces:.*\n/m, '') + 'dock: false\n';
+  fs.writeFileSync(userConfigPath(), text);
+  const r = configure({ ask: true });
+  assert.deepEqual([r.surfaces, r.cleared], ['dock', []]);
+  assert.match(cfgText(), /^dock: false$/m);
+  configure({ surfaces: 'store' });
+});

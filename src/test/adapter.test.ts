@@ -1352,6 +1352,23 @@ esac
         fs.writeFileSync(cfg, saved);
       }
     }
+    // the hook reads the answer as the tool does: a trailing comment is no part of it, and a config with no answer (an
+    // earlier pjman's) keeps the dock
+    const noAnswer = saved.replace(/^surfaces:.*\n/m, '');
+    for (const [text, what] of [
+      [noAnswer + 'surfaces: dock # the whole dock\n', 'an answer with a comment'],
+      [noAnswer, 'a config with no answer'],
+    ]) {
+      fs.writeFileSync(cfg, text);
+      const n = seen().length;
+      try {
+        atW('W1a', 'SessionStart', { session_id: 'w-7', source: 'startup' });
+        assert.ok(seen().length > n, `${what} docks`);
+      } finally {
+        atW('W1a', 'SessionEnd', { session_id: 'w-7', reason: 'prompt_input_exit' });
+        fs.writeFileSync(cfg, saved);
+      }
+    }
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });

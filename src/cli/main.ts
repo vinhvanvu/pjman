@@ -76,7 +76,7 @@ import { installedTool, readServeAddress, startServer } from '../server/server.j
 import { syncLinear } from '../sync/linear.js';
 import { syncGithub } from '../sync/github.js';
 import { init } from './init.js';
-import { configure, SURFACE_LINES, surfacesFlag } from './configure.js';
+import { configure, configureLines, SURFACE_LINES, surfacesFlag } from './configure.js';
 import { newRecord, type NewFlags } from '../ops/new.js';
 import {
   sessionBind,
@@ -434,17 +434,15 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
           changed: r.changed,
           cleared: r.cleared,
           briefs: r.briefs,
+          still_running: r.stillRunning,
           config: r.config,
           dashboard,
         });
         return 0;
       }
       out(`surfaces: ${r.surfaces}, ${SURFACE_LINES[r.surfaces]}${r.changed ? ` (was ${r.was})` : ''}`);
-      if (r.cleared.length) out(`cleared ${r.cleared.join(', ')}: the dock answer turns the whole dock on`);
-      for (const b of r.briefs) out(`rewrote the brief in ${b}`);
+      for (const l of configureLines(r)) out(l);
       if (dashboard) out(`dashboard: ${dashboard}`);
-      if (r.changed && !surfacesReach(r.surfaces, 'dashboard') && readServeAddress())
-        out('a dashboard is still running; pjman stop stops it');
       out(`in ${r.config}`);
       return 0;
     }

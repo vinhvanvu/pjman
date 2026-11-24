@@ -7,11 +7,13 @@ import {
   type Surfaces,
   readUserConfig,
   surfacesOf,
+  surfacesReach,
   userConfigPath,
   writeUserConfig,
 } from '../store/config.js';
 import { CliError } from '../store/util.js';
 import { refreshInstalledBriefs } from './brief.js';
+import { readServeAddress } from '../server/server.js';
 
 /** What each rung runs, one line each, as the question and the report print them. */
 export const SURFACE_LINES: Record<Surfaces, string> = {
@@ -58,6 +60,8 @@ export interface ConfigureResult {
   /** The answer before this run. */
   was: Surfaces;
   changed: boolean;
+  /** The answer went below the dashboard while one runs: it keeps running until pjman stop. */
+  stillRunning: boolean;
   config: string;
 }
 
@@ -67,9 +71,10 @@ export function configure(opts: { surfaces?: Surfaces; ask?: boolean }): Configu
   const was = user.surfaces ?? 'store';
   const asked = !opts.surfaces && opts.ask && process.stdin.isTTY;
   const surfaces = opts.surfaces ?? (asked ? askSurfaces(was) : was);
-  // the dock answered in so many words is the whole dock: the finer switches an earlier config turned off go with it
+  // the dock answered in so many words (the flag, or picked on the terminal over another rung) is the whole dock: the
+  // finer switches an earlier config turned off go with it. Enter on the dock an earlier pjman ran keeps them.
   const cleared: string[] = [];
-  if (surfaces === 'dock' && (opts.surfaces || asked)) {
+  if (surfaces === 'dock' && (opts.surfaces || (asked && was !== 'dock'))) {
     if (user.dock === false) {
       delete user.dock;
       cleared.push('dock: false');
@@ -92,6 +97,16 @@ export function configure(opts: { surfaces?: Surfaces; ask?: boolean }): Configu
     changed,
     cleared,
     briefs: changed ? refreshInstalledBriefs() : [],
+    stillRunning: changed && !surfacesReach(surfaces, 'dashboard') && readServeAddress() !== null,
     config: userConfigPath(),
   };
+}
+
+/** What a configure run did beyond the answer, one line each, as configure and init print it. */
+export function configureLines(r: ConfigureResult): string[] {
+  return [
+    ...(r.cleared.length ? [`cleared ${r.cleared.join(', ')}: the dock answer turns the whole dock on`] : []),
+    ...r.briefs.map((b) => `rewrote the brief in ${b}`),
+    ...(r.stillRunning ? ['a dashboard is still running; pjman stop stops it'] : []),
+  ];
 }
