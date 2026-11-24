@@ -8,9 +8,10 @@ import {
   ownsRepository,
   readUserConfig,
   requireStore,
+  surfacesReach,
+  type Store,
 } from '../store/config.js';
-import type { Store } from '../store/config.js';
-import { BRIEF } from './brief.js';
+import { briefFor } from './brief.js';
 import { start, stop } from './start.js';
 import { openPage, openUrl } from './open.js';
 import { openWindow } from './follow-window.js';
@@ -75,6 +76,7 @@ import { installedTool, readServeAddress, startServer } from '../server/server.j
 import { syncLinear } from '../sync/linear.js';
 import { syncGithub } from '../sync/github.js';
 import { init } from './init.js';
+import { configure, SURFACE_LINES, surfacesFlag } from './configure.js';
 import { newRecord, type NewFlags } from '../ops/new.js';
 import {
   sessionBind,
@@ -404,12 +406,36 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
         name: v.name,
         adapter: !v['no-adapter'],
         start: !v['no-start'],
+        surfaces: surfacesFlag(v.surfaces),
         brief: v.brief as 'claude-md' | undefined,
         port: v.port ? Number(v.port) : undefined,
         map: v['no-map'] ? false : v.map ? true : undefined,
         product: v.product,
       }))
         out(line);
+      return 0;
+    }
+    case 'configure': {
+      const given = surfacesFlag(v.surfaces);
+      const r = configure({ surfaces: given, ask: !given && !v.json });
+      let dashboard: string | null = null;
+      if (r.changed && surfacesReach(r.surfaces, 'dashboard') && !v['no-start']) {
+        try {
+          const s = start({ cwd, port: v.port ? Number(v.port) : undefined, log: () => {} });
+          dashboard = `${s.address.url}${s.started ? '' : ' (already running)'}`;
+        } catch (e) {
+          dashboard = `not started: ${(e as Error).message}`;
+        }
+      }
+      if (v.json) {
+        json({ surfaces: r.surfaces, was: r.was, changed: r.changed, config: r.config, dashboard });
+        return 0;
+      }
+      out(`surfaces: ${r.surfaces}, ${SURFACE_LINES[r.surfaces]}${r.changed ? ` (was ${r.was})` : ''}`);
+      if (dashboard) out(`dashboard: ${dashboard}`);
+      if (r.changed && !surfacesReach(r.surfaces, 'dashboard') && readServeAddress())
+        out('a dashboard is still running; pjman stop stops it');
+      out(`in ${r.config}`);
       return 0;
     }
     case 'new': {
@@ -1795,7 +1821,7 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
     }
     case 'brief': {
       if (!v.session) {
-        out(BRIEF);
+        out(briefFor(readUserConfig().surfaces));
         return 0;
       }
       const store = scoped(requireStore(cwd, v.store));

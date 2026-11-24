@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { readUserConfig, surfacesReach, type Surfaces } from '../store/config.js';
 
 export const BRIEF = `# pjman — the project's record, kept by agents
 
@@ -39,6 +40,14 @@ its map through intake, a capability under a feature per change. A map that has 
 Also: \`pjman help <entity>\` (each entity's create, read, list, update, delete) · \`pjman ls decision --status proposed\` (what waits on a person) · \`pjman show <ref>\` · \`pjman set <ref>… list+=item\` (one item added; -= takes one out) · \`pjman validate\` · the dashboard: \`pjman start\` prints its URL (also in ~/.pjman/serve.json).
 `;
 
+/** The dashboard's clause, said only when the person runs one (change:store-first-surfaces). */
+const DASHBOARD_CLAUSE = ' · the dashboard: `pjman start` prints its URL (also in ~/.pjman/serve.json)';
+
+/** The brief as this person's surfaces read it: with the store alone it names no dashboard. */
+export function briefFor(surfaces: Surfaces | undefined): string {
+  return surfacesReach(surfaces, 'dashboard') ? BRIEF : BRIEF.replace(DASHBOARD_CLAUSE, '');
+}
+
 const OPEN = '<!-- pjman:brief -->';
 const CLOSE = '<!-- /pjman:brief -->';
 
@@ -53,7 +62,7 @@ export function briefTargetPath(target: BriefTarget): string {
 /** Put the brief in a harness's always-on file, between markers; a later install replaces it. Returns the path and whether it changed. */
 export function installBrief(target: BriefTarget): { path: string; changed: boolean } {
   const file = briefTargetPath(target);
-  const block = `${OPEN}\n${BRIEF.trim()}\n${CLOSE}\n`;
+  const block = `${OPEN}\n${briefFor(readUserConfig().surfaces).trim()}\n${CLOSE}\n`;
   let text = '';
   try {
     text = fs.readFileSync(file, 'utf8');

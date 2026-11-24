@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { globalStore, readUserConfig, userDir } from '../store/config.js';
+import { globalStore, readUserConfig, surfacesReach, userDir } from '../store/config.js';
 import { loadStore } from '../store/records.js';
 import { readServeAddress, serveAddressPath } from '../server/server.js';
 import { summarise, validate } from '../model/validate.js';
@@ -280,12 +280,26 @@ function answers(url: string): boolean {
 }
 
 function checkDashboard(o: DoctorOpts): Finding[] {
+  const surfaces = readUserConfig().surfaces ?? 'store';
+  const rung: Finding = {
+    area: 'dashboard',
+    level: 'ok',
+    message: `surfaces: ${surfaces}${surfacesReach(surfaces, 'dashboard') ? '' : ' (the store alone; pjman configure opts into the dashboard)'}`,
+  };
   const file = serveAddressPath();
   if (!fs.existsSync(file))
-    return [{ area: 'dashboard', level: 'ok', message: 'no dashboard is running (pjman start starts one)' }];
+    return [
+      rung,
+      {
+        area: 'dashboard',
+        level: 'ok',
+        message: `no dashboard is running${surfacesReach(surfaces, 'dashboard') ? ' (pjman start starts one)' : ''}`,
+      },
+    ];
   const a = readServeAddress();
   if (!a)
     return [
+      rung,
       {
         area: 'dashboard',
         level: 'warn',
@@ -295,6 +309,7 @@ function checkDashboard(o: DoctorOpts): Finding[] {
     ];
   if (!(o.answers ?? answers)(`${a.url}/api/v1`))
     return [
+      rung,
       {
         area: 'dashboard',
         level: 'error',
@@ -302,7 +317,7 @@ function checkDashboard(o: DoctorOpts): Finding[] {
         fix: 'pjman stop && pjman start',
       },
     ];
-  return [{ area: 'dashboard', level: 'ok', message: `the dashboard answers at ${a.url} (pid ${a.pid})` }];
+  return [rung, { area: 'dashboard', level: 'ok', message: `the dashboard answers at ${a.url} (pid ${a.pid})` }];
 }
 
 function checkStore(): Finding[] {

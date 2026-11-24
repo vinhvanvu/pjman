@@ -48,7 +48,7 @@ cd pantry
 pjman init
 ```
 
-Init creates your store, registers the repository as a project, installs the Claude Code plugin when `claude` is on your PATH, and starts the dashboard. Your repository is not changed. The store is a git repository of its own, and every write to it is a commit:
+Init creates your store, registers the repository as a project, and installs the Claude Code plugin when `claude` is on your PATH. It asks once whether anything runs beside the store: by default nothing does, and the store and the agent's guidance are the whole of pjman. The dashboard, and the dock that keeps it beside each session, are opt-in, at init or later with `pjman configure`. Your repository is not changed. The store is a git repository of its own, and every write to it is a commit:
 
 ```text
 ~/.pjman/store/
@@ -215,7 +215,7 @@ pjman tree                        # the product map, with the state of each node
 pjman code shopping-list          # the files beneath a part of the map, rolled up from its capabilities
 ```
 
-`pjman open` opens the dashboard, a local page that draws the same store: what needs you now, the product map, the milestones and the roadmap. You can accept a decision there too.
+With the dashboard opted into (`pjman configure --surfaces dashboard`), `pjman open` opens it, a local page that draws the same store: what needs you now, the product map, the milestones and the roadmap. You can accept a decision there too.
 
 ## Finish a change
 

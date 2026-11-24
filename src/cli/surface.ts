@@ -16,6 +16,7 @@ export const FLAG_TYPES = {
   session: { type: 'string' },
   created: { type: 'string' },
   'no-start': { type: 'boolean' },
+  surfaces: { type: 'string' },
   'no-adapter': { type: 'boolean' },
   brief: { type: 'string' },
   open: { type: 'boolean' },
@@ -780,11 +781,21 @@ export const COMMANDS: Command[] = [
     group: 'setup',
     line: 'the whole onboarding, in one command; again, the health check',
     about:
-      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard, report. Run again, it is the health check',
+      'the whole onboarding: join the global store (~/.pjman/store, its own git repository), register this repository as a project under a product (one made with its name, or --product names an existing one), set the actor (a person keyed by their handle, from the committer name else the machine account name, holding their git email as an account), ask what runs beside the store the first time (the store alone, the dashboard too, or the dock too: --surfaces answers without asking; pjman configure changes it later), ask whether the first session should propose a product map (--map or --no-map answers without asking), install the harness adapter found on the machine, start the dashboard when the answer reaches it, report. Run again, it is the health check',
     usage: [
-      'pjman init [--name <project-name>] [--product <product>] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>]',
+      'pjman init [--name <project-name>] [--product <product>] [--surfaces store|dashboard|dock] [--map|--no-map] [--brief claude-md] [--no-adapter] [--no-start] [--port <n>]',
     ],
-    flags: ['name', 'product', 'map', 'no-map', 'brief', 'no-adapter', 'no-start', 'port'],
+    flags: ['name', 'product', 'surfaces', 'map', 'no-map', 'brief', 'no-adapter', 'no-start', 'port'],
+    args: 0,
+  },
+  {
+    name: 'configure',
+    group: 'setup',
+    line: 'what runs beside the store: the store alone, the dashboard, the dock',
+    about:
+      'set what runs beside the store, one answer on a ladder: store (the record and the agent’s guidance, nothing running beside it; a new install’s default), dashboard (also the dashboard, started by init and named in the brief), dock (also the dashboard beside each session: the cmux pane, the desktop app’s follow window). --surfaces answers; with none it asks on a terminal, else prints the answer. Raised to the dashboard or the dock, the dashboard starts (--no-start leaves it); lowered to the store, a running dashboard keeps running until pjman stop. A config an earlier pjman wrote reads dock, what it ran',
+    usage: ['pjman configure [--surfaces store|dashboard|dock] [--no-start] [--port <n>] [--json]'],
+    flags: ['surfaces', 'no-start', 'port'],
     args: 0,
   },
   {

@@ -84,8 +84,27 @@ export interface UserStore {
   projects: ProjectBinding[];
 }
 
+/** What pjman runs beside the store, as one ladder (decision store-first-surfaces/dock-and-dashboard): the store alone,
+ *  the dashboard too (init starts it, the brief names it), or the dock too (the dashboard beside the session: the cmux
+ *  pane, the desktop app's follow window). Each rung holds the ones below it. */
+export const SURFACES = ['store', 'dashboard', 'dock'] as const;
+export type Surfaces = (typeof SURFACES)[number];
+
+/** A surfaces answer as written, or null when it is none of the rungs. */
+export function surfacesOf(v: unknown): Surfaces | null {
+  return (SURFACES as readonly unknown[]).includes(v) ? (v as Surfaces) : null;
+}
+
+/** The rung reaches `at`: a dashboard answer holds the store, a dock answer holds the dashboard. */
+export function surfacesReach(s: Surfaces | undefined, at: Surfaces): boolean {
+  return SURFACES.indexOf(s ?? 'store') >= SURFACES.indexOf(at);
+}
+
 export interface UserConfig {
   actor?: string;
+  /** What runs beside the store. Unset in a config an earlier pjman wrote reads `dock`, what it ran then (decision
+   *  store-first-surfaces/existing-installs); no config at all reads `store`. */
+  surfaces?: Surfaces;
   /** A session in an unregistered git repository registers it (default true). */
   auto_register?: boolean;
   /** The person's branch prefix (`vinh`): the recommended branch for a change is `<prefix>/<slug>`. */
@@ -114,7 +133,7 @@ export function globalStorePath(): string {
 
 export function readUserConfig(): UserConfig {
   const p = userConfigPath();
-  if (!fs.existsSync(p)) return { stores: [] };
+  if (!fs.existsSync(p)) return { surfaces: 'store', stores: [] };
   const raw = parse(fs.readFileSync(p, 'utf8')) as Partial<UserConfig> | null;
   const stores = (Array.isArray(raw?.stores) ? raw.stores : []).map((s) => {
     const st = s as { name?: unknown; path?: unknown; projects?: unknown };
@@ -134,6 +153,8 @@ export function readUserConfig(): UserConfig {
   });
   return {
     actor: typeof raw?.actor === 'string' ? raw.actor : undefined,
+    // a config an earlier pjman wrote has no answer: it ran the dashboard and the dock, so it keeps them
+    surfaces: raw?.surfaces === undefined ? 'dock' : surfacesOf(raw.surfaces) ?? 'store',
     stores,
     auto_register: raw?.auto_register,
     branch_prefix: typeof raw?.branch_prefix === 'string' ? raw.branch_prefix : undefined,

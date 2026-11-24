@@ -1340,6 +1340,18 @@ esac
     } finally {
       fs.writeFileSync(cfg, saved);
     }
+    // surfaces short of the dock open nothing either (change:store-first-surfaces), nor does no config at all
+    for (const text of [saved.replace(/^surfaces:.*$/m, '') + 'surfaces: dashboard\n', null]) {
+      if (text === null) fs.rmSync(cfg);
+      else fs.writeFileSync(cfg, text);
+      try {
+        atW('W1a', 'SessionStart', { session_id: 'w-6', source: 'startup' });
+        atW('W1a', 'UserPromptSubmit', { session_id: 'w-6', prompt: 'work on change:eight-week-test' });
+        assert.equal(seen().length, mark + 9, `${text ? 'surfaces: dashboard' : 'no config'} opens no pane`);
+      } finally {
+        fs.writeFileSync(cfg, saved);
+      }
+    }
   } finally {
     git(['checkout', '-q', home]);
     fs.rmSync(path.join(env.PJMAN_HOME, 'serve.json'), { force: true });
