@@ -478,7 +478,7 @@ pjman index [--json]
     read every file again (the index this machine keeps of the store is thrown away and rebuilt) and rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)
 
 pjman query "<sql>"
-    run a read-only SQL query against the index; the answer is JSON
+    rebuild the index, then run a read-only SQL query against it; the answer is JSON
 
 ```
 

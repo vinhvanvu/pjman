@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import type { Store } from '../store/config.js';
 import { allEdges, sourceKeysOnly } from '../model/graph.js';
 import { loadStore, type Loaded, type Rec } from '../store/records.js';
+import { withStoreLock } from '../store/lock.js';
 import { uuidv7 } from '../store/util.js';
 import { validate } from '../model/validate.js';
 import type * as NodeSqlite from 'node:sqlite';
@@ -63,12 +64,17 @@ function existingIds(file: string): Map<string, string> {
 }
 
 /** Rebuild index.db from the records. Ids already minted for a key are kept. */
-export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): IndexReport {
+/** Rebuild index.db under the store's lock: one build at a time, so a key keeps the id it was given and no build
+ *  writes over another's temp file. */
+export function buildIndex(store: Store, loaded?: Loaded): IndexReport {
+  return withStoreLock(store.root, () => build(store, loaded ?? loadStore(store)));
+}
+
+function build(store: Store, loaded: Loaded): IndexReport {
   const file = indexPath(store);
   const ids = existingIds(file);
   const problems = validate(loaded);
-  // one per process: two queries rebuilding at once never write the same file
-  const tmp = `${file}.${process.pid}.tmp`;
+  const tmp = file + '.tmp';
   fs.rmSync(tmp, { force: true });
   const db = dbOpen(tmp);
   db.exec(SCHEMA);
