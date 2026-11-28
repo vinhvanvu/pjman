@@ -347,7 +347,8 @@ function main(argv: string[]): number {
   const writes =
     WRITE_COMMANDS.has(cmd) ||
     // a review that files, settles, hands out a lens or closes a round writes the change (three reviewers are started
-    // together, each with its lens); Entire's own review runs for minutes and takes no lock
+    // together, each with its lens); Entire's own review (--run, --read) and merge wait on Entire for minutes, so they
+    // take the lock around each of their writes instead (sync/review.ts, sync/merge.ts, sync/trail.ts)
     (cmd === 'review' &&
       (v.finding !== undefined ||
         !!v.resolve ||
@@ -391,6 +392,9 @@ const WRITE_COMMANDS = new Set([
   'undo',
   'migrate',
   'lift',
+  'code',
+  'person',
+  'tie',
 ]);
 /** The writes that move a store between formats, or make one: never refused for the store's format. */
 const FORMAT_EXEMPT = new Set(['init', 'migrate', 'undo']);

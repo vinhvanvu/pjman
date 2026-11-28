@@ -2,7 +2,7 @@
 // kept as data on the change, and, in a project that opted in to Entire, each finding filed onto the change's Trail
 // and settled there when it is settled here. With no Entire the review is local.
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -323,6 +323,33 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
   const back = readFindings(store, 'change:web/cart', { entire: { bin } });
   assert.deepEqual(back.read, [`resolved #${got.length}`]);
   assert.equal(findings().at(-1)!.state, 'resolved');
+});
+
+test('what is read from Entire is written under the store lock: a reader refuses while another process writes', async () => {
+  execFileSync(bin, ['trail', 'finding', 'reopen', '--branch', 'cart', findings().at(-1)!.entire!]);
+  const lockJs = path.resolve(import.meta.dirname, '..', 'store', 'lock.js');
+  const child = spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `import { lockStore } from ${JSON.stringify(lockJs)}; lockStore(${JSON.stringify(store.root)}); process.stdout.write('held\\n'); setTimeout(() => {}, 5000);`,
+    ],
+    { env: process.env, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  await new Promise<void>((res) => child.stdout.once('data', () => res()));
+  process.env.PJMAN_LOCK_WAIT_MS = '300';
+  try {
+    assert.throws(() => readFindings(store, 'change:web/cart', { entire: { bin } }), /the store is busy/);
+    assert.equal(findings().at(-1)!.state, 'resolved', 'nothing written beside the holder');
+  } finally {
+    delete process.env.PJMAN_LOCK_WAIT_MS;
+    child.kill();
+    await new Promise((res) => child.once('exit', res));
+  }
+  assert.deepEqual(readFindings(store, 'change:web/cart', { entire: { bin } }).read, [
+    `reopened #${findings().length}`,
+  ]);
 });
 
 test('the profile is named to Entire: the one asked for, the default, or the only one; several with no default are not guessed', () => {

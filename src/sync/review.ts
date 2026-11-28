@@ -39,6 +39,7 @@ import { live } from '../model/tree.js';
 import { MOVED_SINCE, observedBranches } from '../model/view.js';
 import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
+import { withStoreLock } from '../store/lock.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
 import { loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../store/records.js';
@@ -527,20 +528,22 @@ export function fileFindings(
     findings[i] = { ...f, filed: f.state };
     out.filed.push(`${f.state === 'open' ? 'reopened' : f.state} #${n}`);
   });
-  if (out.filed.length) {
-    // the record may have been written while Entire was asked (a status, a binding, another finding): what Entire
-    // answered goes onto the record as it stands now, finding by finding, never the copy read before the calls
-    const now = changeOf(loadStore(store), key);
-    const current = findingsOf(now.data);
-    for (const [i, patch] of told) {
-      // by its id, wherever it now stands; one filed before ids, by its place and text
-      const mine = findings[i];
-      const at = mine.id ? current.findIndex((x) => x.id === mine.id) : current[i]?.text === mine.text ? i : -1;
-      if (at >= 0) current[at] = { ...current[at], ...patch };
-    }
-    save(store, now, current, `told Entire (${out.filed.join(', ')})`, opts);
-    out.findings = current;
-  }
+  // the record may have been written while Entire was asked (a status, a binding, another finding): what Entire
+  // answered goes onto the record as it stands now, finding by finding, never the copy read before the calls; read and
+  // written under the store's lock, so no write lands in between
+  if (out.filed.length)
+    withStoreLock(store.root, () => {
+      const now = changeOf(loadStore(store), key);
+      const current = findingsOf(now.data);
+      for (const [i, patch] of told) {
+        // by its id, wherever it now stands; one filed before ids, by its place and text
+        const mine = findings[i];
+        const at = mine.id ? current.findIndex((x) => x.id === mine.id) : current[i]?.text === mine.text ? i : -1;
+        if (at >= 0) current[at] = { ...current[at], ...patch };
+      }
+      save(store, now, current, `told Entire (${out.filed.join(', ')})`, opts);
+      out.findings = current;
+    });
   return out;
 }
 
@@ -651,72 +654,74 @@ export function readFindings(
     cursor = next;
   }
   out.listed = true;
-  // the record as it stands now: Entire was asked in between
-  const now = changeOf(loadStore(store), key);
-  const findings = findingsOf(now.data);
-  const asState = (v: unknown): FindingState => (v === 'resolved' || v === 'dismissed' ? v : 'open');
-  for (const raw of listed) {
-    if (!raw || typeof raw !== 'object') continue;
-    const f = raw as Record<string, unknown>;
-    const id = typeof f.id === 'string' ? f.id : undefined;
-    const text = [f.title, f.body].find((t): t is string => typeof t === 'string' && !!t.trim());
-    if (!id || !text) continue;
-    const state = asState(f.status);
-    const at = findings.findIndex((x) => x.entire === id);
-    if (at >= 0) {
-      const mine = findings[at];
-      // (one moved to the follow-up change is a dismissal on Entire, which has no word for it)
-      const there = mine.state === 'deferred' && state === 'dismissed' ? 'deferred' : state;
-      // settled on Entire, and not settled differently here since Entire was last told
-      if ((mine.filed ?? 'open') === mine.state && mine.state !== there) {
-        // (where the branch stood, as a settle here records it; none on one that stands again)
-        findings[at] = {
-          ...mine,
-          state,
-          filed: state,
-          settled: nowIso(),
-          head: state === 'open' ? undefined : headOf(store, loaded, rec),
-        };
-        out.read.push(`${state === 'open' ? 'reopened' : state} #${at + 1}`);
+  // the record as it stands now: Entire was asked in between; read and written under the store's lock
+  return withStoreLock(store.root, () => {
+    const now = changeOf(loadStore(store), key);
+    const findings = findingsOf(now.data);
+    const asState = (v: unknown): FindingState => (v === 'resolved' || v === 'dismissed' ? v : 'open');
+    for (const raw of listed) {
+      if (!raw || typeof raw !== 'object') continue;
+      const f = raw as Record<string, unknown>;
+      const id = typeof f.id === 'string' ? f.id : undefined;
+      const text = [f.title, f.body].find((t): t is string => typeof t === 'string' && !!t.trim());
+      if (!id || !text) continue;
+      const state = asState(f.status);
+      const at = findings.findIndex((x) => x.entire === id);
+      if (at >= 0) {
+        const mine = findings[at];
+        // (one moved to the follow-up change is a dismissal on Entire, which has no word for it)
+        const there = mine.state === 'deferred' && state === 'dismissed' ? 'deferred' : state;
+        // settled on Entire, and not settled differently here since Entire was last told
+        if ((mine.filed ?? 'open') === mine.state && mine.state !== there) {
+          // (where the branch stood, as a settle here records it; none on one that stands again)
+          findings[at] = {
+            ...mine,
+            state,
+            filed: state,
+            settled: nowIso(),
+            head: state === 'open' ? undefined : headOf(store, loaded, rec),
+          };
+          out.read.push(`${state === 'open' ? 'reopened' : state} #${at + 1}`);
+        }
+        continue;
       }
-      continue;
+      const loc = f.location && typeof f.location === 'object' ? (f.location as Record<string, unknown>) : {};
+      const severity = (FINDING_SEVERITIES as readonly string[]).includes(String(f.severity))
+        ? (f.severity as FindingSeverity)
+        : 'medium';
+      const said = text.replace(/\s+/g, ' ').trim();
+      // Entire's reviewers mark what they judged against the brief: [intent], [drift]
+      const marked = /\[(intent|drift|correctness)\]/i.exec(said)?.[1].toLowerCase() as FindingKind | undefined;
+      findings.push({
+        id: randomBytes(4).toString('hex'),
+        text: said,
+        severity,
+        ...(marked ? { kind: marked } : {}),
+        state,
+        ...(typeof loc.filePath === 'string' ? { file: loc.filePath } : {}),
+        ...(typeof loc.filePath === 'string' && typeof loc.startLine === 'number' ? { line: loc.startLine } : {}),
+        by: 'entire',
+        // (as pjman writes its own, so the two compare)
+        at:
+          typeof f.createdAt === 'string' && !Number.isNaN(Date.parse(f.createdAt))
+            ? new Date(f.createdAt).toISOString()
+            : nowIso(),
+        entire: id,
+        filed: state,
+      });
+      out.read.push(`read #${findings.length}`);
     }
-    const loc = f.location && typeof f.location === 'object' ? (f.location as Record<string, unknown>) : {};
-    const severity = (FINDING_SEVERITIES as readonly string[]).includes(String(f.severity))
-      ? (f.severity as FindingSeverity)
-      : 'medium';
-    const said = text.replace(/\s+/g, ' ').trim();
-    // Entire's reviewers mark what they judged against the brief: [intent], [drift]
-    const marked = /\[(intent|drift|correctness)\]/i.exec(said)?.[1].toLowerCase() as FindingKind | undefined;
-    findings.push({
-      id: randomBytes(4).toString('hex'),
-      text: said,
-      severity,
-      ...(marked ? { kind: marked } : {}),
-      state,
-      ...(typeof loc.filePath === 'string' ? { file: loc.filePath } : {}),
-      ...(typeof loc.filePath === 'string' && typeof loc.startLine === 'number' ? { line: loc.startLine } : {}),
-      by: 'entire',
-      // (as pjman writes its own, so the two compare)
-      at:
-        typeof f.createdAt === 'string' && !Number.isNaN(Date.parse(f.createdAt))
-          ? new Date(f.createdAt).toISOString()
-          : nowIso(),
-      entire: id,
-      filed: state,
-    });
-    out.read.push(`read #${findings.length}`);
-  }
-  out.findings = findings;
-  if (out.read.length)
-    out.commit = save(
-      store,
-      now,
-      findings,
-      `read from Entire (${out.read.length} finding${out.read.length === 1 ? '' : 's'})`,
-      opts,
-    );
-  return out;
+    out.findings = findings;
+    if (out.read.length)
+      out.commit = save(
+        store,
+        now,
+        findings,
+        `read from Entire (${out.read.length} finding${out.read.length === 1 ? '' : 's'})`,
+        opts,
+      );
+    return out;
+  });
 }
 
 /** The checkout a branch is in: its worktree, or the project's folder when that is on the branch. */
@@ -1144,19 +1149,22 @@ export function runReview(
   // Entire's reviewers read through every lens: recorded once they are back, never before, so a run cut short (killed,
   // or still under way) leaves no lens that says a reviewer read the branch
   if (due)
-    recordLenses(
-      store,
-      key,
-      b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES],
-      'entire',
-      opts,
-      b.loop.pass,
-      wentOut,
+    withStoreLock(store.root, () =>
+      recordLenses(
+        store,
+        key,
+        b.loop.state === 'recheck' ? ['fix'] : [...REVIEW_LENSES],
+        'entire',
+        opts,
+        b.loop.pass,
+        wentOut,
+      ),
     );
   const back = readFindings(store, key, opts);
   // a review that was due closes its round, once what it found was read; one asked for beside the loop (before the
   // change reaches review, while fixing, or after its end) only files
-  const round = due && back.listed ? closeRound(store, key, { ...opts, listed: true }) : undefined;
+  const round =
+    due && back.listed ? withStoreLock(store.root, () => closeRound(store, key, { ...opts, listed: true })) : undefined;
   return {
     change: rec.key,
     ran: true,

@@ -16,6 +16,7 @@ import { localHeads } from '../store/merged.js';
 import { baseBranch, branchesOf, mergedInto } from './git.js';
 import { formatLoop, readFindings, reviewLoop } from './review.js';
 import { learnCode } from '../ops/code.js';
+import { withStoreLock } from '../store/lock.js';
 
 export interface MergeResult {
   change: string;
@@ -56,16 +57,18 @@ export function mergeChange(
   if (!branch) throw new CliError(`${rec.key} has no branch in this repository to merge`);
   const named = `change:${rec.changeSlug}`;
   const notes: string[] = [];
-  const done = (by: MergeResult['by'], because: string): MergeResult => {
-    const commit =
-      rec.data.status === 'done'
-        ? null
-        : set(store, rec.key, ['status=done'], { session: opts.session, because }).commit;
-    // what the merge teaches the capabilities the change names (decision capability-code-paths/upkeep)
-    const learned = learnCode(store, rec.key, branch, opts.session);
-    if (learned) notes.push(learned);
-    return { change: rec.key, branch, base, by, notes, commit };
-  };
+  // the merge waits on Entire and git for minutes, so it takes the store's lock around each write, not the command
+  const done = (by: MergeResult['by'], because: string): MergeResult =>
+    withStoreLock(store.root, () => {
+      const commit =
+        rec.data.status === 'done'
+          ? null
+          : set(store, rec.key, ['status=done'], { session: opts.session, because }).commit;
+      // what the merge teaches the capabilities the change names (decision capability-code-paths/upkeep)
+      const learned = learnCode(store, rec.key, branch, opts.session);
+      if (learned) notes.push(learned);
+      return { change: rec.key, branch, base, by, notes, commit };
+    });
 
   const already = mergedInto(dir, branch, { base, named });
   if (already) return done('already', `${branch} is merged into ${already.on} (${already.how})`);
@@ -124,10 +127,12 @@ export function mergeChange(
     // one, or a sync after a fetch or after Entire was slow to answer) does not say it went past a gate kept from an
     // earlier read
     try {
-      set(store, rec.key, [`ext.entire.merged_through=${nowIso()}`], {
-        session: opts.session,
-        because: `${branch} merged through its Trail on Entire`,
-      });
+      withStoreLock(store.root, () =>
+        set(store, rec.key, [`ext.entire.merged_through=${nowIso()}`], {
+          session: opts.session,
+          because: `${branch} merged through its Trail on Entire`,
+        }),
+      );
     } catch (e) {
       notes.push(`that the merge went through the Trail was not kept (${(e as Error).message.split('\n')[0]})`);
     }

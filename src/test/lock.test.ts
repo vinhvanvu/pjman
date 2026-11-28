@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile, execFileSync, spawn } from 'node:child_process';
+import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -80,6 +80,22 @@ test('a second writer refuses after the wait, naming the holder', async () => {
     () => withStoreLock(store.root, () => {}),
     new RegExp(`the store is busy: another pjman is writing it \\(pid ${child.pid}`),
   );
+  child.kill();
+  await new Promise((res) => child.once('exit', res));
+});
+
+test('every command that writes the store takes its lock: code, person and tie wait for a writer and refuse after', async () => {
+  const child = holder(store.root, 5000);
+  await onceHeld(child);
+  for (const args of [
+    ['person', 'Sam'],
+    ['tie', 'person:tester', 'owner', 'product:none'],
+    ['code', 'link', 'feature:none', 'a.ts'],
+  ]) {
+    const r = spawnSync(process.execPath, [bin, ...args], { cwd: project, env: process.env, encoding: 'utf8' });
+    assert.equal(r.status, 1, args[0]);
+    assert.match(r.stderr, /the store is busy/, args[0]);
+  }
   child.kill();
   await new Promise((res) => child.once('exit', res));
 });

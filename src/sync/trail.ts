@@ -17,6 +17,7 @@ import { repoOf } from '../model/refs.js';
 import { observedBranches } from '../model/view.js';
 import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
+import { withStoreLock } from '../store/lock.js';
 import { note } from '../ops/note.js';
 import { set } from '../ops/set.js';
 import type { Store } from '../store/config.js';
@@ -443,10 +444,12 @@ export function reconcileTrail(
         // (a create that was never sent, Entire being down before it, is not one)
         if (!made.ok && !unanswered && !made.reason.startsWith('Entire was not asked again')) {
           try {
-            set(store, rec.key, [`ext.entire.create_unanswered=${nowIso()}`], {
-              session: opts.session,
-              because: 'entire trail create did not answer',
-            });
+            withStoreLock(store.root, () =>
+              set(store, rec.key, [`ext.entire.create_unanswered=${nowIso()}`], {
+                session: opts.session,
+                because: 'entire trail create did not answer',
+              }),
+            );
           } catch (e) {
             // the mark may not have been kept (a write that failed at its commit can leave it in the file all the
             // same), and the next run looks for that Trail only where the mark is set: without it a second one would
@@ -560,58 +563,63 @@ export function reconcileTrail(
         : { op: 'created', key, type: 'source', path: rel, writer: env.writer },
     );
   }
-  if (!bound) {
-    // the change as it stands now: Entire was asked in between, and a write made meanwhile is kept
-    const now = loadStore(store).byKey.get(changeKey)?.[0] ?? rec;
-    const links = arr(now.data.links).filter((k): k is string => typeof k === 'string');
-    // (the change has its Trail: the mark of a create that went unanswered has done its work)
-    const ext = { ...obj(now.data.ext) };
-    const mine = { ...obj(ext.entire) };
-    const marked = 'create_unanswered' in mine;
-    delete mine.create_unanswered;
-    if (Object.keys(mine).length) ext.entire = mine;
-    else delete ext.entire;
-    if (!links.includes(key))
-      writes.set(
-        now.path,
-        render(
-          'change',
-          { ...now.data, links: [...links, key], ext: Object.keys(ext).length ? ext : undefined },
-          now.body,
-        ),
+  // what Entire answered is written under the store's lock, taken here rather than around the calls to Entire: a
+  // command waiting on Entire (a merge, the follower) holds no other writer back
+  withStoreLock(store.root, () => {
+    if (!bound) {
+      // the change as it stands now: Entire was asked in between, and a write made meanwhile is kept
+      const now = loadStore(store).byKey.get(changeKey)?.[0] ?? rec;
+      const links = arr(now.data.links).filter((k): k is string => typeof k === 'string');
+      // (the change has its Trail: the mark of a create that went unanswered has done its work)
+      const ext = { ...obj(now.data.ext) };
+      const mine = { ...obj(ext.entire) };
+      const marked = 'create_unanswered' in mine;
+      delete mine.create_unanswered;
+      if (Object.keys(mine).length) ext.entire = mine;
+      else delete ext.entire;
+      if (!links.includes(key))
+        writes.set(
+          now.path,
+          render(
+            'change',
+            { ...now.data, links: [...links, key], ext: Object.keys(ext).length ? ext : undefined },
+            now.body,
+          ),
+        );
+      if (!links.includes(key))
+        events.push({
+          op: 'set',
+          key: rec.key,
+          type: 'change',
+          path: rec.path,
+          // (the mark taken off is part of the write, and of what reverses it)
+          fields: marked ? ['links', 'ext'] : ['links'],
+          writer: env.writer,
+        });
+    }
+    if (writes.size) {
+      const touched = [...writes.keys()];
+      const prior = snapshot(
+        store,
+        touched.filter((r) => !created.includes(r)),
       );
-    if (!links.includes(key))
-      events.push({
-        op: 'set',
-        key: rec.key,
-        type: 'change',
-        path: rec.path,
-        // (the mark taken off is part of the write, and of what reverses it)
-        fields: marked ? ['links', 'ext'] : ['links'],
-        writer: env.writer,
-      });
-  }
-  if (writes.size) {
-    const touched = [...writes.keys()];
-    const prior = snapshot(
-      store,
-      touched.filter((r) => !created.includes(r)),
-    );
-    for (const [rel, t] of writes) writeFile(store, rel, t);
-    validateOrUndo(store, touched, created, prior);
-    result.commit = finishWrite(
-      store,
-      `pjman: trail ${rec.key} (${result.acts.join(', ') || 'read'})`,
-      env.session,
-      events,
-    );
-  }
+      for (const [rel, t] of writes) writeFile(store, rel, t);
+      validateOrUndo(store, touched, created, prior);
+      result.commit = finishWrite(
+        store,
+        `pjman: trail ${rec.key} (${result.acts.join(', ') || 'read'})`,
+        env.session,
+        events,
+      );
+    }
+  });
   // a merge that may have gone past gates is put on the change's record, whichever command read it: the stored state
   // reads merged from here on, so the line is never produced again (the follower's note is not the only one)
   if (past.length) {
     const line = pastLine(past);
+    const said = `Entire, Trail #${state.number}: ${line}`;
     try {
-      note(store, rec.key, `Entire, Trail #${state.number}: ${line}`, { writer: opts.writer, session: opts.session });
+      withStoreLock(store.root, () => note(store, rec.key, said, { writer: opts.writer, session: opts.session }));
       result.noted = line;
     } catch (e) {
       result.pending.push(
@@ -624,10 +632,8 @@ export function reconcileTrail(
   // the same merge)
   if (state.change?.status === 'merged' && !state.ended && status === 'review') {
     loaded = loadStore(store);
-    set(store, rec.key, ['status=done'], {
-      session: opts.session,
-      because: `its branch was merged through Trail #${state.number} on Entire`,
-    });
+    const because = `its branch was merged through Trail #${state.number} on Entire`;
+    withStoreLock(store.root, () => set(store, rec.key, ['status=done'], { session: opts.session, because }));
     result.done = true;
     const closing = reconcileTrail(store, changeKey, opts);
     if (closing) {
