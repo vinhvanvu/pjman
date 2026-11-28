@@ -60,7 +60,7 @@ export function mergeChange(
   const named = `change:${rec.changeSlug}`;
   const notes: string[] = [];
   // the merge waits on Entire and git for minutes, so it takes the store's lock around each write, not the command.
-  // The branch is merged by then: a write that cannot land is said, never thrown, and pjman sync git sets it later
+  // The branch is merged by then: a write that cannot land is said, never thrown, with what sets the change done later
   const done = (by: MergeResult['by'], because: string): MergeResult => {
     try {
       return withStoreLock(store.root, () => {
@@ -75,7 +75,13 @@ export function mergeChange(
         return { change: rec.key, branch, base, by, notes, commit };
       });
     } catch (e) {
-      const undone = `${(e as Error).message.split('\n')[0]}; pjman sync git sets it done once the store is free`;
+      const said = (e as Error).message.split('\n')[0];
+      // pjman sync git ends a merged change only from review; any other is set done, and its code learned, by hand
+      const later =
+        live(loadStore(store), rec.key)?.data.status === 'review'
+          ? 'pjman sync git sets it done'
+          : `set it done with pjman set ${rec.key} status=done, then pjman code learn ${rec.key} --branch ${branch}`;
+      const undone = /the store is busy/.test(said) ? `${said}; once the store is free, ${later}` : `${said}; ${later}`;
       return { change: rec.key, branch, base, by, notes, commit: null, undone };
     }
   };
@@ -117,11 +123,11 @@ export function mergeChange(
         notes.push(
           `${read.read.length} finding${read.read.length === 1 ? '' : 's'} read from the Trail onto the change`,
         );
-      // (a change with no Trail has none to read: the merge below says what it needs)
-      else if (read.pending.length && !/has no Trail yet/.test(read.pending[0]))
-        notes.push(`the Trail's findings were not read (${read.pending[0]})`);
+      // (a change with no Trail has none to read: the merge below says what it needs.) Any other read that did not
+      // list them all would lose them: once merged, Entire lists the Trail's findings no more
+      else if (!read.listed && read.pending.length && !/has no Trail yet/.test(read.pending[0]))
+        throw new Error(read.pending[0]);
     } catch (e) {
-      // once merged, Entire lists the Trail's findings no more: a read that failed would lose them
       throw new CliError(
         `not merged: the Trail's findings could not be read onto ${rec.key} (${(e as Error).message.split('\n')[0]}); try again`,
       );

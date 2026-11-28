@@ -182,6 +182,21 @@ test('pjman merge writes the store under its lock: a busy store leaves the branc
     ['change:web/busy'],
   );
   assert.equal(statusOf('busy'), 'done');
+  // one merged before its plan ended is not one sync git ends: the message says how instead
+  change(store, 'early', { title: 'early', summary: 's', project: 'project:web', next: 'build it' });
+  step(store, 'change:early', 'start', 1, {});
+  branch('early');
+  const again = await holdLock(store.root);
+  try {
+    r = mergeChange(store, 'change:web/early');
+  } finally {
+    await again();
+  }
+  assert.match(
+    r.undone ?? '',
+    /the store is busy.*once the store is free, set it done with pjman set change:web\/early status=done, then pjman code learn/,
+  );
+  assert.equal(statusOf('early'), 'active');
 });
 
 test("opted in, the merge is the Trail's: a gate that blocks merges nothing; a merge that passes is pulled and set done", () => {
@@ -245,12 +260,21 @@ test("the Trail's findings are read onto the change before the merge, since a me
     `case "$1 $2" in
   "trail show"|"trail update") echo '${trail}' ;;
   "trail ready") echo ready ;;
-  "trail finding") if [ "$3" = dismiss ]; then touch ${path.join(tmp, 'late.dismissed')}; echo dismissed; elif [ -f ${path.join(tmp, 'late.dismissed')} ]; then echo '{"counts":{"Open":0},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"dismissed"}]}'; else echo '{"counts":{"Open":1},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"open"}]}'; fi ;;
+  "trail finding") if [ -f ${path.join(tmp, 'late.nolist')} ]; then echo 'the server did not answer (503)' >&2; exit 1; elif [ "$3" = dismiss ]; then touch ${path.join(tmp, 'late.dismissed')}; echo dismissed; elif [ -f ${path.join(tmp, 'late.dismissed')} ]; then echo '{"counts":{"Open":0},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"dismissed"}]}'; else echo '{"counts":{"Open":1},"findings":[{"id":"L1","body":"a late finding","severity":"low","status":"open"}]}'; fi ;;
   "trail merge") cd ${other} && git -c user.name=t -c user.email=t@example.com merge -q --no-ff origin/late -m "Merge pull request #10 from acme/late" && git push -q origin main && echo '{"merged":true}' ;;
 esac`,
   );
   assert.deepEqual(reconcileTrail(store, 'change:web/late', { entire: { bin } })!.pending, []);
-  // a read that cannot be written (the store busy) merges nothing: once merged, Entire lists the findings no more
+  // a read that cannot be made (Entire's list fails) or written (the store busy) merges nothing: once merged, Entire
+  // lists the findings no more
+  fs.rmSync(path.join(tmp, 'calls.log'));
+  fs.writeFileSync(path.join(tmp, 'late.nolist'), '');
+  assert.throws(
+    () => mergeChange(store, 'change:web/late', { entire: { bin } }),
+    /not merged: the Trail's findings could not be read onto change:web\/late \(.*503/,
+  );
+  fs.rmSync(path.join(tmp, 'late.nolist'));
+  assert.ok(!fs.readFileSync(path.join(tmp, 'calls.log'), 'utf8').includes('trail merge'), 'not merged past it');
   fs.rmSync(path.join(tmp, 'calls.log'));
   const release = await holdLock(store.root);
   try {
