@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { before, test } from 'node:test';
 import { init } from '../cli/init.js';
 import { findStore, type Store } from '../store/config.js';
-import { holdsLock, lockPath, lockStore, unlockStore, withStoreLock } from '../store/lock.js';
+import { holdsLock, lockPath, lockStore, unlockStore, withStoreLock, withoutStoreLock } from '../store/lock.js';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-lock-'));
 const home = path.join(tmp, 'home');
@@ -98,6 +98,37 @@ test('every command that writes the store takes its lock: code, person and tie w
   }
   child.kill();
   await new Promise((res) => child.once('exit', res));
+});
+
+test('withoutStoreLock lets the lock go to another writer meanwhile, and takes it back at its depth once that one is done', () => {
+  assert.equal(
+    withoutStoreLock(store.root, () => holdsLock(store.root)),
+    false,
+    'a process holding nothing just runs it',
+  );
+  lockStore(store.root);
+  lockStore(store.root);
+  withoutStoreLock(store.root, () => {
+    assert.ok(!holdsLock(store.root));
+    // another process takes the lock (it would wait 400ms and refuse were it still held) and lets it go
+    const lock = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'store', 'lock.js');
+    const other = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { lockStore, unlockStore } from ${JSON.stringify(lock)}; lockStore(${JSON.stringify(store.root)}); unlockStore(${JSON.stringify(store.root)});`,
+      ],
+      { env: process.env, encoding: 'utf8' },
+    );
+    assert.equal(other.status, 0, other.stderr);
+  });
+  assert.ok(holdsLock(store.root));
+  assert.equal(JSON.parse(fs.readFileSync(lockPath(store.root), 'utf8')).pid, process.pid);
+  unlockStore(store.root);
+  assert.ok(holdsLock(store.root), 'held at the depth it was');
+  unlockStore(store.root);
+  assert.ok(!holdsLock(store.root));
 });
 
 test('a lock left by a dead process is reclaimed at once', () => {

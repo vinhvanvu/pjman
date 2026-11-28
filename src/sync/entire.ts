@@ -12,6 +12,7 @@ import { entireOn, runEntire, type EntireOpts } from '../entire/entire.js';
 import { findReferences, resolveArg } from '../model/graph.js';
 import { repoOf } from '../model/refs.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo, writeFile } from '../ops/write.js';
+import { withStoreLock } from '../store/lock.js';
 import type { Store } from '../store/config.js';
 import type { EventInput } from '../store/events.js';
 import { git } from '../store/git.js';
@@ -249,140 +250,164 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
       id,
       (cs.length > 1 ? cs.find((c) => isAncestor(dir, c.sha, baseRef)) : undefined)?.sha ?? cs.at(-1)!.sha,
     );
-  // Entire is asked for a bounded number of checkpoints a run, and no more once it has failed to answer one
+  // Entire is asked for the sessions behind each new checkpoint before the lock is taken, for a bounded number of
+  // checkpoints a run and no more once it has failed to answer one: the lock is held only for the write
+  const explained = new Map<string, string[]>();
   let asks = 25;
-  const repo = repoOf(loaded, project);
-  const env = envelope({ session: opts.session, writer: opts.writer });
-  const stamp = { writer: env.writer, session: env.session, created: localDate() };
-  const events: EventInput[] = [];
-  const writes = new Map<string, string>();
-  const created: string[] = [];
-  // records are rewritten as the run goes: the latest data of each, by path
-  const data = new Map<string, { rec: Rec; data: Record<string, unknown> }>();
-  const dataOf = (rec: Rec) => {
-    if (!data.has(rec.path)) data.set(rec.path, { rec, data: { ...rec.data } });
-    return data.get(rec.path)!.data;
-  };
-  const changed = new Map<string, Set<string>>();
-  const mark = (rec: Rec, field: string) => {
-    if (!changed.has(rec.path)) changed.set(rec.path, new Set());
-    changed.get(rec.path)!.add(field);
-  };
-
   for (const c of commits) {
-    const changes = changesOf(loaded, c, { project, projectDir: dir });
+    if (asks <= 0) break;
+    if (!changesOf(loaded, c, { project, projectDir: dir }).length) continue;
     for (const id of c.checkpoints) {
-      if (canonical.get(id) !== c.sha) continue;
-      result.checkpoints++;
-      if (!changes.length) {
-        result.unplaced++;
-        continue;
-      }
-      const key = `${CHECKPOINT_KIND}:${id}`;
-      const src = loaded.byKey.get(key)?.[0];
-      // the sessions behind the checkpoint: known from an earlier sync, else asked of Entire
-      const known = obj(obj(src?.data.ext)?.entire);
-      let sessions = list(known?.sessions);
-      let asked = false;
-      // asked once it has answered, even with no session; not asked again this run once a call has failed
-      if (!sessions.length && known?.explained !== true && asks > 0) {
-        asks--;
-        const r = runEntire(['checkpoint', 'explain', id], { ...opts.entire, cwd: dir });
-        const answer = r.ok ? obj(r.data) : undefined;
-        if (answer) {
-          asked = true;
-          sessions = (Array.isArray(answer.sessions) ? answer.sessions : [])
+      if (canonical.get(id) !== c.sha || asks <= 0) continue;
+      // asked once it has answered, even with no session
+      const known = obj(obj(loaded.byKey.get(`${CHECKPOINT_KIND}:${id}`)?.[0]?.data.ext)?.entire);
+      if (list(known?.sessions).length || known?.explained === true) continue;
+      asks--;
+      const r = runEntire(['checkpoint', 'explain', id], { ...opts.entire, cwd: dir });
+      const answer = r.ok ? obj(r.data) : undefined;
+      if (answer)
+        explained.set(
+          id,
+          (Array.isArray(answer.sessions) ? answer.sessions : [])
             .map((s) => obj(s)?.session_id)
-            .filter((s): s is string => typeof s === 'string');
-        } else {
-          asks = 0;
-          const reason = r.ok ? `entire checkpoint explain ${id} answered nothing readable` : r.reason;
-          if (!result.pending.includes(reason)) result.pending.push(reason);
-        }
-      }
-      // written when new, when Entire has just answered, and when the trailer now sits on another commit (a rebase,
-      // an amend, a squash): the link opens on the commit that exists
-      if (!src || asked || known?.commit !== c.sha) {
-        const rel = src?.path ?? path.join('sources', CHECKPOINT_KIND, `${sourceFileSlug(CHECKPOINT_KIND, id)}.md`);
-        const srcData: Record<string, unknown> = {
-          ...src?.data,
-          kind: CHECKPOINT_KIND,
-          key: id,
-          title: c.subject.slice(0, 200),
-          url: repo ? `https://entire.com/gh/${repo}/commit/${c.sha}` : src?.data.url,
-          ...(src ? {} : stamp),
-          ext: {
-            ...obj(src?.data.ext),
-            entire: {
-              commit: c.sha,
-              ...(sessions.length ? { sessions } : {}),
-              ...(asked || known?.explained === true ? { explained: true } : {}),
-              synced_at: nowIso(),
-            },
-          },
-        };
-        writes.set(rel, render('source', srcData, src?.body ?? ''));
-        if (!src) created.push(rel);
-        events.push(
-          src
-            ? { op: 'set', key, type: 'source', path: rel, fields: ['ext'], writer: env.writer }
-            : { op: 'created', key, type: 'source', path: rel, writer: env.writer },
+            .filter((s): s is string => typeof s === 'string'),
         );
-      }
-      for (const change of changes) {
-        const rec = loaded.byKey.get(change)?.[0];
-        if (!rec) continue;
-        const seenBy: string[] = [];
-        const d = dataOf(rec);
-        const links = list(d.links);
-        let wrote = false;
-        if (!links.includes(key)) {
-          d.links = [...links, key];
-          mark(rec, 'links');
-          wrote = true;
-        }
-        for (const sid of sessions) {
-          const s = findSession(loaded, sid);
-          if (!s) continue;
-          const sd = dataOf(s);
-          const edges = Array.isArray(sd.observed) ? [...(sd.observed as Record<string, unknown>[])] : [];
-          if (edges.some((o) => o.edge === 'links' && o.from === change && o.to === key)) continue;
-          edges.push({ edge: 'links', from: change, to: key, at: nowIso() });
-          sd.observed = edges;
-          mark(s, 'observed');
-          seenBy.push(s.key);
-          wrote = true;
-        }
-        if (wrote) result.linked.push({ checkpoint: key, change, sessions: seenBy });
+      else {
+        asks = 0;
+        const reason = r.ok ? `entire checkpoint explain ${id} answered nothing readable` : r.reason;
+        if (!result.pending.includes(reason)) result.pending.push(reason);
       }
     }
   }
-  for (const [rel, fields] of changed) {
-    const { rec, data: d } = data.get(rel)!;
-    writes.set(rel, render(rec.type, d, rec.body));
-    events.push({
-      op: fields.has('observed') ? 'observe' : 'set',
-      key: rec.key,
-      type: rec.type,
-      path: rel,
-      fields: [...fields],
-      writer: env.writer,
+  // what was learned is written onto the records as they stand now, under the store's lock
+  // a store busy past the wait leaves the links to the next run, and the Trails are still gone through
+  try {
+    withStoreLock(store.root, () => {
+      const now = loadStore(store);
+      const repo = repoOf(now, project);
+      const env = envelope({ session: opts.session, writer: opts.writer });
+      const stamp = { writer: env.writer, session: env.session, created: localDate() };
+      const events: EventInput[] = [];
+      const writes = new Map<string, string>();
+      const created: string[] = [];
+      // records are rewritten as the run goes: the latest data of each, by path
+      const data = new Map<string, { rec: Rec; data: Record<string, unknown> }>();
+      const dataOf = (rec: Rec) => {
+        if (!data.has(rec.path)) data.set(rec.path, { rec, data: { ...rec.data } });
+        return data.get(rec.path)!.data;
+      };
+      const changed = new Map<string, Set<string>>();
+      const mark = (rec: Rec, field: string) => {
+        if (!changed.has(rec.path)) changed.set(rec.path, new Set());
+        changed.get(rec.path)!.add(field);
+      };
+
+      for (const c of commits) {
+        const changes = changesOf(now, c, { project, projectDir: dir });
+        for (const id of c.checkpoints) {
+          if (canonical.get(id) !== c.sha) continue;
+          result.checkpoints++;
+          if (!changes.length) {
+            result.unplaced++;
+            continue;
+          }
+          const key = `${CHECKPOINT_KIND}:${id}`;
+          const src = now.byKey.get(key)?.[0];
+          // the sessions behind the checkpoint: known from an earlier sync, else asked of Entire
+          const known = obj(obj(src?.data.ext)?.entire);
+          let sessions = list(known?.sessions);
+          // (Entire's answer, asked above; one written meanwhile by another run stands)
+          const answered = !sessions.length && known?.explained !== true ? explained.get(id) : undefined;
+          const asked = !!answered;
+          if (answered) sessions = answered;
+          // written when new, when Entire has just answered, and when the trailer now sits on another commit (a rebase,
+          // an amend, a squash): the link opens on the commit that exists
+          if (!src || asked || known?.commit !== c.sha) {
+            const rel = src?.path ?? path.join('sources', CHECKPOINT_KIND, `${sourceFileSlug(CHECKPOINT_KIND, id)}.md`);
+            const srcData: Record<string, unknown> = {
+              ...src?.data,
+              kind: CHECKPOINT_KIND,
+              key: id,
+              title: c.subject.slice(0, 200),
+              url: repo ? `https://entire.com/gh/${repo}/commit/${c.sha}` : src?.data.url,
+              ...(src ? {} : stamp),
+              ext: {
+                ...obj(src?.data.ext),
+                entire: {
+                  commit: c.sha,
+                  ...(sessions.length ? { sessions } : {}),
+                  ...(asked || known?.explained === true ? { explained: true } : {}),
+                  synced_at: nowIso(),
+                },
+              },
+            };
+            writes.set(rel, render('source', srcData, src?.body ?? ''));
+            if (!src) created.push(rel);
+            events.push(
+              src
+                ? { op: 'set', key, type: 'source', path: rel, fields: ['ext'], writer: env.writer }
+                : { op: 'created', key, type: 'source', path: rel, writer: env.writer },
+            );
+          }
+          for (const change of changes) {
+            const rec = now.byKey.get(change)?.[0];
+            if (!rec) continue;
+            const seenBy: string[] = [];
+            const d = dataOf(rec);
+            const links = list(d.links);
+            let wrote = false;
+            if (!links.includes(key)) {
+              d.links = [...links, key];
+              mark(rec, 'links');
+              wrote = true;
+            }
+            for (const sid of sessions) {
+              const s = findSession(now, sid);
+              if (!s) continue;
+              const sd = dataOf(s);
+              const edges = Array.isArray(sd.observed) ? [...(sd.observed as Record<string, unknown>[])] : [];
+              if (edges.some((o) => o.edge === 'links' && o.from === change && o.to === key)) continue;
+              edges.push({ edge: 'links', from: change, to: key, at: nowIso() });
+              sd.observed = edges;
+              mark(s, 'observed');
+              seenBy.push(s.key);
+              wrote = true;
+            }
+            if (wrote) result.linked.push({ checkpoint: key, change, sessions: seenBy });
+          }
+        }
+      }
+      for (const [rel, fields] of changed) {
+        const { rec, data: d } = data.get(rel)!;
+        writes.set(rel, render(rec.type, d, rec.body));
+        events.push({
+          op: fields.has('observed') ? 'observe' : 'set',
+          key: rec.key,
+          type: rec.type,
+          path: rel,
+          fields: [...fields],
+          writer: env.writer,
+        });
+      }
+      if (writes.size) {
+        const touched = [...writes.keys()];
+        const prior = snapshot(
+          store,
+          touched.filter((rel) => !created.includes(rel)),
+        );
+        for (const [rel, text] of writes) writeFile(store, rel, text);
+        validateOrUndo(store, touched, created, prior);
+        result.commit = finishWrite(
+          store,
+          `pjman: sync entire ${project} (${result.linked.length} checkpoint link${result.linked.length === 1 ? '' : 's'})`,
+          env.session,
+          events,
+        );
+      }
     });
-  }
-  if (writes.size) {
-    const touched = [...writes.keys()];
-    const prior = snapshot(
-      store,
-      touched.filter((rel) => !created.includes(rel)),
-    );
-    for (const [rel, text] of writes) writeFile(store, rel, text);
-    validateOrUndo(store, touched, created, prior);
-    result.commit = finishWrite(
-      store,
-      `pjman: sync entire ${project} (${result.linked.length} checkpoint link${result.linked.length === 1 ? '' : 's'})`,
-      env.session,
-      events,
-    );
+  } catch (e) {
+    if (!/the store is busy/.test((e as Error).message)) throw e;
+    result.pending.push((e as Error).message.split('\n')[0]);
   }
   // the Trails: each change in motion, or bound to a Trail still open, is reconciled and read back
   // (the follower, which passes --wake every minute, reads only the Trails a session waits on: changes in review with
@@ -428,8 +453,10 @@ export function syncEntire(store: Store, opts: EntireSyncOpts = {}): EntireSyncR
       // (a merge that may have gone past gates is already a note, written by the reconcile whoever ran it)
       const noted = t?.noted;
       const moved = (t?.moved ?? []).filter((m) => m !== noted);
-      if (t && opts.wake && moved.length && t.state)
-        note(store, rec.key, `Entire, Trail #${t.state.number}: ${moved.join('; ')}`, { writer: opts.writer });
+      if (t && opts.wake && moved.length && t.state) {
+        const said = `Entire, Trail #${t.state.number}: ${moved.join('; ')}`;
+        withStoreLock(store.root, () => note(store, rec.key, said, { writer: opts.writer }));
+      }
     } catch (e) {
       const reason = `${rec.key}: ${(e as Error).message.split('\n')[0]}`;
       if (!result.pending.includes(reason)) result.pending.push(reason);

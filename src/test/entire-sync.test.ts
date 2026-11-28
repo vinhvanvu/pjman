@@ -2,7 +2,7 @@
 // them (change:checkpoint-link). The repository here carries `Entire-Checkpoint` trailers as Entire's commit hook
 // writes them; Entire is a fake binary answering `checkpoint explain`.
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -214,6 +214,58 @@ test("Entire is not asked again in a run once it fails, a checkpoint follows its
   assert.deepEqual(found.find((c) => c.sha === low)!.branches, ['lower']);
   assert.deepEqual(found.find((c) => c.sha === up)!.branches, ['upper']);
   g('branch', '-q', '-D', 'lower', 'upper');
+});
+
+test('sync entire holds no lock while it waits on Entire: another write lands meanwhile, and both are kept', async () => {
+  const E = '01EEEEEEEEEEEEEEEEEEEEEEEE';
+  commit('feat: the cart remembers (change:cart)', E);
+  const slow = path.join(tmp, 'entire-slow');
+  fs.writeFileSync(
+    slow,
+    `#!/bin/sh
+echo "$@" >> ${path.join(tmp, 'calls.log')}
+case "$1 $2 $3" in
+  "checkpoint explain ${E}") sleep 2; echo '{"checkpoint_id":"${E}","sessions":[{"session_id":"s2"}]}' ;;
+  "checkpoint explain "*) echo '{"sessions":[]}' ;;
+  *) echo "unknown" >&2; exit 1 ;;
+esac
+`,
+    { mode: 0o755 },
+  );
+  fs.rmSync(path.join(tmp, 'calls.log'), { force: true });
+  const bin = path.resolve(import.meta.dirname, '..', '..', 'bin', 'pjman.js');
+  const sync = spawn(process.execPath, [bin, 'sync', 'entire'], {
+    cwd: dir,
+    env: { ...process.env, PJMAN_ENTIRE_BIN: slow },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let said = '';
+  sync.stdout.on('data', (d: Buffer) => (said += String(d)));
+  sync.stderr.on('data', (d: Buffer) => (said += String(d)));
+  let ended = false;
+  const exited = new Promise<number | null>((res) =>
+    sync.once('exit', (code) => {
+      ended = true;
+      res(code);
+    }),
+  );
+  // once Entire is being asked, another command writes the store without waiting on it
+  const asked = () => calls().some((c) => c.startsWith(`checkpoint explain ${E}`));
+  while (!ended && !asked()) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(asked(), `the sync asked Entire (${said})`);
+  const t = Date.now();
+  const w = spawnSync(process.execPath, [bin, 'set', 'change:cart', 'gist=The cart, remembered'], {
+    cwd: dir,
+    env: { ...process.env, PJMAN_LOCK_WAIT_MS: '500' },
+    encoding: 'utf8',
+  });
+  assert.equal(w.status, 0, w.stderr);
+  assert.ok(Date.now() - t < 1500, 'not held behind the sync');
+  assert.equal(await exited, 0);
+  const now = loadStore(store);
+  assert.equal(now.byKey.get('change:web/cart')![0].data.gist, 'The cart, remembered');
+  const ext = now.byKey.get(`entire-checkpoint:${E}`)![0].data.ext as { entire: { sessions: string[] } };
+  assert.deepEqual(ext.entire.sessions, ['s2']);
 });
 
 test('the entire-kinds move: a store from before 0.7.0 gains the two source kinds, then the stamp', () => {

@@ -9,9 +9,10 @@ import path from 'node:path';
 import { userDir } from './config.js';
 import { CliError } from './util.js';
 
-/** How long a second writer waits before refusing, and how old a live holder may be before it is taken for hung. */
+/** How long a second writer waits before refusing, and how old a live holder may be before it is taken for hung: well
+ *  past any write, since no command holds the lock while it waits on Entire (withoutStoreLock). */
 const waitMs = () => Number(process.env.PJMAN_LOCK_WAIT_MS) || 5000;
-const staleMs = () => Number(process.env.PJMAN_LOCK_STALE_MS) || 120_000;
+const staleMs = () => Number(process.env.PJMAN_LOCK_STALE_MS) || 600_000;
 const POLL_MS = 25;
 
 interface Holder {
@@ -191,6 +192,48 @@ export function withStoreLock<T>(root: string, fn: () => T): T {
     return fn();
   } finally {
     unlockStore(root);
+  }
+}
+
+/** Run `fn` with the store's lock let go, and take it back after: for a locked command's wait on Entire, whose writes
+ *  take the lock themselves. Other writers go ahead meanwhile, so what was read before is read again after. */
+export function withoutStoreLock<T>(root: string, fn: () => T): T {
+  const file = lockPath(root);
+  const depth = held.get(file) ?? 0;
+  if (!depth) return fn();
+  held.delete(file);
+  release(file);
+  let out: T;
+  try {
+    out = fn();
+  } catch (e) {
+    // fn's own error is the one told; a lock not taken back is let go with the process
+    try {
+      retake(root, depth);
+    } catch {
+      // (fn's error stands)
+    }
+    throw e;
+  }
+  try {
+    retake(root, depth);
+  } catch {
+    // fn's writes have landed under the lock they took themselves; what the command writes after takes it again
+  }
+  return out;
+}
+
+/** Take the lock back at the depth it was held, however long the other writers take: the command goes on as it began.
+ *  Only a busy store is waited on; any other failure is thrown at once. */
+function retake(root: string, depth: number): void {
+  for (const until = Date.now() + staleMs(); ;) {
+    try {
+      lockStore(root);
+      held.set(lockPath(root), depth);
+      return;
+    } catch (e) {
+      if (!/the store is busy/.test((e as Error).message) || Date.now() > until) throw e;
+    }
   }
 }
 
