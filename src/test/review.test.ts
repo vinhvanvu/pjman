@@ -2,7 +2,7 @@
 // kept as data on the change, and, in a project that opted in to Entire, each finding filed onto the change's Trail
 // and settled there when it is settled here. With no Entire the review is local.
 import assert from 'node:assert/strict';
-import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,7 +33,7 @@ import {
   settleFinding,
 } from '../sync/review.js';
 import { reconcileTrail } from '../sync/trail.js';
-import { change } from './shape.js';
+import { change, holdLock } from './shape.js';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-review-')));
 const dir = path.join(tmp, 'web');
@@ -325,31 +325,20 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
   assert.equal(findings().at(-1)!.state, 'resolved');
 });
 
-test('what is read from Entire is written under the store lock: a reader refuses while another process writes', async () => {
+test('what is read from Entire is written under the store lock: a reader and a review refuse while another process writes', async () => {
   execFileSync(bin, ['trail', 'finding', 'reopen', '--branch', 'cart', findings().at(-1)!.entire!]);
-  const lockJs = path.resolve(import.meta.dirname, '..', 'store', 'lock.js');
-  const child = spawn(
-    process.execPath,
-    [
-      '--input-type=module',
-      '-e',
-      `import { lockStore } from ${JSON.stringify(lockJs)}; lockStore(${JSON.stringify(store.root)}); process.stdout.write('held\\n'); setTimeout(() => {}, 5000);`,
-    ],
-    { env: process.env, stdio: ['ignore', 'pipe', 'inherit'] },
-  );
-  await new Promise<void>((res) => child.stdout.once('data', () => res()));
-  process.env.PJMAN_LOCK_WAIT_MS = '300';
+  const held = findings().length;
+  const release = await holdLock(store.root);
   try {
     assert.throws(() => readFindings(store, 'change:web/cart', { entire: { bin } }), /the store is busy/);
     assert.equal(findings().at(-1)!.state, 'resolved', 'nothing written beside the holder');
+    // Entire's review runs without the lock; what it found is written under it, so it refuses too
+    assert.throws(() => runReview(store, 'change:web/cart', { entire: { bin } }), /the store is busy/);
+    assert.equal(findings().length, held, 'nothing written beside the holder');
   } finally {
-    delete process.env.PJMAN_LOCK_WAIT_MS;
-    child.kill();
-    await new Promise((res) => child.once('exit', res));
+    await release();
   }
-  assert.deepEqual(readFindings(store, 'change:web/cart', { entire: { bin } }).read, [
-    `reopened #${findings().length}`,
-  ]);
+  assert.ok(readFindings(store, 'change:web/cart', { entire: { bin } }).read.includes(`reopened #${held}`));
 });
 
 test('the profile is named to Entire: the one asked for, the default, or the only one; several with no default are not guessed', () => {

@@ -358,6 +358,8 @@ function main(argv: string[]): number {
         v.lens !== undefined ||
         !!v.reviewed ||
         !!v['follow-up'])) ||
+    // code writes with link, unlink, mv, learn and seed; its other verbs and seed --check only read
+    (cmd === 'code' && (['link', 'unlink', 'mv', 'learn'].includes(pos[1]) || (pos[1] === 'seed' && !v.check))) ||
     (cmd === 'brief' && !!v.session) ||
     (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
   if (!writes) return dispatch(v, pos, cmd, cwd);
@@ -392,7 +394,6 @@ const WRITE_COMMANDS = new Set([
   'undo',
   'migrate',
   'lift',
-  'code',
   'person',
   'tie',
 ]);
@@ -1553,7 +1554,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             : r.by === 'local'
               ? `merged ${r.branch} into ${r.base}`
               : `${r.branch} was already merged into ${r.base}`;
-        out(`${how}; ${printed(r.change)} is done${r.commit ? ` (committed ${r.commit})` : ''}`);
+        out(
+          r.undone
+            ? `${how}; ${printed(r.change)} was not set done: ${r.undone}`
+            : `${how}; ${printed(r.change)} is done${r.commit ? ` (committed ${r.commit})` : ''}`,
+        );
         for (const n of r.notes) out(`note: ${n}`);
         if (trail) for (const line of trailLines(trail, printed)) out(line);
       }

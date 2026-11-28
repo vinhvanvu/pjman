@@ -26,8 +26,10 @@ export interface MergeResult {
   by: 'entire' | 'local' | 'already';
   /** What was left undone and why: the base not pulled (another branch is checked out, the pull failed). */
   notes: string[];
-  /** The store commit that set the change done, or null when it already was. */
+  /** The store commit that set the change done, or null when it already was or could not be. */
   commit: string | null;
+  /** Why the change was not set done after its branch merged (the store busy): pjman sync git sets it later. */
+  undone?: string;
 }
 
 const tryGit = (cwd: string, args: string[]): string | null => {
@@ -57,18 +59,26 @@ export function mergeChange(
   if (!branch) throw new CliError(`${rec.key} has no branch in this repository to merge`);
   const named = `change:${rec.changeSlug}`;
   const notes: string[] = [];
-  // the merge waits on Entire and git for minutes, so it takes the store's lock around each write, not the command
-  const done = (by: MergeResult['by'], because: string): MergeResult =>
-    withStoreLock(store.root, () => {
-      const commit =
-        rec.data.status === 'done'
-          ? null
-          : set(store, rec.key, ['status=done'], { session: opts.session, because }).commit;
-      // what the merge teaches the capabilities the change names (decision capability-code-paths/upkeep)
-      const learned = learnCode(store, rec.key, branch, opts.session);
-      if (learned) notes.push(learned);
-      return { change: rec.key, branch, base, by, notes, commit };
-    });
+  // the merge waits on Entire and git for minutes, so it takes the store's lock around each write, not the command.
+  // The branch is merged by then: a write that cannot land is said, never thrown, and pjman sync git sets it later
+  const done = (by: MergeResult['by'], because: string): MergeResult => {
+    try {
+      return withStoreLock(store.root, () => {
+        // (the status as it stands under the lock, not as it was read before the merge)
+        const commit =
+          live(loadStore(store), rec.key)?.data.status === 'done'
+            ? null
+            : set(store, rec.key, ['status=done'], { session: opts.session, because }).commit;
+        // what the merge teaches the capabilities the change names (decision capability-code-paths/upkeep)
+        const learned = learnCode(store, rec.key, branch, opts.session);
+        if (learned) notes.push(learned);
+        return { change: rec.key, branch, base, by, notes, commit };
+      });
+    } catch (e) {
+      const undone = `${(e as Error).message.split('\n')[0]}; pjman sync git sets it done once the store is free`;
+      return { change: rec.key, branch, base, by, notes, commit: null, undone };
+    }
+  };
 
   const already = mergedInto(dir, branch, { base, named });
   if (already) return done('already', `${branch} is merged into ${already.on} (${already.how})`);
@@ -111,7 +121,10 @@ export function mergeChange(
       else if (read.pending.length && !/has no Trail yet/.test(read.pending[0]))
         notes.push(`the Trail's findings were not read (${read.pending[0]})`);
     } catch (e) {
-      notes.push(`the Trail's findings were not read (${(e as Error).message.split('\n')[0]})`);
+      // once merged, Entire lists the Trail's findings no more: a read that failed would lose them
+      throw new CliError(
+        `not merged: the Trail's findings could not be read onto ${rec.key} (${(e as Error).message.split('\n')[0]}); try again`,
+      );
     }
     held();
     const r = runEntire<Record<string, unknown>>(['trail', 'merge', '--branch', branch], {

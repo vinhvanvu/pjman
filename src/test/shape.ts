@@ -1,6 +1,8 @@
 // Test helpers that file a change or a decision in the foundation's shape from the few words a test has: a title
 // becomes the gist, a summary the Intent, and the rungs and sections the shape requires are filled with plain
 // stand-ins. A test that cares about a field passes it in the new shape; these keep the rest short.
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import type { Store } from '../store/config.js';
 import { newRecord, type NewFlags, type NewResult } from '../ops/new.js';
 import { decision as writeDecision, type DecisionResult, type EntryInput } from '../ops/decision.js';
@@ -95,4 +97,28 @@ export function decisionRec(store: Store, ident: string, flags: DecisionFlags = 
     session: flags.session,
     writer: flags.writer,
   });
+}
+
+/** Another process holding the store's lock until the returned release is called; resolves once it holds it. Writes
+ *  in this process give up after `waitMs` while it holds. */
+export async function holdLock(root: string, waitMs = 300): Promise<() => Promise<void>> {
+  const lockJs = path.resolve(import.meta.dirname, '..', 'store', 'lock.js');
+  const child = spawn(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `import { lockStore } from ${JSON.stringify(lockJs)}; lockStore(${JSON.stringify(root)}); process.stdout.write('held\\n'); setTimeout(() => {}, 60000);`,
+    ],
+    { env: process.env, stdio: ['ignore', 'pipe', 'inherit'] },
+  );
+  await new Promise<void>((res) => child.stdout.once('data', () => res()));
+  const was = process.env.PJMAN_LOCK_WAIT_MS;
+  process.env.PJMAN_LOCK_WAIT_MS = String(waitMs);
+  return async () => {
+    if (was === undefined) delete process.env.PJMAN_LOCK_WAIT_MS;
+    else process.env.PJMAN_LOCK_WAIT_MS = was;
+    child.kill();
+    await new Promise((res) => child.once('exit', res));
+  };
 }

@@ -530,42 +530,43 @@ export function reconcileTrail(
     `${TRAIL_KIND}:${at ? `${at[1]}/${at[2]}` : repo ? `gh/${repo.split('/')[0]}` : 'trail'}/${state.number}`;
   result.trail = key;
   const rest = key.slice(TRAIL_KIND.length + 1);
-  const src = loaded.byKey.get(key)?.[0];
-  const env = envelope({ session: opts.session, writer: opts.writer });
-  const kept = { ...state };
-  const same = (a: TrailState | undefined) =>
-    !!a && JSON.stringify({ ...a, synced_at: undefined }) === JSON.stringify({ ...kept, synced_at: undefined });
-  const events: EventInput[] = [];
-  const writes = new Map<string, string>();
-  const created: string[] = [];
-  if (!src || !same(before) || src.data.title !== text.title) {
-    const rel = src?.path ?? path.join('sources', TRAIL_KIND, `${sourceFileSlug(TRAIL_KIND, rest)}.md`);
-    writes.set(
-      rel,
-      render(
-        'source',
-        {
-          ...src?.data,
-          kind: TRAIL_KIND,
-          key: rest,
-          title: text.title,
-          url: state.url ?? src?.data.url,
-          ...(src ? {} : { writer: env.writer, session: env.session, created: localDate() }),
-          ext: { ...obj(src?.data.ext), entire: { ...kept, synced_at: nowIso() } },
-        },
-        src?.body ?? '',
-      ),
-    );
-    if (!src) created.push(rel);
-    events.push(
-      src
-        ? { op: 'set', key, type: 'source', path: rel, fields: ['ext'], writer: env.writer }
-        : { op: 'created', key, type: 'source', path: rel, writer: env.writer },
-    );
-  }
-  // what Entire answered is written under the store's lock, taken here rather than around the calls to Entire: a
-  // command waiting on Entire (a merge, the follower) holds no other writer back
+  // what Entire answered is written under the store's lock, taken here rather than around the calls to Entire, and onto
+  // the records as they stand now: a command waiting on Entire (a merge) holds no other writer back while it waits, and
+  // a write made meanwhile is kept
   withStoreLock(store.root, () => {
+    const src = loadStore(store).byKey.get(key)?.[0];
+    const env = envelope({ session: opts.session, writer: opts.writer });
+    const kept = { ...state };
+    const same = (a: TrailState | undefined) =>
+      !!a && JSON.stringify({ ...a, synced_at: undefined }) === JSON.stringify({ ...kept, synced_at: undefined });
+    const events: EventInput[] = [];
+    const writes = new Map<string, string>();
+    const created: string[] = [];
+    if (!src || !same(before) || src.data.title !== text.title) {
+      const rel = src?.path ?? path.join('sources', TRAIL_KIND, `${sourceFileSlug(TRAIL_KIND, rest)}.md`);
+      writes.set(
+        rel,
+        render(
+          'source',
+          {
+            ...src?.data,
+            kind: TRAIL_KIND,
+            key: rest,
+            title: text.title,
+            url: kept.url ?? src?.data.url,
+            ...(src ? {} : { writer: env.writer, session: env.session, created: localDate() }),
+            ext: { ...obj(src?.data.ext), entire: { ...kept, synced_at: nowIso() } },
+          },
+          src?.body ?? '',
+        ),
+      );
+      if (!src) created.push(rel);
+      events.push(
+        src
+          ? { op: 'set', key, type: 'source', path: rel, fields: ['ext'], writer: env.writer }
+          : { op: 'created', key, type: 'source', path: rel, writer: env.writer },
+      );
+    }
     if (!bound) {
       // the change as it stands now: Entire was asked in between, and a write made meanwhile is kept
       const now = loadStore(store).byKey.get(changeKey)?.[0] ?? rec;
@@ -633,9 +634,13 @@ export function reconcileTrail(
   if (state.change?.status === 'merged' && !state.ended && status === 'review') {
     loaded = loadStore(store);
     const because = `its branch was merged through Trail #${state.number} on Entire`;
-    withStoreLock(store.root, () => set(store, rec.key, ['status=done'], { session: opts.session, because }));
-    result.done = true;
-    const closing = reconcileTrail(store, changeKey, opts);
+    // (the status as it stands under the lock: one the person moved while Entire was asked is theirs)
+    result.done = withStoreLock(store.root, () => {
+      if (loadStore(store).byKey.get(changeKey)?.[0]?.data.status !== 'review') return false;
+      set(store, rec.key, ['status=done'], { session: opts.session, because });
+      return true;
+    });
+    const closing = result.done ? reconcileTrail(store, changeKey, opts) : null;
     if (closing) {
       result.acts.push(...closing.acts);
       result.state = closing.state ?? result.state;

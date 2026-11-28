@@ -18,7 +18,7 @@ import { mergeChange } from '../sync/merge.js';
 import { findingsOf } from '../model/findings.js';
 import { settleFinding } from '../sync/review.js';
 import { reconcileTrail } from '../sync/trail.js';
-import { change } from './shape.js';
+import { change, holdLock } from './shape.js';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-merge-')));
 const dir = path.join(tmp, 'web');
@@ -163,6 +163,27 @@ test('pjman merge lands the branch locally where the project has not opted in to
   assert.throws(() => mergeChange(store, 'change:web/branchless'), /has no branch in this repository to merge/);
 });
 
+test('pjman merge writes the store under its lock: a busy store leaves the branch merged and says the change is not set done', async () => {
+  inReview('busy');
+  branch('busy');
+  const release = await holdLock(store.root);
+  let r;
+  try {
+    r = mergeChange(store, 'change:web/busy');
+  } finally {
+    await release();
+  }
+  assert.equal(r.by, 'local');
+  assert.equal(r.commit, null);
+  assert.match(r.undone ?? '', /the store is busy.*pjman sync git sets it done/);
+  assert.equal(statusOf('busy'), 'review', 'nothing written beside the holder');
+  assert.deepEqual(
+    syncGit(store).done.map((d) => d.change),
+    ['change:web/busy'],
+  );
+  assert.equal(statusOf('busy'), 'done');
+});
+
 test("opted in, the merge is the Trail's: a gate that blocks merges nothing; a merge that passes is pulled and set done", () => {
   set(store, 'project:web', ['ext.entire.enabled=true'], {});
   const head = g('rev-parse', 'main');
@@ -209,7 +230,7 @@ test('a branch with no commits of its own is not merged by a later merge of anot
   assert.equal(mergedInto(dir, 'idle-later', { named: 'change:idle-later' })?.how, 'merge');
 });
 
-test("the Trail's findings are read onto the change before the merge, since a merged Trail lists none", () => {
+test("the Trail's findings are read onto the change before the merge, since a merged Trail lists none", async () => {
   g('switch', '-q', 'main');
   g('pull', '-q', '--no-rebase', '--no-edit', 'origin', 'main');
   branch('late');
@@ -229,6 +250,18 @@ test("the Trail's findings are read onto the change before the merge, since a me
 esac`,
   );
   assert.deepEqual(reconcileTrail(store, 'change:web/late', { entire: { bin } })!.pending, []);
+  // a read that cannot be written (the store busy) merges nothing: once merged, Entire lists the findings no more
+  fs.rmSync(path.join(tmp, 'calls.log'));
+  const release = await holdLock(store.root);
+  try {
+    assert.throws(
+      () => mergeChange(store, 'change:web/late', { entire: { bin } }),
+      /not merged: the Trail's findings could not be read onto change:web\/late \(the store is busy/,
+    );
+  } finally {
+    await release();
+  }
+  assert.ok(!fs.readFileSync(path.join(tmp, 'calls.log'), 'utf8').includes('trail merge'), 'not merged past it');
   fs.rmSync(path.join(tmp, 'calls.log'));
   // what was posted on the Trail is read first, and is the change's own to handle: the merge waits on it, whatever
   // its severity (decision review-fixes-in-place/where-findings-go)
