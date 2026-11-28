@@ -882,8 +882,8 @@ export const COMMANDS: Command[] = [
   {
     name: 'query',
     group: 'maintenance',
-    line: 'a read-only SQL query against the index',
-    about: 'run a read-only SQL query against the index; the answer is JSON',
+    line: 'a read-only SQL query against the index, rebuilt first so it answers from the record as it stands',
+    about: 'rebuild the index, then run a read-only SQL query against it; the answer is JSON',
     usage: ['pjman query "<sql>"'],
     flags: [],
     args: 1,

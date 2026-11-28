@@ -273,6 +273,14 @@ test('index mints stable ids, derives reverse edges, records conflicts', async (
   fs.rmSync(path.join(store.root, 'products/project/changes/beta'), { recursive: true });
 });
 
+test('a query after a write sees the write', async () => {
+  const { query } = await import('../ops/indexdb.js');
+  const keys = () => (query(store, 'select key from records') as { key: string }[]).map((r) => r.key);
+  assert.ok(!keys().includes('session:sess-after-query'));
+  newRecord(store, 'session', 'sess-after-query', { agent: 'agent:claude-code' });
+  assert.ok(keys().includes('session:sess-after-query'));
+});
+
 test('a second repository joins the same global store as its own project; the board scopes by project', () => {
   const p3 = path.join(tmp, 'p3');
   fs.mkdirSync(path.join(p3, 'src'), { recursive: true });

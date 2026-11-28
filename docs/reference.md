@@ -25,7 +25,7 @@ projects/<slug>.md                                     project:<slug>           
 sources/<kind>/<key-slug>.md                 <kind>:<key>                (optional; a source may exist as a key only)
 sessions/<date>-<id>.md                      session:<id>
 actors/<handle>.md                                     person:<handle> · agent:<handle>  (a person's accounts are links: github-user:<login>, email:<address>)
-index.db                                     derived, git-ignored, rebuilt by `pjman index`
+index.db                                     derived, git-ignored, rebuilt by `pjman index` and before each `pjman query`
 ```
 
 Keys are a namespace and a slug: the product for features, changes and decisions, the store for the rest. Position in
@@ -263,7 +263,7 @@ A version the product shipped.
 - `pjman lift`: move every change up to what its plan says, as one batch
 - `pjman migrate`: the one move the store still waits for
 - `pjman index`: read every file again and rebuild index.db (exit 1 on conflicts)
-- `pjman query`: a read-only SQL query against the index
+- `pjman query`: a read-only SQL query against the index, rebuilt first so it answers from the record as it stands
 
 ### Every command in full
 
@@ -478,7 +478,7 @@ pjman index [--json]
     read every file again (the index this machine keeps of the store is thrown away and rebuilt) and rebuild index.db: ids, reverse edges, conflicts (exit 1 on conflicts)
 
 pjman query "<sql>"
-    run a read-only SQL query against the index; the answer is JSON
+    rebuild the index, then run a read-only SQL query against it; the answer is JSON
 
 ```
 
