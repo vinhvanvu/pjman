@@ -33,7 +33,7 @@ import {
   settleFinding,
 } from '../sync/review.js';
 import { reconcileTrail } from '../sync/trail.js';
-import { change } from './shape.js';
+import { change, holdLock } from './shape.js';
 
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'pjman-review-')));
 const dir = path.join(tmp, 'web');
@@ -323,6 +323,22 @@ test("opted in, the review is handed to Entire's own with the brief, and what it
   const back = readFindings(store, 'change:web/cart', { entire: { bin } });
   assert.deepEqual(back.read, [`resolved #${got.length}`]);
   assert.equal(findings().at(-1)!.state, 'resolved');
+});
+
+test('what is read from Entire is written under the store lock: a reader and a review refuse while another process writes', async () => {
+  execFileSync(bin, ['trail', 'finding', 'reopen', '--branch', 'cart', findings().at(-1)!.entire!]);
+  const held = findings().length;
+  const release = await holdLock(store.root);
+  try {
+    assert.throws(() => readFindings(store, 'change:web/cart', { entire: { bin } }), /the store is busy/);
+    assert.equal(findings().at(-1)!.state, 'resolved', 'nothing written beside the holder');
+    // Entire's review runs without the lock; what it found is written under it, so it refuses too
+    assert.throws(() => runReview(store, 'change:web/cart', { entire: { bin } }), /the store is busy/);
+    assert.equal(findings().length, held, 'nothing written beside the holder');
+  } finally {
+    await release();
+  }
+  assert.ok(readFindings(store, 'change:web/cart', { entire: { bin } }).read.includes(`reopened #${held}`));
 });
 
 test('the profile is named to Entire: the one asked for, the default, or the only one; several with no default are not guessed', () => {

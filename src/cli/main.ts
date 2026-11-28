@@ -347,7 +347,8 @@ function main(argv: string[]): number {
   const writes =
     WRITE_COMMANDS.has(cmd) ||
     // a review that files, settles, hands out a lens or closes a round writes the change (three reviewers are started
-    // together, each with its lens); Entire's own review runs for minutes and takes no lock
+    // together, each with its lens); Entire's own review (--run, --read) and merge wait on Entire for minutes, so they
+    // take the lock around each of their writes instead (sync/review.ts, sync/merge.ts, sync/trail.ts)
     (cmd === 'review' &&
       (v.finding !== undefined ||
         !!v.resolve ||
@@ -357,6 +358,8 @@ function main(argv: string[]): number {
         v.lens !== undefined ||
         !!v.reviewed ||
         !!v['follow-up'])) ||
+    // code writes with link, unlink, mv, learn and seed; its other verbs and seed --check only read
+    (cmd === 'code' && (['link', 'unlink', 'mv', 'learn'].includes(pos[1]) || (pos[1] === 'seed' && !v.check))) ||
     (cmd === 'brief' && !!v.session) ||
     (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
   if (!writes) return dispatch(v, pos, cmd, cwd);
@@ -391,6 +394,8 @@ const WRITE_COMMANDS = new Set([
   'undo',
   'migrate',
   'lift',
+  'person',
+  'tie',
 ]);
 /** The writes that move a store between formats, or make one: never refused for the store's format. */
 const FORMAT_EXEMPT = new Set(['init', 'migrate', 'undo']);
@@ -1549,7 +1554,11 @@ function dispatch(v: Parsed['values'], pos: Parsed['positionals'], cmd: string, 
             : r.by === 'local'
               ? `merged ${r.branch} into ${r.base}`
               : `${r.branch} was already merged into ${r.base}`;
-        out(`${how}; ${printed(r.change)} is done${r.commit ? ` (committed ${r.commit})` : ''}`);
+        out(
+          r.undone
+            ? `${how}; ${printed(r.change)} was not set done: ${r.undone}`
+            : `${how}; ${printed(r.change)} is done${r.commit ? ` (committed ${r.commit})` : ''}`,
+        );
         for (const n of r.notes) out(`note: ${n}`);
         if (trail) for (const line of trailLines(trail, printed)) out(line);
       }
