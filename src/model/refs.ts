@@ -232,12 +232,6 @@ function anchored(g: Grammar): RegExp {
   return new RegExp(`^(?:${g.id!.source})$`);
 }
 
-/** Whether a word is a kind's short form as a whole (`ABC-12` for linear). */
-export function isShortForm(kind: string, word: string): boolean {
-  const g = grammarOf(kind);
-  return !!g?.id && !g.not?.test(word) && anchored(g).test(word);
-}
-
 /** The short forms one word could be, one per grammar whose pattern matches it. A prefixed id (`ABC-12`) has a key only
  *  where exactly one tracker of the project claims its prefix, and that tracker is the grammar's kind. */
 export function shortForms(word: string, scope: Scope): ShortForm[] {
