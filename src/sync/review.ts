@@ -1445,7 +1445,8 @@ export function closeRound(store: Store, key: string, opts: ReviewOpts & { liste
   if (b.entire && !opts.listed && entireHanded(changeOf(loadStore(store), key).data, b.loop)) {
     const back = readFindings(store, key, opts);
     if (!back.listed) throw new CliError(unread(b.change, back.pending[0]));
-    if (back.commit) b = reviewBrief(store, key);
+    // read again whatever was written: the lock was let go while Entire was asked, and another closer may have closed it
+    b = reviewBrief(store, key);
   }
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);

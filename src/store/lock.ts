@@ -203,14 +203,28 @@ export function withoutStoreLock<T>(root: string, fn: () => T): T {
   if (!depth) return fn();
   held.delete(file);
   release(file);
+  let out: T;
   try {
-    return fn();
-  } finally {
-    retake(root, depth);
+    out = fn();
+  } catch (e) {
+    // fn's own error is the one told; a lock not taken back is let go with the process
+    try {
+      retake(root, depth);
+    } catch {
+      // (fn's error stands)
+    }
+    throw e;
   }
+  try {
+    retake(root, depth);
+  } catch {
+    // fn's writes have landed under the lock they took themselves; what the command writes after takes it again
+  }
+  return out;
 }
 
-/** Take the lock back at the depth it was held, however long the other writers take: the command goes on as it began. */
+/** Take the lock back at the depth it was held, however long the other writers take: the command goes on as it began.
+ *  Only a busy store is waited on; any other failure is thrown at once. */
 function retake(root: string, depth: number): void {
   for (const until = Date.now() + staleMs(); ;) {
     try {
@@ -218,7 +232,7 @@ function retake(root: string, depth: number): void {
       held.set(lockPath(root), depth);
       return;
     } catch (e) {
-      if (Date.now() > until) throw e;
+      if (!/the store is busy/.test((e as Error).message) || Date.now() > until) throw e;
     }
   }
 }
