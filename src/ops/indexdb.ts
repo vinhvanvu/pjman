@@ -67,7 +67,8 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
   const file = indexPath(store);
   const ids = existingIds(file);
   const problems = validate(loaded);
-  const tmp = file + '.tmp';
+  // one per process: two queries rebuilding at once never write the same file
+  const tmp = `${file}.${process.pid}.tmp`;
   fs.rmSync(tmp, { force: true });
   const db = dbOpen(tmp);
   db.exec(SCHEMA);
@@ -187,8 +188,8 @@ export function buildIndex(store: Store, loaded: Loaded = loadStore(store)): Ind
 }
 
 export function query(store: Store, sql: string): unknown[] {
-  const file = indexPath(store);
-  if (!fs.existsSync(file)) buildIndex(store);
+  // rebuilt from the record as it stands, so a query sees every write before it (decision stale-query-index/fix)
+  const file = buildIndex(store).path;
   const d = dbOpen(file, { readOnly: true });
   try {
     return d.prepare(sql).all();
