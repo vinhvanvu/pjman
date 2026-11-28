@@ -39,7 +39,7 @@ import { live } from '../model/tree.js';
 import { MOVED_SINCE, observedBranches } from '../model/view.js';
 import { localHeads } from '../store/merged.js';
 import { envelope, finishWrite, render, snapshot, validateOrUndo } from '../ops/write.js';
-import { withStoreLock } from '../store/lock.js';
+import { withStoreLock, withoutStoreLock } from '../store/lock.js';
 import type { Store } from '../store/config.js';
 import { git } from '../store/git.js';
 import { loadStore, resolve, unresolvedError, type Loaded, type Rec } from '../store/records.js';
@@ -449,11 +449,20 @@ export function settleFinding(
 
 /** Tell Entire what it has not been told: each open finding not yet on the change's Trail is filed there, and each
  *  one whose state moved since is resolved, dismissed or reopened there. Nothing for a project that has not opted in,
- *  or a change with no Trail yet (its Trail is created when work starts; the next run files them). */
+ *  or a change with no Trail yet (its Trail is created when work starts; the next run files them). A lock the caller
+ *  holds is let go while Entire is asked, and what it answered is written under the lock taken again. */
 export function fileFindings(
   store: Store,
   key: string,
   opts: ReviewOpts = {},
+): { findings: Finding[]; filed: string[]; pending: string[] } {
+  return withoutStoreLock(store.root, () => tellEntire(store, key, opts));
+}
+
+function tellEntire(
+  store: Store,
+  key: string,
+  opts: ReviewOpts,
 ): { findings: Finding[]; filed: string[]; pending: string[] } {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
@@ -569,11 +578,12 @@ function readableTrail(loaded: Loaded, rec: Rec, dir: string): { branch?: string
 /** What the findings on the change's Trail read as on the change: Entire's own review posts there, and so may a person.
  *  A finding the change does not hold is added, with its id on Entire; one it holds follows Entire's state where it was
  *  not settled here since. The Trail is read whole each time; nothing is asked of a project that did not opt in. */
-export function readFindings(
-  store: Store,
-  key: string,
-  opts: ReviewOpts = {},
-): {
+export function readFindings(store: Store, key: string, opts: ReviewOpts = {}): ReadFindings {
+  // a lock the caller holds is let go while Entire is asked; what it listed is written under the lock taken again
+  return withoutStoreLock(store.root, () => listEntire(store, key, opts));
+}
+
+type ReadFindings = {
   change: string;
   findings: Finding[];
   read: string[];
@@ -582,7 +592,9 @@ export function readFindings(
   /** Entire listed the Trail's findings: what is on the change is what the Trail held. False where nothing could be
    *  read (no Trail, a Trail no longer listed, Entire not answering) and for a project that did not opt in. */
   listed: boolean;
-} {
+};
+
+function listEntire(store: Store, key: string, opts: ReviewOpts): ReadFindings {
   const loaded = loadStore(store);
   const rec = changeOf(loaded, key);
   const out = {

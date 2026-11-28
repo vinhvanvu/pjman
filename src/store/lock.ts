@@ -9,9 +9,10 @@ import path from 'node:path';
 import { userDir } from './config.js';
 import { CliError } from './util.js';
 
-/** How long a second writer waits before refusing, and how old a live holder may be before it is taken for hung. */
+/** How long a second writer waits before refusing, and how old a live holder may be before it is taken for hung: well
+ *  past any write, since no command holds the lock while it waits on Entire (withoutStoreLock). */
 const waitMs = () => Number(process.env.PJMAN_LOCK_WAIT_MS) || 5000;
-const staleMs = () => Number(process.env.PJMAN_LOCK_STALE_MS) || 120_000;
+const staleMs = () => Number(process.env.PJMAN_LOCK_STALE_MS) || 600_000;
 const POLL_MS = 25;
 
 interface Holder {
@@ -191,6 +192,34 @@ export function withStoreLock<T>(root: string, fn: () => T): T {
     return fn();
   } finally {
     unlockStore(root);
+  }
+}
+
+/** Run `fn` with the store's lock let go, and take it back after: for a locked command's wait on Entire, whose writes
+ *  take the lock themselves. Other writers go ahead meanwhile, so what was read before is read again after. */
+export function withoutStoreLock<T>(root: string, fn: () => T): T {
+  const file = lockPath(root);
+  const depth = held.get(file) ?? 0;
+  if (!depth) return fn();
+  held.delete(file);
+  release(file);
+  try {
+    return fn();
+  } finally {
+    retake(root, depth);
+  }
+}
+
+/** Take the lock back at the depth it was held, however long the other writers take: the command goes on as it began. */
+function retake(root: string, depth: number): void {
+  for (const until = Date.now() + staleMs(); ;) {
+    try {
+      lockStore(root);
+      held.set(lockPath(root), depth);
+      return;
+    } catch (e) {
+      if (Date.now() > until) throw e;
+    }
   }
 }
 

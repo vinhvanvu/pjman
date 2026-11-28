@@ -15,7 +15,7 @@ import { briefFor } from './brief.js';
 import { start, stop } from './start.js';
 import { openPage, openUrl } from './open.js';
 import { openWindow } from './follow-window.js';
-import { withStoreLock } from '../store/lock.js';
+import { withStoreLock, withoutStoreLock } from '../store/lock.js';
 import { buildIndex, query } from '../ops/indexdb.js';
 import { resetIndex } from '../store/store-index.js';
 import { loadStore, resolve, storeScope, unresolvedError } from '../store/records.js';
@@ -240,19 +240,22 @@ const printed = (key: string): string => shortKey(key, scopeProduct);
 /** In a project that opted in to Entire, the Trail of a change a command just wrote is brought to where the change
  *  now stands (change:trail-lifecycle). Never fails the command: what Entire does not answer is printed as pending. */
 function followTrail(store: Store, key: string, session?: string, through = false): TrailReconcile | null {
-  try {
-    // the command's own write has landed: Entire gets a few seconds, and the next sync does what it did not
-    // (`through`: the command merged the branch through the Trail, whose gates Entire checked)
-    return reconcileTrail(store, key, { session, budget: 12_000, through });
-  } catch (e) {
-    return {
-      change: key,
-      acts: [],
-      moved: [],
-      pending: [(e as Error).message.split('\n')[0]],
-      commit: null,
-    };
-  }
+  // the command's own write has landed: Entire gets a few seconds, and the next sync does what it did not
+  // (`through`: the command merged the branch through the Trail, whose gates Entire checked). The lock is let go
+  // meanwhile: the reconcile takes it around its own writes
+  return withoutStoreLock(store.root, () => {
+    try {
+      return reconcileTrail(store, key, { session, budget: 12_000, through });
+    } catch (e) {
+      return {
+        change: key,
+        acts: [],
+        moved: [],
+        pending: [(e as Error).message.split('\n')[0]],
+        commit: null,
+      };
+    }
+  });
 }
 /** The map a change just filed brings: its project's product has none, the project did not say skip, and the
  *  repository has something to survey. */
@@ -344,8 +347,10 @@ function main(argv: string[]): number {
   if (!commandOf(cmd)) throw usageError(`unknown command '${cmd}'; pjman --help lists them`);
   const cwd = process.cwd();
   // a session's brief records its watermark, and a session reading a change's context moves its focus: both write
+  // sync entire waits on Entire for minutes, every minute from the dashboard: it takes the lock around each write
+  const entireSync = cmd === 'sync' && pos[1] === 'entire';
   const writes =
-    WRITE_COMMANDS.has(cmd) ||
+    (WRITE_COMMANDS.has(cmd) && !entireSync) ||
     // a review that files, settles, hands out a lens or closes a round writes the change (three reviewers are started
     // together, each with its lens); Entire's own review (--run, --read) and merge wait on Entire for minutes, so they
     // take the lock around each of their writes instead (sync/review.ts, sync/merge.ts, sync/trail.ts)
@@ -362,16 +367,23 @@ function main(argv: string[]): number {
     (cmd === 'code' && (['link', 'unlink', 'mv', 'learn'].includes(pos[1]) || (pos[1] === 'seed' && !v.check))) ||
     (cmd === 'brief' && !!v.session) ||
     (cmd === 'context' && !!pos[1] && !!process.env.PJMAN_SESSION);
-  if (!writes) return dispatch(v, pos, cmd, cwd);
+  // the store names its format: a store newer than this pjman is not written, an older one is migrated first; read
+  // under the lock, so a stamp landing from another writer is seen
+  const formatted = (): void => {
+    if (FORMAT_EXEMPT.has(cmd)) return;
+    const store = findStore(cwd, v.store);
+    const mismatch = store ? formatMismatch(store, TOOL_VERSION) : null;
+    if (mismatch) throw new CliError(`refused: ${mismatch}`);
+  };
+  if (!writes && !entireSync) return dispatch(v, pos, cmd, cwd);
+  const root = findStore(cwd, v.store)?.root ?? globalStorePath();
+  if (entireSync) {
+    withStoreLock(root, formatted);
+    return dispatch(v, pos, cmd, cwd);
+  }
   // one writer at a time per store: the lock is held from before the first file is touched to after the commit
-  return withStoreLock(findStore(cwd, v.store)?.root ?? globalStorePath(), () => {
-    // the store names its format: a store newer than this pjman is not written, an older one is migrated first; read
-    // under the lock, so a stamp landing from another writer is seen
-    if (!FORMAT_EXEMPT.has(cmd)) {
-      const store = findStore(cwd, v.store);
-      const mismatch = store ? formatMismatch(store, TOOL_VERSION) : null;
-      if (mismatch) throw new CliError(`refused: ${mismatch}`);
-    }
+  return withStoreLock(root, () => {
+    formatted();
     return dispatch(v, pos, cmd, cwd);
   });
 }
